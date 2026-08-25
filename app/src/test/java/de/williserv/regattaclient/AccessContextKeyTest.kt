@@ -1,6 +1,7 @@
 package de.williserv.regattaclient
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -28,6 +29,22 @@ class AccessContextKeyTest {
             ),
             fromIngestUrl
         )
+    }
+
+    @Test
+    fun normalizeAccessContextKey_keepsDifferentAccessesSeparate() {
+        val accessA = normalizeAccessContextKey(
+            serverUrl = "https://raceoffice.example.org",
+            accessIdentifier = "Event A",
+            accessSecret = "secret-a"
+        )
+        val accessB = normalizeAccessContextKey(
+            serverUrl = "https://raceoffice.example.org",
+            accessIdentifier = "Event B",
+            accessSecret = "secret-b"
+        )
+
+        assertNotEquals(accessA, accessB)
     }
 
     @Test
