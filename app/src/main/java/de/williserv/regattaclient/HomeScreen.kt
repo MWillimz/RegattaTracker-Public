@@ -32,11 +32,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.clickable
+
 import androidx.compose.material3.MaterialTheme
 import de.williserv.regattaclient.ui.theme.RegattaBlue
 import de.williserv.regattaclient.ui.theme.RegattaGreen
 import de.williserv.regattaclient.ui.theme.RegattaOrange
 import de.williserv.regattaclient.ui.theme.RegattaRed
+
 import androidx.compose.foundation.Image
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.layout.ContentScale
@@ -54,7 +56,6 @@ fun primaryButtonColors() = ButtonDefaults.buttonColors(
     disabledContainerColor = MaterialTheme.colorScheme.outlineVariant,
     disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
 )
-
 @Composable
 fun HomeScreen(
     inRace: Boolean,
@@ -178,7 +179,10 @@ fun HomeScreen(
 
             if (hasRaceInfo) {
                 Spacer(modifier = Modifier.height(HomeGapMedium))
-                RaceInfoCard(raceInfoText = raceInfoText)
+
+                RaceInfoCard(
+                    raceInfoText = raceInfoText
+                )
             }
 
             Spacer(modifier = Modifier.height(HomeGapMedium))
@@ -201,6 +205,8 @@ fun HomeScreen(
             uploadColor = uploadColor
         )
 
+
+
         Spacer(modifier = Modifier.height(HomeGapSmall))
 
         StartFlagsPlaceholder(
@@ -209,6 +215,7 @@ fun HomeScreen(
         )
 
         Spacer(modifier = Modifier.height(HomeGapMedium))
+
 
         if (isRaceFinished(raceStatusText)) {
             Button(
@@ -276,8 +283,12 @@ fun HomeScreen(
                 onClick = onToggleAdvanced,
                 colors = primaryButtonColors(),
                 modifier = Modifier.weight(0.35f)
-            ) {
-                Text(if (showAdvanced) "Hide" else "Advanced")
+            ){
+                if (showAdvanced) {
+                    Text("Hide")
+                } else {
+                    Text("Advanced")
+                }
             }
 
             Button(
@@ -289,17 +300,24 @@ fun HomeScreen(
             }
         }
     }
-
     if (showClearConfirmDialog) {
         AlertDialog(
             onDismissRequest = onCancelClearOldData,
-            title = { Text("Delete old data?") },
-            text = { Text("All stored tracking data on this device will be deleted. This cannot be undone.") },
+            title = {
+                Text("Delete old data?")
+            },
+            text = {
+                Text("All stored tracking data on this device will be deleted. This cannot be undone.")
+            },
             confirmButton = {
-                TextButton(onClick = onConfirmClearOldData) { Text("Delete") }
+                TextButton(onClick = onConfirmClearOldData) {
+                    Text("Delete")
+                }
             },
             dismissButton = {
-                TextButton(onClick = onCancelClearOldData) { Text("Cancel") }
+                TextButton(onClick = onCancelClearOldData) {
+                    Text("Cancel")
+                }
             }
         )
     }
@@ -313,8 +331,7 @@ internal fun mergeTelemetryUploadStatusText(
 
     val pending = pendingStatusText
         .filter { it.isDigit() }
-        .toIntOrNull()
-        ?: 0
+        .toIntOrNull() ?: 0
 
     return if (pending > 0) {
         "Upload: $workerStatus · $pending pending"
@@ -335,14 +352,17 @@ fun TopEventName(
         contentAlignment = Alignment.CenterStart
     ) {
         Text(
-            text = if (raceDataReady && raceEvent.isNotBlank()) raceEvent else "",
+            text = if (raceDataReady && raceEvent.isNotBlank()) {
+                raceEvent
+            } else {
+                ""
+            },
             fontSize = 18.sp,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
-
 @Composable
 fun HeaderPanel(
     startPanelMode: String,
@@ -353,23 +373,31 @@ fun HeaderPanel(
         "ocs" -> MaterialTheme.colorScheme.error
         "postponed" -> MaterialTheme.colorScheme.tertiary
         "countdown" -> MaterialTheme.colorScheme.primary
+        "started" -> MaterialTheme.colorScheme.secondary
+        "finished" -> MaterialTheme.colorScheme.secondary
         else -> MaterialTheme.colorScheme.secondary
     }
     val contentColor = when (startPanelMode) {
         "ocs" -> MaterialTheme.colorScheme.onError
         "postponed" -> MaterialTheme.colorScheme.onTertiary
         "countdown" -> MaterialTheme.colorScheme.onPrimary
+        "started" -> MaterialTheme.colorScheme.onSecondary
+        "finished" -> MaterialTheme.colorScheme.onSecondary
         else -> MaterialTheme.colorScheme.onSecondary
     }
 
     val text = when (startPanelMode) {
-        "ocs" -> if (startPanelText.startsWith("START IN", ignoreCase = true)) {
-            "OCS: ${startPanelText.removePrefix("START IN").trim()}"
-        } else {
-            "OCS"
+        "ocs" -> {
+            if (startPanelText.startsWith("START IN", ignoreCase = true)) {
+                "OCS: ${startPanelText.removePrefix("START IN").trim()}"
+            } else {
+                "OCS"
+            }
         }
+
         "postponed" -> "POSTPONED"
-        "countdown", "started" -> startPanelText
+        "countdown" -> startPanelText
+        "started" -> startPanelText
         "finished" -> "FINISHED"
         else -> "Regatta Tracker"
     }
@@ -377,7 +405,9 @@ fun HeaderPanel(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = startPanelMode == "ocs") { onClick() },
+            .clickable(enabled = startPanelMode == "ocs") {
+                onClick()
+            },
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = backgroundColor)
     ) {
@@ -402,7 +432,9 @@ fun CourseShortenedPanel() {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiary)
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiary
+        )
     ) {
         Box(
             modifier = Modifier
@@ -429,20 +461,27 @@ fun TargetCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
     ) {
-        Column(modifier = Modifier.padding(18.dp)) {
+        Column(
+            modifier = Modifier.padding(18.dp)
+        ) {
             Text(
                 text = currentTargetText.replace("Nächstes Ziel:", "Next:"),
                 fontSize = 24.sp,
                 fontWeight = FontWeight.SemiBold
             )
+
             Spacer(modifier = Modifier.height(HomeGapMedium))
+
             Text(
                 text = displayDistanceText(distanceText),
                 fontSize = 38.sp,
                 fontWeight = FontWeight.Bold
             )
+
             Text(
                 text = displayProgressText(progressText),
                 fontSize = 19.sp,
@@ -454,22 +493,34 @@ fun TargetCard(
 }
 
 @Composable
-fun RaceInfoCard(raceInfoText: String) {
-    val cleaned = raceInfoText.replace("Info:", "").trim()
-    if (cleaned.isBlank() || cleaned == "--") return
+fun RaceInfoCard(
+    raceInfoText: String
+) {
+    val cleaned = raceInfoText
+        .replace("Info:", "")
+        .trim()
+
+    if (cleaned.isBlank() || cleaned == "--") {
+        return
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer
+        )
     ) {
-        Column(modifier = Modifier.padding(18.dp)) {
+        Column(
+            modifier = Modifier.padding(18.dp)
+        ) {
             Text(
                 text = "Info",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onTertiaryContainer
             )
+
             Text(
                 text = cleaned,
                 fontSize = 18.sp,
@@ -492,32 +543,60 @@ fun StatusOverviewCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
     ) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            StatusRow("GPS", gpsStatus, gpsColor)
+        Column(
+            modifier = Modifier.padding(18.dp)
+        ) {
+            StatusRow(
+                label = "GPS",
+                value = gpsStatus,
+                color = gpsColor
+            )
+
             Spacer(modifier = Modifier.height(HomeGapMedium))
-            StatusRow("Race", raceStatusText, raceColor)
+
+            StatusRow(
+                label = "Race",
+                value = raceStatusText,
+                color = raceColor
+            )
+
             Spacer(modifier = Modifier.height(HomeGapSmall))
-            StatusRow("Upload", uploadStatusText, uploadColor)
+
+            StatusRow(
+                label = "Upload",
+                value = uploadStatusText,
+                color = uploadColor
+            )
         }
     }
 }
 
 @Composable
-fun StatusRow(label: String, value: String, color: Color) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+fun StatusRow(
+    label: String,
+    value: String,
+    color: Color
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Box(
             modifier = Modifier
                 .size(16.dp)
                 .background(color, CircleShape)
         )
+
         Text(
             text = label,
             fontSize = 18.sp,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(start = 12.dp)
         )
+
         Text(
             text = value,
             fontSize = 18.sp,
@@ -531,15 +610,21 @@ fun StartFlagsPlaceholder(
     raceStartFlags: RaceStartFlags,
     millisToStart: Long?
 ) {
-    val visibleFlags = visibleRaceFlags(raceStartFlags, millisToStart)
+    val visibleFlags = visibleRaceFlags(
+        flags = raceStartFlags,
+        millisToStart = millisToStart
+    )
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         repeat(3) { index ->
+            val flag = visibleFlags.getOrNull(index)
+
             FlagSlot(
-                flag = visibleFlags.getOrNull(index),
+                flag = flag,
                 modifier = Modifier.weight(1f)
             )
         }
@@ -547,11 +632,16 @@ fun StartFlagsPlaceholder(
 }
 
 @Composable
-fun FlagSlot(flag: VisibleRaceFlag?, modifier: Modifier = Modifier) {
+fun FlagSlot(
+    flag: VisibleRaceFlag?,
+    modifier: Modifier = Modifier
+) {
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
     ) {
         Box(
             modifier = Modifier
@@ -561,19 +651,27 @@ fun FlagSlot(flag: VisibleRaceFlag?, modifier: Modifier = Modifier) {
             contentAlignment = Alignment.Center
         ) {
             when (flag) {
-                is VisibleRaceFlag.ClassFlag -> Text(
-                    text = flag.label.ifBlank { "Class" },
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                is VisibleRaceFlag.ImageFlag -> Image(
-                    painter = painterResource(id = flag.drawableResId),
-                    contentDescription = flag.code,
-                    modifier = Modifier.fillMaxWidth(),
-                    contentScale = ContentScale.Fit
-                )
-                null -> Unit
+                is VisibleRaceFlag.ClassFlag -> {
+                    Text(
+                        text = flag.label.ifBlank { "Class" },
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                is VisibleRaceFlag.ImageFlag -> {
+                    Image(
+                        painter = painterResource(id = flag.drawableResId),
+                        contentDescription = flag.code,
+                        modifier = Modifier.fillMaxWidth(),
+                        contentScale = ContentScale.Fit
+                    )
+                }
+
+                null -> {
+                    // Empty slot.
+                }
             }
         }
     }
@@ -595,13 +693,18 @@ fun ActionRow(
             text = "Boat",
             isOk = setupConfirmed,
             enabled = !inRace,
-            modifier = Modifier.weight(if (setupConfirmed) 0.35f else 0.65f),
+            modifier = Modifier.weight(
+                if (setupConfirmed) 0.35f else 0.65f
+            ),
             onClick = onSetup
         )
+
         SmallActionButton(
             text = "Event",
             isOk = inRace || raceFinished,
-            modifier = Modifier.weight(if (setupConfirmed) 0.65f else 0.35f),
+            modifier = Modifier.weight(
+                if (setupConfirmed) 0.65f else 0.35f
+            ),
             onClick = onRace
         )
     }
@@ -622,13 +725,18 @@ fun RacecourseRow(
             enabled = raceDataReady,
             colors = primaryButtonColors(),
             modifier = Modifier.weight(0.5f)
-        ) { Text("Course") }
+        ) {
+            Text("Course")
+        }
+
         Button(
             onClick = onMap,
             enabled = raceDataReady,
             colors = primaryButtonColors(),
             modifier = Modifier.weight(0.5f)
-        ) { Text("Map") }
+        ) {
+            Text("Map")
+        }
     }
 }
 
@@ -656,7 +764,9 @@ fun SmallActionButton(
             disabledContainerColor = MaterialTheme.colorScheme.outlineVariant,
             disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
         )
-    ) { Text(text) }
+    ) {
+        Text(text)
+    }
 }
 
 @Composable
@@ -677,29 +787,48 @@ fun AdvancedDebugBlock(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
     ) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            Text("Advanced", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Column(
+            modifier = Modifier.padding(18.dp)
+        ) {
+            Text(
+                text = "Advanced",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold
+            )
+
             Spacer(modifier = Modifier.height(HomeGapMedium))
 
-            Button(onClick = onToggleManualTracking, modifier = Modifier.fillMaxWidth()) {
-                Text(if (manualTracking) "Stop Manual Tracking" else "Start Manual Tracking")
+            Button(
+                onClick = onToggleManualTracking,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (manualTracking) {
+                    Text("Stop Manual Tracking")
+                } else {
+                    Text("Start Manual Tracking")
+                }
             }
 
             Spacer(modifier = Modifier.height(HomeGapLarge))
+
             AdvancedSectionTitle("GPS")
             DebugLine("COG", cogText.replace("COG:", "").trim())
             DebugLine("SOG", sogText.replace("SOG:", "").trim())
             DebugLine("Accuracy", gpsAccuracyText.replace("GPS:", "").trim())
 
             Spacer(modifier = Modifier.height(HomeGapLarge))
+
             AdvancedSectionTitle("Upload")
-            DebugLine("Pending / state", uploadStatusText.replace("Upload:", "").trim())
+            DebugLine("Pending", uploadStatusText.replace("Upload:", "").trim())
             DebugLine("Stored rows", rowCountText)
             DebugLine("Last error", debugErrorText.replace("Letzter Fehler:", "").trim())
 
             Spacer(modifier = Modifier.height(HomeGapLarge))
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -708,7 +837,10 @@ fun AdvancedDebugBlock(
                     onClick = onExport,
                     colors = primaryButtonColors(),
                     modifier = Modifier.weight(0.5f)
-                ) { Text("Export") }
+                ) {
+                    Text("Export")
+                }
+
                 Button(
                     onClick = onClearOldDataClick,
                     colors = ButtonDefaults.buttonColors(
@@ -716,14 +848,19 @@ fun AdvancedDebugBlock(
                         contentColor = MaterialTheme.colorScheme.onError
                     ),
                     modifier = Modifier.weight(0.5f)
-                ) { Text("Clear") }
+                ) {
+                    Text("Clear")
+                }
             }
+
         }
     }
 }
 
 @Composable
-fun AdvancedSectionTitle(text: String) {
+fun AdvancedSectionTitle(
+    text: String
+) {
     Text(
         text = text,
         fontSize = 18.sp,
@@ -734,7 +871,10 @@ fun AdvancedSectionTitle(text: String) {
 }
 
 @Composable
-fun DebugLine(label: String, value: String) {
+fun DebugLine(
+    label: String,
+    value: String
+) {
     Text(
         text = "$label: $value",
         fontSize = 14.sp,
@@ -743,8 +883,15 @@ fun DebugLine(label: String, value: String) {
     )
 }
 
-fun gpsStatusLabel(gpsAccuracyText: String): String {
-    val value = gpsAccuracyText.replace("GPS:", "").replace("m", "").trim().toDoubleOrNull()
+fun gpsStatusLabel(
+    gpsAccuracyText: String
+): String {
+    val value = gpsAccuracyText
+        .replace("GPS:", "")
+        .replace("m", "")
+        .trim()
+        .toDoubleOrNull()
+
     return when {
         value == null -> ""
         value <= 10.0 -> ""
@@ -753,8 +900,15 @@ fun gpsStatusLabel(gpsAccuracyText: String): String {
     }
 }
 
-fun gpsStatusColor(gpsAccuracyText: String): Color {
-    val value = gpsAccuracyText.replace("GPS:", "").replace("m", "").trim().toDoubleOrNull()
+fun gpsStatusColor(
+    gpsAccuracyText: String
+): Color {
+    val value = gpsAccuracyText
+        .replace("GPS:", "")
+        .replace("m", "")
+        .trim()
+        .toDoubleOrNull()
+
     return when {
         value == null -> RegattaRed
         value <= 10.0 -> RegattaGreen
@@ -763,7 +917,9 @@ fun gpsStatusColor(gpsAccuracyText: String): Color {
     }
 }
 
-fun isRaceFinished(raceStatusText: String): Boolean {
+fun isRaceFinished(
+    raceStatusText: String
+): Boolean {
     return raceStatusText.contains("finished", ignoreCase = true)
 }
 
@@ -779,9 +935,14 @@ fun uploadStatusColor(
         uploadStatusText.contains("all sent", ignoreCase = true) -> return RegattaGreen
     }
 
-    if (!inRace) return disabledColor
+    if (!inRace) {
+        return disabledColor
+    }
 
-    val pending = uploadStatusText.filter { it.isDigit() }.toIntOrNull() ?: 0
+    val pending = uploadStatusText
+        .filter { it.isDigit() }
+        .toIntOrNull() ?: 0
+
     return when {
         pending <= 10 -> RegattaGreen
         pending <= 50 -> RegattaOrange
@@ -812,11 +973,21 @@ fun shortUploadStatus(
         }
     }
 
-    val pending = uploadStatusText.filter { it.isDigit() }.toIntOrNull() ?: 0
-    return if (pending <= 10) "OK" else "$pending"
+    val pending = uploadStatusText
+        .filter { it.isDigit() }
+        .toIntOrNull() ?: 0
+
+    return when {
+        uploadStatusText.contains("all sent", ignoreCase = true) -> "OK"
+        pending <= 10 -> "OK"
+        else -> "$pending"
+    }
 }
 
-fun raceStatusColor(raceStatusText: String, inRace: Boolean): Color {
+fun raceStatusColor(
+    raceStatusText: String,
+    inRace: Boolean
+): Color {
     return when {
         raceStatusText.contains("postponed", ignoreCase = true) -> RegattaOrange
         raceStatusText.contains("cancelled", ignoreCase = true) -> RegattaRed
@@ -831,36 +1002,82 @@ fun shortRaceStatusText(
     raceStartText: String,
     inRace: Boolean
 ): String {
-    val cleaned = raceStatusText.replace("Race:", "").trim()
+    val cleaned = raceStatusText
+        .replace("Race:", "")
+        .trim()
 
-    if (cleaned.contains("finished", ignoreCase = true)) return "finished"
-    if (cleaned.contains("postponed", ignoreCase = true)) return "postponed"
-    if (cleaned.contains("cancelled", ignoreCase = true)) return "cancelled"
+    if (cleaned.contains("finished", ignoreCase = true)) {
+        return "finished"
+    }
+
+    if (cleaned.contains("postponed", ignoreCase = true)) {
+        return "postponed"
+    }
+
+    if (cleaned.contains("cancelled", ignoreCase = true)) {
+        return "cancelled"
+    }
 
     if (inRace) {
         val startTime = extractStartClockTime(raceStartText)
-        return if (startTime.isNotBlank()) startTime else "active"
+
+        return if (startTime.isNotBlank()) {
+            startTime
+        } else {
+            "active"
+        }
     }
 
-    return if (cleaned.isNotBlank() && cleaned != "not loaded") cleaned else "not active"
+    return when {
+        cleaned.isNotBlank() && cleaned != "not loaded" -> cleaned
+        else -> "not active"
+    }
 }
 
-fun extractStartClockTime(raceStartText: String): String {
-    val cleaned = raceStartText.replace("Start:", "").trim()
-    if (cleaned.isBlank() || cleaned == "--") return ""
+fun extractStartClockTime(
+    raceStartText: String
+): String {
+    val cleaned = raceStartText
+        .replace("Start:", "")
+        .trim()
+
+    if (cleaned.isBlank() || cleaned == "--") {
+        return ""
+    }
 
     return when {
-        cleaned.contains("T") -> cleaned.substringAfter("T").take(5)
-        cleaned.length >= 5 -> cleaned.takeLast(5)
+        cleaned.contains("T") -> {
+            cleaned
+                .substringAfter("T")
+                .take(5)
+        }
+
+        cleaned.length >= 5 -> {
+            cleaned.takeLast(5)
+        }
+
         else -> cleaned
     }
 }
 
-fun displayDistanceText(distanceText: String): String {
-    val cleaned = distanceText.replace("Distance:", "").replace("DTL:", "").trim()
-    return if (cleaned == "--" || cleaned.isBlank()) "Distance --" else "Distance $cleaned"
+fun displayDistanceText(
+    distanceText: String
+): String {
+    val cleaned = distanceText
+        .replace("Distance:", "")
+        .replace("DTL:", "")
+        .trim()
+
+    return if (cleaned == "--" || cleaned.isBlank()) {
+        "Distance --"
+    } else {
+        "Distance $cleaned"
+    }
 }
 
-fun displayProgressText(progressText: String): String {
-    return progressText.replace(Regex("""\s*·\s*\d+%"""), "")
+fun displayProgressText(
+    progressText: String
+): String {
+    return progressText
+        .replace(Regex("""\s*·\s*\d+%"""), "")
 }
