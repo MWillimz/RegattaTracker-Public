@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Privacy policy for the Regatta Tracker Android app.">
+  <title>Privacy Policy – Regatta Tracker</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+  <main>
+    <nav><a href="../">← Regatta Tracker</a></nav>
+    <article>
+      <h1>Privacy Policy – Regatta Tracker</h1>
+      <p class="muted">Last updated: 24 August 2026</p>
+      <p class="language-note">English version first. Eine deutsche Fassung folgt weiter unten.</p>
+
+      <h2>1. Scope and contact</h2>
+      <p>This privacy policy describes the data processing performed by the Regatta Tracker Android client (<code>de.williserv.regattaclient</code>).</p>
+      <p>App developer and contact: Max Willimzik, <a href="mailto:webmaster@raceoffice.williserv.de">webmaster@raceoffice.williserv.de</a>.</p>
+      <p>Regatta Tracker does not require one specific backend. The app can be configured to connect to a compatible regatta server chosen by the user or provided by a race organizer. Such a server is a separate service. Its operator is responsible for the server-side processing, storage, retention and deletion of data and may provide a separate privacy policy.</p>
+
+      <h2>2. Data processed by the app</h2>
+      <p>Depending on the features used, the app processes the following data on the device:</p>
+      <ul>
+        <li>boat information such as boat name, skipper/captain name, hull color, sail number, boat type and yardstick;</li>
+        <li>race configuration such as server address, event identifier and the credential/shared secret required by that server;</li>
+        <li>precise GPS position, timestamp, GPS accuracy, course over ground (COG) and speed over ground (SOG);</li>
+        <li>accelerometer and gyroscope measurements used for tracking and later analysis;</li>
+        <li>race state such as start/finish state, OCS state and course progress;</li>
+        <li>race and course information downloaded from the configured server.</li>
+      </ul>
+
+      <h2>3. Purpose</h2>
+      <p>The data is processed to provide the app's core functions, including regatta tracking, start-line and OCS detection, course progress, finish detection, local status display, CSV export and troubleshooting/analysis.</p>
+
+      <h2>4. Transmission to a configured regatta server</h2>
+      <p>When the user enters a race and race tracking is active, the app can transmit tracking samples to the configured regatta server. Depending on the server/API version, these samples can include the timestamp, boat and skipper information, sail number, boat type, yardstick, precise latitude and longitude, GPS accuracy, COG, SOG, accelerometer data and gyroscope data. The configured event identifier and server credential are used to address and authorize the requests.</p>
+      <p>The app also requests race, course and status information from the configured server.</p>
+      <p>The app developer does not receive this data merely because the app is installed. Data is sent to the server configured for the relevant race. If that server is operated by another club, organizer or provider, its operator determines the server-side handling of the transmitted data.</p>
+
+      <h2>5. Manual training recordings</h2>
+      <p>Manual training recordings are stored locally on the device and are not automatically uploaded to a regatta server.</p>
+
+      <h2>6. Local storage, backup and deletion</h2>
+      <p>The app stores configuration, race state and tracking samples locally so that tracking can continue after normal app restarts and so that data can be exported. Local tracking data can be removed using the app's cleanup functions; uninstalling the app also removes app-local data according to Android's normal behavior.</p>
+      <p>The app is configured to exclude app-local configuration, credentials, databases and tracking data from Android cloud backup and device-transfer backup mechanisms.</p>
+      <p>Data that has already been transmitted to a regatta server is subject to the retention and deletion rules of that server operator. Requests concerning server-side data must therefore be directed to the relevant server operator.</p>
+
+      <h2>7. Permissions and device features</h2>
+      <ul>
+        <li><strong>Precise location:</strong> required for GPS-based tracking and race calculations. Tracking is started only after the relevant Android permission and the app's tracking confirmation.</li>
+        <li><strong>Foreground service and notifications:</strong> used to keep active race tracking visible and running while permitted by Android.</li>
+        <li><strong>Camera:</strong> used to scan QR codes containing race/server configuration. QR camera frames are processed locally for decoding and are not intentionally stored or uploaded by the app.</li>
+      </ul>
+
+      <h2>8. Advertising, analytics and central tracking</h2>
+      <p>The current app does not contain advertising or an analytics/tracking service operated by the app developer. There is no mandatory central Regatta Tracker account or central cloud backend.</p>
+
+      <h2>9. Server-operator information</h2>
+      <p>Compatible servers may provide their own operator name, privacy-policy URL and support URL. These server-specific details are separate from this client privacy policy.</p>
+
+      <h2>10. Changes</h2>
+      <p>This privacy policy may be updated when the app's data processing changes. The current version will be published at this URL.</p>
+
+      <hr>
+
+      <h1 lang="de">Datenschutzerklärung – Regatta Tracker</h1>
+      <p class="muted" lang="de">Stand: 24. August 2026</p>
+
+      <h2 lang="de">1. Geltungsbereich und Kontakt</h2>
+      <p lang="de">Diese Datenschutzerklärung beschreibt die Datenverarbeitung durch den Android-Client Regatta Tracker (<code>de.williserv.regattaclient</code>).</p>
+      <p lang="de">App-Entwickler und Kontakt: Max Willimzik, <a href="mailto:webmaster@raceoffice.williserv.de">webmaster@raceoffice.williserv.de</a>.</p>
+      <p lang="de">Regatta Tracker ist nicht an einen bestimmten Server gebunden. Die App kann mit einem kompatiblen Regatta-Server verbunden werden, der vom Nutzer gewählt oder von einem Regattaveranstalter bereitgestellt wird. Ein solcher Server ist ein eigenständiger Dienst. Für die serverseitige Verarbeitung, Speicherung, Aufbewahrung und Löschung ist der jeweilige Serverbetreiber verantwortlich; für den Server kann eine eigene Datenschutzerklärung gelten.</p>
+
+      <h2 lang="de">2. Von der App verarbeitete Daten</h2>
+      <p lang="de">Abhängig von den verwendeten Funktionen verarbeitet die App auf dem Gerät insbesondere:</p>
+      <ul lang="de">
+        <li>Bootsdaten wie Bootsname, Name des Skippers, Rumpffarbe, Segelnummer, Bootstyp und Yardstick;</li>
+        <li>Regattakonfiguration wie Serveradresse, Event-Kennung und das für den Server benötigte Zugangstoken/Shared Secret;</li>
+        <li>präzise GPS-Position, Zeitstempel, GPS-Genauigkeit, Kurs über Grund (COG) und Geschwindigkeit über Grund (SOG);</li>
+        <li>Beschleunigungs- und Gyroskopdaten für Tracking und spätere Auswertung;</li>
+        <li>lokalen Regattastatus wie Start-/Zielstatus, OCS-Status und Bahnfortschritt;</li>
+        <li>vom konfigurierten Server geladene Regatta- und Bahndaten.</li>
+      </ul>
+
+      <h2 lang="de">3. Zweck der Verarbeitung</h2>
+      <p lang="de">Die Daten werden zur Bereitstellung der Kernfunktionen der App verarbeitet, insbesondere für Regatta-Tracking, Startlinien- und OCS-Erkennung, Bahnfortschritt, Zielerkennung, lokale Statusanzeige, CSV-Export sowie Fehleranalyse und Auswertung.</p>
+
+      <h2 lang="de">4. Übertragung an einen konfigurierten Regatta-Server</h2>
+      <p lang="de">Wenn der Nutzer einer Regatta beitritt und das Regatta-Tracking aktiv ist, kann die App Tracking-Samples an den konfigurierten Regatta-Server übertragen. Abhängig von Server und API-Version können diese Daten Zeitstempel, Boots- und Skipperdaten, Segelnummer, Bootstyp, Yardstick, präzise Längen- und Breitengrade, GPS-Genauigkeit, COG, SOG sowie Beschleunigungs- und Gyroskopdaten enthalten. Event-Kennung und Server-Zugangsdaten werden zur Zuordnung und Autorisierung der Anfragen verwendet.</p>
+      <p lang="de">Die App ruft außerdem Regatta-, Bahn- und Statusdaten vom konfigurierten Server ab.</p>
+      <p lang="de">Der App-Entwickler erhält diese Daten nicht allein dadurch, dass die App installiert wird. Die Übertragung erfolgt an den für die jeweilige Regatta konfigurierten Server. Wird dieser Server von einem anderen Verein, Veranstalter oder Anbieter betrieben, bestimmt dessen Betreiber die serverseitige Verarbeitung der übertragenen Daten.</p>
+
+      <h2 lang="de">5. Manuelle Trainingsaufzeichnungen</h2>
+      <p lang="de">Manuell aufgezeichnete Trainingsdaten werden lokal auf dem Gerät gespeichert und nicht automatisch an einen Regatta-Server übertragen.</p>
+
+      <h2 lang="de">6. Lokale Speicherung, Backup und Löschung</h2>
+      <p lang="de">Die App speichert Konfiguration, Regattastatus und Tracking-Samples lokal, damit der Zustand nach normalen App-Neustarts wiederhergestellt und Daten exportiert werden können. Lokale Tracking-Daten können über die Bereinigungsfunktionen der App entfernt werden. Beim Deinstallieren werden app-lokale Daten entsprechend dem normalen Android-Verhalten entfernt.</p>
+      <p lang="de">Die App ist so konfiguriert, dass app-lokale Konfiguration, Zugangsdaten, Datenbanken und Tracking-Daten von Android-Cloud-Backups und Backup-Mechanismen beim Gerätewechsel ausgeschlossen sind.</p>
+      <p lang="de">Bereits an einen Regatta-Server übertragene Daten unterliegen den Aufbewahrungs- und Löschregeln des jeweiligen Serverbetreibers. Anfragen zu serverseitig gespeicherten Daten sind daher an diesen Betreiber zu richten.</p>
+
+      <h2 lang="de">7. Berechtigungen und Gerätefunktionen</h2>
+      <ul lang="de">
+        <li><strong>Präziser Standort:</strong> erforderlich für GPS-basiertes Tracking und Regattaberechnungen. Tracking wird erst nach der entsprechenden Android-Berechtigung und der Tracking-Bestätigung in der App gestartet.</li>
+        <li><strong>Foreground Service und Benachrichtigungen:</strong> dienen dazu, aktives Regatta-Tracking sichtbar zu halten und im von Android erlaubten Rahmen weiterzuführen.</li>
+        <li><strong>Kamera:</strong> dient zum Scannen von QR-Codes mit Regatta-/Serverkonfiguration. Kamerabilder für den QR-Scan werden lokal zur Erkennung verarbeitet und von der App nicht absichtlich gespeichert oder übertragen.</li>
+      </ul>
+
+      <h2 lang="de">8. Werbung, Analytics und zentrales Tracking</h2>
+      <p lang="de">Die aktuelle App enthält keine Werbung und keinen vom App-Entwickler betriebenen Analytics- oder Tracking-Dienst. Es gibt kein verpflichtendes zentrales Regatta-Tracker-Konto und kein verpflichtendes zentrales Cloud-Backend.</p>
+
+      <h2 lang="de">9. Angaben des Serverbetreibers</h2>
+      <p lang="de">Kompatible Server können eigene Angaben zu Betreiber, Datenschutzerklärung und Support bereitstellen. Diese serverspezifischen Angaben sind von dieser allgemeinen Datenschutzerklärung des Clients getrennt.</p>
+
+      <h2 lang="de">10. Änderungen</h2>
+      <p lang="de">Diese Datenschutzerklärung kann angepasst werden, wenn sich die Datenverarbeitung der App ändert. Die jeweils aktuelle Fassung wird unter dieser URL veröffentlicht.</p>
+    </article>
+  </main>
+</body>
+</html>

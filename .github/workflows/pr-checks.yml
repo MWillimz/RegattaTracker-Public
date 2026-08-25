@@ -1,0 +1,77 @@
+name: CI Checks
+
+on:
+  push:
+    branches:
+      - dev
+  pull_request:
+    branches:
+      - dev
+      - staging
+      - master
+
+jobs:
+  validate-branch-flow:
+    name: Validate branch flow
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check allowed PR direction
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "Push on dev; branch-flow validation is not required."
+            exit 0
+          fi
+
+          echo "Base branch: ${{ github.base_ref }}"
+          echo "Head branch: ${{ github.head_ref }}"
+
+          if [ "${{ github.base_ref }}" = "staging" ] && [ "${{ github.head_ref }}" != "dev" ]; then
+            echo "Only PRs from dev to staging are allowed."
+            exit 1
+          fi
+
+          if [ "${{ github.base_ref }}" = "master" ] && [ "${{ github.head_ref }}" != "staging" ]; then
+            echo "Only PRs from staging to master are allowed."
+            exit 1
+          fi
+
+  android-check:
+    name: Android test, lint and build
+    runs-on: ubuntu-latest
+    needs:
+      - validate-branch-flow
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make Gradle executable
+        run: chmod +x ./gradlew
+
+      - name: Run tests
+        run: ./gradlew test
+
+      - name: Run lint
+        run: ./gradlew lint
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Upload dev debug APK
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: regatta-tracker-dev-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14

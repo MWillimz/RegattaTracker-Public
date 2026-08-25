@@ -1,0 +1,60 @@
+# Gradle
+.gradle/
+build/
+*/build/
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Local machine config
+local.properties
+
+# Android generated
+.externalNativeBuild/
+.cxx/
+captures/
+.navigation/
+app/release/
+app/debug/
+
+# APK / AAB outputs
+*.apk
+*.ap_
+*.aab
+
+# Signing / keystores
+*.jks
+*.keystore
+*.p12
+*.pem
+
+# Logs
+*.log
+
+# Kotlin / Java
+*.class
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test / coverage
+coverage/
+*.ec
+
+# Secrets / env files
+.env
+.env.*
+secrets.properties
+
+# Generated lint / reports
+lint-results*.xml
+lint-results*.html
+
+# Temporary files
+*.tmp
+*.temp
