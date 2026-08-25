@@ -1,5 +1,6 @@
 package de.williserv.regattaclient
 
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,8 +21,10 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -39,6 +42,7 @@ import de.williserv.regattaclient.ui.theme.RegattaRed
 import androidx.compose.foundation.Image
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.layout.ContentScale
+import kotlinx.coroutines.delay
 
 private val HomeGapSmall = 14.dp
 private val HomeGapMedium = 14.dp
@@ -105,6 +109,19 @@ fun HomeScreen(
     onCancelClearOldData: () -> Unit,
     onToggleAdvanced: () -> Unit
 ) {
+    val context = LocalContext.current
+    val workerUploadStatus = produceState(initialValue = "", context) {
+        val prefs = context.getSharedPreferences("regatta_local_status", Context.MODE_PRIVATE)
+        while (true) {
+            value = prefs.getString(TelemetryUploadStatusStore.STATUS_KEY, "").orEmpty()
+            delay(1000L)
+        }
+    }.value
+    val advancedUploadStatusText = mergeTelemetryUploadStatusText(
+        pendingStatusText = uploadStatusText,
+        workerStatus = workerUploadStatus
+    )
+
     val uploadColor = uploadStatusColor(
         uploadStatusText = uploadStatusText,
         inRace = inRace,
@@ -244,7 +261,7 @@ fun HomeScreen(
             AdvancedDebugBlock(
                 manualTracking = manualTracking,
                 rowCountText = rowCountText,
-                uploadStatusText = uploadStatusText,
+                uploadStatusText = advancedUploadStatusText,
                 debugErrorText = debugErrorText,
                 cogText = cogText,
                 sogText = sogText,
@@ -303,6 +320,23 @@ fun HomeScreen(
                 }
             }
         )
+    }
+}
+
+internal fun mergeTelemetryUploadStatusText(
+    pendingStatusText: String,
+    workerStatus: String
+): String {
+    if (workerStatus.isBlank()) return pendingStatusText
+
+    val pending = pendingStatusText
+        .filter { it.isDigit() }
+        .toIntOrNull() ?: 0
+
+    return if (pending > 0) {
+        "Upload: $workerStatus · $pending pending"
+    } else {
+        "Upload: $workerStatus"
     }
 }
 
@@ -894,13 +928,13 @@ fun uploadStatusColor(
     inRace: Boolean,
     disabledColor: Color
 ): Color {
-    if (!inRace) {
-        return disabledColor
-    }
-
     val pending = uploadStatusText
         .filter { it.isDigit() }
         .toIntOrNull() ?: 0
+
+    if (!inRace && pending == 0) {
+        return disabledColor
+    }
 
     return when {
         uploadStatusText.contains("all sent", ignoreCase = true) -> RegattaGreen
@@ -915,7 +949,15 @@ fun shortUploadStatus(
     inRace: Boolean,
     raceStatusText: String
 ): String {
+    val pending = uploadStatusText
+        .filter { it.isDigit() }
+        .toIntOrNull() ?: 0
+
     if (!inRace) {
+        if (pending > 0) {
+            return "$pending pending"
+        }
+
         return when {
             raceStatusText.contains("accept race legal", ignoreCase = true) -> "blocked"
             raceStatusText.contains("not loaded", ignoreCase = true) -> "off"
@@ -925,10 +967,6 @@ fun shortUploadStatus(
             else -> "idle"
         }
     }
-
-    val pending = uploadStatusText
-        .filter { it.isDigit() }
-        .toIntOrNull() ?: 0
 
     return when {
         uploadStatusText.contains("all sent", ignoreCase = true) -> "OK"
