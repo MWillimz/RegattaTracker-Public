@@ -15,20 +15,31 @@ import java.net.URL
 object TelemetryUploadScheduler {
     private const val UNIQUE_WORK_NAME = "regatta-telemetry-upload"
 
-    fun enqueue(context: Context) {
+    private fun buildRequest(): OneTimeWorkRequest {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-        val request = OneTimeWorkRequest.Builder(TelemetryUploadWorker::class.java)
+        return OneTimeWorkRequest.Builder(TelemetryUploadWorker::class.java)
             .setConstraints(constraints)
             .build()
+    }
 
+    fun enqueue(context: Context) {
         WorkManager.getInstance(context.applicationContext)
             .enqueueUniqueWork(
                 UNIQUE_WORK_NAME,
                 ExistingWorkPolicy.KEEP,
-                request
+                buildRequest()
+            )
+    }
+
+    fun enqueueContinuation(context: Context) {
+        WorkManager.getInstance(context.applicationContext)
+            .enqueueUniqueWork(
+                UNIQUE_WORK_NAME,
+                ExistingWorkPolicy.APPEND_OR_REPLACE,
+                buildRequest()
             )
     }
 }
@@ -42,14 +53,21 @@ class TelemetryUploadWorker(
     private val localStatusPrefsName = "regatta_local_status"
 
     override fun doWork(): Result {
-        val pendingSamples = db.getPendingSamples(limit = 200)
+        val pendingSamples = db.getPendingSamples(limit = BATCH_SIZE)
+        var allSucceeded = true
 
         for (sample in pendingSamples) {
             val ok = uploadSampleBlocking(sample)
 
             if (ok) {
                 db.markUploaded(sample.localId)
+            } else {
+                allSucceeded = false
             }
+        }
+
+        if (allSucceeded && db.countUploadablePendingSamples() > 0L) {
+            TelemetryUploadScheduler.enqueueContinuation(applicationContext)
         }
 
         return Result.success()
@@ -132,5 +150,9 @@ class TelemetryUploadWorker(
             .edit()
             .putString("debug_error_text", message)
             .apply()
+    }
+
+    private companion object {
+        const val BATCH_SIZE = 50
     }
 }
