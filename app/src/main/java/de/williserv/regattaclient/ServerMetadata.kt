@@ -34,6 +34,23 @@ internal fun buildServerMetadataUrl(server: String): String? {
     return "$base/server-metadata"
 }
 
+internal fun buildServerMetadataHeaders(
+    eventName: String,
+    sharedSecret: String
+): Map<String, String>? {
+    val normalizedEventName = eventName.trim()
+    val normalizedSecret = sharedSecret.trim()
+
+    if (normalizedEventName.isBlank() || normalizedSecret.isBlank()) return null
+
+    return mapOf(
+        "Accept" to "application/json",
+        "x-api-version" to RegattaTrackingService.API_VERSION,
+        "x-event-name" to normalizedEventName,
+        "x-shared-secret" to normalizedSecret
+    )
+}
+
 internal fun parseServerMetadata(body: String): ServerMetadata {
     val json = JSONObject(body)
 
@@ -56,8 +73,13 @@ internal fun isHttpOrHttpsUrl(value: String): Boolean {
     return (scheme == "http" || scheme == "https") && !uri.host.isNullOrBlank()
 }
 
-internal fun fetchServerMetadata(server: String): ServerMetadata? {
+internal fun fetchServerMetadata(
+    server: String,
+    eventName: String,
+    sharedSecret: String
+): ServerMetadata? {
     val endpoint = buildServerMetadataUrl(server) ?: return null
+    val headers = buildServerMetadataHeaders(eventName, sharedSecret) ?: return null
 
     return try {
         val connection = URL(endpoint).openConnection() as HttpURLConnection
@@ -66,8 +88,9 @@ internal fun fetchServerMetadata(server: String): ServerMetadata? {
             connection.requestMethod = "GET"
             connection.connectTimeout = 3000
             connection.readTimeout = 3000
-            connection.setRequestProperty("Accept", "application/json")
-            connection.setRequestProperty("x-api-version", RegattaTrackingService.API_VERSION)
+            headers.forEach { (name, value) ->
+                connection.setRequestProperty(name, value)
+            }
 
             val responseCode = connection.responseCode
             if (responseCode !in 200..299) {
