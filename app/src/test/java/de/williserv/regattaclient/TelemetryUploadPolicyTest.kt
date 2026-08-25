@@ -54,40 +54,72 @@ class TelemetryUploadPolicyTest {
             TelemetryWorkerDecision.RETRY,
             decideTelemetryWorkerCompletion(
                 retryNeeded = true,
-                madeProgress = true,
-                uploadablePendingCount = 5L
+                hasLaterPendingSamples = true
             )
         )
     }
 
     @Test
-    fun workerDecision_continuesWhenProgressWasMadeAndBacklogRemains() {
+    fun workerDecision_continuesWhenLaterRowsExistEvenWithoutProgress() {
         assertEquals(
             TelemetryWorkerDecision.CONTINUE,
             decideTelemetryWorkerCompletion(
                 retryNeeded = false,
-                madeProgress = true,
-                uploadablePendingCount = 5L
+                hasLaterPendingSamples = true
             )
         )
     }
 
     @Test
-    fun workerDecision_stopsImmediateLoopWhenOnlyPermanentFailuresRemain() {
+    fun workerDecision_stopsImmediateLoopWhenNoLaterRowsExist() {
         assertEquals(
             TelemetryWorkerDecision.SUCCESS,
             decideTelemetryWorkerCompletion(
                 retryNeeded = false,
-                madeProgress = false,
-                uploadablePendingCount = 1L
+                hasLaterPendingSamples = false
             )
         )
     }
 
     @Test
-    fun workerRequest_requiresConnectedNetwork() {
-        val request = TelemetryUploadScheduler.buildRequest()
+    fun workerRequest_requiresConnectedNetworkAndCarriesContinuationCursor() {
+        val request = TelemetryUploadScheduler.buildRequest(afterLocalId = 123L)
         assertEquals(NetworkType.CONNECTED, request.workSpec.constraints.requiredNetworkType)
+        assertEquals(
+            123L,
+            request.workSpec.input.getLong(TelemetryUploadScheduler.AFTER_LOCAL_ID_KEY, 0L)
+        )
+    }
+
+    @Test
+    fun uploadPage_canAdvancePastFullPageOfStillPendingPermanentFailures() {
+        val helper = TrackingDbHelper(context)
+        val contextId = helper.getOrCreateAccessContext(
+            serverUrl = "https://raceoffice.example.org",
+            accessIdentifier = "Event A",
+            accessSecret = "secret-a"
+        ) ?: error("context id missing")
+
+        repeat(51) { index ->
+            insertSample(
+                helper = helper,
+                sequenceId = index.toLong() + 1L,
+                accessContextId = contextId
+            )
+        }
+
+        val firstPage = getTelemetryUploadPage(helper, afterLocalId = 0L, limit = 50)
+        assertEquals(50, firstPage.size)
+
+        val secondPage = getTelemetryUploadPage(
+            helper,
+            afterLocalId = firstPage.last().localId,
+            limit = 50
+        )
+
+        assertEquals(1, secondPage.size)
+        assertEquals(51L, secondPage.single().sequenceId)
+        helper.close()
     }
 
     @Test
