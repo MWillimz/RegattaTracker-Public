@@ -436,6 +436,8 @@ class TrackingDbHelper(context: Context) :
             return
         }
 
+        // Legacy rows keep their existing id, uploaded state and payload untouched.
+        // A NULL access_context_id is intentional because their original access cannot be proven.
         if (!columnExists(db, "tracking_samples", "access_context_id")) {
             db.execSQL(
                 "ALTER TABLE tracking_samples ADD COLUMN access_context_id INTEGER"
