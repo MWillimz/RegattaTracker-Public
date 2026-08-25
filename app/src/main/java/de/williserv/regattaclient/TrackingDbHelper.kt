@@ -28,42 +28,165 @@ data class PendingTrackingSample(
     val gyroZ: Float
 )
 
+data class AccessContext(
+    val id: Long,
+    val serverUrl: String,
+    val accessIdentifier: String,
+    val accessSecret: String,
+    val createdAt: Long,
+    val lastUsedAt: Long
+)
+
+internal data class AccessContextKey(
+    val serverUrl: String,
+    val accessIdentifier: String,
+    val accessSecret: String
+)
+
+internal fun normalizeAccessContextKey(
+    serverUrl: String,
+    accessIdentifier: String,
+    accessSecret: String
+): AccessContextKey? {
+    val trimmedServerUrl = serverUrl.trim().trimEnd('/')
+    val normalizedServerUrl = if (trimmedServerUrl.endsWith("/ingest")) {
+        trimmedServerUrl.removeSuffix("/ingest")
+    } else {
+        trimmedServerUrl
+    }
+    val normalizedIdentifier = accessIdentifier.trim()
+    val normalizedSecret = accessSecret.trim()
+
+    if (
+        normalizedServerUrl.isBlank() ||
+        normalizedIdentifier.isBlank() ||
+        normalizedSecret.isBlank()
+    ) {
+        return null
+    }
+
+    return AccessContextKey(
+        serverUrl = normalizedServerUrl,
+        accessIdentifier = normalizedIdentifier,
+        accessSecret = normalizedSecret
+    )
+}
+
 class TrackingDbHelper(context: Context) :
-    SQLiteOpenHelper(context, "regatta_tracking.db", null, 3) {
+    SQLiteOpenHelper(context, "regatta_tracking.db", null, 4) {
 
     override fun onCreate(db: SQLiteDatabase) {
-        db.execSQL(
-            """
-            CREATE TABLE tracking_samples (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                sequence_id INTEGER NOT NULL,
-                timestamp TEXT NOT NULL,
-                boat_name TEXT NOT NULL,
-                captain_name TEXT NOT NULL,
-                hull_color TEXT NOT NULL,
-                sail_number TEXT NOT NULL,
-                yardstick REAL NOT NULL,
-                boat_type TEXT NOT NULL,
-                lat REAL NOT NULL,
-                lon REAL NOT NULL,
-                accuracy REAL NOT NULL,
-                cog REAL NOT NULL,
-                sog REAL NOT NULL,
-                accel_x REAL NOT NULL,
-                accel_y REAL NOT NULL,
-                accel_z REAL NOT NULL,
-                gyro_x REAL NOT NULL,
-                gyro_y REAL NOT NULL,
-                gyro_z REAL NOT NULL,
-                uploaded INTEGER NOT NULL DEFAULT 0
-            )
-            """.trimIndent()
-        )
+        createAccessContextsTable(db)
+        createTrackingSamplesTable(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        db.execSQL("DROP TABLE IF EXISTS tracking_samples")
-        onCreate(db)
+        if (oldVersion < 4 && newVersion >= 4) {
+            createAccessContextsTable(db)
+
+            if (tableExists(db, "tracking_samples")) {
+                if (!columnExists(db, "tracking_samples", "access_context_id")) {
+                    db.execSQL(
+                        "ALTER TABLE tracking_samples ADD COLUMN access_context_id INTEGER"
+                    )
+                }
+            } else {
+                createTrackingSamplesTable(db)
+            }
+        }
+    }
+
+    fun getOrCreateAccessContext(
+        serverUrl: String,
+        accessIdentifier: String,
+        accessSecret: String
+    ): Long? {
+        val key = normalizeAccessContextKey(
+            serverUrl = serverUrl,
+            accessIdentifier = accessIdentifier,
+            accessSecret = accessSecret
+        ) ?: return null
+
+        val db = writableDatabase
+        val now = System.currentTimeMillis()
+
+        db.beginTransaction()
+        try {
+            val existingId = findAccessContextId(db, key)
+            if (existingId != null) {
+                val values = ContentValues().apply {
+                    put("last_used_at", now)
+                }
+                db.update(
+                    "access_contexts",
+                    values,
+                    "id = ?",
+                    arrayOf(existingId.toString())
+                )
+                db.setTransactionSuccessful()
+                return existingId
+            }
+
+            val values = ContentValues().apply {
+                put("server_url", key.serverUrl)
+                put("access_identifier", key.accessIdentifier)
+                put("access_secret", key.accessSecret)
+                put("created_at", now)
+                put("last_used_at", now)
+            }
+
+            val insertedId = db.insertWithOnConflict(
+                "access_contexts",
+                null,
+                values,
+                SQLiteDatabase.CONFLICT_IGNORE
+            )
+
+            val contextId = if (insertedId != -1L) {
+                insertedId
+            } else {
+                findAccessContextId(db, key)
+            }
+
+            if (contextId != null) {
+                db.setTransactionSuccessful()
+            }
+
+            return contextId
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun getAccessContext(accessContextId: Long): AccessContext? {
+        readableDatabase.rawQuery(
+            """
+            SELECT
+                id,
+                server_url,
+                access_identifier,
+                access_secret,
+                created_at,
+                last_used_at
+            FROM access_contexts
+            WHERE id = ?
+            LIMIT 1
+            """.trimIndent(),
+            arrayOf(accessContextId.toString())
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) {
+                return null
+            }
+
+            return AccessContext(
+                id = cursor.getLong(0),
+                serverUrl = cursor.getString(1),
+                accessIdentifier = cursor.getString(2),
+                accessSecret = cursor.getString(3),
+                createdAt = cursor.getLong(4),
+                lastUsedAt = cursor.getLong(5)
+            )
+        }
     }
 
     fun getPendingSamples(limit: Int): List<PendingTrackingSample> {
@@ -147,7 +270,8 @@ class TrackingDbHelper(context: Context) :
         accelZ: Float,
         gyroX: Float,
         gyroY: Float,
-        gyroZ: Float
+        gyroZ: Float,
+        accessContextId: Long? = null
     ): Long {
         val values = ContentValues().apply {
             put("sequence_id", sequenceId)
@@ -169,6 +293,12 @@ class TrackingDbHelper(context: Context) :
             put("gyro_x", gyroX)
             put("gyro_y", gyroY)
             put("gyro_z", gyroZ)
+
+            if (accessContextId != null) {
+                put("access_context_id", accessContextId)
+            } else {
+                putNull("access_context_id")
+            }
         }
 
         return writableDatabase.insert("tracking_samples", null, values)
@@ -275,6 +405,101 @@ class TrackingDbHelper(context: Context) :
         }
 
         return builder.toString()
+    }
+
+    private fun createAccessContextsTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS access_contexts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                server_url TEXT NOT NULL,
+                access_identifier TEXT NOT NULL,
+                access_secret TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                last_used_at INTEGER NOT NULL,
+                UNIQUE(server_url, access_identifier, access_secret)
+            )
+            """.trimIndent()
+        )
+    }
+
+    private fun createTrackingSamplesTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS tracking_samples (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sequence_id INTEGER NOT NULL,
+                timestamp TEXT NOT NULL,
+                boat_name TEXT NOT NULL,
+                captain_name TEXT NOT NULL,
+                hull_color TEXT NOT NULL,
+                sail_number TEXT NOT NULL,
+                yardstick REAL NOT NULL,
+                boat_type TEXT NOT NULL,
+                lat REAL NOT NULL,
+                lon REAL NOT NULL,
+                accuracy REAL NOT NULL,
+                cog REAL NOT NULL,
+                sog REAL NOT NULL,
+                accel_x REAL NOT NULL,
+                accel_y REAL NOT NULL,
+                accel_z REAL NOT NULL,
+                gyro_x REAL NOT NULL,
+                gyro_y REAL NOT NULL,
+                gyro_z REAL NOT NULL,
+                uploaded INTEGER NOT NULL DEFAULT 0,
+                access_context_id INTEGER
+            )
+            """.trimIndent()
+        )
+    }
+
+    private fun findAccessContextId(
+        db: SQLiteDatabase,
+        key: AccessContextKey
+    ): Long? {
+        db.rawQuery(
+            """
+            SELECT id
+            FROM access_contexts
+            WHERE server_url = ?
+              AND access_identifier = ?
+              AND access_secret = ?
+            LIMIT 1
+            """.trimIndent(),
+            arrayOf(key.serverUrl, key.accessIdentifier, key.accessSecret)
+        ).use { cursor ->
+            return if (cursor.moveToFirst()) {
+                cursor.getLong(0)
+            } else {
+                null
+            }
+        }
+    }
+
+    private fun tableExists(db: SQLiteDatabase, tableName: String): Boolean {
+        db.rawQuery(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
+            arrayOf(tableName)
+        ).use { cursor ->
+            return cursor.moveToFirst()
+        }
+    }
+
+    private fun columnExists(
+        db: SQLiteDatabase,
+        tableName: String,
+        columnName: String
+    ): Boolean {
+        db.rawQuery("PRAGMA table_info($tableName)", null).use { cursor ->
+            val nameIndex = cursor.getColumnIndex("name")
+            while (cursor.moveToNext()) {
+                if (nameIndex >= 0 && cursor.getString(nameIndex) == columnName) {
+                    return true
+                }
+            }
+        }
+        return false
     }
 
     private fun csvEscape(value: String): String {
