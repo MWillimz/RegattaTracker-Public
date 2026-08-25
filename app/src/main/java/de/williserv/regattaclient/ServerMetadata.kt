@@ -39,7 +39,8 @@ internal fun parseServerMetadata(body: String): ServerMetadata {
 
     fun optionalString(key: String): String? {
         if (!json.has(key) || json.isNull(key)) return null
-        return json.optString(key, "").trim().ifBlank { null }
+        val value = json.optString(key, "").trim()
+        return value.takeIf { it.isNotBlank() }
     }
 
     return ServerMetadata(
