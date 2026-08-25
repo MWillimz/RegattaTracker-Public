@@ -79,6 +79,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation("androidx.work:work-runtime:2.11.2")
     testImplementation(libs.junit)
     testImplementation("org.robolectric:robolectric:4.16.1")
     androidTestImplementation(platform(libs.androidx.compose.bom))
@@ -90,7 +91,7 @@ dependencies {
     implementation("com.google.zxing:core:3.5.4")
 
     implementation("androidx.camera:camera-core:1.5.1")
-    implementation("androidx.camera:camera-camera2:1.5.1")
     implementation("androidx.camera:camera-lifecycle:1.5.1")
+    implementation("androidx.camera:camera-camera2:1.5.1")
     implementation("androidx.camera:camera-view:1.5.1")
 }

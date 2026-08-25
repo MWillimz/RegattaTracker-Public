@@ -140,8 +140,6 @@ class RegattaTrackingService : Service(), SensorEventListener {
     private var gyroZ = 0f
 
     private var autoStopAfterFinishScheduled = false
-
-    private var retryUploadRunning = false
     private var eventPollRunning = false
 
     private var courseShortened = false
@@ -173,15 +171,6 @@ class RegattaTrackingService : Service(), SensorEventListener {
             if (serviceRunning && raceFinished && !manualRecording) {
                 stopTrackingService()
             }
-        }
-    }
-
-    private val uploadRunnable = object : Runnable {
-        override fun run() {
-            if (!serviceRunning) return
-
-            retryPendingUploads()
-            handler.postDelayed(this, 1000L)
         }
     }
 
@@ -375,7 +364,6 @@ class RegattaTrackingService : Service(), SensorEventListener {
         pollEvent()
 
         handler.postDelayed(sampleRunnable, 1000L)
-        handler.postDelayed(uploadRunnable, 1000L)
         handler.postDelayed(eventPollRunnable, 10_000L)
 
         publishLocalRaceStatus()
@@ -388,12 +376,10 @@ class RegattaTrackingService : Service(), SensorEventListener {
         accessContextId = null
 
         handler.removeCallbacks(sampleRunnable)
-        handler.removeCallbacks(uploadRunnable)
         handler.removeCallbacks(eventPollRunnable)
 
         handler.removeCallbacks(autoStopAfterFinishRunnable)
         autoStopAfterFinishScheduled = false
-
 
         try {
             locationManager.removeUpdates(locationListener)
@@ -749,7 +735,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
             hullColor = hullColor,
             sailNumber = sailNumber,
             yardstick = yardstick,
-            boatType =  boatType,
+            boatType = boatType,
             lat = lat,
             lon = lon,
             accuracy = accuracy,
@@ -773,7 +759,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
             return
         }
 
-        retryPendingUploads()
+        TelemetryUploadScheduler.enqueue(this)
         updateNotification()
     }
 
@@ -1173,103 +1159,6 @@ class RegattaTrackingService : Service(), SensorEventListener {
         updateAutoStopAfterFinish()
     }
 
-    private fun retryPendingUploads() {
-        if (retryUploadRunning) return
-
-        retryUploadRunning = true
-
-        thread {
-            try {
-                val pendingSamples = db.getPendingSamples(limit = 200)
-
-                for (sample in pendingSamples) {
-                    val ok = uploadSampleBlocking(sample)
-
-                    if (ok) {
-                        db.markUploaded(sample.localId)
-                    }
-                }
-
-                updateNotification()
-            } finally {
-                retryUploadRunning = false
-            }
-        }
-    }
-
-    private fun uploadSampleBlocking(sample: PendingTrackingSample): Boolean {
-        val accessContext = sample.accessContext
-
-        return try {
-            val json = JSONObject().apply {
-                put("sequence_id", sample.sequenceId)
-                put("timestamp", sample.timestamp)
-                put("boat_name", sample.boatName)
-                put("captain_name", sample.captainName)
-                put("hull_color", sample.hullColor)
-                put("sail_number", sample.sailNumber)
-                put("yardstick", sample.yardstick)
-                put("boat_type", sample.boatType)
-                put("lat", sample.lat)
-                put("lon", sample.lon)
-                put("accuracy", sample.accuracy)
-                put("cog", sample.cog)
-                put("sog", sample.sog)
-                put("accel_x", sample.accelX)
-                put("accel_y", sample.accelY)
-                put("accel_z", sample.accelZ)
-                put("gyro_x", sample.gyroX)
-                put("gyro_y", sample.gyroY)
-                put("gyro_z", sample.gyroZ)
-            }
-
-            val connection = URL(buildIngestUrl(accessContext)).openConnection() as HttpURLConnection
-
-            connection.requestMethod = "POST"
-            connection.connectTimeout = 3000
-            connection.readTimeout = 3000
-            connection.doOutput = true
-
-            connection.setRequestProperty("Content-Type", "application/json")
-            connection.setRequestProperty("Accept", "application/json")
-            connection.setRequestProperty("x-event-name", accessContext.accessIdentifier)
-            connection.setRequestProperty("x-shared-secret", accessContext.accessSecret)
-            connection.setRequestProperty("x-api-version", API_VERSION)
-
-            connection.outputStream.use { outputStream ->
-                outputStream.write(json.toString().toByteArray(Charsets.UTF_8))
-            }
-
-            val responseCode = connection.responseCode
-
-            val ok = responseCode in 200..299
-
-            if (ok) {
-                publishDebugError("")
-            } else {
-                val errorBody = connection.errorStream
-                    ?.bufferedReader()
-                    ?.use { it.readText() }
-                    ?: ""
-
-                publishDebugError(
-                    "Upload error $responseCode: ${errorBody.take(200)}"
-                )
-            }
-
-            connection.disconnect()
-
-            ok
-        } catch (e: Exception) {
-            publishDebugError("Upload exception: ${e.message}")
-            false
-        }
-    }
-
-    private fun buildIngestUrl(accessContext: AccessContext): String {
-        return "${accessContext.serverUrl.trimEnd('/')}/ingest"
-    }
-
     private fun publishDebugError(message: String) {
         getSharedPreferences(localStatusPrefsName, Context.MODE_PRIVATE)
             .edit()
@@ -1381,7 +1270,6 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
     override fun onDestroy() {
         handler.removeCallbacks(sampleRunnable)
-        handler.removeCallbacks(uploadRunnable)
         handler.removeCallbacks(eventPollRunnable)
 
         try {
