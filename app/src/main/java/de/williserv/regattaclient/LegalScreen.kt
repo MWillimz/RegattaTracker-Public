@@ -73,7 +73,7 @@ fun LegalScreen(
                 Contact:
                 webmaster@raceoffice.williserv.de
 
-                Responsible for content:
+                Responsible for contents:
                 Max Willimzik
             """.trimIndent()
         )
