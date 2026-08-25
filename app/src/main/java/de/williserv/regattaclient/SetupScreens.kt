@@ -197,6 +197,14 @@ fun RaceScreen(
                 raceShortenedText = raceShortenedText
             )
 
+            Spacer(modifier = Modifier.height(10.dp))
+
+            EventAccessActions(
+                server = raceServer,
+                event = raceEvent,
+                secret = raceSecret
+            )
+
             Spacer(modifier = Modifier.height(22.dp))
         }
 
