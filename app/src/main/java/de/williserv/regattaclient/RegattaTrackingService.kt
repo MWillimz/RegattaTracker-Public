@@ -92,6 +92,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
     private var eventName = ""
     private var sharedSecret = ""
     private var resolvedEventName: String? = null
+    private var accessContextId: Long? = null
 
     private var boatName = "Boat name"
     private var captainName = "Max Mustermann"
@@ -348,6 +349,19 @@ class RegattaTrackingService : Service(), SensorEventListener {
             ?.let(::adoptResolvedEventName)
 
         manualRecording = intent.getBooleanExtra(EXTRA_MANUAL_RECORDING, false)
+        refreshAccessContextId()
+    }
+
+    private fun refreshAccessContextId() {
+        accessContextId = if (manualRecording) {
+            null
+        } else {
+            db.getOrCreateAccessContext(
+                serverUrl = serverUrl,
+                accessIdentifier = eventName,
+                accessSecret = sharedSecret
+            )
+        }
     }
 
     private fun startTrackingService() {
@@ -371,6 +385,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
     private fun stopTrackingService() {
         serviceRunning = false
         manualRecording = false
+        accessContextId = null
 
         handler.removeCallbacks(sampleRunnable)
         handler.removeCallbacks(uploadRunnable)
@@ -711,6 +726,21 @@ class RegattaTrackingService : Service(), SensorEventListener {
             accuracy = accuracy
         )
 
+        val sampleAccessContextId = if (manualRecording) {
+            null
+        } else {
+            accessContextId ?: db.getOrCreateAccessContext(
+                serverUrl = serverUrl,
+                accessIdentifier = eventName,
+                accessSecret = sharedSecret
+            ).also { accessContextId = it }
+        }
+
+        if (!manualRecording && sampleAccessContextId == null) {
+            publishDebugError("Storage error: event access context is incomplete")
+            return
+        }
+
         val insertedId = db.insertSample(
             sequenceId = sequenceId,
             timestamp = timestamp,
@@ -730,7 +760,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
             accelZ = accelZ,
             gyroX = gyroX,
             gyroY = gyroY,
-            gyroZ = gyroZ
+            gyroZ = gyroZ,
+            accessContextId = sampleAccessContextId
         )
 
         if (insertedId == -1L) return
