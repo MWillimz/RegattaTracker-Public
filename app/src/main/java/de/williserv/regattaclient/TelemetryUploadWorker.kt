@@ -9,6 +9,7 @@ import androidx.work.OneTimeWorkRequest
 import androidx.work.WorkManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -42,14 +43,50 @@ internal fun shouldEnqueueTelemetryUpload(uploadablePendingCount: Long): Boolean
 
 internal fun decideTelemetryWorkerCompletion(
     retryNeeded: Boolean,
-    madeProgress: Boolean,
-    uploadablePendingCount: Long
+    hasLaterPendingSamples: Boolean
 ): TelemetryWorkerDecision {
     return when {
         retryNeeded -> TelemetryWorkerDecision.RETRY
-        madeProgress && uploadablePendingCount > 0L -> TelemetryWorkerDecision.CONTINUE
+        hasLaterPendingSamples -> TelemetryWorkerDecision.CONTINUE
         else -> TelemetryWorkerDecision.SUCCESS
     }
+}
+
+internal fun countUploadablePendingSamplesThrough(
+    db: TrackingDbHelper,
+    localId: Long
+): Long {
+    if (localId <= 0L) return 0L
+
+    db.readableDatabase.rawQuery(
+        """
+        SELECT COUNT(*)
+        FROM tracking_samples AS samples
+        INNER JOIN access_contexts AS contexts
+            ON contexts.id = samples.access_context_id
+        WHERE samples.uploaded = 0
+          AND samples.id <= ?
+        """.trimIndent(),
+        arrayOf(localId.toString())
+    ).use { cursor ->
+        cursor.moveToFirst()
+        return cursor.getLong(0)
+    }
+}
+
+internal fun getTelemetryUploadPage(
+    db: TrackingDbHelper,
+    afterLocalId: Long,
+    limit: Int
+): List<PendingTrackingSample> {
+    require(limit > 0)
+
+    val rowsToSkip = countUploadablePendingSamplesThrough(db, afterLocalId)
+    if (rowsToSkip >= Int.MAX_VALUE - limit) return emptyList()
+
+    return db.getPendingSamples(limit = rowsToSkip.toInt() + limit)
+        .drop(rowsToSkip.toInt())
+        .take(limit)
 }
 
 internal object TelemetryUploadStatusStore {
@@ -72,14 +109,16 @@ internal object TelemetryUploadStatusStore {
 
 object TelemetryUploadScheduler {
     private const val UNIQUE_WORK_NAME = "regatta-telemetry-upload"
+    internal const val AFTER_LOCAL_ID_KEY = "after_local_id"
 
-    internal fun buildRequest(): OneTimeWorkRequest {
+    internal fun buildRequest(afterLocalId: Long = 0L): OneTimeWorkRequest {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
         return OneTimeWorkRequest.Builder(TelemetryUploadWorker::class.java)
             .setConstraints(constraints)
+            .setInputData(workDataOf(AFTER_LOCAL_ID_KEY to afterLocalId))
             .setBackoffCriteria(
                 BackoffPolicy.EXPONENTIAL,
                 30,
@@ -113,13 +152,13 @@ object TelemetryUploadScheduler {
         }
     }
 
-    fun enqueueContinuation(context: Context) {
+    fun enqueueContinuation(context: Context, afterLocalId: Long) {
         TelemetryUploadStatusStore.write(context, TelemetryUploadStatusStore.WAITING)
         WorkManager.getInstance(context.applicationContext)
             .enqueueUniqueWork(
                 UNIQUE_WORK_NAME,
                 ExistingWorkPolicy.APPEND_OR_REPLACE,
-                buildRequest()
+                buildRequest(afterLocalId = afterLocalId)
             )
     }
 }
@@ -133,7 +172,12 @@ class TelemetryUploadWorker(
     private val localStatusPrefsName = "regatta_local_status"
 
     override fun doWork(): Result {
-        val pendingSamples = db.getPendingSamples(limit = BATCH_SIZE)
+        val afterLocalId = inputData.getLong(TelemetryUploadScheduler.AFTER_LOCAL_ID_KEY, 0L)
+        val pendingSamples = getTelemetryUploadPage(
+            db = db,
+            afterLocalId = afterLocalId,
+            limit = BATCH_SIZE
+        )
 
         if (pendingSamples.isEmpty()) {
             TelemetryUploadStatusStore.write(
@@ -149,14 +193,12 @@ class TelemetryUploadWorker(
 
         TelemetryUploadStatusStore.write(applicationContext, TelemetryUploadStatusStore.ACTIVE)
 
-        var madeProgress = false
         var retryNeeded = false
 
         for (sample in pendingSamples) {
             when (uploadSampleBlocking(sample)) {
                 TelemetryUploadAttemptResult.SUCCESS -> {
                     db.markUploaded(sample.localId)
-                    madeProgress = true
                 }
 
                 TelemetryUploadAttemptResult.TEMPORARY_FAILURE -> {
@@ -170,12 +212,14 @@ class TelemetryUploadWorker(
         }
 
         val remaining = db.countUploadablePendingSamples()
+        val lastLocalId = pendingSamples.last().localId
+        val remainingThroughLast = countUploadablePendingSamplesThrough(db, lastLocalId)
+        val hasLaterPendingSamples = remaining > remainingThroughLast
 
         return when (
             decideTelemetryWorkerCompletion(
                 retryNeeded = retryNeeded,
-                madeProgress = madeProgress,
-                uploadablePendingCount = remaining
+                hasLaterPendingSamples = hasLaterPendingSamples
             )
         ) {
             TelemetryWorkerDecision.RETRY -> {
@@ -187,7 +231,10 @@ class TelemetryUploadWorker(
             }
 
             TelemetryWorkerDecision.CONTINUE -> {
-                TelemetryUploadScheduler.enqueueContinuation(applicationContext)
+                TelemetryUploadScheduler.enqueueContinuation(
+                    applicationContext,
+                    afterLocalId = lastLocalId
+                )
                 Result.success()
             }
 
