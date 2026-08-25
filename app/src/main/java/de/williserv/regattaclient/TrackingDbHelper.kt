@@ -362,6 +362,22 @@ class TrackingDbHelper(context: Context) :
         }
     }
 
+    fun countUploadablePendingSamples(): Long {
+        readableDatabase.rawQuery(
+            """
+            SELECT COUNT(*)
+            FROM tracking_samples AS samples
+            INNER JOIN access_contexts AS contexts
+                ON contexts.id = samples.access_context_id
+            WHERE samples.uploaded = 0
+            """.trimIndent(),
+            null
+        ).use { cursor ->
+            cursor.moveToFirst()
+            return cursor.getLong(0)
+        }
+    }
+
     fun exportAllAsCsv(): String {
         val header =
             "sequence_id,timestamp,boat_name,captain_name,hull_color,sail_number,yardstick,boat_type,lat,lon,accuracy,cog,sog,accel_x,accel_y,accel_z,gyro_x,gyro_y,gyro_z\n"
