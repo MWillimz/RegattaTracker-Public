@@ -928,13 +928,13 @@ fun uploadStatusColor(
     inRace: Boolean,
     disabledColor: Color
 ): Color {
-    if (!inRace) {
-        return disabledColor
-    }
-
     val pending = uploadStatusText
         .filter { it.isDigit() }
         .toIntOrNull() ?: 0
+
+    if (!inRace && pending == 0) {
+        return disabledColor
+    }
 
     return when {
         uploadStatusText.contains("all sent", ignoreCase = true) -> RegattaGreen
@@ -949,7 +949,15 @@ fun shortUploadStatus(
     inRace: Boolean,
     raceStatusText: String
 ): String {
+    val pending = uploadStatusText
+        .filter { it.isDigit() }
+        .toIntOrNull() ?: 0
+
     if (!inRace) {
+        if (pending > 0) {
+            return "$pending"
+        }
+
         return when {
             raceStatusText.contains("accept race legal", ignoreCase = true) -> "blocked"
             raceStatusText.contains("not loaded", ignoreCase = true) -> "off"
@@ -959,10 +967,6 @@ fun shortUploadStatus(
             else -> "idle"
         }
     }
-
-    val pending = uploadStatusText
-        .filter { it.isDigit() }
-        .toIntOrNull() ?: 0
 
     return when {
         uploadStatusText.contains("all sent", ignoreCase = true) -> "OK"
