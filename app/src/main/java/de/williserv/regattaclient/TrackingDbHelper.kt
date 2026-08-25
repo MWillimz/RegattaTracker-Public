@@ -7,6 +7,8 @@ import android.database.sqlite.SQLiteOpenHelper
 import java.util.Locale
 
 data class PendingTrackingSample(
+    val localId: Long,
+    val accessContext: AccessContext,
     val sequenceId: Long,
     val timestamp: String,
     val boatName: String,
@@ -194,55 +196,75 @@ class TrackingDbHelper(context: Context) :
 
         readableDatabase.rawQuery(
             """
-            SELECT 
-                sequence_id,
-                timestamp,
-                boat_name,
-                captain_name,
-                hull_color,
-                sail_number,
-                yardstick,
-                boat_type,
-                lat,
-                lon,
-                accuracy,
-                cog,
-                sog,
-                accel_x,
-                accel_y,
-                accel_z,
-                gyro_x,
-                gyro_y,
-                gyro_z
-            FROM tracking_samples
-            WHERE uploaded = 0
-            ORDER BY sequence_id ASC
+            SELECT
+                samples.id,
+                samples.sequence_id,
+                samples.timestamp,
+                samples.boat_name,
+                samples.captain_name,
+                samples.hull_color,
+                samples.sail_number,
+                samples.yardstick,
+                samples.boat_type,
+                samples.lat,
+                samples.lon,
+                samples.accuracy,
+                samples.cog,
+                samples.sog,
+                samples.accel_x,
+                samples.accel_y,
+                samples.accel_z,
+                samples.gyro_x,
+                samples.gyro_y,
+                samples.gyro_z,
+                contexts.id,
+                contexts.server_url,
+                contexts.access_identifier,
+                contexts.access_secret,
+                contexts.created_at,
+                contexts.last_used_at
+            FROM tracking_samples AS samples
+            INNER JOIN access_contexts AS contexts
+                ON contexts.id = samples.access_context_id
+            WHERE samples.uploaded = 0
+            ORDER BY samples.id ASC
             LIMIT ?
             """.trimIndent(),
             arrayOf(limit.toString())
         ).use { cursor ->
             while (cursor.moveToNext()) {
+                val accessContext = AccessContext(
+                    id = cursor.getLong(20),
+                    serverUrl = cursor.getString(21),
+                    accessIdentifier = cursor.getString(22),
+                    accessSecret = cursor.getString(23),
+                    createdAt = cursor.getLong(24),
+                    lastUsedAt = cursor.getLong(25)
+                )
+
                 result.add(
                     PendingTrackingSample(
-                        sequenceId = cursor.getLong(0),
-                        timestamp = cursor.getString(1),
-                        boatName = cursor.getString(2),
-                        captainName = cursor.getString(3),
-                        hullColor = cursor.getString(4),
-                        sailNumber = cursor.getString(5),
-                        yardstick = cursor.getDouble(6),
-                        boatType = cursor.getString(7),
-                        lat = cursor.getDouble(8),
-                        lon = cursor.getDouble(9),
-                        accuracy = cursor.getFloat(10),
-                        cog = cursor.getFloat(11),
-                        sog = cursor.getFloat(12),
-                        accelX = cursor.getFloat(13),
-                        accelY = cursor.getFloat(14),
-                        accelZ = cursor.getFloat(15),
-                        gyroX = cursor.getFloat(16),
-                        gyroY = cursor.getFloat(17),
-                        gyroZ = cursor.getFloat(18)
+                        localId = cursor.getLong(0),
+                        accessContext = accessContext,
+                        sequenceId = cursor.getLong(1),
+                        timestamp = cursor.getString(2),
+                        boatName = cursor.getString(3),
+                        captainName = cursor.getString(4),
+                        hullColor = cursor.getString(5),
+                        sailNumber = cursor.getString(6),
+                        yardstick = cursor.getDouble(7),
+                        boatType = cursor.getString(8),
+                        lat = cursor.getDouble(9),
+                        lon = cursor.getDouble(10),
+                        accuracy = cursor.getFloat(11),
+                        cog = cursor.getFloat(12),
+                        sog = cursor.getFloat(13),
+                        accelX = cursor.getFloat(14),
+                        accelY = cursor.getFloat(15),
+                        accelZ = cursor.getFloat(16),
+                        gyroX = cursor.getFloat(17),
+                        gyroY = cursor.getFloat(18),
+                        gyroZ = cursor.getFloat(19)
                     )
                 )
             }
@@ -318,7 +340,7 @@ class TrackingDbHelper(context: Context) :
         writableDatabase.delete("tracking_samples", null, null)
     }
 
-    fun markUploaded(sequenceId: Long) {
+    fun markUploaded(localId: Long) {
         val values = ContentValues().apply {
             put("uploaded", 1)
         }
@@ -326,8 +348,8 @@ class TrackingDbHelper(context: Context) :
         writableDatabase.update(
             "tracking_samples",
             values,
-            "sequence_id = ?",
-            arrayOf(sequenceId.toString())
+            "id = ?",
+            arrayOf(localId.toString())
         )
     }
 
