@@ -92,6 +92,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
     private var eventName = ""
     private var sharedSecret = ""
     private var resolvedEventName: String? = null
+    private var accessContextId: Long? = null
 
     private var boatName = "Boat name"
     private var captainName = "Max Mustermann"
@@ -348,6 +349,19 @@ class RegattaTrackingService : Service(), SensorEventListener {
             ?.let(::adoptResolvedEventName)
 
         manualRecording = intent.getBooleanExtra(EXTRA_MANUAL_RECORDING, false)
+        refreshAccessContextId()
+    }
+
+    private fun refreshAccessContextId() {
+        accessContextId = if (manualRecording) {
+            null
+        } else {
+            db.getOrCreateAccessContext(
+                serverUrl = serverUrl,
+                accessIdentifier = eventName,
+                accessSecret = sharedSecret
+            )
+        }
     }
 
     private fun startTrackingService() {
@@ -371,6 +385,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
     private fun stopTrackingService() {
         serviceRunning = false
         manualRecording = false
+        accessContextId = null
 
         handler.removeCallbacks(sampleRunnable)
         handler.removeCallbacks(uploadRunnable)
@@ -711,6 +726,21 @@ class RegattaTrackingService : Service(), SensorEventListener {
             accuracy = accuracy
         )
 
+        val sampleAccessContextId = if (manualRecording) {
+            null
+        } else {
+            accessContextId ?: db.getOrCreateAccessContext(
+                serverUrl = serverUrl,
+                accessIdentifier = eventName,
+                accessSecret = sharedSecret
+            ).also { accessContextId = it }
+        }
+
+        if (!manualRecording && sampleAccessContextId == null) {
+            publishDebugError("Storage error: event access context is incomplete")
+            return
+        }
+
         val insertedId = db.insertSample(
             sequenceId = sequenceId,
             timestamp = timestamp,
@@ -730,49 +760,21 @@ class RegattaTrackingService : Service(), SensorEventListener {
             accelZ = accelZ,
             gyroX = gyroX,
             gyroY = gyroY,
-            gyroZ = gyroZ
+            gyroZ = gyroZ,
+            accessContextId = sampleAccessContextId
         )
 
         if (insertedId == -1L) return
 
         if (manualRecording) {
-            db.markUploaded(sequenceId)
+            db.markUploaded(insertedId)
             publishLocalRaceStatus()
             updateNotification()
             return
         }
 
-        val sample = PendingTrackingSample(
-            sequenceId = sequenceId,
-            timestamp = timestamp,
-            boatName = boatName,
-            captainName = captainName,
-            hullColor = hullColor,
-            sailNumber = sailNumber,
-            yardstick = yardstick,
-            boatType = boatType,
-            lat = lat,
-            lon = lon,
-            accuracy = accuracy,
-            cog = cog,
-            sog = sog,
-            accelX = accelX,
-            accelY = accelY,
-            accelZ = accelZ,
-            gyroX = gyroX,
-            gyroY = gyroY,
-            gyroZ = gyroZ
-        )
-
-        thread {
-            val ok = uploadSampleBlocking(sample)
-
-            if (ok) {
-                db.markUploaded(sample.sequenceId)
-            }
-
-            updateNotification()
-        }
+        retryPendingUploads()
+        updateNotification()
     }
 
     private fun calculateLocalRaceState(
@@ -1184,7 +1186,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
                     val ok = uploadSampleBlocking(sample)
 
                     if (ok) {
-                        db.markUploaded(sample.sequenceId)
+                        db.markUploaded(sample.localId)
                     }
                 }
 
@@ -1196,10 +1198,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
     }
 
     private fun uploadSampleBlocking(sample: PendingTrackingSample): Boolean {
-        if (serverUrl.isBlank()) {
-            publishDebugError("Upload error: server URL is empty")
-            return false
-        }
+        val accessContext = sample.accessContext
 
         return try {
             val json = JSONObject().apply {
@@ -1224,7 +1223,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
                 put("gyro_z", sample.gyroZ)
             }
 
-            val connection = URL(buildIngestUrl()).openConnection() as HttpURLConnection
+            val connection = URL(buildIngestUrl(accessContext)).openConnection() as HttpURLConnection
 
             connection.requestMethod = "POST"
             connection.connectTimeout = 3000
@@ -1233,8 +1232,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
             connection.setRequestProperty("Content-Type", "application/json")
             connection.setRequestProperty("Accept", "application/json")
-            connection.setRequestProperty("x-event-name", eventName)
-            connection.setRequestProperty("x-shared-secret", sharedSecret)
+            connection.setRequestProperty("x-event-name", accessContext.accessIdentifier)
+            connection.setRequestProperty("x-shared-secret", accessContext.accessSecret)
             connection.setRequestProperty("x-api-version", API_VERSION)
 
             connection.outputStream.use { outputStream ->
@@ -1267,9 +1266,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
         }
     }
 
-    private fun buildIngestUrl(): String {
-        val baseUrl = getBaseServerUrl()
-        return "$baseUrl/ingest"
+    private fun buildIngestUrl(accessContext: AccessContext): String {
+        return "${accessContext.serverUrl.trimEnd('/')}/ingest"
     }
 
     private fun publishDebugError(message: String) {
