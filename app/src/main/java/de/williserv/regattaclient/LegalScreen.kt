@@ -40,22 +40,36 @@ fun LegalScreen(
 ) {
     val context = LocalContext.current
     val showThirdPartyLicenses = remember { mutableStateOf(false) }
-    val raceServer = remember(context) {
+    val raceSetupPrefs = remember(context) {
         context.getSharedPreferences("race_setup", Context.MODE_PRIVATE)
-            .getString("race_server", "")
-            ?.trim()
-            .orEmpty()
     }
-    var serverMetadata by remember(raceServer) {
+    val raceServer = remember(raceSetupPrefs) {
+        raceSetupPrefs.getString("race_server", "")?.trim().orEmpty()
+    }
+    val raceEvent = remember(raceSetupPrefs) {
+        raceSetupPrefs.getString("race_event", "")?.trim().orEmpty()
+    }
+    val raceSecret = remember(raceSetupPrefs) {
+        raceSetupPrefs.getString("race_secret", "")?.trim().orEmpty()
+    }
+    var serverMetadata by remember(raceServer, raceEvent, raceSecret) {
         mutableStateOf<ServerMetadata?>(null)
     }
 
-    LaunchedEffect(raceServer) {
-        serverMetadata = if (raceServer.isBlank()) {
+    LaunchedEffect(raceServer, raceEvent, raceSecret) {
+        serverMetadata = if (
+            raceServer.isBlank() ||
+            raceEvent.isBlank() ||
+            raceSecret.isBlank()
+        ) {
             null
         } else {
             withContext(Dispatchers.IO) {
-                fetchServerMetadata(raceServer)
+                fetchServerMetadata(
+                    server = raceServer,
+                    eventName = raceEvent,
+                    sharedSecret = raceSecret
+                )
             }
         }
     }
