@@ -955,7 +955,7 @@ fun shortUploadStatus(
 
     if (!inRace) {
         if (pending > 0) {
-            return "$pending"
+            return "$pending pending"
         }
 
         return when {
