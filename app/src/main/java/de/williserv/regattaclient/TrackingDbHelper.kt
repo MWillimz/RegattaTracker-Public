@@ -84,17 +84,7 @@ class TrackingDbHelper(context: Context) :
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 4 && newVersion >= 4) {
-            createAccessContextsTable(db)
-
-            if (tableExists(db, "tracking_samples")) {
-                if (!columnExists(db, "tracking_samples", "access_context_id")) {
-                    db.execSQL(
-                        "ALTER TABLE tracking_samples ADD COLUMN access_context_id INTEGER"
-                    )
-                }
-            } else {
-                createTrackingSamplesTable(db)
-            }
+            migrateToVersion4(db)
         }
     }
 
@@ -337,7 +327,16 @@ class TrackingDbHelper(context: Context) :
     }
 
     fun deleteAllSamples() {
-        writableDatabase.delete("tracking_samples", null, null)
+        val db = writableDatabase
+
+        db.beginTransaction()
+        try {
+            db.delete("tracking_samples", null, null)
+            deleteOrphanedAccessContexts(db)
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
     }
 
     fun markUploaded(localId: Long) {
@@ -429,6 +428,21 @@ class TrackingDbHelper(context: Context) :
         return builder.toString()
     }
 
+    private fun migrateToVersion4(db: SQLiteDatabase) {
+        createAccessContextsTable(db)
+
+        if (!tableExists(db, "tracking_samples")) {
+            createTrackingSamplesTable(db)
+            return
+        }
+
+        if (!columnExists(db, "tracking_samples", "access_context_id")) {
+            db.execSQL(
+                "ALTER TABLE tracking_samples ADD COLUMN access_context_id INTEGER"
+            )
+        }
+    }
+
     private fun createAccessContextsTable(db: SQLiteDatabase) {
         db.execSQL(
             """
@@ -471,6 +485,19 @@ class TrackingDbHelper(context: Context) :
                 gyro_z REAL NOT NULL,
                 uploaded INTEGER NOT NULL DEFAULT 0,
                 access_context_id INTEGER
+            )
+            """.trimIndent()
+        )
+    }
+
+    private fun deleteOrphanedAccessContexts(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            DELETE FROM access_contexts
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM tracking_samples
+                WHERE tracking_samples.access_context_id = access_contexts.id
             )
             """.trimIndent()
         )
