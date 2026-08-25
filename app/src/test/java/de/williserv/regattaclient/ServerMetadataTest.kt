@@ -31,6 +31,37 @@ class ServerMetadataTest {
     }
 
     @Test
+    fun buildServerMetadataUrl_neverContainsEventCredentials() {
+        val url = buildServerMetadataUrl("https://raceoffice.example.org")
+
+        assertEquals("https://raceoffice.example.org/server-metadata", url)
+        assertFalse(url.orEmpty().contains("event"))
+        assertFalse(url.orEmpty().contains("secret"))
+    }
+
+    @Test
+    fun buildServerMetadataHeaders_usesEventAndSecretHeaders() {
+        val headers = buildServerMetadataHeaders(
+            eventName = " Example Regatta ",
+            sharedSecret = " top-secret "
+        )
+
+        requireNotNull(headers)
+        assertEquals("application/json", headers["Accept"])
+        assertEquals(RegattaTrackingService.API_VERSION, headers["x-api-version"])
+        assertEquals("Example Regatta", headers["x-event-name"])
+        assertEquals("top-secret", headers["x-shared-secret"])
+    }
+
+    @Test
+    fun buildServerMetadataHeaders_requiresEventAndSecretTogether() {
+        assertNull(buildServerMetadataHeaders("", "secret"))
+        assertNull(buildServerMetadataHeaders("event", ""))
+        assertNull(buildServerMetadataHeaders("   ", "secret"))
+        assertNull(buildServerMetadataHeaders("event", "   "))
+    }
+
+    @Test
     fun parseServerMetadata_readsAllOptionalFields() {
         val metadata = parseServerMetadata(
             """
