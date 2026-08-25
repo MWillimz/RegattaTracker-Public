@@ -1,6 +1,7 @@
 package de.williserv.regattaclient
 
 import android.content.Context
+import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
@@ -11,6 +12,7 @@ import androidx.work.WorkerParameters
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.TimeUnit
 
 object TelemetryUploadScheduler {
     private const val UNIQUE_WORK_NAME = "regatta-telemetry-upload"
@@ -22,6 +24,11 @@ object TelemetryUploadScheduler {
 
         return OneTimeWorkRequest.Builder(TelemetryUploadWorker::class.java)
             .setConstraints(constraints)
+            .setBackoffCriteria(
+                BackoffPolicy.EXPONENTIAL,
+                30,
+                TimeUnit.SECONDS
+            )
             .build()
     }
 
@@ -32,6 +39,19 @@ object TelemetryUploadScheduler {
                 ExistingWorkPolicy.KEEP,
                 buildRequest()
             )
+    }
+
+    fun enqueueIfNeeded(context: Context) {
+        val db = TrackingDbHelper(context.applicationContext)
+        val hasUploadableBacklog = try {
+            db.countUploadablePendingSamples() > 0L
+        } finally {
+            db.close()
+        }
+
+        if (hasUploadableBacklog) {
+            enqueue(context)
+        }
     }
 
     fun enqueueContinuation(context: Context) {
@@ -54,26 +74,38 @@ class TelemetryUploadWorker(
 
     override fun doWork(): Result {
         val pendingSamples = db.getPendingSamples(limit = BATCH_SIZE)
-        var allSucceeded = true
+        var batchHasFailure = false
+        var retryNeeded = false
 
         for (sample in pendingSamples) {
-            val ok = uploadSampleBlocking(sample)
+            when (uploadSampleBlocking(sample)) {
+                UploadResult.SUCCESS -> {
+                    db.markUploaded(sample.localId)
+                }
 
-            if (ok) {
-                db.markUploaded(sample.localId)
-            } else {
-                allSucceeded = false
+                UploadResult.TEMPORARY_FAILURE -> {
+                    batchHasFailure = true
+                    retryNeeded = true
+                }
+
+                UploadResult.OTHER_FAILURE -> {
+                    batchHasFailure = true
+                }
             }
         }
 
-        if (allSucceeded && db.countUploadablePendingSamples() > 0L) {
+        if (retryNeeded) {
+            return Result.retry()
+        }
+
+        if (!batchHasFailure && db.countUploadablePendingSamples() > 0L) {
             TelemetryUploadScheduler.enqueueContinuation(applicationContext)
         }
 
         return Result.success()
     }
 
-    private fun uploadSampleBlocking(sample: PendingTrackingSample): Boolean {
+    private fun uploadSampleBlocking(sample: PendingTrackingSample): UploadResult {
         val accessContext = sample.accessContext
 
         return try {
@@ -117,9 +149,15 @@ class TelemetryUploadWorker(
             }
 
             val responseCode = connection.responseCode
-            val ok = responseCode in 200..299
+            val result = when {
+                responseCode in 200..299 -> UploadResult.SUCCESS
+                responseCode == 408 || responseCode == 429 || responseCode in 500..599 -> {
+                    UploadResult.TEMPORARY_FAILURE
+                }
+                else -> UploadResult.OTHER_FAILURE
+            }
 
-            if (ok) {
+            if (result == UploadResult.SUCCESS) {
                 publishDebugError("")
             } else {
                 val errorBody = connection.errorStream
@@ -133,10 +171,10 @@ class TelemetryUploadWorker(
             }
 
             connection.disconnect()
-            ok
+            result
         } catch (e: Exception) {
             publishDebugError("Upload exception: ${e.message}")
-            false
+            UploadResult.TEMPORARY_FAILURE
         }
     }
 
@@ -150,6 +188,12 @@ class TelemetryUploadWorker(
             .edit()
             .putString("debug_error_text", message)
             .apply()
+    }
+
+    private enum class UploadResult {
+        SUCCESS,
+        TEMPORARY_FAILURE,
+        OTHER_FAILURE
     }
 
     private companion object {
