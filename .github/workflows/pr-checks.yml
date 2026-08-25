@@ -4,11 +4,15 @@ on:
   push:
     branches:
       - dev
+      - staging
   pull_request:
     branches:
       - dev
       - staging
       - master
+
+permissions:
+  contents: read
 
 jobs:
   validate-branch-flow:
@@ -19,7 +23,7 @@ jobs:
       - name: Check allowed PR direction
         run: |
           if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "Push on dev; branch-flow validation is not required."
+            echo "Push event; branch-flow validation is not required."
             exit 0
           fi
 
@@ -68,10 +72,59 @@ jobs:
         run: ./gradlew assembleDebug
 
       - name: Upload dev debug APK
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
         uses: actions/upload-artifact@v4
         with:
           name: regatta-tracker-dev-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
+
+  dispatch-staging-release:
+    name: Dispatch private staging release
+    runs-on: ubuntu-latest
+    needs:
+      - android-check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
+
+    steps:
+      - name: Validate dispatch configuration
+        shell: bash
+        env:
+          RELEASE_DISPATCH_TOKEN: ${{ secrets.RELEASE_DISPATCH_TOKEN }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${RELEASE_DISPATCH_TOKEN:-}" ]; then
+            echo "Required Actions secret is missing: RELEASE_DISPATCH_TOKEN" >&2
+            exit 1
+          fi
+
+          if ! [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "github.sha is not an exact 40-character commit SHA: $SOURCE_SHA" >&2
+            exit 1
+          fi
+
+      - name: Trigger private staging release
+        shell: bash
+        env:
+          RELEASE_DISPATCH_TOKEN: ${{ secrets.RELEASE_DISPATCH_TOKEN }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          PAYLOAD="$(jq -n \
+            --arg ref "dev" \
+            --arg source_sha "$SOURCE_SHA" \
+            '{ref: $ref, inputs: {source_sha: $source_sha, force_rebuild: false}}')"
+
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $RELEASE_DISPATCH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/MWillimz/RegattaTracker/actions/workflows/staging-release-apk.yml/dispatches \
+            -d "$PAYLOAD"
+
+          echo "Dispatched private staging release for public source $SOURCE_SHA"
