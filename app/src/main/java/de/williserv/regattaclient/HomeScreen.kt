@@ -117,13 +117,13 @@ fun HomeScreen(
             delay(1000L)
         }
     }.value
-    val effectiveUploadStatusText = mergeTelemetryUploadStatusText(
+    val advancedUploadStatusText = mergeTelemetryUploadStatusText(
         pendingStatusText = uploadStatusText,
         workerStatus = workerUploadStatus
     )
 
     val uploadColor = uploadStatusColor(
-        uploadStatusText = effectiveUploadStatusText,
+        uploadStatusText = uploadStatusText,
         inRace = inRace,
         disabledColor = MaterialTheme.colorScheme.outlineVariant
     )
@@ -198,7 +198,7 @@ fun HomeScreen(
             ),
             raceColor = raceColor,
             uploadStatusText = shortUploadStatus(
-                uploadStatusText = effectiveUploadStatusText,
+                uploadStatusText = uploadStatusText,
                 inRace = inRace,
                 raceStatusText = raceStatusText
             ),
@@ -261,7 +261,7 @@ fun HomeScreen(
             AdvancedDebugBlock(
                 manualTracking = manualTracking,
                 rowCountText = rowCountText,
-                uploadStatusText = effectiveUploadStatusText,
+                uploadStatusText = advancedUploadStatusText,
                 debugErrorText = debugErrorText,
                 cogText = cogText,
                 sogText = sogText,
@@ -928,13 +928,6 @@ fun uploadStatusColor(
     inRace: Boolean,
     disabledColor: Color
 ): Color {
-    when {
-        uploadStatusText.contains("temporary error", ignoreCase = true) -> return RegattaRed
-        uploadStatusText.contains("active", ignoreCase = true) -> return RegattaBlue
-        uploadStatusText.contains("waiting", ignoreCase = true) -> return RegattaOrange
-        uploadStatusText.contains("all sent", ignoreCase = true) -> return RegattaGreen
-    }
-
     if (!inRace) {
         return disabledColor
     }
@@ -944,6 +937,7 @@ fun uploadStatusColor(
         .toIntOrNull() ?: 0
 
     return when {
+        uploadStatusText.contains("all sent", ignoreCase = true) -> RegattaGreen
         pending <= 10 -> RegattaGreen
         pending <= 50 -> RegattaOrange
         else -> RegattaRed
@@ -955,13 +949,6 @@ fun shortUploadStatus(
     inRace: Boolean,
     raceStatusText: String
 ): String {
-    when {
-        uploadStatusText.contains("temporary error", ignoreCase = true) -> return "error"
-        uploadStatusText.contains("active", ignoreCase = true) -> return "active"
-        uploadStatusText.contains("waiting", ignoreCase = true) -> return "waiting"
-        uploadStatusText.contains("all sent", ignoreCase = true) -> return "OK"
-    }
-
     if (!inRace) {
         return when {
             raceStatusText.contains("accept race legal", ignoreCase = true) -> "blocked"
