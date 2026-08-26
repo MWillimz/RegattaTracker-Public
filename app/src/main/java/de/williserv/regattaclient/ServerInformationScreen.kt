@@ -2,12 +2,14 @@ package de.williserv.regattaclient
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -83,6 +85,10 @@ private fun ServerInformationScreen(
 ) {
     var selectedLegalKind by remember { mutableStateOf<ServerLegalKind?>(null) }
 
+    BackHandler(enabled = selectedLegalKind != null) {
+        selectedLegalKind = null
+    }
+
     selectedLegalKind?.let { kind ->
         ServerLegalDocumentView(
             server = server,
@@ -116,6 +122,7 @@ private fun ServerInformationScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .safeDrawingPadding()
             .padding(20.dp)
             .verticalScroll(rememberScrollState())
     ) {
@@ -239,6 +246,7 @@ private fun ServerLegalDocumentView(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .safeDrawingPadding()
             .padding(20.dp)
             .verticalScroll(rememberScrollState())
     ) {
