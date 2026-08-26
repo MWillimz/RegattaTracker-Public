@@ -61,7 +61,7 @@ class ServerLegalTest {
             """
                 {
                   "title": "Impressum",
-                  "content": "First line\\nSecond line"
+                  "content": "First line\nSecond line"
                 }
             """.trimIndent()
         )
