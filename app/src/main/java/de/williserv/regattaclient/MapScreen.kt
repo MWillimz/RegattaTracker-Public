@@ -38,6 +38,7 @@ import androidx.compose.material3.MaterialTheme
 fun MapScreen(
     mapImageUrl: String,
     apiVersion: String,
+    sharedSecret: String,
     modifier: Modifier = Modifier,
     onBack: () -> Unit
 ) {
@@ -45,14 +46,15 @@ fun MapScreen(
     val errorState = remember { mutableStateOf<String?>(null) }
     val loadingState = remember { mutableStateOf(true) }
 
-    LaunchedEffect(mapImageUrl, apiVersion) {
+    LaunchedEffect(mapImageUrl, apiVersion, sharedSecret) {
         loadingState.value = true
         errorState.value = null
         bitmapState.value = null
 
         val result = loadMapBitmap(
             mapImageUrl = mapImageUrl,
-            apiVersion = apiVersion
+            apiVersion = apiVersion,
+            sharedSecret = sharedSecret
         )
 
         if (result.bitmap != null) {
@@ -170,7 +172,8 @@ private data class MapLoadResult(
 
 private suspend fun loadMapBitmap(
     mapImageUrl: String,
-    apiVersion: String
+    apiVersion: String,
+    sharedSecret: String
 ): MapLoadResult {
     return withContext(Dispatchers.IO) {
         var connection: HttpURLConnection? = null
@@ -181,6 +184,7 @@ private suspend fun loadMapBitmap(
             connection.connectTimeout = 5000
             connection.readTimeout = 5000
             connection.setRequestProperty("Accept", "image/png")
+            connection.setRequestProperty("x-shared-secret", sharedSecret)
             connection.setRequestProperty("x-api-version", apiVersion)
 
             val responseCode = connection.responseCode
