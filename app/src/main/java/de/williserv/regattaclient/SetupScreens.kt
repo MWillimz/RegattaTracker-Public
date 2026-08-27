@@ -400,6 +400,15 @@ fun RaceScreen(
                 }
             }
         }
+
+        if (hasRaceSetup) {
+            Spacer(modifier = Modifier.height(18.dp))
+            ServerInformationEntry(
+                server = raceServer,
+                event = raceEvent,
+                secret = raceSecret
+            )
+        }
     }
 }
 
