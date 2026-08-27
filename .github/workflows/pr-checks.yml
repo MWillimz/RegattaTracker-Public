@@ -62,6 +62,9 @@ jobs:
       - name: Make Gradle executable
         run: chmod +x ./gradlew
 
+      - name: Verify build identifier contract
+        run: ./gradlew :app:verifyBuildIdentifier
+
       - name: Run tests
         run: ./gradlew test
 
