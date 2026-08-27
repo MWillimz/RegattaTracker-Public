@@ -2090,7 +2090,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         uploadStatusText.value = if (pending == 0L) {
             "Upload: all sent"
         } else {
-            "$pending pending"
+            "Upload: $pending pending"
         }
     }
 
