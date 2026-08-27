@@ -507,11 +507,11 @@ class RegattaTrackingService : Service(), SensorEventListener {
     }
 
     private fun buildEventUrl(): String {
-        val baseUrl = getBaseServerUrl()
-        val encodedEvent = URLEncoder.encode(eventName, "UTF-8")
-        val encodedSecret = URLEncoder.encode(sharedSecret, "UTF-8")
-
-        return "$baseUrl/event?event_name=$encodedEvent&shared_secret=$encodedSecret"
+        return buildNormalApiGetUrl(
+            baseUrl = getBaseServerUrl(),
+            path = "/event",
+            eventName = eventName
+        )
     }
 
     private fun getBaseServerUrl(): String {
