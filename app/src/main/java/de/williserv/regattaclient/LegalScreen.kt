@@ -223,13 +223,7 @@ fun LegalScreen(
 
         LegalCard(
             title = "App",
-            body = """
-                Version:
-                ${BuildConfig.APP_VERSION_NAME}
-
-                Build date:
-                ${BuildConfig.BUILD_DATE}
-            """.trimIndent()
+            body = "Build: ${BuildConfig.APP_VERSION_NAME}"
         )
 
         Spacer(modifier = Modifier.height(20.dp))
