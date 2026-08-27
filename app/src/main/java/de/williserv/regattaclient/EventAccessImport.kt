@@ -10,10 +10,26 @@ internal data class EventAccessCredentials(
     val secret: String
 )
 
+private val HTTPS_URL_CANDIDATE = Regex(
+    pattern = "https://[^\\s<>\"']+",
+    option = RegexOption.IGNORE_CASE
+)
+
 internal fun parseEventAccessUrl(rawText: String): EventAccessCredentials? {
     val text = rawText.trim()
     if (text.isEmpty()) return null
 
+    parseStandaloneEventAccessUrl(text)?.let { return it }
+
+    val validEventLinks = HTTPS_URL_CANDIDATE
+        .findAll(text)
+        .mapNotNull { match -> parseStandaloneEventAccessUrl(match.value) }
+        .toList()
+
+    return validEventLinks.singleOrNull()
+}
+
+private fun parseStandaloneEventAccessUrl(text: String): EventAccessCredentials? {
     return try {
         val uri = URI(text)
 
