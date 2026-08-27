@@ -31,7 +31,6 @@ import org.json.JSONException
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
-import java.net.URLEncoder
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
@@ -527,6 +526,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         Screen.MAP -> MapScreen(
                             mapImageUrl = buildCourseMapUrl(),
                             apiVersion = RegattaTrackingService.API_VERSION,
+                            sharedSecret = raceSecret.value,
                             modifier = Modifier.padding(innerPadding),
                             onBack = {
                                 currentScreen.value = Screen.HOME
@@ -1059,17 +1059,18 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
         thread {
             try {
-                val baseUrl = getBaseServerUrl()
-                val encodedEvent = URLEncoder.encode(raceEvent.value, "UTF-8")
-                val encodedSecret = URLEncoder.encode(raceSecret.value, "UTF-8")
-
-                val url = "$baseUrl/event/legal?event_name=$encodedEvent&shared_secret=$encodedSecret"
+                val url = buildNormalApiGetUrl(
+                    baseUrl = getBaseServerUrl(),
+                    path = "/event/legal",
+                    eventName = raceEvent.value
+                )
 
                 val connection = URL(url).openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
                 connection.connectTimeout = 3000
                 connection.readTimeout = 3000
                 connection.setRequestProperty("Accept", "application/json")
+                connection.setRequestProperty("x-shared-secret", raceSecret.value)
                 connection.setRequestProperty("x-api-version", RegattaTrackingService.API_VERSION)
 
                 val responseCode = connection.responseCode
@@ -1684,17 +1685,18 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
         thread {
             try {
-                val baseUrl = getBaseServerUrl()
-                val encodedEvent = URLEncoder.encode(raceEvent.value, "UTF-8")
-                val encodedSecret = URLEncoder.encode(raceSecret.value, "UTF-8")
-
-                val url = "$baseUrl/event-results?event_name=$encodedEvent&shared_secret=$encodedSecret"
+                val url = buildNormalApiGetUrl(
+                    baseUrl = getBaseServerUrl(),
+                    path = "/event-results",
+                    eventName = raceEvent.value
+                )
 
                 val connection = URL(url).openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
                 connection.connectTimeout = 3000
                 connection.readTimeout = 3000
                 connection.setRequestProperty("Accept", "application/json")
+                connection.setRequestProperty("x-shared-secret", raceSecret.value)
                 connection.setRequestProperty("x-api-version", RegattaTrackingService.API_VERSION)
 
                 val responseCode = connection.responseCode
@@ -1721,22 +1723,16 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 val rowsJson = json.optJSONArray("rows")
 
                 val rows = mutableListOf<ResultRow>()
-
                 if (rowsJson != null) {
                     for (i in 0 until rowsJson.length()) {
                         val row = rowsJson.optJSONObject(i) ?: continue
-
                         rows.add(
                             ResultRow(
                                 rank = if (row.isNull("rank")) null else row.optInt("rank"),
                                 boatName = row.optString("boat_name", ""),
                                 sailNumber = row.optString("sail_number", ""),
                                 status = row.optString("status", ""),
-                                officialFinishTime = if (row.isNull("official_finish_time")) {
-                                    null
-                                } else {
-                                    row.optString("official_finish_time", "")
-                                },
+                                officialFinishTime = if (row.isNull("official_finish_time")) null else row.optString("official_finish_time", ""),
                                 correctedTime = row.optString("corrected_time", "")
                             )
                         )
@@ -1747,11 +1743,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     resultsPublished.value = published
                     resultsPublishedAt.value = publishedAt
                     resultRows.value = rows
-                    resultsStatusText.value = if (published) {
-                        "Results loaded"
-                    } else {
-                        "Results not published yet"
-                    }
+                    resultsStatusText.value = if (published) "Results loaded" else "Results not published yet"
                 }
             } catch (e: Exception) {
                 runOnUiThread {
@@ -1783,11 +1775,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
         thread {
             try {
-                val baseUrl = getBaseServerUrl()
-                val encodedEvent = URLEncoder.encode(raceEvent.value, "UTF-8")
-                val encodedSecret = URLEncoder.encode(raceSecret.value, "UTF-8")
-
-                val url = "$baseUrl/event?event_name=$encodedEvent&shared_secret=$encodedSecret"
+                val url = buildNormalApiGetUrl(
+                    baseUrl = getBaseServerUrl(),
+                    path = "/event",
+                    eventName = raceEvent.value
+                )
 
                 val connection = URL(url).openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
@@ -1913,11 +1905,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     }
 
     private fun buildCourseMapUrl(): String {
-        val baseUrl = getBaseServerUrl()
-        val encodedEvent = URLEncoder.encode(raceEvent.value, "UTF-8")
-        val encodedSecret = URLEncoder.encode(raceSecret.value, "UTF-8")
-
-        return "$baseUrl/course-map?event_name=$encodedEvent&shared_secret=$encodedSecret"
+        return buildNormalApiGetUrl(
+            baseUrl = getBaseServerUrl(),
+            path = "/course-map",
+            eventName = raceEvent.value
+        )
     }
 
     private fun buildCourseSummary(
