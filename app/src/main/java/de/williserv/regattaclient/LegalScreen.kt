@@ -1,8 +1,5 @@
 package de.williserv.regattaclient
 
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,18 +17,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 @Composable
 fun LegalScreen(
@@ -40,39 +31,6 @@ fun LegalScreen(
 ) {
     val context = LocalContext.current
     val showThirdPartyLicenses = remember { mutableStateOf(false) }
-    val raceSetupPrefs = remember(context) {
-        context.getSharedPreferences("race_setup", Context.MODE_PRIVATE)
-    }
-    val raceServer = remember(raceSetupPrefs) {
-        raceSetupPrefs.getString("race_server", "")?.trim().orEmpty()
-    }
-    val raceEvent = remember(raceSetupPrefs) {
-        raceSetupPrefs.getString("race_event", "")?.trim().orEmpty()
-    }
-    val raceSecret = remember(raceSetupPrefs) {
-        raceSetupPrefs.getString("race_secret", "")?.trim().orEmpty()
-    }
-    var serverMetadata by remember(raceServer, raceEvent, raceSecret) {
-        mutableStateOf<ServerMetadata?>(null)
-    }
-
-    LaunchedEffect(raceServer, raceEvent, raceSecret) {
-        serverMetadata = if (
-            raceServer.isBlank() ||
-            raceEvent.isBlank() ||
-            raceSecret.isBlank()
-        ) {
-            null
-        } else {
-            withContext(Dispatchers.IO) {
-                fetchServerMetadata(
-                    server = raceServer,
-                    eventName = raceEvent,
-                    sharedSecret = raceSecret
-                )
-            }
-        }
-    }
 
     val thirdPartyLicenseText = remember(context) {
         runCatching {
@@ -164,32 +122,16 @@ fun LegalScreen(
             """.trimIndent()
         )
 
-        serverMetadata?.let { metadata ->
-            Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
-            ServerMetadataCard(
-                metadata = metadata,
-                onOpenUrl = { url ->
-                    if (isHttpOrHttpsUrl(url)) {
-                        runCatching {
-                            context.startActivity(
-                                Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                            )
-                        }
-                    }
-                },
-                onContactEmail = { email ->
-                    runCatching {
-                        context.startActivity(
-                            Intent(
-                                Intent.ACTION_SENDTO,
-                                Uri.fromParts("mailto", email.trim(), null)
-                            )
-                        )
-                    }
-                }
-            )
-        }
+        LegalCard(
+            title = "Regatta Server",
+            body = """
+                The Regatta Server configured for an event is operated separately from this app.
+
+                Its operator and legal information are specific to that server and can be found under Server information on the Event screen.
+            """.trimIndent()
+        )
 
         Spacer(modifier = Modifier.height(14.dp))
 
@@ -261,79 +203,6 @@ fun LegalScreen(
                 }
             }
         )
-    }
-}
-
-@Composable
-private fun ServerMetadataCard(
-    metadata: ServerMetadata,
-    onOpenUrl: (String) -> Unit,
-    onContactEmail: (String) -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(18.dp)
-        ) {
-            Text(
-                text = "Connected Regatta Server",
-                fontSize = 22.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-
-            metadata.operator?.let { operator ->
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(
-                    text = "Operator",
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = operator,
-                    fontSize = 16.sp,
-                    lineHeight = 22.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            metadata.publicUrl?.let { publicUrl ->
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(
-                    text = "Website",
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                if (isHttpOrHttpsUrl(publicUrl)) {
-                    TextButton(onClick = { onOpenUrl(publicUrl) }) {
-                        Text(publicUrl)
-                    }
-                } else {
-                    Text(
-                        text = publicUrl,
-                        fontSize = 16.sp,
-                        lineHeight = 22.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            metadata.contactEmail?.let { contactEmail ->
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(
-                    text = "Contact",
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                TextButton(onClick = { onContactEmail(contactEmail) }) {
-                    Text(contactEmail)
-                }
-            }
-        }
     }
 }
 
