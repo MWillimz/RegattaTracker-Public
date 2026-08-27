@@ -1723,16 +1723,22 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 val rowsJson = json.optJSONArray("rows")
 
                 val rows = mutableListOf<ResultRow>()
+
                 if (rowsJson != null) {
                     for (i in 0 until rowsJson.length()) {
                         val row = rowsJson.optJSONObject(i) ?: continue
+
                         rows.add(
                             ResultRow(
                                 rank = if (row.isNull("rank")) null else row.optInt("rank"),
                                 boatName = row.optString("boat_name", ""),
                                 sailNumber = row.optString("sail_number", ""),
                                 status = row.optString("status", ""),
-                                officialFinishTime = if (row.isNull("official_finish_time")) null else row.optString("official_finish_time", ""),
+                                officialFinishTime = if (row.isNull("official_finish_time")) {
+                                    null
+                                } else {
+                                    row.optString("official_finish_time", "")
+                                },
                                 correctedTime = row.optString("corrected_time", "")
                             )
                         )
@@ -1743,7 +1749,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     resultsPublished.value = published
                     resultsPublishedAt.value = publishedAt
                     resultRows.value = rows
-                    resultsStatusText.value = if (published) "Results loaded" else "Results not published yet"
+                    resultsStatusText.value = if (published) {
+                        "Results loaded"
+                    } else {
+                        "Results not published yet"
+                    }
                 }
             } catch (e: Exception) {
                 runOnUiThread {
