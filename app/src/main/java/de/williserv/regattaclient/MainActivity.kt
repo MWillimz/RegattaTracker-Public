@@ -42,7 +42,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import java.time.format.DateTimeFormatter
 import androidx.compose.material3.MaterialTheme
 import de.williserv.regattaclient.ui.theme.RegattaGreen
 import de.williserv.regattaclient.ui.theme.RegattaOrange
@@ -763,6 +762,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
         currentRaceStatus = ""
         raceStartEpochMillis = null
+        raceRegistered.value = false
+        registerRaceStatusText.value = ""
         resultsStatusText.value = ""
         resultsPublished.value = false
         resultsPublishedAt.value = ""
@@ -796,21 +797,17 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
         val previousResolvedEventName = resolvedEventName.value
         val shouldReset = previousResolvedEventName.isNotBlank() || raceEvent.value != normalized
+        val clearLegal = RaceLegalContextPolicy.shouldClearForResolvedRunChange(
+            accessIdentifier = raceEvent.value,
+            legalEventIdentity = raceLegalResolvedEventName,
+            nextResolvedEventName = normalized
+        )
 
         if (shouldReset) {
-            resetRunSpecificClientState(
-                clearLegal = raceLegalResolvedEventName != normalized
-            )
+            resetRunSpecificClientState(clearLegal = clearLegal)
         }
 
         resolvedEventName.value = normalized
-
-        if (
-            raceLegalResolvedEventName.isNotBlank() &&
-            raceLegalResolvedEventName != normalized
-        ) {
-            resetRaceLegalState()
-        }
     }
 
     private fun clearRaceSetup() {
@@ -1054,6 +1051,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         if (raceLegalFetchRunning) return
         raceLegalFetchRunning = true
 
+        val previouslyAccepted = raceLegalAccepted.value
+        val previousLegalEventIdentity = raceLegalResolvedEventName
+        val previousLegalHash = raceLegalHash.value
+
         raceLegalStatusText.value = "Loading race legal text..."
 
         thread {
@@ -1123,13 +1124,26 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         }
 
                         else -> {
+                            val preserveAcceptance =
+                                RaceLegalContextPolicy.canPreserveAcceptanceAfterReload(
+                                    currentlyAccepted = previouslyAccepted,
+                                    currentLegalEventIdentity = previousLegalEventIdentity,
+                                    currentLegalHash = previousLegalHash,
+                                    nextLegalEventIdentity = legalResolvedEventName,
+                                    nextLegalHash = legalHash
+                                )
+
                             raceLegalResolvedEventName = legalResolvedEventName
                             raceLegalText.value = legalText
                             raceLegalHash.value = legalHash
                             raceLegalVersion.value = legalVersion
                             raceLegalStatusText.value = ""
-                            raceLegalAcceptStatusText.value = ""
-                            raceLegalAccepted.value = false
+                            raceLegalAcceptStatusText.value = if (preserveAcceptance) {
+                                "Race notice accepted"
+                            } else {
+                                ""
+                            }
+                            raceLegalAccepted.value = preserveAcceptance
                             currentScreen.value = Screen.RACE_LEGAL
                         }
                     }
@@ -1317,6 +1331,13 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             return
         }
 
+        val registrationTimestamp =
+            RaceRegistrationPolicy.registrationTimestamp(raceStartEpochMillis)
+        if (registrationTimestamp == null) {
+            registerRaceStatusText.value = "Load a race with a valid start time first."
+            return
+        }
+
         registerRaceStatusText.value = "Registering..."
 
         thread {
@@ -1325,7 +1346,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                 val json = JSONObject().apply {
                     put("sequence_id", System.currentTimeMillis())
-                    put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")))
+                    put("timestamp", registrationTimestamp)
 
                     put("boat_name", boatName.value)
                     put("captain_name", skipperName.value)
