@@ -1332,8 +1332,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             return
         }
 
-        val registrationTimestamp =
-            RaceRegistrationPolicy.registrationTimestamp(raceStartEpochMillis)
+        val registrationTimestamp = RaceRegistrationPolicy.registrationTimestamp(
+            raceStartText.value.removePrefix("Start:").trim()
+        )
         if (registrationTimestamp == null) {
             registerRaceStatusText.value = "Load a race with a valid start time first."
             return
