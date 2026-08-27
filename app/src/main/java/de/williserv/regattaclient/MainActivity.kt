@@ -1236,7 +1236,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             "Accept failed $responseCode: ${body.take(160)}"
                     }
                 }
-            } catch (e: Exception) {
+                } catch (e: Exception) {
                 runOnUiThread {
                     raceLegalAccepted.value = false
                     raceLegalAcceptStatusText.value = "Accept failed: ${e.message}"
@@ -2090,7 +2090,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         uploadStatusText.value = if (pending == 0L) {
             "Upload: all sent"
         } else {
-            "Upload: $pending pending"
+            "$pending pending"
         }
     }
 
