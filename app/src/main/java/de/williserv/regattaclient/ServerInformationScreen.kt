@@ -3,7 +3,9 @@ package de.williserv.regattaclient
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -49,8 +51,9 @@ fun ServerInformationEntry(
         mutableStateOf(false)
     }
 
-    TextButton(
+    Button(
         onClick = { showServerInformation = true },
+        colors = primaryButtonColors(),
         modifier = modifier.fillMaxWidth()
     ) {
         Text("Server information")
@@ -189,18 +192,27 @@ private fun ServerInformationScreen(
                     fontWeight = FontWeight.SemiBold
                 )
 
-                TextButton(
-                    onClick = { selectedLegalKind = ServerLegalKind.IMPRESSUM },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Server Impressum")
-                }
+                Spacer(modifier = Modifier.height(12.dp))
 
-                TextButton(
-                    onClick = { selectedLegalKind = ServerLegalKind.DATENSCHUTZ },
-                    modifier = Modifier.fillMaxWidth()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Text("Server Datenschutz")
+                    Button(
+                        onClick = { selectedLegalKind = ServerLegalKind.IMPRESSUM },
+                        colors = primaryButtonColors(),
+                        modifier = Modifier.weight(0.5f)
+                    ) {
+                        Text("Impressum")
+                    }
+
+                    Button(
+                        onClick = { selectedLegalKind = ServerLegalKind.DATENSCHUTZ },
+                        colors = primaryButtonColors(),
+                        modifier = Modifier.weight(0.5f)
+                    ) {
+                        Text("Datenschutz")
+                    }
                 }
             }
         }
