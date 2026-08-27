@@ -42,6 +42,50 @@ class EventAccessImportTest {
     }
 
     @Test
+    fun parseEventAccessUrl_acceptsBrowserShareTextWithTitle() {
+        assertEquals(
+            EventAccessCredentials(
+                server = "https://raceoffice.example.org",
+                event = "Testserie1 - 2026-08-28 11:30 - Lauf 1",
+                secret = "event-secret"
+            ),
+            parseEventAccessUrl(
+                """
+                Testserie1 - Lauf 1
+                https://raceoffice.example.org/event-access?event_name=Testserie1+-+2026-08-28+11%3A30+-+Lauf+1&secret=event-secret
+                """.trimIndent()
+            )
+        )
+    }
+
+    @Test
+    fun parseEventAccessUrl_acceptsSingleValidEventLinkInsideSharedText() {
+        assertEquals(
+            EventAccessCredentials(
+                server = "https://raceoffice.example.org/base",
+                event = "Test Event",
+                secret = "event-secret"
+            ),
+            parseEventAccessUrl(
+                "Open this event: https://raceoffice.example.org/base/event-access" +
+                        "?event_name=Test%20Event&secret=event-secret"
+            )
+        )
+    }
+
+    @Test
+    fun parseEventAccessUrl_rejectsMultipleValidEventLinks() {
+        assertNull(
+            parseEventAccessUrl(
+                """
+                https://raceoffice.example.org/event-access?event_name=First&secret=one
+                https://raceoffice.example.org/event-access?event_name=Second&secret=two
+                """.trimIndent()
+            )
+        )
+    }
+
+    @Test
     fun parseEventAccessUrl_rejectsNonHttpsAndWrongPath() {
         assertNull(
             parseEventAccessUrl(
@@ -80,7 +124,7 @@ class EventAccessImportTest {
         assertNull(parseEventAccessUrl("hello from WhatsApp"))
         assertNull(
             parseEventAccessUrl(
-                "Event link: https://raceoffice.example.org/event-access?event_name=Test&secret=secret"
+                "Website: https://raceoffice.example.org/info"
             )
         )
     }
