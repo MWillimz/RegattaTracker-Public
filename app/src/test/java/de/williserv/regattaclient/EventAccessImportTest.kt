@@ -74,6 +74,33 @@ class EventAccessImportTest {
     }
 
     @Test
+    fun normalizeSharedText_acceptsNonStringCharSequenceFromAndroidShare() {
+        val browserSharedText: CharSequence = StringBuilder(
+            """
+            Test Event
+            https://raceoffice.example.org/event-access?event_name=Test%20Event&secret=event-secret
+            """.trimIndent()
+        )
+
+        val normalized = normalizeSharedText(browserSharedText)
+
+        assertEquals(
+            EventAccessCredentials(
+                server = "https://raceoffice.example.org",
+                event = "Test Event",
+                secret = "event-secret"
+            ),
+            normalized?.let(::parseEventAccessUrl)
+        )
+    }
+
+    @Test
+    fun normalizeSharedText_rejectsMissingOrBlankText() {
+        assertNull(normalizeSharedText(null))
+        assertNull(normalizeSharedText(StringBuilder("   \n\t")))
+    }
+
+    @Test
     fun parseEventAccessUrl_rejectsMultipleValidEventLinks() {
         assertNull(
             parseEventAccessUrl(
