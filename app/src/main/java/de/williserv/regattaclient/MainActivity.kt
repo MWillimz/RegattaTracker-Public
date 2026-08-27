@@ -638,9 +638,65 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             }
         }
 
+        handleIncomingShareIntent(intent)
         requestPermissionsForApp()
         startImuUpdates()
         handler.postDelayed(uiRefreshRunnable, 1000L)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingShareIntent(intent)
+    }
+
+    private fun handleIncomingShareIntent(sharedIntent: Intent) {
+        if (sharedIntent.action != Intent.ACTION_SEND || sharedIntent.type != "text/plain") {
+            return
+        }
+
+        val sharedText = sharedIntent.getStringExtra(Intent.EXTRA_TEXT)
+
+        // Consume the share so an Activity recreation cannot import it a second time.
+        sharedIntent.action = null
+        sharedIntent.removeExtra(Intent.EXTRA_TEXT)
+
+        val access = sharedText?.let(::parseEventAccessUrl)
+        if (access == null) {
+            android.widget.Toast.makeText(
+                this,
+                "Shared text is not a valid RegattaTracker event link.",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        val eventAlreadyLoaded = shouldBlockSharedEventImport(
+            server = raceServer.value,
+            event = raceEvent.value,
+            secret = raceSecret.value,
+            resolvedEventName = resolvedEventName.value,
+            raceDataReady = raceDataReady.value,
+            raceRegistered = raceRegistered.value,
+            inRace = inRace.value
+        )
+
+        if (eventAlreadyLoaded) {
+            android.widget.Toast.makeText(
+                this,
+                "An event is already loaded. Clear the current event before importing another link.",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        handleRaceQrCode(
+            buildEventQrPayload(
+                server = access.server,
+                event = access.event,
+                secret = access.secret
+            )
+        )
     }
 
     private fun loadRaceSetup() {
