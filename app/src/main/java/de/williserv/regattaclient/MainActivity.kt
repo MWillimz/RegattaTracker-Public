@@ -556,13 +556,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                 } else {
                                     null
                                 },
-                                onBack = {
-                                    currentScreen.value = if (selectedMapView == null) {
-                                        Screen.HOME
-                                    } else {
-                                        Screen.COURSE
-                                    }
-                                }
+                                onBack = ::navigateBack
                             )
                         }
 
