@@ -47,8 +47,8 @@ fun EventAccessActions(
 
     val context = LocalContext.current
     var showQrCode by remember { mutableStateOf(false) }
-    val shareUrl = remember(server, event, secret) {
-        buildEventAccessUrl(server, event, secret)
+    val eventPayload = remember(server, event, secret) {
+        buildEventQrPayload(server, event, secret)
     }
 
     Row(
@@ -59,7 +59,7 @@ fun EventAccessActions(
             onClick = {
                 val shareIntent = Intent(Intent.ACTION_SEND).apply {
                     type = "text/plain"
-                    putExtra(Intent.EXTRA_TEXT, shareUrl)
+                    putExtra(Intent.EXTRA_TEXT, eventPayload)
                 }
                 context.startActivity(Intent.createChooser(shareIntent, "Share Event"))
             },
@@ -87,9 +87,7 @@ fun EventAccessActions(
     if (showQrCode) {
         EventQrDialog(
             event = event,
-            payload = remember(server, event, secret) {
-                buildEventQrPayload(server, event, secret)
-            },
+            payload = eventPayload,
             onDismiss = { showQrCode = false }
         )
     }
