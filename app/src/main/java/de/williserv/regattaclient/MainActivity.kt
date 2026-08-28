@@ -654,7 +654,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             return
         }
 
-        val sharedText = sharedIntent.getStringExtra(Intent.EXTRA_TEXT)
+        val sharedText = sharedIntent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
 
         // Consume the share so an Activity recreation cannot import it a second time.
         sharedIntent.action = null
