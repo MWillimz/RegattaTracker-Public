@@ -3,6 +3,7 @@ package de.williserv.regattaclient
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -19,7 +21,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -28,11 +33,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
-import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.material3.MaterialTheme
 
 @Composable
 fun MapScreen(
@@ -40,22 +40,37 @@ fun MapScreen(
     apiVersion: String,
     sharedSecret: String,
     modifier: Modifier = Modifier,
+    fallbackMapImageUrl: String? = null,
     onBack: () -> Unit
 ) {
     val bitmapState = remember { mutableStateOf<Bitmap?>(null) }
     val errorState = remember { mutableStateOf<String?>(null) }
     val loadingState = remember { mutableStateOf(true) }
 
-    LaunchedEffect(mapImageUrl, apiVersion, sharedSecret) {
+    LaunchedEffect(mapImageUrl, fallbackMapImageUrl, apiVersion, sharedSecret) {
         loadingState.value = true
         errorState.value = null
         bitmapState.value = null
 
-        val result = loadMapBitmap(
+        val primaryResult = loadMapBitmap(
             mapImageUrl = mapImageUrl,
             apiVersion = apiVersion,
             sharedSecret = sharedSecret
         )
+
+        val result = if (
+            shouldFallbackToCourseOverview(primaryResult.statusCode) &&
+            !fallbackMapImageUrl.isNullOrBlank() &&
+            fallbackMapImageUrl != mapImageUrl
+        ) {
+            loadMapBitmap(
+                mapImageUrl = fallbackMapImageUrl,
+                apiVersion = apiVersion,
+                sharedSecret = sharedSecret
+            )
+        } else {
+            primaryResult
+        }
 
         if (result.bitmap != null) {
             bitmapState.value = result.bitmap
@@ -167,7 +182,8 @@ fun MapScreen(
 
 private data class MapLoadResult(
     val bitmap: Bitmap?,
-    val error: String?
+    val error: String?,
+    val statusCode: Int? = null
 )
 
 private suspend fun loadMapBitmap(
@@ -197,7 +213,8 @@ private suspend fun loadMapBitmap(
 
                 return@withContext MapLoadResult(
                     bitmap = null,
-                    error = "Map error $responseCode: ${errorBody.take(160)}"
+                    error = "Map error $responseCode: ${errorBody.take(160)}",
+                    statusCode = responseCode
                 )
             }
 
@@ -208,18 +225,21 @@ private suspend fun loadMapBitmap(
             if (bitmap == null) {
                 MapLoadResult(
                     bitmap = null,
-                    error = "Map response is not a valid PNG"
+                    error = "Map response is not a valid PNG",
+                    statusCode = responseCode
                 )
             } else {
                 MapLoadResult(
                     bitmap = bitmap,
-                    error = null
+                    error = null,
+                    statusCode = responseCode
                 )
             }
         } catch (e: Exception) {
             MapLoadResult(
                 bitmap = null,
-                error = "Map load failed: ${e.message}"
+                error = "Map load failed: ${e.message}",
+                statusCode = null
             )
         } finally {
             connection?.disconnect()
