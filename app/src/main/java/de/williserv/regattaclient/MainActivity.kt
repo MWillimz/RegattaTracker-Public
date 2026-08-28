@@ -113,6 +113,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private val raceMarksText = mutableStateOf("Marks: --")
     private val raceInfoText = mutableStateOf("Info: --")
     private val raceShortenedText = mutableStateOf("Course shortened: no")
+    private val courseMapMarks = mutableStateOf<List<CourseMapMark>>(emptyList())
+    private val selectedCourseMapView = mutableStateOf<CourseMapView?>(null)
 
     private val raceStartFlags = mutableStateOf(RaceStartFlags())
     private val raceLegalText = mutableStateOf("")
@@ -299,6 +301,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             },
                             onMap = {
                                 if (raceDataReady.value) {
+                                    selectedCourseMapView.value = null
                                     currentScreen.value = Screen.MAP
                                 }
                             },
@@ -511,11 +514,16 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             raceInfoText = raceInfoText.value,
                             raceShortenedText = raceShortenedText.value,
                             currentTargetText = currentTargetText.value,
+                            courseMapMarks = courseMapMarks.value,
                             onSetCourseProgress = { passedMarks, raceStarted ->
                                 setCourseProgressFromUser(
                                     passedMarks = passedMarks,
                                     raceStarted = raceStarted
                                 )
+                            },
+                            onOpenMapDetail = { view ->
+                                selectedCourseMapView.value = view
+                                currentScreen.value = Screen.MAP
                             },
                             modifier = Modifier.padding(innerPadding),
                             onBack = {
@@ -523,15 +531,27 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             }
                         )
 
-                        Screen.MAP -> MapScreen(
-                            mapImageUrl = buildCourseMapUrl(),
-                            apiVersion = RegattaTrackingService.API_VERSION,
-                            sharedSecret = raceSecret.value,
-                            modifier = Modifier.padding(innerPadding),
-                            onBack = {
-                                currentScreen.value = Screen.HOME
-                            }
-                        )
+                        Screen.MAP -> {
+                            val selectedMapView = selectedCourseMapView.value
+                            MapScreen(
+                                mapImageUrl = buildCourseMapUrl(selectedMapView),
+                                apiVersion = RegattaTrackingService.API_VERSION,
+                                sharedSecret = raceSecret.value,
+                                modifier = Modifier.padding(innerPadding),
+                                fallbackMapImageUrl = if (selectedMapView != null) {
+                                    buildCourseMapUrl()
+                                } else {
+                                    null
+                                },
+                                onBack = {
+                                    currentScreen.value = if (selectedMapView == null) {
+                                        Screen.HOME
+                                    } else {
+                                        Screen.COURSE
+                                    }
+                                }
+                            )
+                        }
 
                         Screen.QR_SCANNER -> QrScannerScreen(
                             modifier = Modifier.padding(innerPadding),
@@ -751,6 +771,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         raceMarksText.value = "Marks: --"
         raceInfoText.value = "Info: --"
         raceShortenedText.value = "Course shortened: no"
+        courseMapMarks.value = emptyList()
+        selectedCourseMapView.value = null
         raceStartFlags.value = RaceStartFlags()
 
         currentTargetText.value = "Next: --"
@@ -833,6 +855,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         raceMarksText.value = "Marks: --"
         raceInfoText.value = "Info: --"
         raceShortenedText.value = "Course shortened: no"
+        courseMapMarks.value = emptyList()
+        selectedCourseMapView.value = null
         raceStartFlags.value = RaceStartFlags()
 
         currentTargetText.value = "Next: --"
@@ -1877,6 +1901,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     courseObj = courseObj,
                     courseShortened = courseShortened
                 )
+                val parsedCourseMapMarks = buildCourseMapMarks(
+                    courseObj = courseObj,
+                    courseShortened = courseShortened
+                )
 
                 runOnUiThread {
                     adoptResolvedEventName(responseResolvedEventName)
@@ -1887,6 +1915,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     raceStartLineText.value = courseSummary.startLineText
                     raceFinishLineText.value = courseSummary.finishLineText
                     raceMarksText.value = courseSummary.marksText
+                    courseMapMarks.value = parsedCourseMapMarks
 
                     raceStatusText.value = "Race: $status"
                     raceInfoText.value = "Info: $raceInfo"
@@ -1915,12 +1944,42 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
     }
 
-    private fun buildCourseMapUrl(): String {
-        return buildNormalApiGetUrl(
+    private fun buildCourseMapUrl(view: CourseMapView? = null): String {
+        return buildCourseMapImageUrl(
             baseUrl = getBaseServerUrl(),
-            path = "/course-map",
-            eventName = raceEvent.value
+            eventName = raceEvent.value,
+            view = view
         )
+    }
+
+    private fun buildCourseMapMarks(
+        courseObj: JSONObject?,
+        courseShortened: Boolean
+    ): List<CourseMapMark> {
+        val marks = courseObj?.optJSONArray("marks") ?: return emptyList()
+        val result = mutableListOf<CourseMapMark>()
+
+        for (i in 0 until marks.length()) {
+            val mark = marks.optJSONObject(i) ?: continue
+            val order = if (mark.has("order") && !mark.isNull("order")) {
+                mark.optInt("order").takeIf { it > 0 }
+            } else {
+                null
+            }
+            val displayOrder = order ?: (i + 1)
+            val name = mark.optString("name", "Mark")
+            val skipped = courseShortened && mark.optBoolean("omit_when_shortened", false)
+
+            result.add(
+                CourseMapMark(
+                    order = order,
+                    label = "$displayOrder $name",
+                    skipped = skipped
+                )
+            )
+        }
+
+        return result
     }
 
     private fun buildCourseSummary(
