@@ -1,5 +1,6 @@
 package de.williserv.regattaclient
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -8,24 +9,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.foundation.clickable
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
-
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 @Composable
 fun CourseScreen(
@@ -40,7 +39,9 @@ fun CourseScreen(
     raceInfoText: String,
     raceShortenedText: String,
     currentTargetText: String,
+    courseMapMarks: List<CourseMapMark>,
     onSetCourseProgress: (Int, Boolean) -> Unit,
+    onOpenMapDetail: (CourseMapView) -> Unit,
     modifier: Modifier = Modifier,
     onBack: () -> Unit
 ) {
@@ -73,7 +74,9 @@ fun CourseScreen(
         CourseRouteCard(
             raceStartLineText = raceStartLineText,
             raceMarksText = raceMarksText,
-            raceFinishLineText = raceFinishLineText
+            raceFinishLineText = raceFinishLineText,
+            courseMapMarks = courseMapMarks,
+            onOpenMapDetail = onOpenMapDetail
         )
 
         Spacer(modifier = Modifier.height(14.dp))
@@ -376,7 +379,9 @@ fun CourseInfoCard(
 fun CourseRouteCard(
     raceStartLineText: String,
     raceMarksText: String,
-    raceFinishLineText: String
+    raceFinishLineText: String,
+    courseMapMarks: List<CourseMapMark>,
+    onOpenMapDetail: (CourseMapView) -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -388,20 +393,30 @@ fun CourseRouteCard(
         Column(
             modifier = Modifier.padding(18.dp)
         ) {
-            Text(
-                text = "Start line",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
-            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        onOpenMapDetail(CourseMapView.Start)
+                    }
+            ) {
+                Text(
+                    text = "Start line",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
 
-            Text(
-                text = raceStartLineText
-                    .replace("Start line:", "")
-                    .replace("Startlinie:", "")
-                    .trim(),
-                fontSize = 18.sp,
-                modifier = Modifier.padding(top = 4.dp)
-            )
+                Text(
+                    text = raceStartLineText
+                        .replace("Start line:", "")
+                        .replace("Startlinie:", "")
+                        .trim(),
+                    fontSize = 18.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -414,41 +429,84 @@ fun CourseRouteCard(
             Column(
                 modifier = Modifier.padding(top = 4.dp)
             ) {
-                courseMarkDisplayItems(raceMarksText).forEach { item ->
-                    Text(
-                        text = item.label,
-                        fontSize = 18.sp,
-                        color = if (item.skipped) {
-                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+                if (courseMapMarks.isNotEmpty()) {
+                    courseMapMarks.forEach { mark ->
+                        val markModifier = if (mark.clickable) {
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(top = 2.dp)
+                                .clickable {
+                                    onOpenMapDetail(CourseMapView.Mark(order = mark.order!!))
+                                }
                         } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                        textDecoration = if (item.skipped) {
-                            TextDecoration.LineThrough
-                        } else {
-                            TextDecoration.None
-                        },
-                        modifier = Modifier.padding(top = 2.dp)
-                    )
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(top = 2.dp)
+                        }
+
+                        Text(
+                            text = mark.label,
+                            fontSize = 18.sp,
+                            color = when {
+                                mark.skipped -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+                                mark.clickable -> MaterialTheme.colorScheme.primary
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            textDecoration = if (mark.skipped) {
+                                TextDecoration.LineThrough
+                            } else {
+                                TextDecoration.None
+                            },
+                            modifier = markModifier
+                        )
+                    }
+                } else {
+                    courseMarkDisplayItems(raceMarksText).forEach { item ->
+                        Text(
+                            text = item.label,
+                            fontSize = 18.sp,
+                            color = if (item.skipped) {
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            textDecoration = if (item.skipped) {
+                                TextDecoration.LineThrough
+                            } else {
+                                TextDecoration.None
+                            },
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Text(
-                text = "Finish line",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
-            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        onOpenMapDetail(CourseMapView.Finish)
+                    }
+            ) {
+                Text(
+                    text = "Finish line",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
 
-            Text(
-                text = raceFinishLineText
-                    .replace("Finish line:", "")
-                    .replace("Ziellinie:", "")
-                    .trim(),
-                fontSize = 18.sp,
-                modifier = Modifier.padding(top = 4.dp)
-            )
+                Text(
+                    text = raceFinishLineText
+                        .replace("Finish line:", "")
+                        .replace("Ziellinie:", "")
+                        .trim(),
+                    fontSize = 18.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
         }
     }
 }
@@ -480,7 +538,7 @@ fun CourseRaceInfoCard(
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onTertiaryContainer
-                )
+            )
 
             Text(
                 text = cleaned,
