@@ -5,8 +5,29 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+@RunWith(RobolectricTestRunner::class)
 class EventAccessImportTest {
+
+    @Test
+    fun parseEventAccessUrl_acceptsExactQrPayloadText() {
+        val payload = buildEventQrPayload(
+            server = "https://raceoffice.example.org/base",
+            event = "BCD Langstrecke ä",
+            secret = "abc+/=?"
+        )
+
+        assertEquals(
+            EventAccessCredentials(
+                server = "https://raceoffice.example.org/base",
+                event = "BCD Langstrecke ä",
+                secret = "abc+/=?"
+            ),
+            parseEventAccessUrl(payload)
+        )
+    }
 
     @Test
     fun parseEventAccessUrl_roundTripsExistingShareUrl() {
