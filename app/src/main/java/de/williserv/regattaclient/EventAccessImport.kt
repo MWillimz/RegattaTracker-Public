@@ -1,5 +1,6 @@
 package de.williserv.regattaclient
 
+import org.json.JSONObject
 import java.net.URI
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
@@ -19,6 +20,7 @@ internal fun parseEventAccessUrl(rawText: String): EventAccessCredentials? {
     val text = rawText.trim()
     if (text.isEmpty()) return null
 
+    parseEventQrPayload(text)?.let { return it }
     parseStandaloneEventAccessUrl(text)?.let { return it }
 
     val validEventLinks = HTTPS_URL_CANDIDATE
@@ -27,6 +29,27 @@ internal fun parseEventAccessUrl(rawText: String): EventAccessCredentials? {
         .toList()
 
     return validEventLinks.singleOrNull()
+}
+
+private fun parseEventQrPayload(text: String): EventAccessCredentials? {
+    if (!text.startsWith('{') || !text.endsWith('}')) return null
+
+    return try {
+        val payload = JSONObject(text)
+        val server = payload.optString("server").trim()
+        val event = payload.optString("event").trim()
+        val secret = payload.optString("secret").trim()
+
+        if (server.isBlank() || event.isBlank() || secret.isBlank()) return null
+
+        EventAccessCredentials(
+            server = server,
+            event = event,
+            secret = secret
+        )
+    } catch (_: Exception) {
+        null
+    }
 }
 
 private fun parseStandaloneEventAccessUrl(text: String): EventAccessCredentials? {
