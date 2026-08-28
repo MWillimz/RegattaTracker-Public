@@ -9,6 +9,24 @@ import org.junit.Test
 class EventAccessImportTest {
 
     @Test
+    fun parseEventAccessUrl_acceptsExactQrPayloadText() {
+        val payload = buildEventQrPayload(
+            server = "https://raceoffice.example.org/base",
+            event = "BCD Langstrecke ä",
+            secret = "abc+/=?"
+        )
+
+        assertEquals(
+            EventAccessCredentials(
+                server = "https://raceoffice.example.org/base",
+                event = "BCD Langstrecke ä",
+                secret = "abc+/=?"
+            ),
+            parseEventAccessUrl(payload)
+        )
+    }
+
+    @Test
     fun parseEventAccessUrl_roundTripsExistingShareUrl() {
         val url = buildEventAccessUrl(
             server = "https://raceoffice.example.org/base/",
