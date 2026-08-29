@@ -17,6 +17,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -193,6 +194,24 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 raceLegalAccepted.value
     }
 
+    private fun navigateBack() {
+        currentScreen.value = when (currentScreen.value) {
+            Screen.HOME -> Screen.HOME
+            Screen.BOAT_DATA,
+            Screen.RACE,
+            Screen.COURSE,
+            Screen.LEGAL,
+            Screen.RESULTS -> Screen.HOME
+            Screen.RACE_LEGAL,
+            Screen.QR_SCANNER -> Screen.RACE
+            Screen.MAP -> if (selectedCourseMapView.value == null) {
+                Screen.HOME
+            } else {
+                Screen.COURSE
+            }
+        }
+    }
+
     private val raceDataRefreshRunnable = object : Runnable {
         override fun run() {
             if (canEnterRaceNow() || inRace.value) {
@@ -244,6 +263,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
         setContent {
             RegattaClientTheme {
+                BackHandler(enabled = currentScreen.value != Screen.HOME) {
+                    navigateBack()
+                }
+
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     containerColor = MaterialTheme.colorScheme.background
@@ -350,9 +373,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             onAccept = {
                                 acceptRaceLegalAndLoadRaceData()
                             },
-                            onBack = {
-                                currentScreen.value = Screen.RACE
-                            }
+                            onBack = ::navigateBack
                         )
                         Screen.RESULTS -> ResultsScreen(
                             raceEvent = raceEvent.value,
@@ -364,9 +385,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             onRefresh = {
                                 fetchEventResults()
                             },
-                            onBack = {
-                                currentScreen.value = Screen.HOME
-                            }
+                            onBack = ::navigateBack
                         )
 
                         Screen.BOAT_DATA -> BoatDataScreen(
@@ -409,9 +428,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                     currentScreen.value = Screen.HOME
                                 }
                             },
-                            onBack = {
-                                currentScreen.value = Screen.HOME
-                            }
+                            onBack = ::navigateBack
                         )
 
                         Screen.RACE -> RaceScreen(
@@ -497,9 +514,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             onRegisterRace = {
                                 registerForRace()
                             },
-                            onBack = {
-                                currentScreen.value = Screen.HOME
-                            }
+                            onBack = ::navigateBack
                         )
 
                         Screen.COURSE -> CourseScreen(
@@ -526,9 +541,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                 currentScreen.value = Screen.MAP
                             },
                             modifier = Modifier.padding(innerPadding),
-                            onBack = {
-                                currentScreen.value = Screen.HOME
-                            }
+                            onBack = ::navigateBack
                         )
 
                         Screen.MAP -> {
@@ -543,13 +556,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                 } else {
                                     null
                                 },
-                                onBack = {
-                                    currentScreen.value = if (selectedMapView == null) {
-                                        Screen.HOME
-                                    } else {
-                                        Screen.COURSE
-                                    }
-                                }
+                                onBack = ::navigateBack
                             )
                         }
 
@@ -558,16 +565,12 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             onQrScanned = { raw ->
                                 handleRaceQrCode(raw)
                             },
-                            onBack = {
-                                currentScreen.value = Screen.RACE
-                            }
+                            onBack = ::navigateBack
                         )
 
                         Screen.LEGAL -> LegalScreen(
                             modifier = Modifier.padding(innerPadding),
-                            onBack = {
-                                currentScreen.value = Screen.HOME
-                            }
+                            onBack = ::navigateBack
                         )
                     }
                 }
