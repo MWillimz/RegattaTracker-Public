@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.ui.Alignment
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.res.stringResource
 
 data class CourseSummary(
     val courseText: String,
@@ -65,7 +66,7 @@ fun BoatDataScreen(
         OutlinedTextField(
             value = boatName,
             onValueChange = onBoatNameChange,
-            label = { Text("Boat name") },
+            label = { Text(stringResource(R.string.boat_name)) },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 16.dp)
@@ -74,7 +75,7 @@ fun BoatDataScreen(
         OutlinedTextField(
             value = skipperName,
             onValueChange = onSkipperNameChange,
-            label = { Text("Skipper") },
+            label = { Text(stringResource(R.string.skipper)) },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 8.dp)
@@ -83,7 +84,7 @@ fun BoatDataScreen(
         OutlinedTextField(
             value = hullColor,
             onValueChange = onHullColorChange,
-            label = { Text("Hull color") },
+            label = { Text(stringResource(R.string.hull_color)) },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 8.dp)
@@ -92,7 +93,7 @@ fun BoatDataScreen(
         OutlinedTextField(
             value = sailNumber,
             onValueChange = onSailNumberChange,
-            label = { Text("Sail number") },
+            label = { Text(stringResource(R.string.sail_number)) },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 8.dp)
@@ -101,7 +102,7 @@ fun BoatDataScreen(
         OutlinedTextField(
             value = yardstick,
             onValueChange = onYardstickChange,
-            label = { Text("Yardstick") },
+            label = { Text(stringResource(R.string.yardstick)) },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 8.dp)
@@ -109,7 +110,7 @@ fun BoatDataScreen(
         OutlinedTextField(
             value = boatType,
             onValueChange = onBoatTypeChange,
-            label = { Text("Boat type") },
+            label = { Text(stringResource(R.string.boat_type)) },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 8.dp)
@@ -123,9 +124,9 @@ fun BoatDataScreen(
                 .padding(top = 24.dp)
         ) {
             if (setupConfirmed) {
-                Text("Setup confirmed")
+                Text(stringResource(R.string.setup_confirmed))
             } else {
-                Text("Confirm Setup")
+                Text(stringResource(R.string.confirm_setup))
             }
         }
 
@@ -136,7 +137,7 @@ fun BoatDataScreen(
                 .fillMaxWidth()
                 .padding(top = 24.dp)
         ) {
-            Text("Back")
+            Text(stringResource(R.string.back))
         }
     }
 }
@@ -235,7 +236,7 @@ fun RaceScreen(
                     colors = primaryButtonColors(),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Back")
+                    Text(stringResource(R.string.back))
                 }
             }
 
@@ -249,7 +250,7 @@ fun RaceScreen(
                         .fillMaxWidth()
                         .height(58.dp)
                 ) {
-                    Text("Retire / Finish")
+                    Text(stringResource(R.string.retire_finish))
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -315,7 +316,7 @@ fun RaceScreen(
                         .padding(top = 10.dp)
                         .height(56.dp)
                 ) {
-                    Text("Enter Race")
+                    Text(stringResource(R.string.enter_race))
                 }
 
                 if (!canEnterRace) {
@@ -337,7 +338,7 @@ fun RaceScreen(
                         onClick = onRefreshRaceData,
                         modifier = Modifier.weight(0.5f)
                     ) {
-                        Text("Refresh")
+                        Text(stringResource(R.string.refresh))
                     }
 
                     Button(
@@ -347,7 +348,7 @@ fun RaceScreen(
                         ),
                         modifier = Modifier.weight(0.5f)
                     ) {
-                        Text("Clear Race")
+                        Text(stringResource(R.string.clear_race))
                     }
                 }
 
@@ -400,7 +401,7 @@ fun RaceScreen(
                 colors = primaryButtonColors(),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Back")
+                Text(stringResource(R.string.back))
             }
         }
     }
@@ -428,7 +429,7 @@ fun EventSummaryCard(
             modifier = Modifier.padding(18.dp)
         ) {
             Text(
-                text = "Event: $raceEvent",
+                text = stringResource(R.string.event_value, raceEvent),
                 fontSize = 22.sp,
                 fontWeight = FontWeight.SemiBold
             )
