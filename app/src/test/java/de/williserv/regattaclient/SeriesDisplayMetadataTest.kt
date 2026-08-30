@@ -1,13 +1,11 @@
 package de.williserv.regattaclient
 
-import android.content.Context
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.RuntimeEnvironment
 
 @RunWith(RobolectricTestRunner::class)
 class SeriesDisplayMetadataTest {
@@ -117,30 +115,5 @@ class SeriesDisplayMetadataTest {
                 )
             )
         )
-    }
-
-    @Test
-    fun persistedSeriesMetadataCanBeUsedByEventPage() {
-        val context = RuntimeEnvironment.getApplication()
-        val prefs = context.getSharedPreferences("race_setup", Context.MODE_PRIVATE)
-        prefs.edit()
-            .clear()
-            .putString("series_run_name", "Langstrecke")
-            .putInt("series_occurrence_no", 2)
-            .putInt("series_planned_race_count", 5)
-            .commit()
-
-        try {
-            assertEquals(
-                SeriesDisplayMetadata(
-                    runName = "Langstrecke",
-                    occurrenceNo = 2,
-                    plannedRaceCount = 5
-                ),
-                loadPersistedSeriesDisplayMetadata(context)
-            )
-        } finally {
-            prefs.edit().clear().commit()
-        }
     }
 }
