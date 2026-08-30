@@ -1,7 +1,6 @@
 package de.williserv.regattaclient
 
 import android.content.Context
-import android.app.Application
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -122,7 +121,7 @@ class SeriesDisplayMetadataTest {
 
     @Test
     fun persistedSeriesMetadataCanBeUsedByEventPage() {
-        val context = RuntimeEnvironment.getApplication<Application>()
+        val context = RuntimeEnvironment.getApplication()
         val prefs = context.getSharedPreferences("race_setup", Context.MODE_PRIVATE)
         prefs.edit()
             .clear()
