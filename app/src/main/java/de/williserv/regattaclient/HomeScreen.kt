@@ -42,6 +42,7 @@ import de.williserv.regattaclient.ui.theme.RegattaRed
 import androidx.compose.foundation.Image
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.delay
 
 private val HomeGapSmall = 14.dp
@@ -231,7 +232,7 @@ fun HomeScreen(
                 ),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Results")
+                Text(stringResource(R.string.results))
             }
         } else {
             RacecourseRow(
@@ -287,9 +288,9 @@ fun HomeScreen(
                 modifier = Modifier.weight(0.35f)
             ){
                 if (showAdvanced) {
-                    Text("Hide")
+                    Text(stringResource(R.string.hide))
                 } else {
-                    Text("Advanced")
+                    Text(stringResource(R.string.advanced))
                 }
             }
 
@@ -298,7 +299,7 @@ fun HomeScreen(
                 colors = primaryButtonColors(),
                 modifier = Modifier.weight(0.65f)
             ) {
-                Text("Legal / About")
+                Text(stringResource(R.string.legal_about))
             }
         }
     }
@@ -306,19 +307,19 @@ fun HomeScreen(
         AlertDialog(
             onDismissRequest = onCancelClearOldData,
             title = {
-                Text("Delete old data?")
+                Text(stringResource(R.string.delete_old_data_title))
             },
             text = {
-                Text("All stored tracking data on this device will be deleted. This cannot be undone.")
+                Text(stringResource(R.string.delete_old_data_message))
             },
             confirmButton = {
                 TextButton(onClick = onConfirmClearOldData) {
-                    Text("Delete")
+                    Text(stringResource(R.string.delete))
                 }
             },
             dismissButton = {
                 TextButton(onClick = onCancelClearOldData) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -459,7 +460,7 @@ fun CourseShortenedPanel() {
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = "COURSE SHORTENED",
+                text = stringResource(R.string.course_shortened_banner),
                 color = MaterialTheme.colorScheme.onTertiary,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold
@@ -742,7 +743,7 @@ fun RacecourseRow(
             colors = primaryButtonColors(),
             modifier = Modifier.weight(0.5f)
         ) {
-            Text("Course")
+            Text(stringResource(R.string.course))
         }
 
         Button(
@@ -751,7 +752,7 @@ fun RacecourseRow(
             colors = primaryButtonColors(),
             modifier = Modifier.weight(0.5f)
         ) {
-            Text("Map")
+            Text(stringResource(R.string.map))
         }
     }
 }
@@ -823,9 +824,9 @@ fun AdvancedDebugBlock(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (manualTracking) {
-                    Text("Stop Manual Tracking")
+                    Text(stringResource(R.string.stop_manual_tracking))
                 } else {
-                    Text("Start Manual Tracking")
+                    Text(stringResource(R.string.start_manual_tracking))
                 }
             }
 
@@ -854,7 +855,7 @@ fun AdvancedDebugBlock(
                     colors = primaryButtonColors(),
                     modifier = Modifier.weight(0.5f)
                 ) {
-                    Text("Export")
+                    Text(stringResource(R.string.export))
                 }
 
                 Button(
@@ -865,7 +866,7 @@ fun AdvancedDebugBlock(
                     ),
                     modifier = Modifier.weight(0.5f)
                 ) {
-                    Text("Clear")
+                    Text(stringResource(R.string.clear))
                 }
             }
 
