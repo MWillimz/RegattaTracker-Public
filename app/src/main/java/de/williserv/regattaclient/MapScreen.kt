@@ -29,6 +29,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
@@ -75,7 +76,7 @@ fun MapScreen(
         if (result.bitmap != null) {
             bitmapState.value = result.bitmap
         } else {
-            errorState.value = result.error ?: "Map could not be loaded"
+            errorState.value = result.error ?: stringResource(R.string.map_could_not_be_loaded)
         }
 
         loadingState.value = false
@@ -175,7 +176,7 @@ fun MapScreen(
                 .fillMaxWidth()
                 .padding(top = 16.dp)
         ) {
-            Text("Back")
+            Text(stringResource(R.string.back))
         }
     }
 }
