@@ -454,7 +454,17 @@ fun EventSummaryCard(
             Text(
                 text = stringResource(
                     R.string.status_value,
-                    raceStatusText.removePrefix(stringResource(R.string.race_prefix)).trim()
+                    localizedRaceStatusCode(
+                        raceStatusText = raceStatusText,
+                        racePrefix = stringResource(R.string.race_prefix),
+                        loadedText = stringResource(R.string.status_loaded),
+                        plannedText = stringResource(R.string.status_planned),
+                        racingText = stringResource(R.string.status_racing),
+                        startedText = stringResource(R.string.status_started),
+                        finishedText = stringResource(R.string.status_finished),
+                        postponedText = stringResource(R.string.status_postponed),
+                        cancelledText = stringResource(R.string.status_cancelled)
+                    )
                 ),
                 fontSize = 18.sp,
                 modifier = Modifier.padding(top = 8.dp)
