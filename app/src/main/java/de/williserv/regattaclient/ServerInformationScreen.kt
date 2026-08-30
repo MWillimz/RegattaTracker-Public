@@ -288,8 +288,8 @@ private fun ServerLegalDocumentView(
         Text(
             text = document?.title
                 ?.takeIf { it.isNotBlank() }
-                ?.let { "Server $it" }
-                ?: kind.fallbackTitle,
+                ?.let { stringResource(R.string.server_document_title, it) }
+                ?: stringResource(kind.fallbackTitleRes),
             fontSize = 26.sp,
             fontWeight = FontWeight.Bold
         )
