@@ -217,6 +217,18 @@
     <string name="finished">FINISHED</string>
     <string name="postponed">POSTPONED</string>
 
+    <string name="csv_preview_not_live">CSV preview is no longer updated live by the service.</string>
+    <string name="race_cannot_clear_while_running">Race: cannot clear setup while in race</string>
+    <string name="clear_race_load_first">Race: load valid race data first</string>
+    <string name="loading_race_legal">Loading race legal text…</string>
+    <string name="race_notice_accepting">Accepting race notice…</string>
+    <string name="service_race_continues">Service: race continues</string>
+    <string name="start_prefix">Start:</string>
+    <string name="last_error_value">Last error: %1$s</string>
+    <string name="distance_value">Distance: %1$s</string>
+    <string name="ttl_value">TTL: %1$s</string>
+    <string name="ocs_value">OCS: %1$s</string>
+
     <!-- Dialogs -->
     <string name="ocs_detected">OCS detected</string>
     <string name="ocs_detected_message">The boat appears to be over the start line early.\n\nReturn across the start line, or ignore this warning and continue the course?</string>
