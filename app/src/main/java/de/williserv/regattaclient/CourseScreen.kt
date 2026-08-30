@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
 
 @Composable
 fun CourseScreen(
@@ -99,7 +100,7 @@ fun CourseScreen(
             onClick = onBack,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Back")
+            Text(stringResource(R.string.back))
         }
 
     }
@@ -123,7 +124,7 @@ fun CourseScreen(
                 pendingCourseOverride.value = null
             },
             title = {
-                Text("Override course?")
+                Text(stringResource(R.string.override_course_title))
             },
             text = {
                 Text(
@@ -148,7 +149,7 @@ fun CourseScreen(
                         )
                     }
                 ) {
-                    Text("Confirm Override")
+                    Text(stringResource(R.string.confirm_override))
                 }
             },
             dismissButton = {
@@ -157,7 +158,7 @@ fun CourseScreen(
                         pendingCourseOverride.value = null
                     }
                 ) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -217,7 +218,7 @@ fun CourseTargetDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text("Set next target")
+            Text(stringResource(R.string.set_next_target))
         },
         text = {
             Column {
@@ -244,7 +245,7 @@ fun CourseTargetDialog(
         confirmButton = {},
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text(stringResource(R.string.cancel))
             }
         }
     )
@@ -282,7 +283,7 @@ fun courseProgressOptions(
             add(
                 CourseProgressOption(
                     label = if (mark.skipped) {
-                        "${mark.label} — skipped"
+                        stringResource(R.string.mark_skipped, mark.label)
                     } else {
                         mark.label
                     },
@@ -324,7 +325,7 @@ fun CourseInfoCard(
             modifier = Modifier.padding(18.dp)
         ) {
             Text(
-                text = "Event: $raceEvent",
+                text = stringResource(R.string.event_value, raceEvent),
                 fontSize = 22.sp,
                 fontWeight = FontWeight.SemiBold
             )
