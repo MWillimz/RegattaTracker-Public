@@ -25,6 +25,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -112,6 +113,7 @@ fun HomeScreen(
     seriesDisplayMetadata: SeriesDisplayMetadata = SeriesDisplayMetadata()
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val workerUploadStatus = produceState(initialValue = "", context) {
         val prefs = context.getSharedPreferences("regatta_local_status", Context.MODE_PRIVATE)
         while (true) {
@@ -130,10 +132,10 @@ fun HomeScreen(
         pendingStatusText = uploadStatusText,
         workerStatus = localizedWorkerStatus,
         uploadWorkerPending = { worker, pending ->
-            context.getString(R.string.upload_worker_pending, worker, pending)
+            resources.getString(R.string.upload_worker_pending, worker, pending)
         },
         uploadWorker = { worker ->
-            context.getString(R.string.upload_worker, worker)
+            resources.getString(R.string.upload_worker, worker)
         }
     )
 
@@ -237,7 +239,7 @@ fun HomeScreen(
                 uploadStatusText = uploadStatusText,
                 inRace = inRace,
                 raceStatusText = raceStatusText,
-                pendingText = { pending -> context.getString(R.string.pending_value, pending) },
+                pendingText = { pending -> resources.getString(R.string.pending_value, pending) },
                 blockedText = stringResource(R.string.status_blocked),
                 offText = stringResource(R.string.status_off),
                 waitingText = stringResource(R.string.status_waiting),
@@ -518,7 +520,7 @@ fun TargetCard(
     distancePrefix: String,
     dtlPrefix: String
 ) {
-    val context = LocalContext.current
+    val resources = LocalResources.current
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -544,7 +546,7 @@ fun TargetCard(
                     distancePrefix = distancePrefix,
                     dtlPrefix = dtlPrefix,
                     unknownText = stringResource(R.string.distance_display_unknown),
-                    valueText = { value -> context.getString(R.string.distance_display_value, value) }
+                    valueText = { value -> resources.getString(R.string.distance_display_value, value) }
                 ),
                 fontSize = 38.sp,
                 fontWeight = FontWeight.Bold
