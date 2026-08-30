@@ -47,6 +47,7 @@ fun EventAccessActions(
     }
 
     val context = LocalContext.current
+    val shareEventChooserTitle = stringResource(R.string.share_event)
     val eventPayload = remember(server, event, secret) {
         buildEventQrPayload(server, event, secret)
     }
@@ -61,7 +62,7 @@ fun EventAccessActions(
                     type = "text/plain"
                     putExtra(Intent.EXTRA_TEXT, eventPayload)
                 }
-                context.startActivity(Intent.createChooser(shareIntent, context.getString(R.string.share_event)))
+                context.startActivity(Intent.createChooser(shareIntent, shareEventChooserTitle))
             },
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.primary,
