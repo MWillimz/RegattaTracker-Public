@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.res.stringResource
 
 @Composable
 fun RaceLegalScreen(
@@ -43,7 +44,7 @@ fun RaceLegalScreen(
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = if (raceEvent.isBlank()) "Event: --" else "Event: $raceEvent",
+            text = if (raceEvent.isBlank()) stringResource(R.string.event_unknown) else stringResource(R.string.event_value, raceEvent),
             fontSize = 18.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -79,7 +80,7 @@ fun RaceLegalScreen(
             enabled = legalText.isNotBlank(),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("I accept")
+            Text(stringResource(R.string.i_accept))
         }
 
         Button(
@@ -88,7 +89,7 @@ fun RaceLegalScreen(
                 .fillMaxWidth()
                 .padding(top = 10.dp)
         ) {
-            Text("Back")
+            Text(stringResource(R.string.back))
         }
     }
 }
