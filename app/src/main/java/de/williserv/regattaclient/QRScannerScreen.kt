@@ -77,7 +77,7 @@ fun QrScannerScreen(
             )
         } else {
             Text(
-                text = "Camera permission missing",
+                text = stringResource(R.string.camera_permission_missing),
                 modifier = Modifier.padding(24.dp)
             )
         }
