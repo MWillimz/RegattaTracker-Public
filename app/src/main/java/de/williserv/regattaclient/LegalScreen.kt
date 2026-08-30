@@ -59,7 +59,7 @@ fun LegalScreen(
             .verticalScroll(rememberScrollState())
     ) {
         Text(
-            text = "Settings / About / Legal",
+            text = stringResource(R.string.settings_about_legal),
             fontSize = 26.sp,
             fontWeight = FontWeight.Bold
         )
@@ -67,7 +67,7 @@ fun LegalScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         LegalCard(
-            title = "Legal Notice",
+            title = stringResource(R.string.legal_notice),
             body = """
                 Provider:
                 Max Willimzik
@@ -83,7 +83,7 @@ fun LegalScreen(
         Spacer(modifier = Modifier.height(14.dp))
 
         LegalCard(
-            title = "Privacy Policy",
+            title = stringResource(R.string.privacy_policy),
             body = """
                 This app processes location data, boat data, and technical sensor data to provide regatta tracking.
 
@@ -127,7 +127,7 @@ fun LegalScreen(
         Spacer(modifier = Modifier.height(14.dp))
 
         LegalCard(
-            title = "Regatta Server",
+            title = stringResource(R.string.regatta_server),
             body = """
                 The Regatta Server configured for an event is operated separately from this app.
 
@@ -138,7 +138,7 @@ fun LegalScreen(
         Spacer(modifier = Modifier.height(14.dp))
 
         LegalCard(
-            title = "License Notices",
+            title = stringResource(R.string.license_notices),
             body = """
                 Regatta Tracker source code:
                 GNU General Public License v3.0 or later.
@@ -166,7 +166,7 @@ fun LegalScreen(
         Spacer(modifier = Modifier.height(14.dp))
 
         LegalCard(
-            title = "App",
+            title = stringResource(R.string.app),
             body = stringResource(R.string.build_value, BuildConfig.APP_VERSION_NAME)
         )
 
