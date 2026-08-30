@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
 
 @Composable
 fun LegalScreen(
@@ -48,7 +49,7 @@ fun LegalScreen(
                 append(apacheLicense.trim())
             }
         }.getOrElse {
-            "Third-party license text is unavailable."
+            stringResource(R.string.third_party_license_unavailable)
         }
     }
 
@@ -159,14 +160,14 @@ fun LegalScreen(
             onClick = { showThirdPartyLicenses.value = true },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Third-party licenses")
+            Text(stringResource(R.string.third_party_licenses))
         }
 
         Spacer(modifier = Modifier.height(14.dp))
 
         LegalCard(
             title = "App",
-            body = "Build: ${BuildConfig.APP_VERSION_NAME}"
+            body = stringResource(R.string.build_value, BuildConfig.APP_VERSION_NAME)
         )
 
         Spacer(modifier = Modifier.height(20.dp))
@@ -175,7 +176,7 @@ fun LegalScreen(
             onClick = onBack,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Back")
+            Text(stringResource(R.string.back))
         }
     }
 
@@ -183,7 +184,7 @@ fun LegalScreen(
         AlertDialog(
             onDismissRequest = { showThirdPartyLicenses.value = false },
             title = {
-                Text("Third-party licenses")
+                Text(stringResource(R.string.third_party_licenses))
             },
             text = {
                 Column(
@@ -200,7 +201,7 @@ fun LegalScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showThirdPartyLicenses.value = false }) {
-                    Text("Close")
+                    Text(stringResource(R.string.close))
                 }
             }
         )
