@@ -1,5 +1,6 @@
 package de.williserv.regattaclient
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
@@ -26,6 +27,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -44,6 +46,7 @@ fun MapScreen(
     fallbackMapImageUrl: String? = null,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     val bitmapState = remember { mutableStateOf<Bitmap?>(null) }
     val errorState = remember { mutableStateOf<String?>(null) }
     val loadingState = remember { mutableStateOf(true) }
@@ -56,6 +59,7 @@ fun MapScreen(
         bitmapState.value = null
 
         val primaryResult = loadMapBitmap(
+            context = context,
             mapImageUrl = mapImageUrl,
             apiVersion = apiVersion,
             sharedSecret = sharedSecret
@@ -67,6 +71,7 @@ fun MapScreen(
             fallbackMapImageUrl != mapImageUrl
         ) {
             loadMapBitmap(
+                context = context,
                 mapImageUrl = fallbackMapImageUrl,
                 apiVersion = apiVersion,
                 sharedSecret = sharedSecret
@@ -90,7 +95,7 @@ fun MapScreen(
             .fillMaxSize()
     ) {
         Text(
-            text = "Map",
+            text = stringResource(R.string.map),
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold
         )
@@ -119,7 +124,7 @@ fun MapScreen(
 
                         Image(
                             bitmap = bitmap.asImageBitmap(),
-                            contentDescription = "Course map",
+                            contentDescription = stringResource(R.string.course_map),
                             modifier = Modifier
                                 .fillMaxSize()
                                 .pointerInput(Unit) {
@@ -146,7 +151,7 @@ fun MapScreen(
 
                     loadingState.value -> {
                         Text(
-                            text = "Loading map...",
+                            text = stringResource(R.string.loading_map),
                             fontSize = 18.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -163,7 +168,7 @@ fun MapScreen(
 
                     else -> {
                         Text(
-                            text = "Map unavailable",
+                            text = stringResource(R.string.map_unavailable),
                             fontSize = 18.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -190,6 +195,7 @@ private data class MapLoadResult(
 )
 
 private suspend fun loadMapBitmap(
+    context: Context,
     mapImageUrl: String,
     apiVersion: String,
     sharedSecret: String
@@ -216,7 +222,7 @@ private suspend fun loadMapBitmap(
 
                 return@withContext MapLoadResult(
                     bitmap = null,
-                    error = "Map error $responseCode: ${errorBody.take(160)}",
+                    error = context.getString(R.string.map_error_code, responseCode, errorBody.take(160)),
                     statusCode = responseCode
                 )
             }
@@ -228,7 +234,7 @@ private suspend fun loadMapBitmap(
             if (bitmap == null) {
                 MapLoadResult(
                     bitmap = null,
-                    error = "Map response is not a valid PNG",
+                    error = context.getString(R.string.map_invalid_png),
                     statusCode = responseCode
                 )
             } else {
@@ -241,7 +247,7 @@ private suspend fun loadMapBitmap(
         } catch (e: Exception) {
             MapLoadResult(
                 bitmap = null,
-                error = "Map load failed: ${e.message}",
+                error = context.getString(R.string.map_load_failed, e.message ?: ""),
                 statusCode = null
             )
         } finally {
