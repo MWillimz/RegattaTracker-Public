@@ -223,7 +223,14 @@ fun HomeScreen(
                 racePrefix = racePrefix,
                 startPrefix = startPrefix,
                 activeText = stringResource(R.string.status_active),
-                notActiveText = stringResource(R.string.status_not_active)
+                notActiveText = stringResource(R.string.status_not_active),
+                loadedText = stringResource(R.string.status_loaded),
+                plannedText = stringResource(R.string.status_planned),
+                racingText = stringResource(R.string.status_racing),
+                startedText = stringResource(R.string.status_started),
+                finishedText = stringResource(R.string.status_finished),
+                postponedText = stringResource(R.string.status_postponed),
+                cancelledText = stringResource(R.string.status_cancelled)
             ),
             raceColor = raceColor,
             uploadStatusText = shortUploadStatus(
@@ -1033,7 +1040,7 @@ fun shortUploadStatus(
             raceStatusText.contains("not loaded", ignoreCase = true) -> offText
             raceStatusText.contains("planned", ignoreCase = true) -> waitingText
             raceStatusText.contains("racing", ignoreCase = true) -> readyText
-            raceStatusText.contains("started", ignoreCase = true) -> "ready"
+            raceStatusText.contains("started", ignoreCase = true) -> readyText
             else -> idleText
         }
     }
@@ -1058,6 +1065,33 @@ fun raceStatusColor(
     }
 }
 
+fun localizedRaceStatusCode(
+    raceStatusText: String,
+    racePrefix: String = "Race:",
+    loadedText: String = "loaded",
+    plannedText: String = "planned",
+    racingText: String = "racing",
+    startedText: String = "started",
+    finishedText: String = "finished",
+    postponedText: String = "postponed",
+    cancelledText: String = "cancelled"
+): String {
+    val cleaned = raceStatusText
+        .removePrefix(racePrefix)
+        .trim()
+
+    return when {
+        cleaned.equals("loaded", ignoreCase = true) -> loadedText
+        cleaned.equals("planned", ignoreCase = true) -> plannedText
+        cleaned.equals("racing", ignoreCase = true) -> racingText
+        cleaned.equals("started", ignoreCase = true) -> startedText
+        cleaned.equals("finished", ignoreCase = true) -> finishedText
+        cleaned.equals("postponed", ignoreCase = true) -> postponedText
+        cleaned.equals("cancelled", ignoreCase = true) -> cancelledText
+        else -> cleaned
+    }
+}
+
 fun shortRaceStatusText(
     raceStatusText: String,
     raceStartText: String,
@@ -1065,22 +1099,29 @@ fun shortRaceStatusText(
     racePrefix: String = "Race:",
     startPrefix: String = "Start:",
     activeText: String = "active",
-    notActiveText: String = "not active"
+    notActiveText: String = "not active",
+    loadedText: String = "loaded",
+    plannedText: String = "planned",
+    racingText: String = "racing",
+    startedText: String = "started",
+    finishedText: String = "finished",
+    postponedText: String = "postponed",
+    cancelledText: String = "cancelled"
 ): String {
     val cleaned = raceStatusText
         .removePrefix(racePrefix)
         .trim()
 
-    if (cleaned.contains("finished", ignoreCase = true)) {
-        return "finished"
+    if (cleaned.equals("finished", ignoreCase = true)) {
+        return finishedText
     }
 
-    if (cleaned.contains("postponed", ignoreCase = true)) {
-        return "postponed"
+    if (cleaned.equals("postponed", ignoreCase = true)) {
+        return postponedText
     }
 
-    if (cleaned.contains("cancelled", ignoreCase = true)) {
-        return "cancelled"
+    if (cleaned.equals("cancelled", ignoreCase = true)) {
+        return cancelledText
     }
 
     if (inRace) {
@@ -1094,8 +1135,18 @@ fun shortRaceStatusText(
     }
 
     return when {
-        cleaned.isNotBlank() && cleaned != "not loaded" -> cleaned
-        else -> notActiveText
+        cleaned.isBlank() || cleaned.equals("not loaded", ignoreCase = true) -> notActiveText
+        else -> localizedRaceStatusCode(
+            raceStatusText = raceStatusText,
+            racePrefix = racePrefix,
+            loadedText = loadedText,
+            plannedText = plannedText,
+            racingText = racingText,
+            startedText = startedText,
+            finishedText = finishedText,
+            postponedText = postponedText,
+            cancelledText = cancelledText
+        )
     }
 }
 
