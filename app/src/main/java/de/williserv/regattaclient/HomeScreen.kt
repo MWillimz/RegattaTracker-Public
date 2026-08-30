@@ -504,6 +504,8 @@ fun TargetCard(
     distancePrefix: String,
     dtlPrefix: String
 ) {
+    val context = LocalContext.current
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
@@ -528,7 +530,7 @@ fun TargetCard(
                     distancePrefix = distancePrefix,
                     dtlPrefix = dtlPrefix,
                     unknownText = stringResource(R.string.distance_display_unknown),
-                    valueText = { value -> LocalContext.current.getString(R.string.distance_display_value, value) }
+                    valueText = { value -> context.getString(R.string.distance_display_value, value) }
                 ),
                 fontSize = 38.sp,
                 fontWeight = FontWeight.Bold
