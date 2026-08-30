@@ -313,6 +313,8 @@
     <string name="zxing_copyright" translatable="false">Copyright ZXing authors</string>
     <string name="apache_license_name" translatable="false">Apache License 2.0</string>
 
+    <string name="progress_direct_value">Progress: %1$.0f%%</string>
+
     <!-- Dialogs -->
     <string name="ocs_detected">OCS detected</string>
     <string name="ocs_detected_message">The boat appears to be over the start line early.\n\nReturn across the start line, or ignore this warning and continue the course?</string>
