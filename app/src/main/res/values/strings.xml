@@ -293,6 +293,15 @@
     <string name="event_access_qr_code">Event access QR code</string>
     <string name="qr_generation_failed">QR code could not be generated.</string>
 
+    <string name="status_temporary_error">temporary error</string>
+    <string name="status_all_sent">all sent</string>
+    <string name="upload_error_code">Upload error %1$d: %2$s</string>
+    <string name="upload_exception">Upload exception: %1$s</string>
+    <string name="storage_error_access_context">Storage error: event access context is incomplete</string>
+    <string name="server_impressum">Server Impressum</string>
+    <string name="server_datenschutz">Server Datenschutz</string>
+    <string name="server_document_title">Server %1$s</string>
+
     <!-- Dialogs -->
     <string name="ocs_detected">OCS detected</string>
     <string name="ocs_detected_message">The boat appears to be over the start line early.\n\nReturn across the start line, or ignore this warning and continue the course?</string>
