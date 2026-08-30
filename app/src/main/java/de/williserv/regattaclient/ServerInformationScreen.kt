@@ -138,7 +138,7 @@ private fun ServerInformationScreen(
             .verticalScroll(rememberScrollState())
     ) {
         Text(
-            text = "Server information",
+            text = stringResource(R.string.server_information),
             fontSize = 26.sp,
             fontWeight = FontWeight.Bold
         )
@@ -178,7 +178,7 @@ private fun ServerInformationScreen(
                 shareText(
                     context = context,
                     text = eventPayload,
-                    chooserTitle = "Share Event"
+                    chooserTitle = stringResource(R.string.share_event)
                 )
             },
             onVisitEventPage = {
@@ -194,7 +194,7 @@ private fun ServerInformationScreen(
                 shareText(
                     context = context,
                     text = eventPageUrl,
-                    chooserTitle = "Share Event Page"
+                    chooserTitle = stringResource(R.string.share_event_page)
                 )
             }
         )
@@ -210,7 +210,7 @@ private fun ServerInformationScreen(
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
                 Text(
-                    text = "Server Legal",
+                    text = stringResource(R.string.server_legal),
                     fontSize = 22.sp,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -351,7 +351,7 @@ private fun ConnectedServerCard(
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
             Text(
-                text = "Connected Regatta Server",
+                text = stringResource(R.string.connected_regatta_server),
                 fontSize = 22.sp,
                 fontWeight = FontWeight.SemiBold
             )
@@ -359,7 +359,7 @@ private fun ConnectedServerCard(
             metadata?.operator?.let { operator ->
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = "Operator",
+                    text = stringResource(R.string.operator),
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -374,7 +374,7 @@ private fun ConnectedServerCard(
             metadata?.publicUrl?.let { publicUrl ->
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = "Website",
+                    text = stringResource(R.string.website),
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -395,7 +395,7 @@ private fun ConnectedServerCard(
             metadata?.contactEmail?.let { contactEmail ->
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = "Contact",
+                    text = stringResource(R.string.contact),
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -415,7 +415,7 @@ private fun ConnectedServerCard(
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "Event access",
+                text = stringResource(R.string.event_access),
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
