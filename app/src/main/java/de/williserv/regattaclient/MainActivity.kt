@@ -84,17 +84,17 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private val currentScreen = mutableStateOf(Screen.HOME)
 
-    private val boatName = mutableStateOf("Boat name")
-    private val skipperName = mutableStateOf("Max Mustermann")
-    private val hullColor = mutableStateOf("white")
-    private val sailNumber = mutableStateOf("GER 1234")
-    private val yardstick = mutableStateOf("100")
+    private val boatName = mutableStateOf("")
+    private val skipperName = mutableStateOf("")
+    private val hullColor = mutableStateOf("")
+    private val sailNumber = mutableStateOf("")
+    private val yardstick = mutableStateOf("")
 
     private val boatPrefsName = "boat_setup"
 
     private val racePrefsName = "race_setup"
 
-    private val boatType = mutableStateOf("Shark 24")
+    private val boatType = mutableStateOf("")
     private val setupConfirmed = mutableStateOf(false)
 
     private val raceServer = mutableStateOf("")
@@ -250,6 +250,12 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
 
     private fun initializeLocalizedUiText() {
+        boatName.value = getString(R.string.default_boat_name)
+        skipperName.value = getString(R.string.default_skipper_name)
+        hullColor.value = getString(R.string.default_hull_color)
+        sailNumber.value = getString(R.string.default_sail_number)
+        yardstick.value = getString(R.string.default_yardstick)
+        boatType.value = getString(R.string.default_boat_type)
         raceStatusText.value = getString(R.string.race_not_loaded)
         raceStartText.value = getString(R.string.start_unknown)
         raceStopText.value = getString(R.string.stop_unknown)
@@ -784,11 +790,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
 
         currentRaceStatus = raceStatusText.value
-            .replace("Race:", "")
+            .removePrefix(getString(R.string.race_prefix))
             .trim()
 
         raceStartEpochMillis = parseServerTimeToMillis(
-            raceStartText.value.replace("Start:", "").trim()
+            raceStartText.value.removePrefix(getString(R.string.start_prefix)).trim()
         )
     }
 
