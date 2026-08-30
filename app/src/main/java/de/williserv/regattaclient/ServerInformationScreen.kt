@@ -1,5 +1,6 @@
 package de.williserv.regattaclient
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
@@ -104,6 +105,12 @@ private fun ServerInformationScreen(
     }
 
     val context = LocalContext.current
+    val eventPayload = remember(server, event, secret) {
+        buildEventQrPayload(server, event, secret)
+    }
+    val eventPageUrl = remember(server, event, secret) {
+        buildEventAccessUrl(server, event, secret)
+    }
     var serverMetadata by remember(server, event, secret) {
         mutableStateOf<ServerMetadata?>(null)
     }
@@ -142,39 +149,54 @@ private fun ServerInformationScreen(
             modifier = Modifier.padding(top = 4.dp)
         )
 
-        serverMetadata?.let { metadata ->
-            Spacer(modifier = Modifier.height(16.dp))
-            ConnectedServerCard(
-                metadata = metadata,
-                onOpenUrl = { url ->
-                    if (isHttpOrHttpsUrl(url)) {
-                        runCatching {
-                            context.startActivity(
-                                Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                            )
-                        }
-                    }
-                },
-                onContactEmail = { email ->
+        Spacer(modifier = Modifier.height(16.dp))
+
+        ConnectedServerCard(
+            metadata = serverMetadata,
+            metadataLoaded = metadataLoaded,
+            onOpenUrl = { url ->
+                if (isHttpOrHttpsUrl(url)) {
                     runCatching {
                         context.startActivity(
-                            Intent(
-                                Intent.ACTION_SENDTO,
-                                Uri.fromParts("mailto", email.trim(), null)
-                            )
+                            Intent(Intent.ACTION_VIEW, Uri.parse(url))
                         )
                     }
                 }
-            )
-        }
-
-        if (metadataLoaded && serverMetadata == null) {
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "Server operator information is unavailable.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
+            },
+            onContactEmail = { email ->
+                runCatching {
+                    context.startActivity(
+                        Intent(
+                            Intent.ACTION_SENDTO,
+                            Uri.fromParts("mailto", email.trim(), null)
+                        )
+                    )
+                }
+            },
+            onShareEvent = {
+                shareText(
+                    context = context,
+                    text = eventPayload,
+                    chooserTitle = "Share Event"
+                )
+            },
+            onVisitEventPage = {
+                if (isHttpOrHttpsUrl(eventPageUrl)) {
+                    runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse(eventPageUrl))
+                        )
+                    }
+                }
+            },
+            onShareEventPage = {
+                shareText(
+                    context = context,
+                    text = eventPageUrl,
+                    chooserTitle = "Share Event Page"
+                )
+            }
+        )
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -311,9 +333,13 @@ private fun ServerLegalDocumentView(
 
 @Composable
 private fun ConnectedServerCard(
-    metadata: ServerMetadata,
+    metadata: ServerMetadata?,
+    metadataLoaded: Boolean,
     onOpenUrl: (String) -> Unit,
-    onContactEmail: (String) -> Unit
+    onContactEmail: (String) -> Unit,
+    onShareEvent: () -> Unit,
+    onVisitEventPage: () -> Unit,
+    onShareEventPage: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -329,7 +355,7 @@ private fun ConnectedServerCard(
                 fontWeight = FontWeight.SemiBold
             )
 
-            metadata.operator?.let { operator ->
+            metadata?.operator?.let { operator ->
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
                     text = "Operator",
@@ -344,7 +370,7 @@ private fun ConnectedServerCard(
                 )
             }
 
-            metadata.publicUrl?.let { publicUrl ->
+            metadata?.publicUrl?.let { publicUrl ->
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
                     text = "Website",
@@ -365,7 +391,7 @@ private fun ConnectedServerCard(
                 }
             }
 
-            metadata.contactEmail?.let { contactEmail ->
+            metadata?.contactEmail?.let { contactEmail ->
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
                     text = "Contact",
@@ -376,6 +402,69 @@ private fun ConnectedServerCard(
                     Text(contactEmail)
                 }
             }
+
+            if (metadataLoaded && metadata == null) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = "Server operator information is unavailable.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "Event access",
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Button(
+                onClick = onShareEvent,
+                colors = primaryButtonColors(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+            ) {
+                Text("Share Event")
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = onVisitEventPage,
+                    colors = primaryButtonColors(),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Visit Event Page")
+                }
+
+                Button(
+                    onClick = onShareEventPage,
+                    colors = primaryButtonColors(),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Share Event Page")
+                }
+            }
         }
+    }
+}
+
+private fun shareText(
+    context: Context,
+    text: String,
+    chooserTitle: String
+) {
+    runCatching {
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        context.startActivity(Intent.createChooser(shareIntent, chooserTitle))
     }
 }
