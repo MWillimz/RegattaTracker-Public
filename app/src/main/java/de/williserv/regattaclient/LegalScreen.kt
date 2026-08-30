@@ -34,7 +34,9 @@ fun LegalScreen(
     val context = LocalContext.current
     val showThirdPartyLicenses = remember { mutableStateOf(false) }
 
-    val thirdPartyLicenseText = remember(context) {
+    val thirdPartyLicenseUnavailable = stringResource(R.string.third_party_license_unavailable)
+
+    val thirdPartyLicenseText = remember(context, thirdPartyLicenseUnavailable) {
         runCatching {
             val apacheLicense = context.assets
                 .open("licenses/zxing-core-apache-2.0.txt")
@@ -49,7 +51,7 @@ fun LegalScreen(
                 append(apacheLicense.trim())
             }
         }.getOrElse {
-            stringResource(R.string.third_party_license_unavailable)
+            thirdPartyLicenseUnavailable
         }
     }
 
