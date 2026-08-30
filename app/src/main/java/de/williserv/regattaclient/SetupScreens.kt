@@ -445,7 +445,10 @@ fun EventSummaryCard(
             }
 
             Text(
-                text = raceStatusText.replace("Race:", "Status:"),
+                text = stringResource(
+                    R.string.status_value,
+                    raceStatusText.removePrefix(stringResource(R.string.race_prefix)).trim()
+                ),
                 fontSize = 18.sp,
                 modifier = Modifier.padding(top = 8.dp)
             )
@@ -463,22 +466,17 @@ fun EventSummaryCard(
             )
 
             Text(
-                text = raceShortenedText
-                    .replace("Bahnverkürzung:", "Course shortened:")
-                    .replace("JA", "YES")
-                    .replace("nein", "no"),
+                text = raceShortenedText,
                 fontSize = 18.sp,
                 fontWeight = if (
-                    raceShortenedText.contains("JA", ignoreCase = true) ||
-                    raceShortenedText.contains("YES", ignoreCase = true)
+                    raceShortenedText == stringResource(R.string.course_shortened_yes)
                 ) {
                     FontWeight.Bold
                 } else {
                     FontWeight.Normal
                 },
                 color = if (
-                    raceShortenedText.contains("JA", ignoreCase = true) ||
-                    raceShortenedText.contains("YES", ignoreCase = true)
+                    raceShortenedText == stringResource(R.string.course_shortened_yes)
                 ) {
                     MaterialTheme.colorScheme.error
                 } else {
