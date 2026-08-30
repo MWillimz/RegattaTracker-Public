@@ -2354,7 +2354,7 @@ fun LeaveRaceWarningDialog(
         },
         dismissButton = {
             TextButton(onClick = onCancel) {
-                Text("Cancel")
+                Text(stringResource(R.string.cancel))
             }
         }
     )
@@ -2388,7 +2388,7 @@ fun BoatConfirmDialog(
         },
         dismissButton = {
             TextButton(onClick = onCancel) {
-                Text("Cancel")
+                Text(stringResource(R.string.cancel))
             }
         }
     )
@@ -2416,7 +2416,7 @@ fun ClearRaceSetupDialog(
         },
         dismissButton = {
             TextButton(onClick = onCancel) {
-                Text("Cancel")
+                Text(stringResource(R.string.cancel))
             }
         }
     )
