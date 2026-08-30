@@ -307,14 +307,18 @@ class TelemetryUploadWorker(
                     ?: ""
 
                 publishDebugError(
-                    "Upload error $responseCode: ${errorBody.take(200)}"
+                    applicationContext.getString(
+                        R.string.upload_error_code,
+                        responseCode,
+                        errorBody.take(200)
+                    )
                 )
             }
 
             connection.disconnect()
             result
         } catch (e: Exception) {
-            publishDebugError("Upload exception: ${e.message}")
+            publishDebugError(applicationContext.getString(R.string.upload_exception, e.message ?: ""))
             TelemetryUploadAttemptResult.TEMPORARY_FAILURE
         }
     }
