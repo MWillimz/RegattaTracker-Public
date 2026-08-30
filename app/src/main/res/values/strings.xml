@@ -288,6 +288,11 @@
 
     <string name="override_course_confirmation">Override current target to:\n\n%1$s\n\nOnly use this if the displayed course progress is wrong.\n\nBe prepared to discuss telemetry with Event Management.</string>
 
+    <string name="show_qr_code">Show QR Code</string>
+    <string name="event_qr_code">Event QR Code</string>
+    <string name="event_access_qr_code">Event access QR code</string>
+    <string name="qr_generation_failed">QR code could not be generated.</string>
+
     <!-- Dialogs -->
     <string name="ocs_detected">OCS detected</string>
     <string name="ocs_detected_message">The boat appears to be over the start line early.\n\nReturn across the start line, or ignore this warning and continue the course?</string>
