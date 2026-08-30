@@ -128,15 +128,10 @@ fun CourseScreen(
             },
             text = {
                 Text(
-                    text = """
-                    Override current target to:
-                    
-                    ${pending.confirmLabel}
-
-                    Only use this if the displayed course progress is wrong.
-
-                    Be prepared to discuss telemetry with Event Management.
-                """.trimIndent()
+                    text = stringResource(
+                        R.string.override_course_confirmation,
+                        pending.confirmLabel
+                    )
                 )
             },
             confirmButton = {
@@ -171,7 +166,7 @@ fun CourseTargetCard(
     onClick: () -> Unit
 ) {
     val cleaned = currentTargetText
-        .replace("Next:", "")
+        .removePrefix(stringResource(R.string.next_prefix))
         .trim()
         .ifBlank { "--" }
 
@@ -213,7 +208,7 @@ fun CourseTargetDialog(
     onDismiss: () -> Unit,
     onSelectOption: (CourseProgressOption) -> Unit
 ) {
-    val options = courseProgressOptions(raceMarksText)
+    val options = courseProgressOptions(raceMarksText, stringResource(R.string.marks_prefix))
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -261,9 +256,10 @@ data class CourseProgressOption(
 
 @Composable
 fun courseProgressOptions(
-    raceMarksText: String
+    raceMarksText: String,
+    marksPrefix: String = "Marks:"
 ): List<CourseProgressOption> {
-    val marks = courseMarkDisplayItems(raceMarksText)
+    val marks = courseMarkDisplayItems(raceMarksText, marksPrefix)
         .filter { it.label.isNotBlank() && it.label != "--" }
 
     val activeMarks = marks.filterNot { it.skipped }
@@ -332,40 +328,38 @@ fun CourseInfoCard(
             )
 
             Text(
-                text = raceStatusText.replace("Race:", "Status:"),
+                text = stringResource(
+                    R.string.status_value,
+                    raceStatusText.removePrefix(stringResource(R.string.race_prefix)).trim()
+                ),
                 fontSize = 18.sp,
                 modifier = Modifier.padding(top = 8.dp)
             )
 
             Text(
-                text = raceStartText.replace("Start:", "Start:"),
+                text = raceStartText,
                 fontSize = 18.sp,
                 modifier = Modifier.padding(top = 4.dp)
             )
 
             Text(
-                text = raceStopText.replace("Stop:", "Stop:"),
+                text = raceStopText,
                 fontSize = 18.sp,
                 modifier = Modifier.padding(top = 4.dp)
             )
 
             Text(
-                text = raceShortenedText
-                    .replace("Bahnverkürzung:", "Course shortened:")
-                    .replace("JA", "YES")
-                    .replace("nein", "no"),
+                text = raceShortenedText,
                 fontSize = 18.sp,
                 fontWeight = if (
-                    raceShortenedText.contains("JA", ignoreCase = true) ||
-                    raceShortenedText.contains("YES", ignoreCase = true)
+                    raceShortenedText == stringResource(R.string.course_shortened_yes)
                 ) {
                     FontWeight.Bold
                 } else {
                     FontWeight.Normal
                 },
                 color = if (
-                    raceShortenedText.contains("JA", ignoreCase = true) ||
-                    raceShortenedText.contains("YES", ignoreCase = true)
+                    raceShortenedText == stringResource(R.string.course_shortened_yes)
                 ) {
                     MaterialTheme.colorScheme.error
                 } else {
@@ -411,8 +405,7 @@ fun CourseRouteCard(
 
                 Text(
                     text = raceStartLineText
-                        .replace("Start line:", "")
-                        .replace("Startlinie:", "")
+                        .removePrefix(stringResource(R.string.start_line_prefix))
                         .trim(),
                     fontSize = 18.sp,
                     color = MaterialTheme.colorScheme.primary,
@@ -463,7 +456,7 @@ fun CourseRouteCard(
                         )
                     }
                 } else {
-                    courseMarkDisplayItems(raceMarksText).forEach { item ->
+                    courseMarkDisplayItems(raceMarksText, stringResource(R.string.marks_prefix)).forEach { item ->
                         Text(
                             text = item.label,
                             fontSize = 18.sp,
@@ -501,8 +494,7 @@ fun CourseRouteCard(
 
                 Text(
                     text = raceFinishLineText
-                        .replace("Finish line:", "")
-                        .replace("Ziellinie:", "")
+                        .removePrefix(stringResource(R.string.finish_line_prefix))
                         .trim(),
                     fontSize = 18.sp,
                     color = MaterialTheme.colorScheme.primary,
@@ -518,7 +510,7 @@ fun CourseRaceInfoCard(
     raceInfoText: String
 ) {
     val cleaned = raceInfoText
-        .replace("Info:", "")
+        .removePrefix(stringResource(R.string.info_prefix))
         .trim()
 
     if (cleaned.isBlank() || cleaned == "--") {
@@ -558,11 +550,11 @@ data class CourseMarkDisplayItem(
 )
 
 fun courseMarkDisplayItems(
-    raceMarksText: String
+    raceMarksText: String,
+    marksPrefix: String = "Marks:"
 ): List<CourseMarkDisplayItem> {
     val cleaned = raceMarksText
-        .replace("Marks:", "")
-        .replace("Marken:", "")
+        .removePrefix(marksPrefix)
         .trim()
 
     if (cleaned.isBlank() || cleaned == "--") {
@@ -592,11 +584,11 @@ fun courseMarkDisplayItems(
 }
 
 fun formatMarksForDisplay(
-    raceMarksText: String
+    raceMarksText: String,
+    marksPrefix: String = "Marks:"
 ): String {
     val cleaned = raceMarksText
-        .replace("Marks:", "")
-        .replace("Marken:", "")
+        .removePrefix(marksPrefix)
         .trim()
 
     if (cleaned.isBlank() || cleaned == "--") {
