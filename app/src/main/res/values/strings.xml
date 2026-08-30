@@ -281,6 +281,11 @@
     <string name="distance_display_value">Distance %1$s</string>
     <string name="ocs_countdown">OCS: %1$s</string>
 
+    <string name="status_value">Status: %1$s</string>
+    <string name="map_error_code">Map error %1$d: %2$s</string>
+    <string name="map_invalid_png">Map response is not a valid PNG</string>
+    <string name="map_load_failed">Map load failed: %1$s</string>
+
     <!-- Dialogs -->
     <string name="ocs_detected">OCS detected</string>
     <string name="ocs_detected_message">The boat appears to be over the start line early.\n\nReturn across the start line, or ignore this warning and continue the course?</string>
