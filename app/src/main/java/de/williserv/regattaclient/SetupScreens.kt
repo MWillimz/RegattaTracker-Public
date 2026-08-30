@@ -416,7 +416,12 @@ fun EventSummaryCard(
     raceShortenedText: String,
     seriesDisplayMetadata: SeriesDisplayMetadata = SeriesDisplayMetadata()
 ) {
-    val seriesLine = buildEventSummarySeriesLine(seriesDisplayMetadata)
+    val seriesLine = buildEventSummarySeriesLine(
+        seriesDisplayMetadata = seriesDisplayMetadata,
+        orderFormatter = { occurrence, planned ->
+            stringResource(R.string.series_order, occurrence, planned)
+        }
+    )
 
     Card(
         modifier = Modifier.fillMaxWidth(),
