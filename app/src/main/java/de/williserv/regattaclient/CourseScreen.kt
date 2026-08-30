@@ -55,7 +55,7 @@ fun CourseScreen(
             .verticalScroll(rememberScrollState())
     ) {
         Text(
-            text = "Course",
+            text = stringResource(R.string.course),
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold
         )
@@ -190,7 +190,7 @@ fun CourseTargetCard(
             modifier = Modifier.padding(18.dp)
         ) {
             Text(
-                text = "Next",
+                text = stringResource(R.string.next),
                 fontSize = 18.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onPrimary
@@ -270,8 +270,8 @@ fun courseProgressOptions(
     return buildList {
         add(
             CourseProgressOption(
-                label = "Restart at start line",
-                confirmLabel = "Start line",
+                label = stringResource(R.string.restart_at_start_line),
+                confirmLabel = stringResource(R.string.start_line),
                 passedMarks = 0,
                 raceStarted = false
             )
@@ -297,8 +297,8 @@ fun courseProgressOptions(
 
         add(
             CourseProgressOption(
-                label = "Finish line",
-                confirmLabel = "Finish line",
+                label = stringResource(R.string.finish_line),
+                confirmLabel = stringResource(R.string.finish_line),
                 passedMarks = activeMarks.size,
                 raceStarted = true
             )
@@ -402,7 +402,7 @@ fun CourseRouteCard(
                     }
             ) {
                 Text(
-                    text = "Start line",
+                    text = stringResource(R.string.start_line),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
@@ -422,7 +422,7 @@ fun CourseRouteCard(
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "Marks",
+                text = stringResource(R.string.marks),
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -492,7 +492,7 @@ fun CourseRouteCard(
                     }
             ) {
                 Text(
-                    text = "Finish line",
+                    text = stringResource(R.string.finish_line),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
@@ -535,7 +535,7 @@ fun CourseRaceInfoCard(
             modifier = Modifier.padding(18.dp)
         ) {
             Text(
-                text = "Race Info",
+                text = stringResource(R.string.race_info),
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onTertiaryContainer
