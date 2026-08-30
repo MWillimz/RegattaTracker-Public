@@ -454,6 +454,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             canRegisterRace = setupConfirmed.value && raceDataReady.value && !inRace.value,
                             registerRaceStatusText = registerRaceStatusText.value,
                             raceShortenedText = raceShortenedText.value,
+                            seriesDisplayMetadata = raceSeriesDisplayMetadata.value,
                             modifier = Modifier.padding(innerPadding),
                             onRaceServerChange = {
                                 raceServer.value = it

@@ -23,6 +23,7 @@ class SeriesDisplayMetadataTest {
                 seriesDisplayMetadata = parsed
             )
         )
+        assertEquals("", buildEventSummarySeriesLine(parsed))
     }
 
     @Test
@@ -44,8 +45,9 @@ class SeriesDisplayMetadataTest {
             raceDataReady = true,
             seriesDisplayMetadata = parsed
         )
-        assertEquals(listOf("Elbe Cup", "Langstrecke", "2 of 5"), header)
-        assertFalse(header.joinToString(" ").contains("Lauf", ignoreCase = true))
+        assertEquals(listOf("Elbe Cup"), header)
+        assertEquals("Langstrecke · 2 of 5", buildEventSummarySeriesLine(parsed))
+        assertFalse(buildEventSummarySeriesLine(parsed).contains("Lauf", ignoreCase = true))
     }
 
     @Test
@@ -56,6 +58,7 @@ class SeriesDisplayMetadataTest {
         )
 
         assertEquals(serverRunName, parsed.runName)
+        assertEquals(serverRunName, buildEventSummarySeriesLine(parsed))
     }
 
     @Test
@@ -68,13 +71,14 @@ class SeriesDisplayMetadataTest {
 
         assertEquals("", parsed.runName)
         assertEquals(
-            listOf("Elbe Cup", "2 of 5"),
+            listOf("Elbe Cup"),
             buildEventHeaderLines(
                 raceEvent = "Elbe Cup",
                 raceDataReady = true,
                 seriesDisplayMetadata = parsed
             )
         )
+        assertEquals("2 of 5", buildEventSummarySeriesLine(parsed))
     }
 
     @Test
@@ -87,13 +91,14 @@ class SeriesDisplayMetadataTest {
 
         assertEquals("", parsed.orderText())
         assertEquals(
-            listOf("Elbe Cup", "Langstrecke"),
+            listOf("Elbe Cup"),
             buildEventHeaderLines(
                 raceEvent = "Elbe Cup",
                 raceDataReady = true,
                 seriesDisplayMetadata = parsed
             )
         )
+        assertEquals("Langstrecke", buildEventSummarySeriesLine(parsed))
     }
 
     @Test
