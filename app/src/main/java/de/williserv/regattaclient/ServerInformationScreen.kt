@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -57,7 +58,7 @@ fun ServerInformationEntry(
         colors = primaryButtonColors(),
         modifier = modifier.fillMaxWidth()
     ) {
-        Text("Server information")
+        Text(stringResource(R.string.server_information))
     }
 
     if (showServerInformation) {
@@ -225,7 +226,7 @@ private fun ServerInformationScreen(
                         colors = primaryButtonColors(),
                         modifier = Modifier.weight(0.5f)
                     ) {
-                        Text("Impressum")
+                        Text(stringResource(R.string.impressum))
                     }
 
                     Button(
@@ -233,7 +234,7 @@ private fun ServerInformationScreen(
                         colors = primaryButtonColors(),
                         modifier = Modifier.weight(0.5f)
                     ) {
-                        Text("Datenschutz")
+                        Text(stringResource(R.string.datenschutz))
                     }
                 }
             }
@@ -245,7 +246,7 @@ private fun ServerInformationScreen(
             onClick = onClose,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Back")
+            Text(stringResource(R.string.back))
         }
     }
 }
@@ -307,14 +308,14 @@ private fun ServerLegalDocumentView(
 
             loaded -> {
                 Text(
-                    text = "Server legal information is unavailable.",
+                    text = stringResource(R.string.server_legal_unavailable),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
             else -> {
                 Text(
-                    text = "Loading server legal information…",
+                    text = stringResource(R.string.loading_server_legal),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -326,7 +327,7 @@ private fun ServerLegalDocumentView(
             onClick = onBack,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Back")
+            Text(stringResource(R.string.back))
         }
     }
 }
@@ -406,7 +407,7 @@ private fun ConnectedServerCard(
             if (metadataLoaded && metadata == null) {
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = "Server operator information is unavailable.",
+                    text = stringResource(R.string.server_operator_unavailable),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -426,7 +427,7 @@ private fun ConnectedServerCard(
                     .fillMaxWidth()
                     .padding(top = 8.dp)
             ) {
-                Text("Share Event")
+                Text(stringResource(R.string.share_event))
             }
 
             Row(
@@ -440,7 +441,7 @@ private fun ConnectedServerCard(
                     colors = primaryButtonColors(),
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text("Visit Event Page")
+                    Text(stringResource(R.string.visit_event_page))
                 }
 
                 Button(
@@ -448,7 +449,7 @@ private fun ConnectedServerCard(
                     colors = primaryButtonColors(),
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text("Share Event Page")
+                    Text(stringResource(R.string.share_event_page))
                 }
             }
         }
