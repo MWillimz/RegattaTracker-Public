@@ -253,6 +253,34 @@
     <string name="notification_waiting">Waiting · %1$s · %2$s · %3$s · pending: %4$d</string>
     <string name="clear_status">clear</string>
 
+    <string name="status_prefix">Status:</string>
+    <string name="race_prefix">Race:</string>
+    <string name="info_prefix">Info:</string>
+    <string name="upload_prefix">Upload:</string>
+    <string name="gps_prefix">GPS:</string>
+    <string name="cog_prefix">COG:</string>
+    <string name="sog_prefix">SOG:</string>
+    <string name="distance_prefix">Distance:</string>
+    <string name="dtl_prefix">DTL:</string>
+    <string name="course_shortened_prefix">Course shortened:</string>
+    <string name="start_line_prefix">Start line:</string>
+    <string name="finish_line_prefix">Finish line:</string>
+    <string name="marks_prefix">Marks:</string>
+    <string name="next_prefix">Next:</string>
+    <string name="pending_value">%1$d pending</string>
+    <string name="upload_worker_pending">Upload: %1$s · %2$d pending</string>
+    <string name="upload_worker">Upload: %1$s</string>
+    <string name="status_blocked">blocked</string>
+    <string name="status_off">off</string>
+    <string name="status_waiting">waiting</string>
+    <string name="status_ready">ready</string>
+    <string name="status_idle">idle</string>
+    <string name="status_active">active</string>
+    <string name="status_not_active">not active</string>
+    <string name="distance_display_unknown">Distance --</string>
+    <string name="distance_display_value">Distance %1$s</string>
+    <string name="ocs_countdown">OCS: %1$s</string>
+
     <!-- Dialogs -->
     <string name="ocs_detected">OCS detected</string>
     <string name="ocs_detected_message">The boat appears to be over the start line early.\n\nReturn across the start line, or ignore this warning and continue the course?</string>
