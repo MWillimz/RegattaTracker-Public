@@ -259,6 +259,7 @@ data class CourseProgressOption(
     val enabled: Boolean = true
 )
 
+@Composable
 fun courseProgressOptions(
     raceMarksText: String
 ): List<CourseProgressOption> {
