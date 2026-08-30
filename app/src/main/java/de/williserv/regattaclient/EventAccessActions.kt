@@ -46,7 +46,6 @@ fun EventAccessActions(
     }
 
     val context = LocalContext.current
-    var showQrCode by remember { mutableStateOf(false) }
     val eventPayload = remember(server, event, secret) {
         buildEventQrPayload(server, event, secret)
     }
@@ -72,16 +71,40 @@ fun EventAccessActions(
             Text("Share Event")
         }
 
-        Button(
-            onClick = { showQrCode = true },
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            ),
+        EventQrButton(
+            server = server,
+            event = event,
+            secret = secret,
             modifier = Modifier.weight(1f)
-        ) {
-            Text("Show QR Code")
-        }
+        )
+    }
+}
+
+@Composable
+fun EventQrButton(
+    server: String,
+    event: String,
+    secret: String,
+    modifier: Modifier = Modifier
+) {
+    if (server.isBlank() || event.isBlank() || secret.isBlank()) {
+        return
+    }
+
+    var showQrCode by remember { mutableStateOf(false) }
+    val eventPayload = remember(server, event, secret) {
+        buildEventQrPayload(server, event, secret)
+    }
+
+    Button(
+        onClick = { showQrCode = true },
+        colors = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary
+        ),
+        modifier = modifier
+    ) {
+        Text("Show QR Code")
     }
 
     if (showQrCode) {
