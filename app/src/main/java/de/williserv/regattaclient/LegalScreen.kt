@@ -35,8 +35,17 @@ fun LegalScreen(
     val showThirdPartyLicenses = remember { mutableStateOf(false) }
 
     val thirdPartyLicenseUnavailable = stringResource(R.string.third_party_license_unavailable)
+    val zxingLicenseName = stringResource(R.string.zxing_license_name)
+    val zxingCopyright = stringResource(R.string.zxing_copyright)
+    val apacheLicenseName = stringResource(R.string.apache_license_name)
 
-    val thirdPartyLicenseText = remember(context, thirdPartyLicenseUnavailable) {
+    val thirdPartyLicenseText = remember(
+        context,
+        thirdPartyLicenseUnavailable,
+        zxingLicenseName,
+        zxingCopyright,
+        apacheLicenseName
+    ) {
         runCatching {
             val apacheLicense = context.assets
                 .open("licenses/zxing-core-apache-2.0.txt")
@@ -44,9 +53,9 @@ fun LegalScreen(
                 .use { it.readText() }
 
             buildString {
-                appendLine("ZXing Core 3.5.4")
-                appendLine("Copyright ZXing authors")
-                appendLine("Apache License 2.0")
+                appendLine(zxingLicenseName)
+                appendLine(zxingCopyright)
+                appendLine(apacheLicenseName)
                 appendLine()
                 append(apacheLicense.trim())
             }
