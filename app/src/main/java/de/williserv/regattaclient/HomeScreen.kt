@@ -121,7 +121,13 @@ fun HomeScreen(
     }.value
     val advancedUploadStatusText = mergeTelemetryUploadStatusText(
         pendingStatusText = uploadStatusText,
-        workerStatus = workerUploadStatus
+        workerStatus = workerUploadStatus,
+        uploadWorkerPending = { worker, pending ->
+            stringResource(R.string.upload_worker_pending, worker, pending)
+        },
+        uploadWorker = { worker ->
+            stringResource(R.string.upload_worker, worker)
+        }
     )
 
     val uploadColor = uploadStatusColor(
@@ -131,14 +137,20 @@ fun HomeScreen(
     )
 
     val showCourseShortened =
-        raceShortenedText.contains("YES", ignoreCase = true) &&
+        raceShortenedText == stringResource(R.string.course_shortened_yes) &&
                 !raceStatusText.contains("finished", ignoreCase = true) &&
                 !raceStatusText.contains("cancelled", ignoreCase = true)
 
     val raceColor = raceStatusColor(raceStatusText, inRace)
-    val gpsStatus = gpsStatusLabel(gpsAccuracyText)
+    val gpsPrefix = stringResource(R.string.gps_prefix)
+    val racePrefix = stringResource(R.string.race_prefix)
+    val startPrefix = stringResource(R.string.start_prefix)
+    val infoPrefix = stringResource(R.string.info_prefix)
+    val distancePrefix = stringResource(R.string.distance_prefix)
+    val dtlPrefix = stringResource(R.string.dtl_prefix)
+    val gpsStatus = gpsStatusLabel(gpsAccuracyText, gpsPrefix)
     val hasRaceInfo = raceInfoText
-        .replace("Info:", "")
+        .removePrefix(infoPrefix)
         .trim()
         .let { it.isNotBlank() && it != "--" }
 
@@ -177,14 +189,17 @@ fun HomeScreen(
             TargetCard(
                 currentTargetText = currentTargetText,
                 progressText = progressText,
-                distanceText = dtlText
+                distanceText = dtlText,
+                distancePrefix = distancePrefix,
+                dtlPrefix = dtlPrefix
             )
 
             if (hasRaceInfo) {
                 Spacer(modifier = Modifier.height(HomeGapMedium))
 
                 RaceInfoCard(
-                    raceInfoText = raceInfoText
+                    raceInfoText = raceInfoText,
+                    infoPrefix = infoPrefix
                 )
             }
 
@@ -193,17 +208,27 @@ fun HomeScreen(
 
         StatusOverviewCard(
             gpsStatus = gpsStatus,
-            gpsColor = gpsStatusColor(gpsAccuracyText),
+            gpsColor = gpsStatusColor(gpsAccuracyText, gpsPrefix),
             raceStatusText = shortRaceStatusText(
                 raceStatusText = raceStatusText,
                 raceStartText = raceStartText,
-                inRace = inRace
+                inRace = inRace,
+                racePrefix = racePrefix,
+                startPrefix = startPrefix,
+                activeText = stringResource(R.string.status_active),
+                notActiveText = stringResource(R.string.status_not_active)
             ),
             raceColor = raceColor,
             uploadStatusText = shortUploadStatus(
                 uploadStatusText = uploadStatusText,
                 inRace = inRace,
-                raceStatusText = raceStatusText
+                raceStatusText = raceStatusText,
+                pendingText = { pending -> stringResource(R.string.pending_value, pending) },
+                blockedText = stringResource(R.string.status_blocked),
+                offText = stringResource(R.string.status_off),
+                waitingText = stringResource(R.string.status_waiting),
+                readyText = stringResource(R.string.status_ready),
+                idleText = stringResource(R.string.status_idle)
             ),
             uploadColor = uploadColor
         )
@@ -245,7 +270,7 @@ fun HomeScreen(
         Spacer(modifier = Modifier.height(HomeGapLarge))
 
         Text(
-            text = "Setup",
+            text = stringResource(R.string.setup),
             fontSize = 22.sp,
             fontWeight = FontWeight.SemiBold
         )
@@ -328,7 +353,9 @@ fun HomeScreen(
 
 internal fun mergeTelemetryUploadStatusText(
     pendingStatusText: String,
-    workerStatus: String
+    workerStatus: String,
+    uploadWorkerPending: (String, Int) -> String = { worker, pending -> "Upload: $worker · $pending pending" },
+    uploadWorker: (String) -> String = { worker -> "Upload: $worker" }
 ): String {
     if (workerStatus.isBlank()) return pendingStatusText
 
@@ -337,9 +364,9 @@ internal fun mergeTelemetryUploadStatusText(
         .toIntOrNull() ?: 0
 
     return if (pending > 0) {
-        "Upload: $workerStatus · $pending pending"
+        uploadWorkerPending(workerStatus, pending)
     } else {
-        "Upload: $workerStatus"
+        uploadWorker(workerStatus)
     }
 }
 
@@ -405,18 +432,18 @@ fun HeaderPanel(
 
     val text = when (startPanelMode) {
         "ocs" -> {
-            if (startPanelText.startsWith("START IN", ignoreCase = true)) {
-                "OCS: ${startPanelText.removePrefix("START IN").trim()}"
+            if (startPanelText != stringResource(R.string.ocs)) {
+                stringResource(R.string.ocs_countdown, startPanelText.substringAfter(" ", startPanelText))
             } else {
-                "OCS"
+                stringResource(R.string.ocs)
             }
         }
 
-        "postponed" -> "POSTPONED"
+        "postponed" -> stringResource(R.string.postponed)
         "countdown" -> startPanelText
         "started" -> startPanelText
-        "finished" -> "FINISHED"
-        else -> "Regatta Tracker"
+        "finished" -> stringResource(R.string.finished)
+        else -> stringResource(R.string.app_name)
     }
 
     Card(
@@ -473,7 +500,9 @@ fun CourseShortenedPanel() {
 fun TargetCard(
     currentTargetText: String,
     progressText: String,
-    distanceText: String
+    distanceText: String,
+    distancePrefix: String,
+    dtlPrefix: String
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -486,7 +515,7 @@ fun TargetCard(
             modifier = Modifier.padding(18.dp)
         ) {
             Text(
-                text = currentTargetText.replace("Nächstes Ziel:", "Next:"),
+                text = currentTargetText,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.SemiBold
             )
@@ -494,7 +523,13 @@ fun TargetCard(
             Spacer(modifier = Modifier.height(HomeGapMedium))
 
             Text(
-                text = displayDistanceText(distanceText),
+                text = displayDistanceText(
+                    distanceText = distanceText,
+                    distancePrefix = distancePrefix,
+                    dtlPrefix = dtlPrefix,
+                    unknownText = stringResource(R.string.distance_display_unknown),
+                    valueText = { value -> stringResource(R.string.distance_display_value, value) }
+                ),
                 fontSize = 38.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -511,10 +546,11 @@ fun TargetCard(
 
 @Composable
 fun RaceInfoCard(
-    raceInfoText: String
+    raceInfoText: String,
+    infoPrefix: String
 ) {
     val cleaned = raceInfoText
-        .replace("Info:", "")
+        .removePrefix(infoPrefix)
         .trim()
 
     if (cleaned.isBlank() || cleaned == "--") {
@@ -532,7 +568,7 @@ fun RaceInfoCard(
             modifier = Modifier.padding(18.dp)
         ) {
             Text(
-                text = "Info",
+                text = stringResource(R.string.info),
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onTertiaryContainer
@@ -568,7 +604,7 @@ fun StatusOverviewCard(
             modifier = Modifier.padding(18.dp)
         ) {
             StatusRow(
-                label = "GPS",
+                label = stringResource(R.string.gps),
                 value = gpsStatus,
                 color = gpsColor
             )
@@ -576,7 +612,7 @@ fun StatusOverviewCard(
             Spacer(modifier = Modifier.height(HomeGapMedium))
 
             StatusRow(
-                label = "Race",
+                label = stringResource(R.string.race),
                 value = raceStatusText,
                 color = raceColor
             )
@@ -584,7 +620,7 @@ fun StatusOverviewCard(
             Spacer(modifier = Modifier.height(HomeGapSmall))
 
             StatusRow(
-                label = "Upload",
+                label = stringResource(R.string.upload),
                 value = uploadStatusText,
                 color = uploadColor
             )
@@ -670,7 +706,7 @@ fun FlagSlot(
             when (flag) {
                 is VisibleRaceFlag.ClassFlag -> {
                     Text(
-                        text = flag.label.ifBlank { "Class" },
+                        text = flag.label.ifBlank { stringResource(R.string.class_label) },
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -707,7 +743,7 @@ fun ActionRow(
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         SmallActionButton(
-            text = "Boat",
+            text = stringResource(R.string.boat),
             isOk = setupConfirmed,
             enabled = !inRace,
             modifier = Modifier.weight(
@@ -717,7 +753,7 @@ fun ActionRow(
         )
 
         SmallActionButton(
-            text = "Event",
+            text = stringResource(R.string.event),
             isOk = inRace || raceFinished,
             modifier = Modifier.weight(
                 if (setupConfirmed) 0.65f else 0.35f
@@ -812,7 +848,7 @@ fun AdvancedDebugBlock(
             modifier = Modifier.padding(18.dp)
         ) {
             Text(
-                text = "Advanced",
+                text = stringResource(R.string.advanced),
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -832,17 +868,17 @@ fun AdvancedDebugBlock(
 
             Spacer(modifier = Modifier.height(HomeGapLarge))
 
-            AdvancedSectionTitle("GPS")
+            AdvancedSectionTitle(stringResource(R.string.gps))
             DebugLine("COG", cogText.replace("COG:", "").trim())
             DebugLine("SOG", sogText.replace("SOG:", "").trim())
-            DebugLine("Accuracy", gpsAccuracyText.replace("GPS:", "").trim())
+            DebugLine(stringResource(R.string.accuracy), gpsAccuracyText.removePrefix(stringResource(R.string.gps_prefix)).trim())
 
             Spacer(modifier = Modifier.height(HomeGapLarge))
 
-            AdvancedSectionTitle("Upload")
-            DebugLine("Pending", uploadStatusText.replace("Upload:", "").trim())
-            DebugLine("Stored rows", rowCountText)
-            DebugLine("Last error", debugErrorText.replace("Letzter Fehler:", "").trim())
+            AdvancedSectionTitle(stringResource(R.string.upload))
+            DebugLine(stringResource(R.string.pending), uploadStatusText.removePrefix(stringResource(R.string.upload_prefix)).trim())
+            DebugLine(stringResource(R.string.stored_rows), rowCountText)
+            DebugLine(stringResource(R.string.last_error), debugErrorText.substringAfter(": ", debugErrorText))
 
             Spacer(modifier = Modifier.height(HomeGapLarge))
 
@@ -901,10 +937,11 @@ fun DebugLine(
 }
 
 fun gpsStatusLabel(
-    gpsAccuracyText: String
+    gpsAccuracyText: String,
+    gpsPrefix: String = "GPS:"
 ): String {
     val value = gpsAccuracyText
-        .replace("GPS:", "")
+        .removePrefix(gpsPrefix)
         .replace("m", "")
         .trim()
         .toDoubleOrNull()
@@ -918,10 +955,11 @@ fun gpsStatusLabel(
 }
 
 fun gpsStatusColor(
-    gpsAccuracyText: String
+    gpsAccuracyText: String,
+    gpsPrefix: String = "GPS:"
 ): Color {
     val value = gpsAccuracyText
-        .replace("GPS:", "")
+        .removePrefix(gpsPrefix)
         .replace("m", "")
         .trim()
         .toDoubleOrNull()
@@ -964,7 +1002,13 @@ fun uploadStatusColor(
 fun shortUploadStatus(
     uploadStatusText: String,
     inRace: Boolean,
-    raceStatusText: String
+    raceStatusText: String,
+    pendingText: (Int) -> String = { "$it pending" },
+    blockedText: String = "blocked",
+    offText: String = "off",
+    waitingText: String = "waiting",
+    readyText: String = "ready",
+    idleText: String = "idle"
 ): String {
     val pending = uploadStatusText
         .filter { it.isDigit() }
@@ -972,16 +1016,16 @@ fun shortUploadStatus(
 
     if (!inRace) {
         if (pending > 0) {
-            return "$pending pending"
+            return pendingText(pending)
         }
 
         return when {
-            raceStatusText.contains("accept race legal", ignoreCase = true) -> "blocked"
-            raceStatusText.contains("not loaded", ignoreCase = true) -> "off"
-            raceStatusText.contains("planned", ignoreCase = true) -> "waiting"
-            raceStatusText.contains("racing", ignoreCase = true) -> "ready"
+            raceStatusText.contains("accept race legal", ignoreCase = true) -> blockedText
+            raceStatusText.contains("not loaded", ignoreCase = true) -> offText
+            raceStatusText.contains("planned", ignoreCase = true) -> waitingText
+            raceStatusText.contains("racing", ignoreCase = true) -> readyText
             raceStatusText.contains("started", ignoreCase = true) -> "ready"
-            else -> "idle"
+            else -> idleText
         }
     }
 
@@ -1008,10 +1052,14 @@ fun raceStatusColor(
 fun shortRaceStatusText(
     raceStatusText: String,
     raceStartText: String,
-    inRace: Boolean
+    inRace: Boolean,
+    racePrefix: String = "Race:",
+    startPrefix: String = "Start:",
+    activeText: String = "active",
+    notActiveText: String = "not active"
 ): String {
     val cleaned = raceStatusText
-        .replace("Race:", "")
+        .removePrefix(racePrefix)
         .trim()
 
     if (cleaned.contains("finished", ignoreCase = true)) {
@@ -1027,26 +1075,27 @@ fun shortRaceStatusText(
     }
 
     if (inRace) {
-        val startTime = extractStartClockTime(raceStartText)
+        val startTime = extractStartClockTime(raceStartText, startPrefix)
 
         return if (startTime.isNotBlank()) {
             startTime
         } else {
-            "active"
+            activeText
         }
     }
 
     return when {
         cleaned.isNotBlank() && cleaned != "not loaded" -> cleaned
-        else -> "not active"
+        else -> notActiveText
     }
 }
 
 fun extractStartClockTime(
-    raceStartText: String
+    raceStartText: String,
+    startPrefix: String = "Start:"
 ): String {
     val cleaned = raceStartText
-        .replace("Start:", "")
+        .removePrefix(startPrefix)
         .trim()
 
     if (cleaned.isBlank() || cleaned == "--") {
@@ -1069,17 +1118,21 @@ fun extractStartClockTime(
 }
 
 fun displayDistanceText(
-    distanceText: String
+    distanceText: String,
+    distancePrefix: String = "Distance:",
+    dtlPrefix: String = "DTL:",
+    unknownText: String = "Distance --",
+    valueText: (String) -> String = { "Distance $it" }
 ): String {
     val cleaned = distanceText
-        .replace("Distance:", "")
-        .replace("DTL:", "")
+        .removePrefix(distancePrefix)
+        .removePrefix(dtlPrefix)
         .trim()
 
     return if (cleaned == "--" || cleaned.isBlank()) {
-        "Distance --"
+        unknownText
     } else {
-        "Distance $cleaned"
+        valueText(cleaned)
     }
 }
 
