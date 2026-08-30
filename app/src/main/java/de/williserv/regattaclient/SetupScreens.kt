@@ -58,7 +58,7 @@ fun BoatDataScreen(
             .verticalScroll(rememberScrollState())
     ) {
         Text(
-            text = "Boat Data",
+            text = stringResource(R.string.boat_data),
             fontSize = 26.sp,
             fontWeight = FontWeight.SemiBold
         )
@@ -207,7 +207,7 @@ fun RaceScreen(
             !hasRaceSetup -> {
                 HeaderPanel(
                     startPanelMode = "clear",
-                    startPanelText = "Regatta Tracker",
+                    startPanelText = stringResource(R.string.app_name),
 
                 )
 
@@ -224,7 +224,7 @@ fun RaceScreen(
                         .height(64.dp)
                 ) {
                     Text(
-                        text = "Scan QR Code",
+                        text = stringResource(R.string.scan_qr_code),
                         fontSize = 18.sp
                     )
                 }
@@ -264,9 +264,9 @@ fun RaceScreen(
                 ) {
                     Text(
                         if (raceLegalAccepted) {
-                            "Race Notice"
+                            stringResource(R.string.race_notice)
                         } else {
-                            "Accept Notice"
+                            stringResource(R.string.accept_notice)
                         }
                     )
                 }
@@ -287,9 +287,9 @@ fun RaceScreen(
                 ) {
                     Text(
                         if (raceRegistered) {
-                            "Registered"
+                            stringResource(R.string.registered)
                         } else {
-                            "Register for Race"
+                            stringResource(R.string.register_for_race)
                         }
                     )
                 }
@@ -321,7 +321,7 @@ fun RaceScreen(
 
                 if (!canEnterRace) {
                     Text(
-                        text = "Confirm boat setup, accept race notice, and load valid race data first.",
+                        text = stringResource(R.string.enter_race_requirements),
                         fontSize = 14.sp,
                         color = Color(0xFFB26A00),
                         modifier = Modifier.padding(top = 6.dp)
@@ -363,9 +363,9 @@ fun RaceScreen(
                 ) {
                     Text(
                         if (raceLegalAccepted) {
-                            "Race Notice"
+                            stringResource(R.string.race_notice)
                         } else {
-                            "Accept Notice"
+                            stringResource(R.string.accept_notice)
                         }
                     )
                 }
