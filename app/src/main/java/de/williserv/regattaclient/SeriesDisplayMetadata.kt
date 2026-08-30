@@ -7,10 +7,12 @@ data class SeriesDisplayMetadata(
     val occurrenceNo: Int? = null,
     val plannedRaceCount: Int? = null
 ) {
-    fun orderText(): String {
+    fun orderText(
+        formatter: (Int, Int) -> String = { occurrence, planned -> "$occurrence of $planned" }
+    ): String {
         val occurrence = occurrenceNo?.takeIf { it > 0 } ?: return ""
         val planned = plannedRaceCount?.takeIf { it > 0 } ?: return ""
-        return "$occurrence of $planned"
+        return formatter(occurrence, planned)
     }
 }
 
@@ -45,14 +47,15 @@ internal fun buildEventHeaderLines(
 }
 
 internal fun buildEventSummarySeriesLine(
-    seriesDisplayMetadata: SeriesDisplayMetadata
+    seriesDisplayMetadata: SeriesDisplayMetadata,
+    orderFormatter: (Int, Int) -> String = { occurrence, planned -> "$occurrence of $planned" }
 ): String {
     return buildList {
         if (seriesDisplayMetadata.runName.isNotBlank()) {
             add(seriesDisplayMetadata.runName)
         }
 
-        val orderText = seriesDisplayMetadata.orderText()
+        val orderText = seriesDisplayMetadata.orderText(orderFormatter)
         if (orderText.isNotBlank()) {
             add(orderText)
         }
