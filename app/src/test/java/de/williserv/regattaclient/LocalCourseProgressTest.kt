@@ -1,6 +1,7 @@
 package de.williserv.regattaclient
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LocalCourseProgressTest {
@@ -12,13 +13,13 @@ class LocalCourseProgressTest {
             mark = GeoPoint(lat = 53.1000, lon = 10.2000)
         )
 
-        assertEquals(
-            GeoPoint(lat = 53.1000, lon = 10.1500),
-            resolveCourseSideReference(
-                firstCourseMark = null,
-                finishLine = finishLine
-            )
-        )
+        val reference = resolveCourseSideReference(
+            firstCourseMark = null,
+            finishLine = finishLine
+        )!!
+
+        assertEquals(53.1000, reference.lat, 0.0000001)
+        assertEquals(10.1500, reference.lon, 0.0000001)
     }
 
     @Test
@@ -39,19 +40,41 @@ class LocalCourseProgressTest {
     }
 
     @Test
+    fun directCourseSide_usesFinishLineAsDirectionReference() {
+        val startLine = StartLine(
+            ref = GeoPoint(lat = 53.0000, lon = 10.0000),
+            mark = GeoPoint(lat = 53.0000, lon = 10.0100)
+        )
+        val finishLine = StartLine(
+            ref = GeoPoint(lat = 53.0100, lon = 10.0000),
+            mark = GeoPoint(lat = 53.0100, lon = 10.0100)
+        )
+        val boatOnCourse = GeoPoint(lat = 53.0050, lon = 10.0050)
+        val reference = resolveCourseSideReference(
+            firstCourseMark = null,
+            finishLine = finishLine
+        )!!
+
+        val referenceDistance = StartLineMath.signedDistanceToStartLineM(reference, startLine)
+        val boatDistance = StartLineMath.signedDistanceToStartLineM(boatOnCourse, startLine)
+
+        assertTrue(referenceDistance * boatDistance > 0.0)
+    }
+
+    @Test
     fun finishApproachReference_usesStartMidpointWhenNoMarksExist() {
         val startLine = StartLine(
             ref = GeoPoint(lat = 53.0000, lon = 10.0000),
             mark = GeoPoint(lat = 53.0000, lon = 10.1000)
         )
 
-        assertEquals(
-            GeoPoint(lat = 53.0000, lon = 10.0500),
-            resolveFinishApproachReference(
-                lastCourseMark = null,
-                startLine = startLine
-            )
-        )
+        val reference = resolveFinishApproachReference(
+            lastCourseMark = null,
+            startLine = startLine
+        )!!
+
+        assertEquals(53.0000, reference.lat, 0.0000001)
+        assertEquals(10.0500, reference.lon, 0.0000001)
     }
 
     @Test
@@ -69,6 +92,34 @@ class LocalCourseProgressTest {
                 startLine = startLine
             )
         )
+    }
+
+    @Test
+    fun directCourseFinishSide_isOppositeStartReference() {
+        val startLine = StartLine(
+            ref = GeoPoint(lat = 53.0000, lon = 10.0000),
+            mark = GeoPoint(lat = 53.0000, lon = 10.0100)
+        )
+        val finishLine = StartLine(
+            ref = GeoPoint(lat = 53.0100, lon = 10.0000),
+            mark = GeoPoint(lat = 53.0100, lon = 10.0100)
+        )
+        val boatPastFinish = GeoPoint(lat = 53.0200, lon = 10.0050)
+        val approachReference = resolveFinishApproachReference(
+            lastCourseMark = null,
+            startLine = startLine
+        )!!
+
+        val approachDistance = StartLineMath.signedDistanceToStartLineM(
+            approachReference,
+            finishLine
+        )
+        val boatDistance = StartLineMath.signedDistanceToStartLineM(
+            boatPastFinish,
+            finishLine
+        )
+
+        assertTrue(approachDistance * boatDistance < 0.0)
     }
 
     @Test
