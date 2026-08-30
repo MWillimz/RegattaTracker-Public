@@ -22,6 +22,22 @@ class EventAccessActionsTest {
     }
 
     @Test
+    fun buildEventAccessUrl_normalizesLegacyIngestSuffix() {
+        val url = buildEventAccessUrl(
+            server = "https://raceoffice.example.org/ingest/",
+            event = "Example Regatta",
+            secret = "example-secret"
+        )
+
+        assertEquals(
+            "https://raceoffice.example.org/event-access" +
+                    "?event_name=Example%20Regatta" +
+                    "&secret=example-secret",
+            url
+        )
+    }
+
+    @Test
     fun buildEventQrPayload_keepsExistingServerEventSecretSchema() {
         val payload = buildEventQrPayload(
             server = "https://raceoffice.example.org",

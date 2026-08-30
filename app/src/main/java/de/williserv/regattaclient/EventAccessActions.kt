@@ -189,7 +189,13 @@ internal fun buildEventAccessUrl(
     event: String,
     secret: String
 ): String {
-    val baseUrl = server.trim().trimEnd('/')
+    val normalizedServer = server.trim().trimEnd('/')
+    val baseUrl = if (normalizedServer.endsWith("/ingest")) {
+        normalizedServer.removeSuffix("/ingest")
+    } else {
+        normalizedServer
+    }
+
     return "$baseUrl/event-access" +
             "?event_name=${encodeQueryParameter(event)}" +
             "&secret=${encodeQueryParameter(secret)}"
