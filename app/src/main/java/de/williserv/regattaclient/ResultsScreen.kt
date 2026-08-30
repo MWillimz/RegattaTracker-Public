@@ -51,7 +51,7 @@ fun ResultsScreen(
             .verticalScroll(rememberScrollState())
     ) {
         Text(
-            text = "Results",
+            text = stringResource(R.string.results),
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold
         )
@@ -83,7 +83,7 @@ fun ResultsScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = statusText.ifBlank { "Results not published yet" },
+                    text = statusText.ifBlank { stringResource(R.string.results_not_published) },
                     fontSize = 18.sp,
                     modifier = Modifier.padding(18.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -131,10 +131,10 @@ fun ResultsTable(
                 .horizontalScroll(rememberScrollState())
         ) {
             ResultTableRow(
-                rank = "Rank",
-                boatAndSail = "Boat / Sail",
-                correctedTime = "Time",
-                status = "Status",
+                rank = stringResource(R.string.rank),
+                boatAndSail = stringResource(R.string.boat_sail),
+                correctedTime = stringResource(R.string.time),
+                status = stringResource(R.string.status),
                 isHeader = true
             )
 
