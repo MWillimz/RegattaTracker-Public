@@ -48,6 +48,8 @@ fun MapScreen(
     val errorState = remember { mutableStateOf<String?>(null) }
     val loadingState = remember { mutableStateOf(true) }
 
+    val mapCouldNotBeLoaded = stringResource(R.string.map_could_not_be_loaded)
+
     LaunchedEffect(mapImageUrl, fallbackMapImageUrl, apiVersion, sharedSecret) {
         loadingState.value = true
         errorState.value = null
@@ -76,7 +78,7 @@ fun MapScreen(
         if (result.bitmap != null) {
             bitmapState.value = result.bitmap
         } else {
-            errorState.value = result.error ?: stringResource(R.string.map_could_not_be_loaded)
+            errorState.value = result.error ?: mapCouldNotBeLoaded
         }
 
         loadingState.value = false
