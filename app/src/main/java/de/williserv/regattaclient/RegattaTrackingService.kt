@@ -723,7 +723,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
         }
 
         if (!manualRecording && sampleAccessContextId == null) {
-            publishDebugError("Storage error: event access context is incomplete")
+            publishDebugError(getString(R.string.storage_error_access_context))
             return
         }
 
