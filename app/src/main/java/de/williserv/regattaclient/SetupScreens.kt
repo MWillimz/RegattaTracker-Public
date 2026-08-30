@@ -16,7 +16,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -176,16 +175,13 @@ fun RaceScreen(
     onShowRaceLegal: () -> Unit,
     onClearRaceSetupClick: () -> Unit,
     onBack: () -> Unit,
-    seriesDisplayMetadata: SeriesDisplayMetadata? = null
+    seriesDisplayMetadata: SeriesDisplayMetadata = SeriesDisplayMetadata()
 ) {
     val hasRaceSetup = raceEvent.isNotBlank() && raceSecret.isNotBlank() && raceServer.isNotBlank()
     val primaryBlue = MaterialTheme.colorScheme.primary
     val successGreen = MaterialTheme.colorScheme.secondary
     val dangerRed = MaterialTheme.colorScheme.error
     val warningYellow = MaterialTheme.colorScheme.tertiary
-    val context = LocalContext.current
-    val effectiveSeriesDisplayMetadata = seriesDisplayMetadata
-        ?: loadPersistedSeriesDisplayMetadata(context)
 
     Column(
         modifier = modifier
@@ -200,7 +196,7 @@ fun RaceScreen(
                 raceStartText = raceStartText,
                 raceStopText = raceStopText,
                 raceShortenedText = raceShortenedText,
-                seriesDisplayMetadata = effectiveSeriesDisplayMetadata
+                seriesDisplayMetadata = seriesDisplayMetadata
             )
 
             Spacer(modifier = Modifier.height(22.dp))
