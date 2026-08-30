@@ -286,6 +286,8 @@
     <string name="map_invalid_png">Map response is not a valid PNG</string>
     <string name="map_load_failed">Map load failed: %1$s</string>
 
+    <string name="override_course_confirmation">Override current target to:\n\n%1$s\n\nOnly use this if the displayed course progress is wrong.\n\nBe prepared to discuss telemetry with Event Management.</string>
+
     <!-- Dialogs -->
     <string name="ocs_detected">OCS detected</string>
     <string name="ocs_detected_message">The boat appears to be over the start line early.\n\nReturn across the start line, or ignore this warning and continue the course?</string>
