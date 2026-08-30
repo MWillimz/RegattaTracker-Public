@@ -25,7 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 
 data class CourseSummary(
     val courseText: String,
@@ -417,11 +417,11 @@ fun EventSummaryCard(
     raceShortenedText: String,
     seriesDisplayMetadata: SeriesDisplayMetadata = SeriesDisplayMetadata()
 ) {
-    val context = LocalContext.current
+    val resources = LocalResources.current
     val seriesLine = buildEventSummarySeriesLine(
         seriesDisplayMetadata = seriesDisplayMetadata,
         orderFormatter = { occurrence, planned ->
-            context.getString(R.string.series_order, occurrence, planned)
+            resources.getString(R.string.series_order, occurrence, planned)
         }
     )
 
