@@ -100,6 +100,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private val raceEvent = mutableStateOf("")
     private val raceSecret = mutableStateOf("")
     private val resolvedEventName = mutableStateOf("")
+    private val raceSeriesDisplayMetadata = mutableStateOf(SeriesDisplayMetadata())
     private var raceLegalResolvedEventName = ""
 
     private val inRace = mutableStateOf(false)
@@ -283,6 +284,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             serviceStatusText = serviceStatusText.value,
                             raceStatusText = raceStatusText.value,
                             raceEvent = raceEvent.value,
+                            seriesDisplayMetadata = raceSeriesDisplayMetadata.value,
                             raceStartText = raceStartText.value,
                             raceStopText = raceStopText.value,
                             raceCourseText = raceCourseText.value,
@@ -728,6 +730,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         raceEvent.value = prefs.getString("race_event", raceEvent.value) ?: raceEvent.value
         raceSecret.value = prefs.getString("race_secret", raceSecret.value) ?: raceSecret.value
         resolvedEventName.value = prefs.getString("resolved_event_name", "") ?: ""
+        raceSeriesDisplayMetadata.value = SeriesDisplayMetadata(
+            runName = prefs.getString("series_run_name", "").orEmpty(),
+            occurrenceNo = prefs.getInt("series_occurrence_no", 0).takeIf { it > 0 },
+            plannedRaceCount = prefs.getInt("series_planned_race_count", 0).takeIf { it > 0 }
+        )
 
         raceStatusText.value = prefs.getString("race_status_text", raceStatusText.value) ?: raceStatusText.value
         raceStartText.value = prefs.getString("race_start_text", raceStartText.value) ?: raceStartText.value
@@ -774,6 +781,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         raceMarksText.value = "Marks: --"
         raceInfoText.value = "Info: --"
         raceShortenedText.value = "Course shortened: no"
+        raceSeriesDisplayMetadata.value = SeriesDisplayMetadata()
         courseMapMarks.value = emptyList()
         selectedCourseMapView.value = null
         raceStartFlags.value = RaceStartFlags()
@@ -812,6 +820,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         getSharedPreferences(racePrefsName, Context.MODE_PRIVATE)
             .edit()
             .remove("resolved_event_name")
+            .remove("series_run_name")
+            .remove("series_occurrence_no")
+            .remove("series_planned_race_count")
             .putBoolean("race_data_ready", false)
             .apply()
     }
@@ -858,6 +869,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         raceMarksText.value = "Marks: --"
         raceInfoText.value = "Info: --"
         raceShortenedText.value = "Course shortened: no"
+        raceSeriesDisplayMetadata.value = SeriesDisplayMetadata()
         courseMapMarks.value = emptyList()
         selectedCourseMapView.value = null
         raceStartFlags.value = RaceStartFlags()
@@ -898,6 +910,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             .putString("race_event", raceEvent.value)
             .putString("race_secret", raceSecret.value)
             .putString("resolved_event_name", resolvedEventName.value)
+            .putString("series_run_name", raceSeriesDisplayMetadata.value.runName)
+            .putInt("series_occurrence_no", raceSeriesDisplayMetadata.value.occurrenceNo ?: 0)
+            .putInt("series_planned_race_count", raceSeriesDisplayMetadata.value.plannedRaceCount ?: 0)
             .putString("race_status_text", raceStatusText.value)
             .putString("race_start_text", raceStartText.value)
             .putString("race_stop_text", raceStopText.value)
@@ -1859,6 +1874,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     return@thread
                 }
 
+                val parsedSeriesDisplayMetadata = parseSeriesDisplayMetadata(json)
                 val parsedStartFlags = parseRaceStartFlags(json)
 
                 val start = getJsonStringAny(
@@ -1911,6 +1927,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                 runOnUiThread {
                     adoptResolvedEventName(responseResolvedEventName)
+                    raceSeriesDisplayMetadata.value = parsedSeriesDisplayMetadata
                     raceStartText.value = "Start: $start"
                     raceStopText.value = "Stop: $stop"
                     raceDataReady.value = true

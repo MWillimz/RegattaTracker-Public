@@ -107,7 +107,8 @@ fun HomeScreen(
     onClearOldDataClick: () -> Unit,
     onConfirmClearOldData: () -> Unit,
     onCancelClearOldData: () -> Unit,
-    onToggleAdvanced: () -> Unit
+    onToggleAdvanced: () -> Unit,
+    seriesDisplayMetadata: SeriesDisplayMetadata = SeriesDisplayMetadata()
 ) {
     val context = LocalContext.current
     val workerUploadStatus = produceState(initialValue = "", context) {
@@ -148,7 +149,8 @@ fun HomeScreen(
     ) {
         TopEventName(
             raceEvent = raceEvent,
-            raceDataReady = raceDataReady
+            raceDataReady = raceDataReady,
+            seriesDisplayMetadata = seriesDisplayMetadata
         )
 
         Spacer(modifier = Modifier.height(HomeGapSmall))
@@ -343,24 +345,38 @@ internal fun mergeTelemetryUploadStatusText(
 @Composable
 fun TopEventName(
     raceEvent: String,
-    raceDataReady: Boolean
+    raceDataReady: Boolean,
+    seriesDisplayMetadata: SeriesDisplayMetadata = SeriesDisplayMetadata()
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(28.dp),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        Text(
-            text = if (raceDataReady && raceEvent.isNotBlank()) {
-                raceEvent
-            } else {
-                ""
-            },
-            fontSize = 18.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+    val headerLines = buildEventHeaderLines(
+        raceEvent = raceEvent,
+        raceDataReady = raceDataReady,
+        seriesDisplayMetadata = seriesDisplayMetadata
+    )
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(28.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Text(
+                text = headerLines.firstOrNull().orEmpty(),
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        headerLines.drop(1).forEach { line ->
+            Text(
+                text = line,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 @Composable
