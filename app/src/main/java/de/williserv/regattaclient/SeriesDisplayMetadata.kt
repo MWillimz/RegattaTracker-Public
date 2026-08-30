@@ -38,13 +38,16 @@ private fun positiveIntOrNull(json: JSONObject, key: String): Int? {
 internal fun buildEventHeaderLines(
     raceEvent: String,
     raceDataReady: Boolean,
-    seriesDisplayMetadata: SeriesDisplayMetadata
+    @Suppress("UNUSED_PARAMETER") seriesDisplayMetadata: SeriesDisplayMetadata
 ): List<String> {
     if (!raceDataReady || raceEvent.isBlank()) return emptyList()
+    return listOf(raceEvent)
+}
 
+internal fun buildEventSummarySeriesLine(
+    seriesDisplayMetadata: SeriesDisplayMetadata
+): String {
     return buildList {
-        add(raceEvent)
-
         if (seriesDisplayMetadata.runName.isNotBlank()) {
             add(seriesDisplayMetadata.runName)
         }
@@ -53,5 +56,5 @@ internal fun buildEventHeaderLines(
         if (orderText.isNotBlank()) {
             add(orderText)
         }
-    }
+    }.joinToString(" · ")
 }
