@@ -123,10 +123,10 @@ fun HomeScreen(
         pendingStatusText = uploadStatusText,
         workerStatus = workerUploadStatus,
         uploadWorkerPending = { worker, pending ->
-            stringResource(R.string.upload_worker_pending, worker, pending)
+            context.getString(R.string.upload_worker_pending, worker, pending)
         },
         uploadWorker = { worker ->
-            stringResource(R.string.upload_worker, worker)
+            context.getString(R.string.upload_worker, worker)
         }
     )
 
@@ -223,7 +223,7 @@ fun HomeScreen(
                 uploadStatusText = uploadStatusText,
                 inRace = inRace,
                 raceStatusText = raceStatusText,
-                pendingText = { pending -> stringResource(R.string.pending_value, pending) },
+                pendingText = { pending -> context.getString(R.string.pending_value, pending) },
                 blockedText = stringResource(R.string.status_blocked),
                 offText = stringResource(R.string.status_off),
                 waitingText = stringResource(R.string.status_waiting),
@@ -433,7 +433,7 @@ fun HeaderPanel(
     val text = when (startPanelMode) {
         "ocs" -> {
             if (startPanelText != stringResource(R.string.ocs)) {
-                stringResource(R.string.ocs_countdown, startPanelText.substringAfter(" ", startPanelText))
+                stringResource(R.string.ocs_countdown, startPanelText.substringAfterLast(" ", startPanelText))
             } else {
                 stringResource(R.string.ocs)
             }
@@ -528,7 +528,7 @@ fun TargetCard(
                     distancePrefix = distancePrefix,
                     dtlPrefix = dtlPrefix,
                     unknownText = stringResource(R.string.distance_display_unknown),
-                    valueText = { value -> stringResource(R.string.distance_display_value, value) }
+                    valueText = { value -> LocalContext.current.getString(R.string.distance_display_value, value) }
                 ),
                 fontSize = 38.sp,
                 fontWeight = FontWeight.Bold
