@@ -119,9 +119,16 @@ fun HomeScreen(
             delay(1000L)
         }
     }.value
+    val localizedWorkerStatus = when (workerUploadStatus) {
+        TelemetryUploadStatusStore.ACTIVE -> stringResource(R.string.status_active)
+        TelemetryUploadStatusStore.WAITING -> stringResource(R.string.status_waiting)
+        TelemetryUploadStatusStore.TEMPORARY_ERROR -> stringResource(R.string.status_temporary_error)
+        TelemetryUploadStatusStore.ALL_SENT -> stringResource(R.string.status_all_sent)
+        else -> workerUploadStatus
+    }
     val advancedUploadStatusText = mergeTelemetryUploadStatusText(
         pendingStatusText = uploadStatusText,
-        workerStatus = workerUploadStatus,
+        workerStatus = localizedWorkerStatus,
         uploadWorkerPending = { worker, pending ->
             context.getString(R.string.upload_worker_pending, worker, pending)
         },
