@@ -251,6 +251,14 @@
     <string name="status_ready">prêt</string>
     <string name="status_idle">inactif</string>
     <string name="status_active">actif</string>
+
+    <string name="status_loaded">chargée</string>
+    <string name="status_planned">planifiée</string>
+    <string name="status_racing">en course</string>
+    <string name="status_started">démarrée</string>
+    <string name="status_finished">terminée</string>
+    <string name="status_postponed">reportée</string>
+    <string name="status_cancelled">annulée</string>
     <string name="status_not_active">non actif</string>
     <string name="distance_display_unknown">Distance --</string>
     <string name="distance_display_value">Distance %1$s</string>
