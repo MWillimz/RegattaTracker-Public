@@ -229,6 +229,30 @@
     <string name="ttl_value">TTL: %1$s</string>
     <string name="ocs_value">OCS: %1$s</string>
 
+    <string name="tracking_active">Tracking active</string>
+    <string name="next_finished">Next: finished</string>
+    <string name="next_finish_line">Next: finish line</string>
+    <string name="next_mark">Next: mark</string>
+    <string name="next_mark_value">Next: %1$d %2$s</string>
+    <string name="progress_value">Progress: %1$d/%2$d marks · %3$.0f%%</string>
+    <string name="boat_status_value">Boat: %1$s</string>
+    <string name="boat_status_finished">finished</string>
+    <string name="boat_status_ocs">OCS</string>
+    <string name="boat_status_racing">racing</string>
+    <string name="boat_status_not_started">not started</string>
+    <string name="distance_meters">Distance: %1$.0f m</string>
+    <string name="ocs_yes">OCS: yes</string>
+    <string name="ocs_no">OCS: no</string>
+    <string name="tracking_notification_channel">Regatta Tracking</string>
+    <string name="tracking_notification_title">Regatta Tracking active</string>
+    <string name="stop">Stop</string>
+    <string name="dtl_meters">DTL %1$.1f m</string>
+    <string name="dtl_unknown">DTL --</string>
+    <string name="notification_manual">Manual · %1$s · %2$s · %3$s · pending: %4$d</string>
+    <string name="notification_race">Race · %1$s · %2$s · %3$s · pending: %4$d</string>
+    <string name="notification_waiting">Waiting · %1$s · %2$s · %3$s · pending: %4$d</string>
+    <string name="clear_status">clear</string>
+
     <!-- Dialogs -->
     <string name="ocs_detected">OCS detected</string>
     <string name="ocs_detected_message">The boat appears to be over the start line early.\n\nReturn across the start line, or ignore this warning and continue the course?</string>
