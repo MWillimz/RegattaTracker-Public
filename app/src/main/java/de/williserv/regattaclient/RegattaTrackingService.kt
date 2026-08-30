@@ -856,7 +856,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
         line: StartLine,
         boatSignedDistance: Double
     ) {
-        val mark = firstCourseMark ?: return
+        val mark = resolveCourseSideReference(firstCourseMark, finishLine) ?: return
 
         val markSignedDistance = StartLineMath.signedDistanceToStartLineM(
             point = mark,
@@ -887,7 +887,10 @@ class RegattaTrackingService : Service(), SensorEventListener {
         line: StartLine,
         boatSignedDistance: Double
     ): Boolean {
-        val lastMark = courseMarks.lastOrNull()?.point ?: return false
+        val lastMark = resolveFinishApproachReference(
+            courseMarks.lastOrNull()?.point,
+            startLine
+        ) ?: return false
 
         val lastMarkSignedDistance = StartLineMath.signedDistanceToStartLineM(
             point = lastMark,
@@ -907,7 +910,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
         line: StartLine,
         boatSignedDistance: Double
     ): Boolean {
-        val mark = firstCourseMark ?: return false
+        val mark = resolveCourseSideReference(firstCourseMark, finishLine) ?: return false
 
         val markSignedDistance = StartLineMath.signedDistanceToStartLineM(
             point = mark,
@@ -1060,18 +1063,18 @@ class RegattaTrackingService : Service(), SensorEventListener {
     }
 
     private fun buildProgressText(): String {
-        val totalMarks = courseMarks.size
-        val progressPercent = when {
-            raceFinished -> 100.0
-            totalMarks <= 0 -> 0.0
-            else -> (passedMarks.toDouble() / totalMarks.toDouble()) * 100.0
-        }
-
-        return if (totalMarks > 0) {
-            getString(R.string.progress_value, passedMarks, totalMarks, progressPercent)
-        } else {
-            getString(R.string.progress_unknown)
-        }
+        return buildLocalProgressText(
+            totalMarks = courseMarks.size,
+            passedMarks = passedMarks,
+            raceStarted = raceStarted,
+            raceFinished = raceFinished,
+            markedFormatter = { passed, total, percent ->
+                getString(R.string.progress_value, passed, total, percent)
+            },
+            directFormatter = { percent ->
+                getString(R.string.progress_direct_value, percent)
+            }
+        )
     }
 
     private fun setCourseProgressFromUser(
