@@ -152,6 +152,9 @@ private fun ServerInformationScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        val shareEventChooserTitle = stringResource(R.string.share_event)
+        val shareEventPageChooserTitle = stringResource(R.string.share_event_page)
+
         ConnectedServerCard(
             metadata = serverMetadata,
             metadataLoaded = metadataLoaded,
@@ -178,7 +181,7 @@ private fun ServerInformationScreen(
                 shareText(
                     context = context,
                     text = eventPayload,
-                    chooserTitle = stringResource(R.string.share_event)
+                    chooserTitle = shareEventChooserTitle
                 )
             },
             onVisitEventPage = {
@@ -194,7 +197,7 @@ private fun ServerInformationScreen(
                 shareText(
                     context = context,
                     text = eventPageUrl,
-                    chooserTitle = stringResource(R.string.share_event_page)
+                    chooserTitle = shareEventPageChooserTitle
                 )
             }
         )
