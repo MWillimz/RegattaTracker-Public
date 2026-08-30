@@ -16,6 +16,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -174,13 +175,17 @@ fun RaceScreen(
     onLeaveRace: () -> Unit,
     onShowRaceLegal: () -> Unit,
     onClearRaceSetupClick: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    seriesDisplayMetadata: SeriesDisplayMetadata? = null
 ) {
     val hasRaceSetup = raceEvent.isNotBlank() && raceSecret.isNotBlank() && raceServer.isNotBlank()
     val primaryBlue = MaterialTheme.colorScheme.primary
     val successGreen = MaterialTheme.colorScheme.secondary
     val dangerRed = MaterialTheme.colorScheme.error
     val warningYellow = MaterialTheme.colorScheme.tertiary
+    val context = LocalContext.current
+    val effectiveSeriesDisplayMetadata = seriesDisplayMetadata
+        ?: loadPersistedSeriesDisplayMetadata(context)
 
     Column(
         modifier = modifier
@@ -194,15 +199,8 @@ fun RaceScreen(
                 raceStatusText = raceStatusText,
                 raceStartText = raceStartText,
                 raceStopText = raceStopText,
-                raceShortenedText = raceShortenedText
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            EventAccessActions(
-                server = raceServer,
-                event = raceEvent,
-                secret = raceSecret
+                raceShortenedText = raceShortenedText,
+                seriesDisplayMetadata = effectiveSeriesDisplayMetadata
             )
 
             Spacer(modifier = Modifier.height(22.dp))
@@ -260,32 +258,20 @@ fun RaceScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                Button(
+                    onClick = onShowRaceLegal,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (raceLegalAccepted) primaryBlue else warningYellow
+                    ),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Button(
-                        onClick = onShowRaceLegal,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (raceLegalAccepted) primaryBlue else warningYellow
-                        ),
-                        modifier = Modifier.weight(0.5f)
-                    ) {
-                        Text(
-                            if (raceLegalAccepted) {
-                                "Race Notice"
-                            } else {
-                                "Accept Notice"
-                            }
-                        )
-                    }
-
-                    Button(
-                        onClick = onBack,
-                        modifier = Modifier.weight(0.5f)
-                    ) {
-                        Text("Back")
-                    }
+                    Text(
+                        if (raceLegalAccepted) {
+                            "Race Notice"
+                        } else {
+                            "Accept Notice"
+                        }
+                    )
                 }
             }
 
@@ -371,43 +357,55 @@ fun RaceScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                Button(
+                    onClick = onShowRaceLegal,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (raceLegalAccepted) primaryBlue else warningYellow
+                    ),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Button(
-                        onClick = onShowRaceLegal,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (raceLegalAccepted) primaryBlue else warningYellow
-                        ),
-                        modifier = Modifier.weight(0.5f)
-                    ) {
-                        Text(
-                            if (raceLegalAccepted) {
-                                "Race Notice"
-                            } else {
-                                "Accept Notice"
-                            }
-                        )
-                    }
-
-                    Button(
-                        onClick = onBack,
-                        modifier = Modifier.weight(0.5f)
-                    ) {
-                        Text("Back")
-                    }
+                    Text(
+                        if (raceLegalAccepted) {
+                            "Race Notice"
+                        } else {
+                            "Accept Notice"
+                        }
+                    )
                 }
             }
         }
 
         if (hasRaceSetup) {
             Spacer(modifier = Modifier.height(18.dp))
-            ServerInformationEntry(
-                server = raceServer,
-                event = raceEvent,
-                secret = raceSecret
-            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                ServerInformationEntry(
+                    server = raceServer,
+                    event = raceEvent,
+                    secret = raceSecret,
+                    modifier = Modifier.weight(1f)
+                )
+
+                EventQrButton(
+                    server = raceServer,
+                    event = raceEvent,
+                    secret = raceSecret,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Button(
+                onClick = onBack,
+                colors = primaryButtonColors(),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Back")
+            }
         }
     }
 }
@@ -418,8 +416,11 @@ fun EventSummaryCard(
     raceStatusText: String,
     raceStartText: String,
     raceStopText: String,
-    raceShortenedText: String
+    raceShortenedText: String,
+    seriesDisplayMetadata: SeriesDisplayMetadata = SeriesDisplayMetadata()
 ) {
+    val seriesLine = buildEventSummarySeriesLine(seriesDisplayMetadata)
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
@@ -435,6 +436,16 @@ fun EventSummaryCard(
                 fontSize = 22.sp,
                 fontWeight = FontWeight.SemiBold
             )
+
+            if (seriesLine.isNotBlank()) {
+                Text(
+                    text = seriesLine,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
 
             Text(
                 text = raceStatusText.replace("Race:", "Status:"),
