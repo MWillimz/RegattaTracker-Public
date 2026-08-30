@@ -302,6 +302,17 @@
     <string name="server_datenschutz">Server Datenschutz</string>
     <string name="server_document_title">Server %1$s</string>
 
+    <string name="series_order">%1$d of %2$d</string>
+    <string name="default_boat_name" translatable="false">Boat name</string>
+    <string name="default_skipper_name" translatable="false">Max Mustermann</string>
+    <string name="default_hull_color" translatable="false">white</string>
+    <string name="default_sail_number" translatable="false">GER 1234</string>
+    <string name="default_yardstick" translatable="false">100</string>
+    <string name="default_boat_type" translatable="false">Shark 24</string>
+    <string name="zxing_license_name" translatable="false">ZXing Core 3.5.4</string>
+    <string name="zxing_copyright" translatable="false">Copyright ZXing authors</string>
+    <string name="apache_license_name" translatable="false">Apache License 2.0</string>
+
     <!-- Dialogs -->
     <string name="ocs_detected">OCS detected</string>
     <string name="ocs_detected_message">The boat appears to be over the start line early.\n\nReturn across the start line, or ignore this warning and continue the course?</string>
