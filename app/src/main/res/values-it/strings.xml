@@ -81,7 +81,7 @@
     <string name="share_event_page">Condividi pagina evento</string>
     <string name="server_legal">Note legali del server</string>
     <string name="impressum">Note legali</string>
-    <string name="datenschutz">Privacy</string>
+    <string name="datenschutz">Informativa sulla privacy</string>
     <string name="connected_regatta_server">Server regata connesso</string>
     <string name="operator">Gestore</string>
     <string name="website">Sito web</string>
@@ -278,7 +278,7 @@
     <string name="upload_exception">Errore di invio: %1$s</string>
     <string name="storage_error_access_context">Errore di archiviazione: contesto di accesso evento incompleto</string>
     <string name="server_impressum">Note legali del server</string>
-    <string name="server_datenschutz">Privacy del server</string>
+    <string name="server_datenschutz">Informativa sulla privacy del server</string>
     <string name="server_document_title">Server %1$s</string>
     <string name="series_order">%1$d di %2$d</string>
     <string name="progress_direct_value">Avanzamento: %1$.0f%%</string>
