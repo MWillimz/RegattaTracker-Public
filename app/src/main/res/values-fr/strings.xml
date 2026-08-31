@@ -74,7 +74,7 @@
     <string name="license_notices">Mentions de licence</string>
     <string name="third_party_licenses">Licences tierces</string>
     <string name="app">Application</string>
-    <string name="build_value">Build : %1$s</string>
+    <string name="build_value">Version : %1$s</string>
     <string name="third_party_license_unavailable">Le texte de licence tierce est indisponible.</string>
     <string name="server_information">Informations serveur</string>
     <string name="share_event">Partager l’événement</string>
@@ -142,7 +142,7 @@
     <string name="loading_race_notice">Chargement de l’avis de course…</string>
     <string name="race_notice_accepted">Avis de course accepté</string>
     <string name="race_notice_empty">L’avis de course est vide</string>
-    <string name="race_notice_hash_missing">Le hash de l’avis de course est manquant</string>
+    <string name="race_notice_hash_missing">L’empreinte de l’avis de course est manquante</string>
     <string name="race_notice_identity_missing">L’identité de l’événement de l’avis de course est manquante</string>
     <string name="legal_text_failed">Échec du texte légal : %1$s</string>
     <string name="legal_text_failed_code">Échec du texte légal %1$d : %2$s</string>
