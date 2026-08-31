@@ -32,7 +32,7 @@
     <string name="boat_type">Tipo di barca</string>
     <string name="setup_confirmed">Configurazione confermata</string>
     <string name="confirm_setup">Conferma configurazione</string>
-    <string name="scan_qr_code">Scansiona QR code</string>
+    <string name="scan_qr_code">Scansiona codice QR</string>
     <string name="retire_finish">Ritiro / Arrivo</string>
     <string name="race_notice">Avviso di regata</string>
     <string name="accept_notice">Accetta avviso</string>
@@ -133,9 +133,9 @@
     <string name="in_race">In regata</string>
     <string name="gps_permission_denied">Autorizzazione GPS negata</string>
     <string name="gps_consent_not_granted">Consenso al tracciamento GPS non concesso</string>
-    <string name="qr_code_incomplete">QR code incompleto</string>
-    <string name="qr_code_loaded">QR code caricato</string>
-    <string name="qr_invalid_json">Il QR code non contiene dati di regata validi</string>
+    <string name="qr_code_incomplete">codice QR incompleto</string>
+    <string name="qr_code_loaded">codice QR caricato</string>
+    <string name="qr_invalid_json">Il codice QR non contiene dati di regata validi</string>
     <string name="qr_error">Errore QR: %1$s</string>
     <string name="shared_text_invalid">Il testo condiviso non è un link evento RegattaTracker valido.</string>
     <string name="event_already_loaded">Un evento è già caricato. Cancella l’evento corrente prima di importare un altro link.</string>
@@ -268,10 +268,10 @@
     <string name="map_invalid_png">La risposta della mappa non è un PNG valido</string>
     <string name="map_load_failed">Caricamento mappa non riuscito: %1$s</string>
     <string name="override_course_confirmation">Sovrascrivere l’obiettivo corrente con:\n\n%1$s\n\nUsare solo se l’avanzamento del percorso visualizzato è errato.\n\nPreparati a discutere la telemetria con la direzione di regata.</string>
-    <string name="show_qr_code">Mostra QR code</string>
-    <string name="event_qr_code">QR code evento</string>
-    <string name="event_access_qr_code">QR code di accesso all’evento</string>
-    <string name="qr_generation_failed">Impossibile generare il QR code.</string>
+    <string name="show_qr_code">Mostra codice QR</string>
+    <string name="event_qr_code">codice QR evento</string>
+    <string name="event_access_qr_code">codice QR di accesso all’evento</string>
+    <string name="qr_generation_failed">Impossibile generare il codice QR.</string>
     <string name="status_temporary_error">errore temporaneo</string>
     <string name="status_all_sent">tutto inviato</string>
     <string name="upload_error_code">Errore di invio %1$d: %2$s</string>
@@ -286,15 +286,15 @@
     <string name="ocs_detected_message">La barca sembra aver superato la linea di partenza in anticipo.\n\nTorna oltre la linea di partenza oppure ignora questo avviso e continua il percorso.</string>
     <string name="ignore_continue_course">Ignora / continua il percorso</string>
     <string name="finish_detected">Arrivo rilevato</string>
-    <string name="finish_detected_message">La barca sembra aver terminato.\n\nFermare ora il tracciamento della regata?\n\nSe non fai nulla, il servizio di tracking in background si fermerà automaticamente dopo 5 minuti.</string>
+    <string name="finish_detected_message">La barca sembra aver terminato.\n\nFermare ora il tracciamento della regata?\n\nSe non fai nulla, il servizio di tracciamento in secondo piano si fermerà automaticamente dopo 5 minuti.</string>
     <string name="stop_tracking">Ferma tracciamento</string>
     <string name="gps_tracking_consent">Consenso al tracciamento GPS</string>
-    <string name="gps_tracking_consent_message">Questa app tratta i dati di posizione per il tracciamento della regata, il controllo della linea di partenza, il rilevamento OCS, l’avanzamento del percorso e il rilevamento dell’arrivo.\n\nDurante una regata, i dati di posizione possono essere trasmessi al server di regata configurato.\n\nDurante l’allenamento manuale, i dati vengono memorizzati localmente e non inviati automaticamente al server.\n\nÈ richiesta anche l’autorizzazione alla posizione di Android.</string>
+    <string name="gps_tracking_consent_message">Questa applicazione tratta i dati di posizione per il tracciamento della regata, il controllo della linea di partenza, il rilevamento OCS, l’avanzamento del percorso e il rilevamento dell’arrivo.\n\nDurante una regata, i dati di posizione possono essere trasmessi al server di regata configurato.\n\nDurante l’allenamento manuale, i dati vengono memorizzati localmente e non inviati automaticamente al server.\n\nÈ richiesta anche l’autorizzazione alla posizione di Android.</string>
     <string name="i_agree">Accetto</string>
     <string name="retire_finish_title">Ritiro / Arrivo?</string>
     <string name="retire_finish_message">Usa questa funzione solo se ti ritiri dalla regata o hai terminato.\n\nIl tracciamento della regata per questa barca verrà fermato. In caso di ritiro potresti essere escluso dalla classifica.</string>
     <string name="is_this_your_boat">Questa è la tua barca?</string>
     <string name="confirm_boat_message">Conferma i dati della barca prima di entrare in regata.\n\nNome barca: %1$s\nSkipper: %2$s\nNumero velico: %3$s\nTipo di barca: %4$s\nColore scafo: %5$s\nYardstick: %6$s\n\nQuesti valori saranno usati per il tracciamento della regata e inviati al server di regata.</string>
     <string name="clear_race_title">Cancellare la regata?</string>
-    <string name="clear_race_message">Rimuove la regata scansionata da questo dispositivo.\n\nLa configurazione della barca non verrà modificata.\n\nDovrai scansionare nuovamente il QR code prima di registrarti o entrare in regata.</string>
+    <string name="clear_race_message">Rimuove la regata scansionata da questo dispositivo.\n\nLa configurazione della barca non verrà modificata.\n\nDovrai scansionare nuovamente il codice QR prima di registrarti o entrare in regata.</string>
 </resources>
