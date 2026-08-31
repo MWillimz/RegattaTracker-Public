@@ -74,7 +74,7 @@
     <string name="license_notices">Avisos de licencia</string>
     <string name="third_party_licenses">Licencias de terceros</string>
     <string name="app">Aplicación</string>
-    <string name="build_value">Build: %1$s</string>
+    <string name="build_value">Versión: %1$s</string>
     <string name="third_party_license_unavailable">El texto de la licencia de terceros no está disponible.</string>
     <string name="server_information">Información del servidor</string>
     <string name="share_event">Compartir evento</string>
