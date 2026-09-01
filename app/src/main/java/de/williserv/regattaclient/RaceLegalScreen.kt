@@ -30,13 +30,15 @@ fun RaceLegalScreen(
     onAccept: () -> Unit,
     onBack: () -> Unit
 ) {
+    val noLegalTextLoaded = stringResource(R.string.no_legal_text_loaded)
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .padding(20.dp)
     ) {
         Text(
-            text = "Race Notice",
+            text = stringResource(R.string.race_notice),
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold
         )
@@ -65,7 +67,7 @@ fun RaceLegalScreen(
                     .verticalScroll(rememberScrollState())
             ) {
                 Text(
-                    text = legalText.ifBlank { statusText.ifBlank { "No legal text loaded." } },
+                    text = legalText.ifBlank { statusText.ifBlank { noLegalTextLoaded } },
                     fontSize = 16.sp,
                     lineHeight = 22.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
