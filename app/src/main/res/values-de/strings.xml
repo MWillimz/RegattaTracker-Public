@@ -136,7 +136,7 @@
     <string name="race_left">Regatta verlassen</string>
     <string name="in_race">In der Regatta</string>
     <string name="gps_permission_denied">GPS-Berechtigung verweigert</string>
-    <string name="gps_consent_not_granted">Zustimmung zum GPS-Ortung nicht erteilt</string>
+    <string name="gps_consent_not_granted">Zustimmung zur GPS-Ortung nicht erteilt</string>
     <string name="qr_code_incomplete">QR-Code unvollständig</string>
     <string name="qr_code_loaded">QR-Code geladen</string>
     <string name="qr_invalid_json">QR-Code enthält keine gültigen Regatta-Daten</string>
@@ -191,7 +191,7 @@
     <string name="gps_accuracy_unknown">GPS: --</string>
     <string name="csv_exported">CSV exportiert</string>
     <string name="csv_export_failed">CSV-Export fehlgeschlagen: %1$s</string>
-    <string name="next_return_start">Nächstes Ziel: zur Startseite zurückkehren</string>
+    <string name="next_return_start">Nächstes Ziel: zurück über die Startlinie</string>
     <string name="next_start_line">Nächstes Ziel: Startlinie</string>
     <string name="next_wait">Nächstes Ziel: warten</string>
     <string name="next_course">Nächstes Ziel: Kurs</string>
@@ -293,11 +293,11 @@
     <string name="finish_detected">Zieleinlauf erkannt</string>
     <string name="finish_detected_message">Das Boot scheint im Ziel zu sein.\n\nRegatta-Aufzeichnung jetzt stoppen?\n\nWenn nichts unternommen wird, stoppt der Hintergrunddienst nach 5 Minuten automatisch.</string>
     <string name="stop_tracking">Aufzeichnung stoppen</string>
-    <string name="gps_tracking_consent">Zustimmung zum GPS-Ortung</string>
+    <string name="gps_tracking_consent">Zustimmung zur GPS-Ortung</string>
     <string name="gps_tracking_consent_message">Diese App verarbeitet Standortdaten für die Regatta-Aufzeichnung, Startlinienprüfung, OCS-Erkennung, Kursfortschritt und Zieleinlauferkennung.\n\nWährend einer Regatta können Standortdaten an den konfigurierten Regatta-Server übertragen werden.\n\nBeim manuellen Training werden Daten lokal gespeichert und nicht automatisch an den Server übertragen.\n\nDie Android-Standortberechtigung ist ebenfalls erforderlich.</string>
     <string name="i_agree">Ich stimme zu</string>
     <string name="retire_finish_title">Aufgeben / Ziel?</string>
-    <string name="retire_finish_message">Nur verwenden, wenn du die Regatta aufgibst oder im Ziel bist.\n\nDadurch wird das Regatta-Tracking für dieses Boot beendet. Bei Aufgabe kann das Boot aus der Wertung fallen.</string>
+    <string name="retire_finish_message">Nur verwenden, wenn du die Regatta aufgibst oder im Ziel bist.\n\nDadurch wird die Regatta-Aufzeichnung für dieses Boot beendet. Bei Aufgabe kann das Boot aus der Wertung fallen.</string>
     <string name="is_this_your_boat">Ist das dein Boot?</string>
     <string name="confirm_boat_message">Bitte bestätige deine Bootsdaten vor dem Start der Regatta.\n\nBootsname: %1$s\nSkipper: %2$s\nSegelnummer: %3$s\nBootstyp: %4$s\nRumpffarbe: %5$s\nYardstick: %6$s\n\nDiese Werte werden für die Regatta-Aufzeichnung verwendet und an den Regatta-Server übertragen.</string>
     <string name="clear_race_title">Regatta löschen?</string>
