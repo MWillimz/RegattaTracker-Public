@@ -1,0 +1,229 @@
+from pathlib import Path
+
+main_path = Path("app/src/main/java/de/williserv/regattaclient/MainActivity.kt")
+main = main_path.read_text()
+old_main = '''            rawRaceStatus = legacyDisplayPayload(raceStatusText.value)
+            rawRaceStart = legacyDisplayPayload(raceStartText.value)
+            rawRaceStop = legacyDisplayPayload(raceStopText.value)
+            rawRaceInfo = legacyDisplayPayload(raceInfoText.value)
+            currentRaceStatus = rawRaceStatus
+            raceStartEpochMillis = parseServerTimeToMillis(rawRaceStart)
+'''
+new_main = '''            val migratedLegacyState = migrateLegacyRaceDisplayState(
+                raceStatusText = raceStatusText.value,
+                raceStartText = raceStartText.value,
+                raceStopText = raceStopText.value,
+                raceInfoText = raceInfoText.value,
+                raceShortenedText = raceShortenedText.value,
+                raceMarksText = raceMarksText.value
+            )
+            rawRaceStatus = migratedLegacyState.raceStatus
+            rawRaceStart = migratedLegacyState.raceStart
+            rawRaceStop = migratedLegacyState.raceStop
+            rawRaceInfo = migratedLegacyState.raceInfo
+            rawRaceCourseShortened = migratedLegacyState.courseShortened
+            courseMapMarks.value = migratedLegacyState.courseMarks.map { mark ->
+                CourseMapMark(
+                    order = mark.order,
+                    label = mark.label,
+                    skipped = mark.skipped
+                )
+            }
+            currentRaceStatus = rawRaceStatus
+            raceStartEpochMillis = parseServerTimeToMillis(rawRaceStart)
+'''
+if main.count(old_main) != 1:
+    raise SystemExit(f"MainActivity migration anchor count was {main.count(old_main)}, expected 1")
+main_path.write_text(main.replace(old_main, new_main))
+
+home_path = Path("app/src/main/java/de/williserv/regattaclient/HomeScreen.kt")
+home = home_path.read_text()
+old_home = '''            DebugLine("COG", cogText.replace("COG:", "").trim())
+            DebugLine("SOG", sogText.replace("SOG:", "").trim())
+'''
+new_home = '''            DebugLine("COG", cogText.removePrefix(stringResource(R.string.cog_prefix)).trim())
+            DebugLine("SOG", sogText.removePrefix(stringResource(R.string.sog_prefix)).trim())
+'''
+if home.count(old_home) != 1:
+    raise SystemExit(f"HomeScreen COG/SOG anchor count was {home.count(old_home)}, expected 1")
+home_path.write_text(home.replace(old_home, new_home))
+
+Path("app/src/main/java/de/williserv/regattaclient/RaceSetupPersistence.kt").write_text('''package de.williserv.regattaclient
+
+internal const val RACE_RAW_STATE_VERSION = 1
+
+internal data class LegacyCourseMarkState(
+    val order: Int?,
+    val label: String,
+    val skipped: Boolean
+)
+
+internal data class LegacyRaceDisplayState(
+    val raceStatus: String,
+    val raceStart: String,
+    val raceStop: String,
+    val raceInfo: String,
+    val courseShortened: Boolean,
+    val courseMarks: List<LegacyCourseMarkState>
+)
+
+internal fun legacyDisplayPayload(value: String): String {
+    val separatorIndex = value.indexOf(':')
+    return if (separatorIndex >= 0) {
+        value.substring(separatorIndex + 1).trim()
+    } else {
+        value.trim()
+    }
+}
+
+internal fun migrateLegacyRaceDisplayState(
+    raceStatusText: String,
+    raceStartText: String,
+    raceStopText: String,
+    raceInfoText: String,
+    raceShortenedText: String,
+    raceMarksText: String
+): LegacyRaceDisplayState {
+    return LegacyRaceDisplayState(
+        raceStatus = legacyDisplayPayload(raceStatusText),
+        raceStart = legacyDisplayPayload(raceStartText),
+        raceStop = legacyDisplayPayload(raceStopText),
+        raceInfo = legacyDisplayPayload(raceInfoText),
+        courseShortened = legacyCourseShortened(raceShortenedText),
+        courseMarks = legacyCourseMarkStates(raceMarksText)
+    )
+}
+
+internal fun legacyCourseShortened(value: String): Boolean {
+    return when (legacyDisplayPayload(value).lowercase()) {
+        "yes", "ja", "oui", "si", "sì", "true", "1" -> true
+        else -> false
+    }
+}
+
+internal fun legacyCourseMarkStates(value: String): List<LegacyCourseMarkState> {
+    val payload = legacyDisplayPayload(value)
+    if (payload.isBlank() || payload == "--") {
+        return emptyList()
+    }
+
+    return payload
+        .split(',')
+        .mapNotNull { raw ->
+            var label = raw.trim()
+            if (label.isBlank() || label == "--") {
+                return@mapNotNull null
+            }
+
+            val skippedMarker = LEGACY_SKIPPED_MARKERS.firstOrNull { marker ->
+                label.contains(marker, ignoreCase = true)
+            }
+            val skipped = skippedMarker != null
+            if (skippedMarker != null) {
+                label = label.replace(skippedMarker, "", ignoreCase = true).trim()
+            }
+
+            if (label.isBlank()) {
+                null
+            } else {
+                LegacyCourseMarkState(
+                    order = label.substringBefore(' ').toIntOrNull(),
+                    label = label,
+                    skipped = skipped
+                )
+            }
+        }
+}
+
+private val LEGACY_SKIPPED_MARKERS = listOf(
+    "[skipped]",
+    "[übersprungen]",
+    "[omise]",
+    "[omessa]",
+    "[omitida]"
+)
+''')
+
+Path("app/src/test/java/de/williserv/regattaclient/RaceSetupPersistenceTest.kt").write_text('''package de.williserv.regattaclient
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class RaceSetupPersistenceTest {
+
+    @Test
+    fun legacyDisplayPayload_removesLocalizedLabelPrefix() {
+        assertEquals("planned", legacyDisplayPayload("Race: planned"))
+        assertEquals("planned", legacyDisplayPayload("Regatta: planned"))
+        assertEquals("2026-09-01T12:00:00Z", legacyDisplayPayload("Départ : 2026-09-01T12:00:00Z"))
+        assertEquals("2026-09-01T12:00:00Z", legacyDisplayPayload("Salida: 2026-09-01T12:00:00Z"))
+    }
+
+    @Test
+    fun legacyDisplayPayload_preservesColonsInsidePayload() {
+        assertEquals(
+            "2026-09-01T12:00:00+02:00",
+            legacyDisplayPayload("Start: 2026-09-01T12:00:00+02:00")
+        )
+    }
+
+    @Test
+    fun legacyDisplayPayload_preservesUnprefixedValues() {
+        assertEquals("planned", legacyDisplayPayload("planned"))
+        assertEquals("--", legacyDisplayPayload("--"))
+    }
+
+    @Test
+    fun legacyMigration_preservesShortenedCourseAndStructuredMarks() {
+        val migrated = migrateLegacyRaceDisplayState(
+            raceStatusText = "Race: racing",
+            raceStartText = "Start: 2026-09-01T12:00:00Z",
+            raceStopText = "Stop: --",
+            raceInfoText = "Info: shortened at mark 2",
+            raceShortenedText = "Course shortened: YES",
+            raceMarksText = "Marks: 1 A, 2 B [skipped], 3 C"
+        )
+
+        assertEquals("racing", migrated.raceStatus)
+        assertEquals("2026-09-01T12:00:00Z", migrated.raceStart)
+        assertEquals("--", migrated.raceStop)
+        assertEquals("shortened at mark 2", migrated.raceInfo)
+        assertTrue(migrated.courseShortened)
+        assertEquals(
+            listOf(
+                LegacyCourseMarkState(order = 1, label = "1 A", skipped = false),
+                LegacyCourseMarkState(order = 2, label = "2 B", skipped = true),
+                LegacyCourseMarkState(order = 3, label = "3 C", skipped = false)
+            ),
+            migrated.courseMarks
+        )
+    }
+
+    @Test
+    fun legacyMigration_recognizesLocalizedShortenedAndSkippedMarkers() {
+        assertTrue(legacyCourseShortened("Kurs verkürzt: JA"))
+        assertTrue(legacyCourseShortened("Parcours raccourci : OUI"))
+        assertTrue(legacyCourseShortened("Percorso ridotto: SÌ"))
+        assertTrue(legacyCourseShortened("Recorrido acortado: SÍ"))
+        assertFalse(legacyCourseShortened("Course shortened: no"))
+
+        val localizedMarks = listOf(
+            "Bahnmarken: 1 A, 2 B [übersprungen]" to "2 B",
+            "Marques : 1 A, 2 B [omise]" to "2 B",
+            "Boe: 1 A, 2 B [omessa]" to "2 B",
+            "Balizas: 1 A, 2 B [omitida]" to "2 B"
+        )
+
+        localizedMarks.forEach { (display, expectedSkippedLabel) ->
+            val marks = legacyCourseMarkStates(display)
+            assertEquals(2, marks.size)
+            assertFalse(marks[0].skipped)
+            assertTrue(marks[1].skipped)
+            assertEquals(expectedSkippedLabel, marks[1].label)
+            assertEquals(2, marks[1].order)
+        }
+    }
+}
+''')
