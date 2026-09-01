@@ -285,7 +285,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         serviceStatusText.value = getString(R.string.service_stopped)
         cogText.value = getString(R.string.cog_value, 0.0)
         sogText.value = getString(R.string.sog_value, 0.0)
-        gpsAccuracyText.value = getString(R.string.gps_accuracy_value, 0.0)
+        gpsAccuracyText.value = getString(R.string.gps_accuracy_unknown)
         lastCsvLine.value = getString(R.string.csv_preview_not_live)
     }
 

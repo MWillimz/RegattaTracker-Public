@@ -184,6 +184,7 @@
     <string name="cog_value">COG : %1$.1f°</string>
     <string name="sog_value">SOG : %1$.2f m/s</string>
     <string name="gps_accuracy_value">GPS : %1$.1f m</string>
+    <string name="gps_accuracy_unknown">GPS: --</string>
     <string name="csv_exported">CSV exporté</string>
     <string name="csv_export_failed">Échec de l’export CSV : %1$s</string>
     <string name="next_return_start">Suivant : repasser la ligne de départ</string>

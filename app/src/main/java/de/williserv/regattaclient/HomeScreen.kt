@@ -151,13 +151,12 @@ fun HomeScreen(
                 !raceStatusText.contains("cancelled", ignoreCase = true)
 
     val raceColor = raceStatusColor(raceStatusText, inRace)
-    val gpsPrefix = stringResource(R.string.gps_prefix)
     val racePrefix = stringResource(R.string.race_prefix)
     val startPrefix = stringResource(R.string.start_prefix)
     val infoPrefix = stringResource(R.string.info_prefix)
     val distancePrefix = stringResource(R.string.distance_prefix)
     val dtlPrefix = stringResource(R.string.dtl_prefix)
-    val gpsStatus = gpsStatusLabel(gpsAccuracyText, gpsPrefix)
+    val gpsStatus = ""
     val hasRaceInfo = raceInfoText
         .removePrefix(infoPrefix)
         .trim()
@@ -217,7 +216,7 @@ fun HomeScreen(
 
         StatusOverviewCard(
             gpsStatus = gpsStatus,
-            gpsColor = gpsStatusColor(gpsAccuracyText, gpsPrefix),
+            gpsColor = gpsColor,
             raceStatusText = shortRaceStatusText(
                 raceStatusText = raceStatusText,
                 raceStartText = raceStartText,
@@ -952,42 +951,6 @@ fun DebugLine(
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(top = 3.dp)
     )
-}
-
-fun gpsStatusLabel(
-    gpsAccuracyText: String,
-    gpsPrefix: String = "GPS:"
-): String {
-    val value = gpsAccuracyText
-        .removePrefix(gpsPrefix)
-        .replace("m", "")
-        .trim()
-        .toDoubleOrNull()
-
-    return when {
-        value == null -> ""
-        value <= 10.0 -> ""
-        value <= 25.0 -> ""
-        else -> ""
-    }
-}
-
-fun gpsStatusColor(
-    gpsAccuracyText: String,
-    gpsPrefix: String = "GPS:"
-): Color {
-    val value = gpsAccuracyText
-        .removePrefix(gpsPrefix)
-        .replace("m", "")
-        .trim()
-        .toDoubleOrNull()
-
-    return when {
-        value == null -> RegattaRed
-        value <= 10.0 -> RegattaGreen
-        value <= 25.0 -> RegattaOrange
-        else -> RegattaRed
-    }
 }
 
 fun isRaceFinished(
