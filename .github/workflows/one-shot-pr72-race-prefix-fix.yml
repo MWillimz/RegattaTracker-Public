@@ -1,0 +1,46 @@
+name: One-shot PR72 race prefix fix
+
+on:
+  push:
+    branches:
+      - feature/64-localize-ui-strings
+    paths:
+      - .github/workflows/one-shot-pr72-race-prefix-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/64-localize-ui-strings
+          fetch-depth: 0
+      - name: Add localized race prefix parameter
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/de/williserv/regattaclient/HomeScreen.kt')
+          text = p.read_text(encoding='utf-8')
+          old_sig = '    raceStartText: String,\n    inRace: Boolean,\n    startPrefix: String = "Start:",\n'
+          new_sig = '    raceStartText: String,\n    inRace: Boolean,\n    racePrefix: String = "Race:",\n    startPrefix: String = "Start:",\n'
+          if text.count(old_sig) != 1:
+              raise SystemExit(f'unexpected shortRaceStatusText signature count: {text.count(old_sig)}')
+          text = text.replace(old_sig, new_sig)
+          old_call = '                inRace = inRace,\n                startPrefix = startPrefix,\n'
+          new_call = '                inRace = inRace,\n                racePrefix = stringResource(R.string.race_prefix),\n                startPrefix = startPrefix,\n'
+          if text.count(old_call) != 1:
+              raise SystemExit(f'unexpected Home shortRaceStatusText call count: {text.count(old_call)}')
+          text = text.replace(old_call, new_call)
+          p.write_text(text, encoding='utf-8')
+          PY
+      - name: Commit and remove one-shot workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/workflows/one-shot-pr72-race-prefix-fix.yml
+          git add -A
+          git commit -m "fix: pass localized race status prefix"
+          git push origin HEAD:feature/64-localize-ui-strings
