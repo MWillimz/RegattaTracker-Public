@@ -165,6 +165,7 @@ fun RaceScreen(
     progressText: String,
     raceInfoText: String,
     raceShortenedText: String,
+    raceShortened: Boolean,
     modifier: Modifier = Modifier,
     onRaceServerChange: (String) -> Unit,
     onRaceEventChange: (String) -> Unit,
@@ -198,6 +199,7 @@ fun RaceScreen(
                 raceStartText = raceStartText,
                 raceStopText = raceStopText,
                 raceShortenedText = raceShortenedText,
+                raceShortened = raceShortened,
                 seriesDisplayMetadata = seriesDisplayMetadata
             )
 
@@ -415,6 +417,7 @@ fun EventSummaryCard(
     raceStartText: String,
     raceStopText: String,
     raceShortenedText: String,
+    raceShortened: Boolean,
     seriesDisplayMetadata: SeriesDisplayMetadata = SeriesDisplayMetadata()
 ) {
     val resources = LocalResources.current
@@ -485,16 +488,8 @@ fun EventSummaryCard(
             Text(
                 text = raceShortenedText,
                 fontSize = 18.sp,
-                fontWeight = if (
-                    raceShortenedText == stringResource(R.string.course_shortened_yes)
-                ) {
-                    FontWeight.Bold
-                } else {
-                    FontWeight.Normal
-                },
-                color = if (
-                    raceShortenedText == stringResource(R.string.course_shortened_yes)
-                ) {
+                fontWeight = if (raceShortened) FontWeight.Bold else FontWeight.Normal,
+                color = if (raceShortened) {
                     MaterialTheme.colorScheme.error
                 } else {
                     MaterialTheme.colorScheme.secondary
