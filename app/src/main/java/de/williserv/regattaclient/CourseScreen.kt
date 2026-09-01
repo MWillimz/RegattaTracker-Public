@@ -39,6 +39,7 @@ fun CourseScreen(
     raceMarksText: String,
     raceInfoText: String,
     raceShortenedText: String,
+    raceShortened: Boolean,
     currentTargetText: String,
     courseMapMarks: List<CourseMapMark>,
     onSetCourseProgress: (Int, Boolean) -> Unit,
@@ -67,7 +68,8 @@ fun CourseScreen(
             raceStatusText = raceStatusText,
             raceStartText = raceStartText,
             raceStopText = raceStopText,
-            raceShortenedText = raceShortenedText
+            raceShortenedText = raceShortenedText,
+            raceShortened = raceShortened
         )
 
         Spacer(modifier = Modifier.height(14.dp))
@@ -335,7 +337,8 @@ fun CourseInfoCard(
     raceStatusText: String,
     raceStartText: String,
     raceStopText: String,
-    raceShortenedText: String
+    raceShortenedText: String,
+    raceShortened: Boolean
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -387,16 +390,8 @@ fun CourseInfoCard(
             Text(
                 text = raceShortenedText,
                 fontSize = 18.sp,
-                fontWeight = if (
-                    raceShortenedText == stringResource(R.string.course_shortened_yes)
-                ) {
-                    FontWeight.Bold
-                } else {
-                    FontWeight.Normal
-                },
-                color = if (
-                    raceShortenedText == stringResource(R.string.course_shortened_yes)
-                ) {
+                fontWeight = if (raceShortened) FontWeight.Bold else FontWeight.Normal,
+                color = if (raceShortened) {
                     MaterialTheme.colorScheme.error
                 } else {
                     MaterialTheme.colorScheme.secondary
