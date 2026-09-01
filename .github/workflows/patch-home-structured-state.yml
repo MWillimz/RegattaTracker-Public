@@ -41,7 +41,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm .github/workflows/patch-home-structured-state.yml .github/scripts/patch_home_structured_state.py
+          git rm -f .github/workflows/patch-home-structured-state.yml .github/scripts/patch_home_structured_state.py
           git add app/src/main/java/de/williserv/regattaclient/MainActivity.kt app/src/main/java/de/williserv/regattaclient/HomeScreen.kt app/src/test/java/de/williserv/regattaclient/HomeUploadStatusTest.kt
           git diff --cached --check
           git commit -m "Use structured Home state instead of localized text"
