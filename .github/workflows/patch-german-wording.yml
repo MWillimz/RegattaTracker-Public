@@ -1,0 +1,53 @@
+name: Correct German localization wording
+
+on:
+  push:
+    branches:
+      - feature/64-localize-ui-strings
+    paths:
+      - .github/workflows/patch-german-wording.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/64-localize-ui-strings
+          fetch-depth: 0
+
+      - name: Correct German strings
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/res/values-de/strings.xml')
+          text = path.read_text()
+          replacements = {
+              '<string name="next_return_start">Nächstes Ziel: zur Startseite zurückkehren</string>': '<string name="next_return_start">Nächstes Ziel: zurück über die Startlinie</string>',
+              '<string name="gps_consent_not_granted">Zustimmung zum GPS-Ortung nicht erteilt</string>': '<string name="gps_consent_not_granted">Zustimmung zur GPS-Ortung nicht erteilt</string>',
+              '<string name="gps_tracking_consent">Zustimmung zum GPS-Ortung</string>': '<string name="gps_tracking_consent">Zustimmung zur GPS-Ortung</string>',
+              '<string name="retire_finish_message">Nur verwenden, wenn du die Regatta aufgibst oder im Ziel bist.\\n\\nDadurch wird das Regatta-Tracking für dieses Boot beendet. Bei Aufgabe kann das Boot aus der Wertung fallen.</string>': '<string name="retire_finish_message">Nur verwenden, wenn du die Regatta aufgibst oder im Ziel bist.\\n\\nDadurch wird die Regatta-Aufzeichnung für dieses Boot beendet. Bei Aufgabe kann das Boot aus der Wertung fallen.</string>',
+          }
+          for old, new in replacements.items():
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'Expected one match, found {count}: {old}')
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+
+      - name: Commit patch and remove helper workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/patch-german-wording.yml
+          git add app/src/main/res/values-de/strings.xml
+          git diff --cached --check
+          git commit -m "Correct German localization wording"
+          git push origin HEAD:feature/64-localize-ui-strings
