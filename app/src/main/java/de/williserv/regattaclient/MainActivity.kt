@@ -507,6 +507,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             canRegisterRace = setupConfirmed.value && raceDataReady.value && !inRace.value,
                             registerRaceStatusText = registerRaceStatusText.value,
                             raceShortenedText = raceShortenedText.value,
+                            raceShortened = rawRaceCourseShortened,
                             seriesDisplayMetadata = raceSeriesDisplayMetadata.value,
                             modifier = Modifier.padding(innerPadding),
                             onRaceServerChange = {
@@ -584,6 +585,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             raceMarksText = raceMarksText.value,
                             raceInfoText = raceInfoText.value,
                             raceShortenedText = raceShortenedText.value,
+                            raceShortened = rawRaceCourseShortened,
                             currentTargetText = currentTargetText.value,
                             courseMapMarks = courseMapMarks.value,
                             onSetCourseProgress = { passedMarks, raceStarted ->
@@ -843,8 +845,86 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     skipped = mark.skipped
                 )
             }
-            currentRaceStatus = rawRaceStatus
-            raceStartEpochMillis = parseServerTimeToMillis(rawRaceStart)
+            renderMigratedLegacyRaceSetup(migratedLegacyState)
+        }
+    }
+
+    private fun renderMigratedLegacyRaceSetup(migratedLegacyState: LegacyRaceDisplayState) {
+        raceStatusText.value = if (rawRaceStatus.isBlank()) {
+            getString(R.string.race_not_loaded)
+        } else {
+            getString(R.string.race_value, rawRaceStatus)
+        }
+        raceStartText.value = if (rawRaceStart.isBlank() || rawRaceStart == "--") {
+            getString(R.string.start_unknown)
+        } else {
+            getString(R.string.start_value, rawRaceStart)
+        }
+        raceStopText.value = if (rawRaceStop.isBlank() || rawRaceStop == "--") {
+            getString(R.string.stop_unknown)
+        } else {
+            getString(R.string.stop_value, rawRaceStop)
+        }
+        raceInfoText.value = if (rawRaceInfo.isBlank() || rawRaceInfo == "--") {
+            getString(R.string.info_unknown)
+        } else {
+            getString(R.string.info_value, rawRaceInfo)
+        }
+        raceShortenedText.value = if (rawRaceCourseShortened) {
+            getString(R.string.course_shortened_yes)
+        } else {
+            getString(R.string.course_shortened_no)
+        }
+
+        val markCount = Regex("\\d+")
+            .find(legacyDisplayPayload(raceCourseText.value))
+            ?.value
+            ?.toIntOrNull()
+        raceCourseText.value = if (markCount != null) {
+            getString(R.string.course_mark_count, markCount)
+        } else {
+            getString(R.string.course_unknown)
+        }
+
+        raceStartLineText.value = localizeLegacyCourseLine(
+            displayText = raceStartLineText.value,
+            unknownRes = R.string.start_line_unknown,
+            valueRes = R.string.start_line_value
+        )
+        raceFinishLineText.value = localizeLegacyCourseLine(
+            displayText = raceFinishLineText.value,
+            unknownRes = R.string.finish_line_unknown,
+            valueRes = R.string.finish_line_value
+        )
+
+        raceMarksText.value = if (migratedLegacyState.courseMarks.isEmpty()) {
+            getString(R.string.marks_unknown)
+        } else {
+            getString(
+                R.string.marks_value,
+                migratedLegacyState.courseMarks.joinToString(", ") { it.label }
+            )
+        }
+
+        currentRaceStatus = rawRaceStatus
+        raceStartEpochMillis = parseServerTimeToMillis(rawRaceStart)
+    }
+
+    private fun localizeLegacyCourseLine(
+        displayText: String,
+        unknownRes: Int,
+        valueRes: Int
+    ): String {
+        val payload = legacyDisplayPayload(displayText)
+        if (payload.isBlank() || payload == "--") {
+            return getString(unknownRes)
+        }
+
+        val parts = payload.split("→", limit = 2).map { it.trim() }
+        return if (parts.size == 2 && parts.all { it.isNotBlank() }) {
+            getString(valueRes, parts[0], parts[1])
+        } else {
+            getString(unknownRes)
         }
     }
 
@@ -1447,28 +1527,74 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private fun updateLocalRaceStatus() {
         val prefs = getSharedPreferences("regatta_local_status", Context.MODE_PRIVATE)
+        val currentLocaleTag = resources.configuration.locales[0].toLanguageTag()
+        val previousLocaleTag = prefs.getString("display_locale_tag", "").orEmpty()
+        if (previousLocaleTag != currentLocaleTag) {
+            prefs.edit()
+                .remove("debug_error_text")
+                .putString("display_locale_tag", currentLocaleTag)
+                .apply()
+        }
 
-        dtlText.value = prefs.getString("dtl_text", getString(R.string.distance_unknown)) ?: getString(R.string.distance_unknown)
-        ttlText.value = prefs.getString("ttl_text", getString(R.string.ttl_unknown)) ?: getString(R.string.ttl_unknown)
-        ocsText.value = prefs.getString("ocs_text", getString(R.string.ocs_unknown)) ?: getString(R.string.ocs_unknown)
         localIsOcs = prefs.getBoolean("is_ocs", false)
         localRaceFinished = prefs.getBoolean("race_finished", false)
+        val raceStarted = prefs.getBoolean("race_started", false)
+        val passedMarks = prefs.getInt("passed_marks", 0).coerceAtLeast(0)
+        val activeCourseMarks = courseMapMarks.value.filterNot { it.skipped }
 
-        currentTargetText.value = prefs.getString(
-            "target_text",
-            fallbackTargetText()
-        ) ?: fallbackTargetText()
+        val storedDistanceText = prefs.getString("dtl_text", "").orEmpty()
+        val distanceMeters = firstLocalizedNumber(storedDistanceText)
+        dtlText.value = if (distanceMeters != null) {
+            getString(R.string.distance_meters, distanceMeters)
+        } else {
+            getString(R.string.distance_unknown)
+        }
+        ttlText.value = getString(R.string.ttl_unknown)
+        ocsText.value = if (localIsOcs) {
+            getString(R.string.ocs_yes)
+        } else {
+            getString(R.string.ocs_no)
+        }
 
+        currentTargetText.value = when {
+            localRaceFinished -> getString(R.string.next_finished)
+            localIsOcs -> getString(R.string.next_return_start)
+            !raceStarted -> getString(R.string.next_start_line)
+            else -> {
+                val mark = activeCourseMarks.getOrNull(passedMarks)
+                if (mark != null) {
+                    val order = mark.order ?: (passedMarks + 1)
+                    val markName = mark.label
+                        .removePrefix("$order ")
+                        .trim()
+                        .ifBlank { mark.label }
+                    getString(R.string.next_mark_value, order, markName)
+                } else {
+                    getString(R.string.next_finish_line)
+                }
+            }
+        }
 
-        progressText.value = prefs.getString(
-            "progress_text",
-            getString(R.string.progress_unknown)
-        ) ?: getString(R.string.progress_unknown)
+        progressText.value = buildLocalProgressText(
+            totalMarks = activeCourseMarks.size,
+            passedMarks = passedMarks,
+            raceStarted = raceStarted,
+            raceFinished = localRaceFinished,
+            markedFormatter = { passed, total, percent ->
+                getString(R.string.progress_value, passed, total, percent)
+            },
+            directFormatter = { percent ->
+                getString(R.string.progress_direct_value, percent)
+            }
+        )
 
-        boatRaceStatusText.value = prefs.getString(
-            "boat_status_text",
-            getString(R.string.boat_status_unknown)
-        ) ?: getString(R.string.boat_status_unknown)
+        val boatStatus = when {
+            localRaceFinished -> getString(R.string.boat_status_finished)
+            localIsOcs -> getString(R.string.boat_status_ocs)
+            raceStarted -> getString(R.string.boat_status_racing)
+            else -> getString(R.string.boat_status_not_started)
+        }
+        boatRaceStatusText.value = getString(R.string.boat_status_value, boatStatus)
 
         val debugError = prefs.getString("debug_error_text", "") ?: ""
         debugErrorText.value = if (debugError.isBlank()) {
@@ -1479,6 +1605,14 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
         updateStartPanelStatus()
         updateAutoLeaveAfterFinish()
+    }
+
+    private fun firstLocalizedNumber(value: String): Double? {
+        val raw = Regex("-?\\d+(?:[.,]\\d+)?")
+            .find(value)
+            ?.value
+            ?: return null
+        return raw.replace(',', '.').toDoubleOrNull()
     }
 
 
