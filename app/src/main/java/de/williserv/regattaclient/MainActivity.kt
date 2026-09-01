@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import de.williserv.regattaclient.ui.theme.RegattaClientTheme
@@ -143,7 +145,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private val startPanelMode = mutableStateOf("clear")
 
     private var raceStartEpochMillis: Long? = null
-    private var currentRaceStatus = ""
+    private var currentRaceStatus by mutableStateOf("")
     private var rawRaceStatus = ""
     private var rawRaceStart = ""
     private var rawRaceStop = ""
@@ -330,6 +332,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             debugErrorText = debugErrorText.value,
                             serviceStatusText = serviceStatusText.value,
                             raceStatusCode = currentRaceStatus,
+                            raceStatusDisplayText = raceStatusText.value,
                             raceLegalAccepted = raceLegalAccepted.value,
                             raceEvent = raceEvent.value,
                             seriesDisplayMetadata = raceSeriesDisplayMetadata.value,

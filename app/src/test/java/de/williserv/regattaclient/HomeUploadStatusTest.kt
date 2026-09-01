@@ -40,4 +40,19 @@ class HomeUploadStatusTest {
         assertEquals("42", shortUploadStatus(42L, true, "racing", true, true, true))
         assertEquals("OK", shortUploadStatus(10L, true, "racing", true, true, true))
     }
+
+    @Test
+    fun unavailableRaceData_rendersLocalizedDisplayErrorInsteadOfStaleRawStatus() {
+        assertEquals(
+            "Fehler 503",
+            shortRaceStatusText(
+                raceStatusCode = "racing",
+                raceStatusDisplayText = "Regatta: Fehler 503",
+                raceDataReady = false,
+                raceStartText = "Start: 2026-09-01T12:00:00Z",
+                inRace = false,
+                racePrefix = "Regatta:"
+            )
+        )
+    }
 }

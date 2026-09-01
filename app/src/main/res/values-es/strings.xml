@@ -264,7 +264,7 @@
     <string name="status_finished">finalizada</string>
     <string name="status_postponed">aplazada</string>
     <string name="status_cancelled">cancelada</string>
-    <string name="status_not_active">no activo</string>
+    <string name="status_not_active">no activa</string>
     <string name="distance_display_unknown">Distancia --</string>
     <string name="distance_display_value">Distancia %1$s</string>
     <string name="ocs_countdown">OCS: %1$s</string>

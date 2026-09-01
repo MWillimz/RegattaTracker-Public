@@ -146,8 +146,8 @@
     <string name="loading_race_notice">Ausschreibung wird geladen…</string>
     <string name="race_notice_accepted">Ausschreibung akzeptiert</string>
     <string name="race_notice_empty">Ausschreibung ist leer</string>
-    <string name="race_notice_hash_missing">Hash des Ausschreibunges fehlt</string>
-    <string name="race_notice_identity_missing">Veranstaltungsidentität des Ausschreibunges fehlt</string>
+    <string name="race_notice_hash_missing">Hash der Ausschreibung fehlt</string>
+    <string name="race_notice_identity_missing">Veranstaltungsidentität der Ausschreibung fehlt</string>
     <string name="legal_text_failed">Rechtstext fehlgeschlagen: %1$s</string>
     <string name="legal_text_failed_code">Rechtstext fehlgeschlagen %1$d: %2$s</string>
     <string name="accepting_race_notice">Ausschreibung wird akzeptiert…</string>

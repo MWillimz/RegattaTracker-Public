@@ -27,6 +27,7 @@ class LocalizationResourcesTest {
         assertEquals("Regatta: nicht geladen", resources.getString(R.string.race_not_loaded))
         assertEquals("Ausschreibung", resources.getString(R.string.race_notice))
         assertEquals("frei", resources.getString(R.string.clear_status))
+        assertEquals("Hash der Ausschreibung fehlt", resources.getString(R.string.race_notice_hash_missing))
     }
 
     @Test
@@ -39,6 +40,7 @@ class LocalizationResourcesTest {
         assertEquals("Course : non chargée", resources.getString(R.string.race_not_loaded))
         assertEquals("en règle", resources.getString(R.string.clear_status))
         assertEquals("Bouée — omise", resources.getString(R.string.mark_skipped, "Bouée"))
+        assertEquals("non active", resources.getString(R.string.status_not_active))
     }
 
     @Test
@@ -51,6 +53,8 @@ class LocalizationResourcesTest {
         assertEquals("Regata: non caricata", resources.getString(R.string.race_not_loaded))
         assertEquals("Bando di regata", resources.getString(R.string.race_notice))
         assertEquals("Tracciamento manuale interrotto", resources.getString(R.string.manual_tracking_stopped))
+        assertEquals("Il bando di regata è vuoto", resources.getString(R.string.race_notice_empty))
+        assertEquals("non attiva", resources.getString(R.string.status_not_active))
     }
 
     @Test
@@ -63,6 +67,7 @@ class LocalizationResourcesTest {
         assertEquals("Regata: no cargada", resources.getString(R.string.race_not_loaded))
         assertEquals("Anuncio de regata", resources.getString(R.string.race_notice))
         assertEquals("Envío", resources.getString(R.string.upload))
+        assertEquals("no activa", resources.getString(R.string.status_not_active))
     }
 
     @Test
@@ -72,6 +77,8 @@ class LocalizationResourcesTest {
 
         assertEquals("Back", resources.getString(R.string.back))
         assertEquals("Race: not loaded", resources.getString(R.string.race_not_loaded))
+        assertEquals("Legal Notice", resources.getString(R.string.impressum))
+        assertEquals("Privacy Policy", resources.getString(R.string.datenschutz))
     }
 
     @Test

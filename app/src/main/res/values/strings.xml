@@ -98,8 +98,8 @@
     <string name="share_event">Share Event</string>
     <string name="share_event_page">Share Event Page</string>
     <string name="server_legal">Server Legal</string>
-    <string name="impressum">Impressum</string>
-    <string name="datenschutz">Datenschutz</string>
+    <string name="impressum">Legal Notice</string>
+    <string name="datenschutz">Privacy Policy</string>
     <string name="connected_regatta_server">Connected Regatta Server</string>
     <string name="operator">Operator</string>
     <string name="website">Website</string>
@@ -311,8 +311,8 @@
     <string name="upload_error_code">Upload error %1$d: %2$s</string>
     <string name="upload_exception">Upload exception: %1$s</string>
     <string name="storage_error_access_context">Storage error: event access context is incomplete</string>
-    <string name="server_impressum">Server Impressum</string>
-    <string name="server_datenschutz">Server Datenschutz</string>
+    <string name="server_impressum">Server Legal Notice</string>
+    <string name="server_datenschutz">Server Privacy Policy</string>
     <string name="server_document_title">Server %1$s</string>
 
     <string name="series_order">%1$d of %2$d</string>

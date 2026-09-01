@@ -70,6 +70,7 @@ fun HomeScreen(
     debugErrorText: String,
     serviceStatusText: String,
     raceStatusCode: String,
+    raceStatusDisplayText: String,
     raceLegalAccepted: Boolean,
     raceEvent: String,
     raceStartText: String,
@@ -219,6 +220,8 @@ fun HomeScreen(
             gpsColor = gpsColor,
             raceStatusText = shortRaceStatusText(
                 raceStatusCode = raceStatusCode,
+                raceStatusDisplayText = raceStatusDisplayText,
+                raceDataReady = raceDataReady,
                 raceStartText = raceStartText,
                 inRace = inRace,
                 startPrefix = startPrefix,
@@ -1065,6 +1068,8 @@ fun localizedRaceStatusCode(
 
 fun shortRaceStatusText(
     raceStatusCode: String,
+    raceStatusDisplayText: String = "",
+    raceDataReady: Boolean = true,
     raceStartText: String,
     inRace: Boolean,
     startPrefix: String = "Start:",
@@ -1079,6 +1084,13 @@ fun shortRaceStatusText(
     cancelledText: String = "cancelled"
 ): String {
     val cleaned = raceStatusCode.trim()
+
+    if (!raceDataReady) {
+        return raceStatusDisplayText
+            .removePrefix(racePrefix)
+            .trim()
+            .ifBlank { notActiveText }
+    }
 
     if (cleaned.equals("finished", ignoreCase = true)) return finishedText
     if (cleaned.equals("postponed", ignoreCase = true)) return postponedText
