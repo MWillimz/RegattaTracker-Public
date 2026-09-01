@@ -30,6 +30,22 @@ class RaceSetupPersistenceTest {
     }
 
     @Test
+    fun legacyRaceStatus_normalizesSupportedLocaleDisplayValues() {
+        val cases = mapOf(
+            "Race: planned" to "planned",
+            "Regatta: geplant" to "planned",
+            "Course : terminée" to "finished",
+            "Regata: in corso" to "racing",
+            "Regata: aplazada" to "postponed",
+            "Regatta: abgasagt" to "abgasagt"
+        )
+
+        cases.forEach { (display, expected) ->
+            assertEquals(expected, legacyRaceStatus(display))
+        }
+    }
+
+    @Test
     fun legacyMigration_preservesShortenedCourseAndStructuredMarks() {
         val migrated = migrateLegacyRaceDisplayState(
             raceStatusText = "Race: racing",
