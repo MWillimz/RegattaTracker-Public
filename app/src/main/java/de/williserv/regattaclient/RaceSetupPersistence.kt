@@ -1,5 +1,7 @@
 package de.williserv.regattaclient
 
+import java.util.Locale
+
 internal const val RACE_RAW_STATE_VERSION = 1
 
 internal data class LegacyCourseMarkState(
@@ -35,7 +37,7 @@ internal fun migrateLegacyRaceDisplayState(
     raceMarksText: String
 ): LegacyRaceDisplayState {
     return LegacyRaceDisplayState(
-        raceStatus = legacyDisplayPayload(raceStatusText),
+        raceStatus = legacyRaceStatus(raceStatusText),
         raceStart = legacyDisplayPayload(raceStartText),
         raceStop = legacyDisplayPayload(raceStopText),
         raceInfo = legacyDisplayPayload(raceInfoText),
@@ -44,8 +46,22 @@ internal fun migrateLegacyRaceDisplayState(
     )
 }
 
+internal fun legacyRaceStatus(value: String): String {
+    val payload = legacyDisplayPayload(value)
+    return when (payload.lowercase(Locale.ROOT)) {
+        "loaded", "geladen", "chargée", "chargee", "caricata", "cargada" -> "loaded"
+        "planned", "geplant", "planifiée", "planifiee", "pianificata", "planificada" -> "planned"
+        "racing", "läuft", "laeuft", "en course", "in corso", "en curso" -> "racing"
+        "started", "gestartet", "démarrée", "demarree", "iniziata", "iniciada" -> "started"
+        "finished", "beendet", "terminée", "terminee", "terminata", "finalizada" -> "finished"
+        "postponed", "verschoben", "reportée", "reportee", "rinviata", "aplazada" -> "postponed"
+        "cancelled", "canceled", "abgesagt", "annulée", "annulee", "annullata", "cancelada" -> "cancelled"
+        else -> payload
+    }
+}
+
 internal fun legacyCourseShortened(value: String): Boolean {
-    return when (legacyDisplayPayload(value).lowercase()) {
+    return when (legacyDisplayPayload(value).lowercase(Locale.ROOT)) {
         "yes", "ja", "oui", "si", "sí", "sì", "true", "1" -> true
         else -> false
     }
