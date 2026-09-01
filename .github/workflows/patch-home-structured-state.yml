@@ -19,7 +19,24 @@ jobs:
           ref: feature/64-localize-ui-strings
           fetch-depth: 0
       - name: Apply patch
-        run: python3 .github/scripts/patch_home_structured_state.py
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/scripts/patch_home_structured_state.py')
+          text = path.read_text()
+          old = '''    home,
+              '    uploadStatusText: String,\\n    debugErrorText: String,\\n',
+              '    uploadStatusText: String,\\n    pendingUploadCount: Long,\\n    debugErrorText: String,\\n'
+          '''
+          new = '''    home,
+              '    statusText: String,\\n    rowCountText: String,\\n    uploadStatusText: String,\\n    debugErrorText: String,\\n    serviceStatusText: String,\\n',
+              '    statusText: String,\\n    rowCountText: String,\\n    uploadStatusText: String,\\n    pendingUploadCount: Long,\\n    debugErrorText: String,\\n    serviceStatusText: String,\\n'
+          '''
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one script anchor, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          python3 .github/scripts/patch_home_structured_state.py
       - name: Commit patch and remove helpers
         run: |
           git config user.name "github-actions[bot]"
