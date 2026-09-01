@@ -18,6 +18,8 @@ class LocalizationResourcesTest {
         assertEquals("Anbieter:", resources.getString(R.string.legal_notice_body).lineSequence().first())
         assertEquals("Zurück", resources.getString(R.string.back))
         assertEquals("Regatta: nicht geladen", resources.getString(R.string.race_not_loaded))
+        assertEquals("Ausschreibung", resources.getString(R.string.race_notice))
+        assertEquals("frei", resources.getString(R.string.clear_status))
     }
 
     @Test
@@ -28,6 +30,8 @@ class LocalizationResourcesTest {
         assertEquals("Éditeur :", resources.getString(R.string.legal_notice_body).lineSequence().first())
         assertEquals("Retour", resources.getString(R.string.back))
         assertEquals("Course : non chargée", resources.getString(R.string.race_not_loaded))
+        assertEquals("en règle", resources.getString(R.string.clear_status))
+        assertEquals("Bouée — omise", resources.getString(R.string.mark_skipped, "Bouée"))
     }
 
     @Test
@@ -38,6 +42,8 @@ class LocalizationResourcesTest {
         assertEquals("Fornitore:", resources.getString(R.string.legal_notice_body).lineSequence().first())
         assertEquals("Indietro", resources.getString(R.string.back))
         assertEquals("Regata: non caricata", resources.getString(R.string.race_not_loaded))
+        assertEquals("Bando di regata", resources.getString(R.string.race_notice))
+        assertEquals("Tracciamento manuale interrotto", resources.getString(R.string.manual_tracking_stopped))
     }
 
     @Test
@@ -48,6 +54,8 @@ class LocalizationResourcesTest {
         assertEquals("Proveedor:", resources.getString(R.string.legal_notice_body).lineSequence().first())
         assertEquals("Atrás", resources.getString(R.string.back))
         assertEquals("Regata: no cargada", resources.getString(R.string.race_not_loaded))
+        assertEquals("Anuncio de regata", resources.getString(R.string.race_notice))
+        assertEquals("Envío", resources.getString(R.string.upload))
     }
 
     @Test
