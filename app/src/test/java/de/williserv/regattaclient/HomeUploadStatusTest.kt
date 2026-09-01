@@ -55,4 +55,18 @@ class HomeUploadStatusTest {
             )
         )
     }
+
+    @Test
+    fun availableRaceData_usesRawStatusInsteadOfDisplayText() {
+        assertEquals(
+            "racing",
+            shortRaceStatusText(
+                raceStatusCode = "racing",
+                raceStatusDisplayText = "Race: stale display text",
+                raceDataReady = true,
+                raceStartText = "Start: --",
+                inRace = false
+            )
+        )
+    }
 }
