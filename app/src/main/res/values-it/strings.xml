@@ -167,7 +167,7 @@
     <string name="results_loaded">Risultati caricati</string>
     <string name="results_failed">Errore risultati: %1$s</string>
     <string name="results_failed_code">Errore risultati %1$d: %2$s</string>
-    <string name="race_accept_legal_first">Regata: accetta prima l’bando di regata</string>
+    <string name="race_accept_legal_first">Regata: accetta prima il bando di regata</string>
     <string name="race_error_code">Regata: errore %1$d</string>
     <string name="race_response_missing_event">Regata: la risposta non contiene event_name</string>
     <string name="race_error">Regata: %1$s</string>
