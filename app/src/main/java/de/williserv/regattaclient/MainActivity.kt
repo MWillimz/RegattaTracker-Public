@@ -133,6 +133,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private val ttlText = mutableStateOf("")
     private val ocsText = mutableStateOf("")
     private val debugErrorText = mutableStateOf("")
+    private var localIsOcs = false
+    private var localRaceFinished = false
 
     private val showFinishDetectedDialog = mutableStateOf(false)
     private val raceDataReady = mutableStateOf(false)
@@ -1426,6 +1428,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         dtlText.value = prefs.getString("dtl_text", getString(R.string.distance_unknown)) ?: getString(R.string.distance_unknown)
         ttlText.value = prefs.getString("ttl_text", getString(R.string.ttl_unknown)) ?: getString(R.string.ttl_unknown)
         ocsText.value = prefs.getString("ocs_text", getString(R.string.ocs_unknown)) ?: getString(R.string.ocs_unknown)
+        localIsOcs = prefs.getBoolean("is_ocs", false)
+        localRaceFinished = prefs.getBoolean("race_finished", false)
 
         currentTargetText.value = prefs.getString(
             "target_text",
@@ -1588,7 +1592,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     }
 
     private fun updateAutoLeaveAfterFinish() {
-        val isFinished = boatRaceStatusText.value.contains("finished", ignoreCase = true)
+        val isFinished = localRaceFinished
 
         if (inRace.value && isFinished) {
             if (!showFinishDetectedDialog.value) {
@@ -1600,8 +1604,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     }
 
     private fun updateStartPanelStatus() {
-        val isOcs = ocsText.value.contains("yes", ignoreCase = true) ||
-                ocsText.value.contains("ja", ignoreCase = true)
+        val isOcs = localIsOcs
 
         if (isOcs) {
             val startMillis = raceStartEpochMillis

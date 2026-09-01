@@ -1151,6 +1151,10 @@ class RegattaTrackingService : Service(), SensorEventListener {
             .putString("target_text", targetText)
             .putString("progress_text", progressText)
             .putString("boat_status_text", boatStatusText)
+            .putBoolean("is_ocs", isOcs)
+            .putBoolean("race_started", raceStarted)
+            .putBoolean("race_finished", raceFinished)
+            .putInt("passed_marks", passedMarks)
             .apply()
 
         updateAutoStopAfterFinish()
