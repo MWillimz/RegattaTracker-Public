@@ -90,7 +90,7 @@ class LocalizationResourcesTest {
     }
 
     @Test
-    fun localizedResourceFiles_matchDefaultKeysAndPlaceholders() {
+    fun localizedResourceFiles_matchTranslatableDefaultKeysAndPlaceholders() {
         val resRoot = sequenceOf(
             File("src/main/res"),
             File("app/src/main/res")
@@ -98,7 +98,10 @@ class LocalizationResourcesTest {
 
         assertTrue("Could not locate Android string resources", resRoot != null)
         val root = requireNotNull(resRoot)
-        val defaultStrings = readStringResources(File(root, "values/strings.xml"))
+        val defaultStrings = readStringResources(
+            file = File(root, "values/strings.xml"),
+            includeNonTranslatable = false
+        )
 
         listOf("values-de", "values-fr", "values-it", "values-es").forEach { localeDir ->
             val localizedStrings = readStringResources(File(root, "$localeDir/strings.xml"))
@@ -114,7 +117,10 @@ class LocalizationResourcesTest {
         }
     }
 
-    private fun readStringResources(file: File): Map<String, String> {
+    private fun readStringResources(
+        file: File,
+        includeNonTranslatable: Boolean = true
+    ): Map<String, String> {
         val document = DocumentBuilderFactory.newInstance()
             .newDocumentBuilder()
             .parse(file)
@@ -124,6 +130,13 @@ class LocalizationResourcesTest {
         for (index in 0 until nodes.length) {
             val node = nodes.item(index)
             val name = node.attributes?.getNamedItem("name")?.nodeValue ?: continue
+            val explicitlyNonTranslatable =
+                node.attributes?.getNamedItem("translatable")?.nodeValue == "false"
+
+            if (!includeNonTranslatable && explicitlyNonTranslatable) {
+                continue
+            }
+
             strings[name] = node.textContent
         }
 
