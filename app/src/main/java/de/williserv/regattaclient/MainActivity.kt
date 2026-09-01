@@ -823,10 +823,26 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             raceInfoText.value = prefs.getString("race_info_text", raceInfoText.value) ?: raceInfoText.value
             raceShortenedText.value = prefs.getString("race_shortened_text", raceShortenedText.value) ?: raceShortenedText.value
 
-            rawRaceStatus = legacyDisplayPayload(raceStatusText.value)
-            rawRaceStart = legacyDisplayPayload(raceStartText.value)
-            rawRaceStop = legacyDisplayPayload(raceStopText.value)
-            rawRaceInfo = legacyDisplayPayload(raceInfoText.value)
+            val migratedLegacyState = migrateLegacyRaceDisplayState(
+                raceStatusText = raceStatusText.value,
+                raceStartText = raceStartText.value,
+                raceStopText = raceStopText.value,
+                raceInfoText = raceInfoText.value,
+                raceShortenedText = raceShortenedText.value,
+                raceMarksText = raceMarksText.value
+            )
+            rawRaceStatus = migratedLegacyState.raceStatus
+            rawRaceStart = migratedLegacyState.raceStart
+            rawRaceStop = migratedLegacyState.raceStop
+            rawRaceInfo = migratedLegacyState.raceInfo
+            rawRaceCourseShortened = migratedLegacyState.courseShortened
+            courseMapMarks.value = migratedLegacyState.courseMarks.map { mark ->
+                CourseMapMark(
+                    order = mark.order,
+                    label = mark.label,
+                    skipped = mark.skipped
+                )
+            }
             currentRaceStatus = rawRaceStatus
             raceStartEpochMillis = parseServerTimeToMillis(rawRaceStart)
         }

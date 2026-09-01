@@ -885,8 +885,8 @@ fun AdvancedDebugBlock(
             Spacer(modifier = Modifier.height(HomeGapLarge))
 
             AdvancedSectionTitle(stringResource(R.string.gps))
-            DebugLine("COG", cogText.replace("COG:", "").trim())
-            DebugLine("SOG", sogText.replace("SOG:", "").trim())
+            DebugLine("COG", cogText.removePrefix(stringResource(R.string.cog_prefix)).trim())
+            DebugLine("SOG", sogText.removePrefix(stringResource(R.string.sog_prefix)).trim())
             DebugLine(stringResource(R.string.accuracy), gpsAccuracyText.removePrefix(stringResource(R.string.gps_prefix)).trim())
 
             Spacer(modifier = Modifier.height(HomeGapLarge))
