@@ -18,6 +18,18 @@ jobs:
         with:
           ref: feature/64-localize-ui-strings
           fetch-depth: 0
+      - name: Correct patch cardinality
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/scripts/one_shot_pr72_final_hardening.py')
+          text = path.read_text(encoding='utf-8')
+          old = '    replace_exact("app/src/main/res/values-it/strings.xml", old, new)\n'
+          new = '    replace_exact("app/src/main/res/values-it/strings.xml", old, new, count=2 if old == "Accettazione bando di regata" else 1)\n'
+          if text.count(old) != 1:
+              raise SystemExit('unexpected Italian patch loop shape')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+          PY
       - name: Apply final hardening patch
         run: python3 .github/scripts/one_shot_pr72_final_hardening.py
       - name: Commit and remove one-shot helpers
