@@ -44,4 +44,18 @@ class CourseProgressMarkStateTest {
         assertFalse(states[0].skipped)
         assertTrue(states[1].skipped)
     }
+    @Test
+    fun localizedDisplayFallbackRecognizesLocalizedSkippedMarker() {
+        val items = courseMarkDisplayItems(
+            raceMarksText = "Bahnmarken: 1 Tonne [übersprungen], 2 Tonne",
+            marksPrefix = "Bahnmarken:",
+            skippedMarker = "[übersprungen]"
+        )
+
+        assertEquals("1 Tonne", items[0].label)
+        assertTrue(items[0].skipped)
+        assertEquals("2 Tonne", items[1].label)
+        assertFalse(items[1].skipped)
+    }
+
 }

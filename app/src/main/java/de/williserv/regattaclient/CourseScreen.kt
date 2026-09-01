@@ -492,7 +492,14 @@ fun CourseRouteCard(
                         )
                     }
                 } else {
-                    courseMarkDisplayItems(raceMarksText, stringResource(R.string.marks_prefix)).forEach { item ->
+                    val localizedSkippedMarker = stringResource(R.string.mark_skipped_compact, 0, "")
+                        .removePrefix("0")
+                        .trim()
+                    courseMarkDisplayItems(
+                        raceMarksText = raceMarksText,
+                        marksPrefix = stringResource(R.string.marks_prefix),
+                        skippedMarker = localizedSkippedMarker
+                    ).forEach { item ->
                         Text(
                             text = item.label,
                             fontSize = 18.sp,
@@ -587,7 +594,8 @@ data class CourseMarkDisplayItem(
 
 fun courseMarkDisplayItems(
     raceMarksText: String,
-    marksPrefix: String = "Marks:"
+    marksPrefix: String = "Marks:",
+    skippedMarker: String = "[skipped]"
 ): List<CourseMarkDisplayItem> {
     val cleaned = raceMarksText
         .removePrefix(marksPrefix)
@@ -607,10 +615,13 @@ fun courseMarkDisplayItems(
         .map { it.trim() }
         .filter { it.isNotBlank() }
         .map { raw ->
-            val skipped = raw.contains("[skipped]", ignoreCase = true)
-            val label = raw
-                .replace("[skipped]", "", ignoreCase = true)
-                .trim()
+            val skipped = skippedMarker.isNotBlank() &&
+                    raw.contains(skippedMarker, ignoreCase = true)
+            val label = if (skipped) {
+                raw.replace(skippedMarker, "", ignoreCase = true).trim()
+            } else {
+                raw
+            }
 
             CourseMarkDisplayItem(
                 label = label,
