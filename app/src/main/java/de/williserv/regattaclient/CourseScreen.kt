@@ -106,7 +106,7 @@ fun CourseScreen(
     }
     if (showTargetDialog.value) {
         CourseTargetDialog(
-            raceMarksText = raceMarksText,
+            courseMapMarks = courseMapMarks,
             onDismiss = {
                 showTargetDialog.value = false
             },
@@ -204,11 +204,11 @@ fun CourseTargetCard(
 
 @Composable
 fun CourseTargetDialog(
-    raceMarksText: String,
+    courseMapMarks: List<CourseMapMark>,
     onDismiss: () -> Unit,
     onSelectOption: (CourseProgressOption) -> Unit
 ) {
-    val options = courseProgressOptions(raceMarksText, stringResource(R.string.marks_prefix))
+    val options = courseProgressOptions(courseMapMarks)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -254,15 +254,43 @@ data class CourseProgressOption(
     val enabled: Boolean = true
 )
 
+data class CourseProgressMarkState(
+    val label: String,
+    val passedMarks: Int,
+    val skipped: Boolean
+)
+
+internal fun buildCourseProgressMarkStates(
+    courseMapMarks: List<CourseMapMark>
+): List<CourseProgressMarkState> {
+    var activeMarksBefore = 0
+
+    return courseMapMarks.mapNotNull { mark ->
+        val label = mark.label.trim()
+        if (label.isBlank() || label == "--") {
+            null
+        } else if (mark.skipped) {
+            CourseProgressMarkState(
+                label = label,
+                passedMarks = 0,
+                skipped = true
+            )
+        } else {
+            CourseProgressMarkState(
+                label = label,
+                passedMarks = activeMarksBefore++,
+                skipped = false
+            )
+        }
+    }
+}
+
 @Composable
 fun courseProgressOptions(
-    raceMarksText: String,
-    marksPrefix: String = "Marks:"
+    courseMapMarks: List<CourseMapMark>
 ): List<CourseProgressOption> {
-    val marks = courseMarkDisplayItems(raceMarksText, marksPrefix)
-        .filter { it.label.isNotBlank() && it.label != "--" }
-
-    val activeMarks = marks.filterNot { it.skipped }
+    val marks = buildCourseProgressMarkStates(courseMapMarks)
+    val activeMarkCount = marks.count { !it.skipped }
 
     return buildList {
         add(
@@ -275,8 +303,6 @@ fun courseProgressOptions(
         )
 
         marks.forEach { mark ->
-            val activeIndex = activeMarks.indexOfFirst { it.label == mark.label }
-
             add(
                 CourseProgressOption(
                     label = if (mark.skipped) {
@@ -285,7 +311,7 @@ fun courseProgressOptions(
                         mark.label
                     },
                     confirmLabel = mark.label,
-                    passedMarks = if (mark.skipped) 0 else activeIndex,
+                    passedMarks = mark.passedMarks,
                     raceStarted = true,
                     enabled = !mark.skipped
                 )
@@ -296,7 +322,7 @@ fun courseProgressOptions(
             CourseProgressOption(
                 label = stringResource(R.string.finish_line),
                 confirmLabel = stringResource(R.string.finish_line),
-                passedMarks = activeMarks.size,
+                passedMarks = activeMarkCount,
                 raceStarted = true
             )
         )
