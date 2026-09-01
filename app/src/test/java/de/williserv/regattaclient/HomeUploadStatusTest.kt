@@ -57,6 +57,22 @@ class HomeUploadStatusTest {
     }
 
     @Test
+    fun unavailableRaceData_stripsFrenchRacePrefix() {
+        assertEquals(
+            "erreur 503",
+            shortRaceStatusText(
+                raceStatusCode = "racing",
+                raceStatusDisplayText = "Course : erreur 503",
+                raceDataReady = false,
+                raceStartText = "Départ : --",
+                inRace = false,
+                racePrefix = "Course :",
+                startPrefix = "Départ :"
+            )
+        )
+    }
+
+    @Test
     fun availableRaceData_usesRawStatusInsteadOfDisplayText() {
         assertEquals(
             "racing",
