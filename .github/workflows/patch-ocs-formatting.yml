@@ -19,83 +19,12 @@ jobs:
           ref: feature/64-localize-ui-strings
           fetch-depth: 0
       - name: Clean formatting
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('app/src/main/java/de/williserv/regattaclient/MainActivity.kt')
-          text = p.read_text()
-          old = '''if (isOcs) {
-                      val startMillis = raceStartEpochMillis
-              val remainingSeconds = if (startMillis != null) {
-                  (startMillis - System.currentTimeMillis()) / 1000L
-              } else {
-                  null
-              }
-
-              if (remainingSeconds != null && remainingSeconds > 0L) {
-                  val minutes = remainingSeconds / 60L
-                  val seconds = remainingSeconds % 60L
-                  startPanelText.value = String.format(Locale.US, "%d:%02d", minutes, seconds)
-                  startPanelMode.value = "ocs_countdown"
-              } else {
-                  startPanelText.value = getString(R.string.ocs)
-                  startPanelMode.value = "ocs"
-              }
-              return
-          }
-'''
-          old = old.replace('          ', '')
-          new = '''        if (isOcs) {
-              val startMillis = raceStartEpochMillis
-              val remainingSeconds = if (startMillis != null) {
-                  (startMillis - System.currentTimeMillis()) / 1000L
-              } else {
-                  null
-              }
-
-              if (remainingSeconds != null && remainingSeconds > 0L) {
-                  val minutes = remainingSeconds / 60L
-                  val seconds = remainingSeconds % 60L
-                  startPanelText.value = String.format(Locale.US, "%d:%02d", minutes, seconds)
-                  startPanelMode.value = "ocs_countdown"
-              } else {
-                  startPanelText.value = getString(R.string.ocs)
-                  startPanelMode.value = "ocs"
-              }
-              return
-          }
-'''.replace('          ', '    ')
-          # Use structural boundaries rather than depending on the malformed whitespace.
-          start = text.index('if (isOcs) {', text.index('private fun updateStartPanelStatus()'))
-          end = text.index('        if (currentRaceStatus.equals("finished"', start)
-          clean = '''        if (isOcs) {
-            val startMillis = raceStartEpochMillis
-            val remainingSeconds = if (startMillis != null) {
-                (startMillis - System.currentTimeMillis()) / 1000L
-            } else {
-                null
-            }
-
-            if (remainingSeconds != null && remainingSeconds > 0L) {
-                val minutes = remainingSeconds / 60L
-                val seconds = remainingSeconds % 60L
-                startPanelText.value = String.format(Locale.US, "%d:%02d", minutes, seconds)
-                startPanelMode.value = "ocs_countdown"
-            } else {
-                startPanelText.value = getString(R.string.ocs)
-                startPanelMode.value = "ocs"
-            }
-            return
-        }
-
-'''
-          p.write_text(text[:start] + clean + text[end:])
-          PY
-      - name: Commit and remove helper
+        run: python3 .github/scripts/format_ocs_block.py
+      - name: Commit and remove helpers
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm .github/workflows/patch-ocs-formatting.yml
+          git rm .github/workflows/patch-ocs-formatting.yml .github/scripts/format_ocs_block.py
           git add app/src/main/java/de/williserv/regattaclient/MainActivity.kt
           git diff --cached --check
           git commit -m "Clean OCS state block formatting"
