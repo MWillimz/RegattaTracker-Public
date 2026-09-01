@@ -1,8 +1,12 @@
 package de.williserv.regattaclient
 
+import android.content.res.Configuration
+import android.text.TextPaint
 import java.io.File
+import java.util.Locale
 import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -87,6 +91,75 @@ class LocalizationResourcesTest {
             "Übertragung: aktiv · 7 ausstehend",
             resources.getString(R.string.upload_worker_pending, "aktiv", 7)
         )
+    }
+
+    @Test
+    fun configurationContexts_switchLocalesWithoutStaleValues() {
+        val app = RuntimeEnvironment.getApplication()
+        val expectedBackLabels = linkedMapOf(
+            "en" to "Back",
+            "de" to "Zurück",
+            "fr" to "Retour",
+            "it" to "Indietro",
+            "es" to "Atrás",
+            "de" to "Zurück"
+        )
+
+        expectedBackLabels.forEach { (languageTag, expected) ->
+            val configuration = Configuration(app.resources.configuration).apply {
+                setLocale(Locale.forLanguageTag(languageTag))
+            }
+            val resources = app.createConfigurationContext(configuration).resources
+
+            assertEquals(expected, resources.getString(R.string.back))
+        }
+    }
+
+    @Test
+    fun compactControlLabels_fitConservativeWidthGuardrailsInAllSupportedLocales() {
+        val app = RuntimeEnvironment.getApplication()
+        val density = app.resources.displayMetrics.density
+        val scaledDensity = app.resources.displayMetrics.scaledDensity
+        val paint = TextPaint().apply {
+            textSize = 16f * scaledDensity
+        }
+        val widthBudgetsDp = linkedMapOf(
+            R.string.back to 120f,
+            R.string.advanced to 140f,
+            R.string.hide to 120f,
+            R.string.legal_about to 220f,
+            R.string.results to 160f,
+            R.string.course to 160f,
+            R.string.map to 160f,
+            R.string.setup to 160f,
+            R.string.stop_tracking to 220f,
+            R.string.i_agree to 180f,
+            R.string.cancel to 160f,
+            R.string.delete to 160f,
+            R.string.confirm_override to 240f,
+            R.string.show_qr_code to 200f
+        )
+
+        listOf("en", "de", "fr", "it", "es").forEach { languageTag ->
+            val configuration = Configuration(app.resources.configuration).apply {
+                setLocale(Locale.forLanguageTag(languageTag))
+            }
+            val resources = app.createConfigurationContext(configuration).resources
+
+            widthBudgetsDp.forEach { (resId, maxWidthDp) ->
+                val label = resources.getString(resId)
+                val measuredWidthDp = paint.measureText(label) / density
+
+                assertFalse(
+                    "Compact label contains a newline for $languageTag: '$label'",
+                    label.contains('\n')
+                )
+                assertTrue(
+                    "Compact label exceeds ${maxWidthDp}dp guardrail for $languageTag: '$label' (${measuredWidthDp}dp)",
+                    measuredWidthDp <= maxWidthDp
+                )
+            }
+        }
     }
 
     @Test
