@@ -46,7 +46,7 @@ internal fun migrateLegacyRaceDisplayState(
 
 internal fun legacyCourseShortened(value: String): Boolean {
     return when (legacyDisplayPayload(value).lowercase()) {
-        "yes", "ja", "oui", "si", "sì", "true", "1" -> true
+        "yes", "ja", "oui", "si", "sí", "sì", "true", "1" -> true
         else -> false
     }
 }
