@@ -1,0 +1,30 @@
+name: One-shot PR72 final hardening
+
+on:
+  push:
+    branches:
+      - feature/64-localize-ui-strings
+    paths:
+      - .github/workflows/one-shot-pr72-final-hardening.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/64-localize-ui-strings
+          fetch-depth: 0
+      - name: Apply final hardening patch
+        run: python3 .github/scripts/one_shot_pr72_final_hardening.py
+      - name: Commit and remove one-shot helpers
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/scripts/one_shot_pr72_final_hardening.py .github/workflows/one-shot-pr72-final-hardening.yml
+          git add -A
+          git commit -m "fix: close localization review findings"
+          git push origin HEAD:feature/64-localize-ui-strings
