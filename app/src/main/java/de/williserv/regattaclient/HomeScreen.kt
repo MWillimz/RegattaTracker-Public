@@ -249,7 +249,8 @@ fun HomeScreen(
                 offText = stringResource(R.string.status_off),
                 waitingText = stringResource(R.string.status_waiting),
                 readyText = stringResource(R.string.status_ready),
-                idleText = stringResource(R.string.status_idle)
+                idleText = stringResource(R.string.status_idle),
+                okText = stringResource(R.string.ok)
             ),
             uploadColor = uploadColor
         )
@@ -986,7 +987,8 @@ fun shortUploadStatus(
     offText: String = "off",
     waitingText: String = "waiting",
     readyText: String = "ready",
-    idleText: String = "idle"
+    idleText: String = "idle",
+    okText: String = "OK"
 ): String {
     if (!inRace) {
         if (pendingUploadCount > 0L) {
@@ -1003,7 +1005,7 @@ fun shortUploadStatus(
         }
     }
 
-    return if (pendingUploadCount <= 10L) "OK" else "$pendingUploadCount"
+    return if (pendingUploadCount <= 10L) okText else "$pendingUploadCount"
 }
 
 fun raceStatusColor(
