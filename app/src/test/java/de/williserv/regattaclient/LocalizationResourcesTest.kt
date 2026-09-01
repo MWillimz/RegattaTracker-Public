@@ -54,6 +54,7 @@ class LocalizationResourcesTest {
         assertEquals("Bando di regata", resources.getString(R.string.race_notice))
         assertEquals("Tracciamento manuale interrotto", resources.getString(R.string.manual_tracking_stopped))
         assertEquals("Il bando di regata è vuoto", resources.getString(R.string.race_notice_empty))
+        assertEquals("Regata: accetta prima il bando di regata", resources.getString(R.string.race_accept_legal_first))
         assertEquals("non attiva", resources.getString(R.string.status_not_active))
     }
 
