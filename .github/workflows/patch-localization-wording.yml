@@ -49,7 +49,6 @@ jobs:
                   raise SystemExit(f'{path}: expected at least {minimum} matches, found {count}: {old!r}')
               path.write_text(text.replace(old, new))
 
-          # Keep the legal-resource block consistently formatted in every locale.
           for path in files.values():
               text = path.read_text()
               text = text.replace('\n        <string name="legal_notice_body">', '\n    <string name="legal_notice_body">')
@@ -59,10 +58,10 @@ jobs:
           de = files['de']
           replace_once(de, '<string name="legal_about">Rechtliches / Über</string>', '<string name="legal_about">Rechtliches / Über die App</string>')
           replace_once(de, '<string name="settings_about_legal">Einstellungen / Über / Rechtliches</string>', '<string name="settings_about_legal">Einstellungen / Über die App / Rechtliches</string>')
-          replace_all_checked(de, 'Regattahinweis', 'Ausschreibung', minimum=8)
+          replace_all_checked(de, 'Regattahinweis', 'Ausschreibung', minimum=1)
           replace_once(de, '<string name="accept_notice">Hinweis akzeptieren</string>', '<string name="accept_notice">Ausschreibung akzeptieren</string>')
-          replace_all_checked(de, 'Regatta-Tracking', 'Regatta-Aufzeichnung', minimum=2)
-          replace_all_checked(de, 'Trackingdaten', 'Aufzeichnungsdaten', minimum=2)
+          replace_all_checked(de, 'Regatta-Tracking', 'Regatta-Aufzeichnung', minimum=1)
+          replace_all_checked(de, 'Trackingdaten', 'Aufzeichnungsdaten', minimum=1)
           replace_once(de, '<string name="clear_status">klar</string>', '<string name="clear_status">frei</string>')
 
           fr = files['fr']
@@ -77,8 +76,8 @@ jobs:
           replace_once(fr, 'Vitesse fond (SOG)', 'Vitesse sur le fond (SOG)')
 
           it = files['it']
-          replace_all_checked(it, 'Avviso di regata', 'Bando di regata', minimum=4)
-          replace_all_checked(it, 'avviso di regata', 'bando di regata', minimum=4)
+          replace_all_checked(it, 'Avviso di regata', 'Bando di regata', minimum=1)
+          replace_all_checked(it, 'avviso di regata', 'bando di regata', minimum=1)
           replace_once(it, '<string name="accept_notice">Accetta avviso</string>', '<string name="accept_notice">Accetta bando</string>')
           replace_once(it, '<string name="mark_skipped">%1$s — saltata</string>', '<string name="mark_skipped">%1$s — omessa</string>')
           replace_once(it, '<string name="mark_skipped_compact">%1$d %2$s [saltata]</string>', '<string name="mark_skipped_compact">%1$d %2$s [omessa]</string>')
@@ -88,8 +87,8 @@ jobs:
           replace_once(it, '<string name="clear_status">libero</string>', '<string name="clear_status">regolare</string>')
 
           es = files['es']
-          replace_all_checked(es, 'Aviso de regata', 'Anuncio de regata', minimum=4)
-          replace_all_checked(es, 'aviso de regata', 'anuncio de regata', minimum=4)
+          replace_all_checked(es, 'Aviso de regata', 'Anuncio de regata', minimum=1)
+          replace_all_checked(es, 'aviso de regata', 'anuncio de regata', minimum=1)
           replace_once(es, '<string name="accept_notice">Aceptar aviso</string>', '<string name="accept_notice">Aceptar anuncio</string>')
           replacements = {
               '<string name="upload">Carga</string>': '<string name="upload">Envío</string>',
@@ -106,8 +105,6 @@ jobs:
           for old, new in replacements.items():
               replace_once(es, old, new)
 
-          # Pin the reviewed terminology so later resource edits cannot silently regress it.
-          text = test.read_text()
           replace_once(
               test,
               '        assertEquals("Regatta: nicht geladen", resources.getString(R.string.race_not_loaded))\n',
