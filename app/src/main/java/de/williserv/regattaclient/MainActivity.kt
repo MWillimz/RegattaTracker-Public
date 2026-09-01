@@ -142,6 +142,12 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private var raceStartEpochMillis: Long? = null
     private var currentRaceStatus = ""
+    private var rawRaceStatus = ""
+    private var rawRaceStart = ""
+    private var rawRaceStop = ""
+    private var rawRaceInfo = ""
+    private var rawRaceCourseJson = ""
+    private var rawRaceCourseShortened = false
     private var raceDataFetchRunning = false
 
     private val raceRegistered = mutableStateOf(false)
@@ -371,7 +377,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                 showOcsDecisionDialog.value = true
                             },
                             onResults = {
-                                if (raceDataReady.value && raceStatusText.value.contains("finished", ignoreCase = true)) {
+                                if (raceDataReady.value && currentRaceStatus.equals("finished", ignoreCase = true)) {
                                     currentScreen.value = Screen.RESULTS
                                     fetchEventResults()
                                 }
@@ -774,29 +780,96 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             plannedRaceCount = prefs.getInt("series_planned_race_count", 0).takeIf { it > 0 }
         )
 
-        raceStatusText.value = prefs.getString("race_status_text", raceStatusText.value) ?: raceStatusText.value
-        raceStartText.value = prefs.getString("race_start_text", raceStartText.value) ?: raceStartText.value
-        raceStopText.value = prefs.getString("race_stop_text", raceStopText.value) ?: raceStopText.value
-        raceCourseText.value = prefs.getString("race_course_text", raceCourseText.value) ?: raceCourseText.value
-        raceStartLineText.value = prefs.getString("race_start_line_text", raceStartLineText.value) ?: raceStartLineText.value
-        raceFinishLineText.value = prefs.getString("race_finish_line_text", raceFinishLineText.value) ?: raceFinishLineText.value
-        raceMarksText.value = prefs.getString("race_marks_text", raceMarksText.value) ?: raceMarksText.value
-        raceInfoText.value = prefs.getString("race_info_text", raceInfoText.value) ?: raceInfoText.value
-        raceShortenedText.value = prefs.getString("race_shortened_text", raceShortenedText.value) ?: raceShortenedText.value
-
         raceDataReady.value = prefs.getBoolean("race_data_ready", false)
         if (resolvedEventName.value.isBlank()) {
             raceDataReady.value = false
         }
 
-        currentRaceStatus = raceStatusText.value
-            .removePrefix(getString(R.string.race_prefix))
-            .trim()
+        if (!raceDataReady.value) {
+            currentRaceStatus = ""
+            raceStartEpochMillis = null
+            return
+        }
 
-        raceStartEpochMillis = parseServerTimeToMillis(
-            raceStartText.value.removePrefix(getString(R.string.start_prefix)).trim()
-        )
+        val hasRawState =
+            prefs.getInt("race_raw_state_version", 0) >= RACE_RAW_STATE_VERSION
+
+        if (hasRawState) {
+            rawRaceStatus = prefs.getString("race_status_raw", "").orEmpty()
+            rawRaceStart = prefs.getString("race_start_raw", "").orEmpty()
+            rawRaceStop = prefs.getString("race_stop_raw", "").orEmpty()
+            rawRaceInfo = prefs.getString("race_info_raw", "").orEmpty()
+            rawRaceCourseJson = prefs.getString("race_course_json_raw", "").orEmpty()
+            rawRaceCourseShortened = prefs.getBoolean("race_course_shortened_raw", false)
+            renderRawRaceSetup()
+        } else {
+            raceStatusText.value = prefs.getString("race_status_text", raceStatusText.value) ?: raceStatusText.value
+            raceStartText.value = prefs.getString("race_start_text", raceStartText.value) ?: raceStartText.value
+            raceStopText.value = prefs.getString("race_stop_text", raceStopText.value) ?: raceStopText.value
+            raceCourseText.value = prefs.getString("race_course_text", raceCourseText.value) ?: raceCourseText.value
+            raceStartLineText.value = prefs.getString("race_start_line_text", raceStartLineText.value) ?: raceStartLineText.value
+            raceFinishLineText.value = prefs.getString("race_finish_line_text", raceFinishLineText.value) ?: raceFinishLineText.value
+            raceMarksText.value = prefs.getString("race_marks_text", raceMarksText.value) ?: raceMarksText.value
+            raceInfoText.value = prefs.getString("race_info_text", raceInfoText.value) ?: raceInfoText.value
+            raceShortenedText.value = prefs.getString("race_shortened_text", raceShortenedText.value) ?: raceShortenedText.value
+
+            rawRaceStatus = legacyDisplayPayload(raceStatusText.value)
+            rawRaceStart = legacyDisplayPayload(raceStartText.value)
+            rawRaceStop = legacyDisplayPayload(raceStopText.value)
+            rawRaceInfo = legacyDisplayPayload(raceInfoText.value)
+            currentRaceStatus = rawRaceStatus
+            raceStartEpochMillis = parseServerTimeToMillis(rawRaceStart)
+        }
     }
+
+    private fun renderRawRaceSetup() {
+        raceStatusText.value = if (rawRaceStatus.isBlank()) {
+            getString(R.string.race_not_loaded)
+        } else {
+            getString(R.string.race_value, rawRaceStatus)
+        }
+        raceStartText.value = if (rawRaceStart.isBlank() || rawRaceStart == "--") {
+            getString(R.string.start_unknown)
+        } else {
+            getString(R.string.start_value, rawRaceStart)
+        }
+        raceStopText.value = if (rawRaceStop.isBlank() || rawRaceStop == "--") {
+            getString(R.string.stop_unknown)
+        } else {
+            getString(R.string.stop_value, rawRaceStop)
+        }
+        raceInfoText.value = if (rawRaceInfo.isBlank() || rawRaceInfo == "--") {
+            getString(R.string.info_unknown)
+        } else {
+            getString(R.string.info_value, rawRaceInfo)
+        }
+        raceShortenedText.value = if (rawRaceCourseShortened) {
+            getString(R.string.course_shortened_yes)
+        } else {
+            getString(R.string.course_shortened_no)
+        }
+
+        val courseObj = rawRaceCourseJson
+            .takeIf { it.isNotBlank() }
+            ?.let { raw -> runCatching { JSONObject(raw) }.getOrNull() }
+        val courseSummary = buildCourseSummary(
+            courseObj = courseObj,
+            courseShortened = rawRaceCourseShortened
+        )
+
+        raceCourseText.value = courseSummary.courseText
+        raceStartLineText.value = courseSummary.startLineText
+        raceFinishLineText.value = courseSummary.finishLineText
+        raceMarksText.value = courseSummary.marksText
+        courseMapMarks.value = buildCourseMapMarks(
+            courseObj = courseObj,
+            courseShortened = rawRaceCourseShortened
+        )
+
+        currentRaceStatus = rawRaceStatus
+        raceStartEpochMillis = parseServerTimeToMillis(rawRaceStart)
+    }
+
 
     private fun resetRaceLegalState() {
         raceLegalAccepted.value = false
@@ -831,6 +904,12 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         ttlText.value = getString(R.string.ttl_unknown)
         ocsText.value = getString(R.string.ocs_unknown)
 
+        rawRaceStatus = ""
+        rawRaceStart = ""
+        rawRaceStop = ""
+        rawRaceInfo = ""
+        rawRaceCourseJson = ""
+        rawRaceCourseShortened = false
         currentRaceStatus = ""
         raceStartEpochMillis = null
         raceRegistered.value = false
@@ -919,6 +998,12 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         ttlText.value = getString(R.string.ttl_unknown)
         ocsText.value = getString(R.string.ocs_unknown)
 
+        rawRaceStatus = ""
+        rawRaceStart = ""
+        rawRaceStop = ""
+        rawRaceInfo = ""
+        rawRaceCourseJson = ""
+        rawRaceCourseShortened = false
         currentRaceStatus = ""
         raceStartEpochMillis = null
         clearSavedRaceDataReady()
@@ -951,6 +1036,13 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             .putString("series_run_name", raceSeriesDisplayMetadata.value.runName)
             .putInt("series_occurrence_no", raceSeriesDisplayMetadata.value.occurrenceNo ?: 0)
             .putInt("series_planned_race_count", raceSeriesDisplayMetadata.value.plannedRaceCount ?: 0)
+            .putInt("race_raw_state_version", RACE_RAW_STATE_VERSION)
+            .putString("race_status_raw", rawRaceStatus)
+            .putString("race_start_raw", rawRaceStart)
+            .putString("race_stop_raw", rawRaceStop)
+            .putString("race_info_raw", rawRaceInfo)
+            .putString("race_course_json_raw", rawRaceCourseJson)
+            .putBoolean("race_course_shortened_raw", rawRaceCourseShortened)
             .putString("race_status_text", raceStatusText.value)
             .putString("race_start_text", raceStartText.value)
             .putString("race_stop_text", raceStopText.value)
@@ -1413,7 +1505,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
 
         val registrationTimestamp = RaceRegistrationPolicy.registrationTimestamp(
-            raceStartText.value.removePrefix(getString(R.string.start_prefix)).trim()
+            rawRaceStart.ifBlank { legacyDisplayPayload(raceStartText.value) }
         )
         if (registrationTimestamp == null) {
             registerRaceStatusText.value = getString(R.string.load_valid_race_start_first)
@@ -1944,38 +2036,20 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     ?: json.optJSONObject("race_course")
                     ?: json.optJSONObject("track")
 
-                val courseSummary = buildCourseSummary(
-                    courseObj = courseObj,
-                    courseShortened = courseShortened
-                )
-                val parsedCourseMapMarks = buildCourseMapMarks(
-                    courseObj = courseObj,
-                    courseShortened = courseShortened
-                )
+                val courseJson = courseObj?.toString().orEmpty()
 
                 runOnUiThread {
                     adoptResolvedEventName(responseResolvedEventName)
                     raceSeriesDisplayMetadata.value = parsedSeriesDisplayMetadata
-                    raceStartText.value = getString(R.string.start_value, start)
-                    raceStopText.value = getString(R.string.stop_value, stop)
+                    rawRaceStatus = status
+                    rawRaceStart = start
+                    rawRaceStop = stop
+                    rawRaceInfo = raceInfo
+                    rawRaceCourseJson = courseJson
+                    rawRaceCourseShortened = courseShortened
                     raceDataReady.value = true
-                    raceCourseText.value = courseSummary.courseText
-                    raceStartLineText.value = courseSummary.startLineText
-                    raceFinishLineText.value = courseSummary.finishLineText
-                    raceMarksText.value = courseSummary.marksText
-                    courseMapMarks.value = parsedCourseMapMarks
-
-                    raceStatusText.value = getString(R.string.race_value, status)
-                    raceInfoText.value = getString(R.string.info_value, raceInfo)
-                    raceShortenedText.value = if (courseShortened) {
-                        getString(R.string.course_shortened_yes)
-                    } else {
-                        getString(R.string.course_shortened_no)
-                    }
                     raceStartFlags.value = parsedStartFlags
-
-                    currentRaceStatus = status
-                    raceStartEpochMillis = parseServerTimeToMillis(start)
+                    renderRawRaceSetup()
                     saveRaceSetup()
                     updateStartPanelStatus()
                     updateLocalRaceStatus()
@@ -2092,7 +2166,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             marksText = if (markNames.isEmpty()) {
                 getString(R.string.marks_unknown)
             } else {
-                "Marks: ${markNames.joinToString(", ")}"
+                getString(R.string.marks_value, markNames.joinToString(", "))
             }
         )
     }
