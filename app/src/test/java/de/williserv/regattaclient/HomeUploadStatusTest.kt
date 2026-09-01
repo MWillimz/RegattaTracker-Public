@@ -7,31 +7,37 @@ class HomeUploadStatusTest {
 
     @Test
     fun pendingBacklogOutsideRace_isShownExplicitly() {
-        assertEquals("37 pending", shortUploadStatus("Upload: 37 pending", false, "finished", true, true, true))
+        assertEquals("37 pending", shortUploadStatus(37L, false, "finished", true, true, true))
     }
 
     @Test
     fun smallPendingBacklogOutsideRace_isNotCollapsedToOk() {
-        assertEquals("3 pending", shortUploadStatus("Upload: 3 pending", false, "finished", true, true, true))
+        assertEquals("3 pending", shortUploadStatus(3L, false, "finished", true, true, true))
     }
 
     @Test
     fun noRaceSetup_isOffWithoutParsingDisplayText() {
-        assertEquals("off", shortUploadStatus("Übertragung: alles gesendet", false, "", false, false, false))
+        assertEquals("off", shortUploadStatus(0L, false, "", false, false, false))
     }
 
     @Test
     fun loadedSetupWithoutLegalAcceptance_isBlocked() {
-        assertEquals("blocked", shortUploadStatus("Envoi : tout envoyé", false, "planned", false, false, true))
+        assertEquals("blocked", shortUploadStatus(0L, false, "planned", false, false, true))
     }
 
     @Test
     fun rawPlannedStatus_isWaiting() {
-        assertEquals("waiting", shortUploadStatus("Carga: todo enviado", false, "planned", true, true, true))
+        assertEquals("waiting", shortUploadStatus(0L, false, "planned", true, true, true))
     }
 
     @Test
     fun rawStartedStatus_isReady() {
-        assertEquals("ready", shortUploadStatus("Invio: tutto inviato", false, "started", true, true, true))
+        assertEquals("ready", shortUploadStatus(0L, false, "started", true, true, true))
+    }
+
+    @Test
+    fun inRaceBacklog_usesRawPendingCount() {
+        assertEquals("42", shortUploadStatus(42L, true, "racing", true, true, true))
+        assertEquals("OK", shortUploadStatus(10L, true, "racing", true, true, true))
     }
 }

@@ -66,6 +66,7 @@ fun HomeScreen(
     statusText: String,
     rowCountText: String,
     uploadStatusText: String,
+    pendingUploadCount: Long,
     debugErrorText: String,
     serviceStatusText: String,
     raceStatusCode: String,
@@ -86,6 +87,8 @@ fun HomeScreen(
     ocsText: String,
     raceInfoText: String,
     raceShortenedText: String,
+    raceShortened: Boolean,
+    hasRaceInfo: Boolean,
     raceStartFlags: RaceStartFlags,
     millisToStart: Long?,
     startPanelText: String,
@@ -131,6 +134,7 @@ fun HomeScreen(
     }
     val advancedUploadStatusText = mergeTelemetryUploadStatusText(
         pendingStatusText = uploadStatusText,
+        pendingCount = pendingUploadCount,
         workerStatus = localizedWorkerStatus,
         uploadWorkerPending = { worker, pending ->
             resources.getString(R.string.upload_worker_pending, worker, pending)
@@ -141,13 +145,13 @@ fun HomeScreen(
     )
 
     val uploadColor = uploadStatusColor(
-        uploadStatusText = uploadStatusText,
+        pendingUploadCount = pendingUploadCount,
         inRace = inRace,
         disabledColor = MaterialTheme.colorScheme.outlineVariant
     )
 
     val showCourseShortened =
-        raceShortenedText == stringResource(R.string.course_shortened_yes) &&
+        raceShortened &&
                 !raceStatusCode.equals("finished", ignoreCase = true) &&
                 !raceStatusCode.equals("cancelled", ignoreCase = true)
 
@@ -157,10 +161,6 @@ fun HomeScreen(
     val distancePrefix = stringResource(R.string.distance_prefix)
     val dtlPrefix = stringResource(R.string.dtl_prefix)
     val gpsStatus = ""
-    val hasRaceInfo = raceInfoText
-        .removePrefix(infoPrefix)
-        .trim()
-        .let { it.isNotBlank() && it != "--" }
 
     Column(
         modifier = modifier
@@ -180,7 +180,7 @@ fun HomeScreen(
             startPanelMode = startPanelMode,
             startPanelText = startPanelText,
             onClick = {
-                if (startPanelMode == "ocs") {
+                if (startPanelMode == "ocs" || startPanelMode == "ocs_countdown") {
                     onOcsPanelClick()
                 }
             }
@@ -234,7 +234,7 @@ fun HomeScreen(
             ),
             raceColor = raceColor,
             uploadStatusText = shortUploadStatus(
-                uploadStatusText = uploadStatusText,
+                pendingUploadCount = pendingUploadCount,
                 inRace = inRace,
                 raceStatusCode = raceStatusCode,
                 raceDataReady = raceDataReady,
@@ -370,18 +370,15 @@ fun HomeScreen(
 
 internal fun mergeTelemetryUploadStatusText(
     pendingStatusText: String,
+    pendingCount: Long,
     workerStatus: String,
-    uploadWorkerPending: (String, Int) -> String = { worker, pending -> "Upload: $worker · $pending pending" },
+    uploadWorkerPending: (String, Long) -> String = { worker, pending -> "Upload: $worker · $pending pending" },
     uploadWorker: (String) -> String = { worker -> "Upload: $worker" }
 ): String {
     if (workerStatus.isBlank()) return pendingStatusText
 
-    val pending = pendingStatusText
-        .filter { it.isDigit() }
-        .toIntOrNull() ?: 0
-
-    return if (pending > 0) {
-        uploadWorkerPending(workerStatus, pending)
+    return if (pendingCount > 0L) {
+        uploadWorkerPending(workerStatus, pendingCount)
     } else {
         uploadWorker(workerStatus)
     }
@@ -389,6 +386,7 @@ internal fun mergeTelemetryUploadStatusText(
 
 @Composable
 fun TopEventName(
+
     raceEvent: String,
     raceDataReady: Boolean,
     seriesDisplayMetadata: SeriesDisplayMetadata = SeriesDisplayMetadata()
@@ -431,7 +429,7 @@ fun HeaderPanel(
     onClick: () -> Unit = {}
 ) {
     val backgroundColor = when (startPanelMode) {
-        "ocs" -> MaterialTheme.colorScheme.error
+        "ocs", "ocs_countdown" -> MaterialTheme.colorScheme.error
         "postponed" -> MaterialTheme.colorScheme.tertiary
         "countdown" -> MaterialTheme.colorScheme.primary
         "started" -> MaterialTheme.colorScheme.secondary
@@ -439,7 +437,7 @@ fun HeaderPanel(
         else -> MaterialTheme.colorScheme.secondary
     }
     val contentColor = when (startPanelMode) {
-        "ocs" -> MaterialTheme.colorScheme.onError
+        "ocs", "ocs_countdown" -> MaterialTheme.colorScheme.onError
         "postponed" -> MaterialTheme.colorScheme.onTertiary
         "countdown" -> MaterialTheme.colorScheme.onPrimary
         "started" -> MaterialTheme.colorScheme.onSecondary
@@ -448,13 +446,8 @@ fun HeaderPanel(
     }
 
     val text = when (startPanelMode) {
-        "ocs" -> {
-            if (startPanelText != stringResource(R.string.ocs)) {
-                stringResource(R.string.ocs_countdown, startPanelText.substringAfterLast(" ", startPanelText))
-            } else {
-                stringResource(R.string.ocs)
-            }
-        }
+        "ocs" -> stringResource(R.string.ocs)
+        "ocs_countdown" -> stringResource(R.string.ocs_countdown, startPanelText)
 
         "postponed" -> stringResource(R.string.postponed)
         "countdown" -> startPanelText
@@ -466,7 +459,7 @@ fun HeaderPanel(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = startPanelMode == "ocs") {
+            .clickable(enabled = startPanelMode == "ocs" || startPanelMode == "ocs_countdown") {
                 onClick()
             },
         shape = RoundedCornerShape(22.dp),
@@ -962,46 +955,38 @@ fun isRaceFinished(
 }
 
 fun uploadStatusColor(
-    uploadStatusText: String,
+    pendingUploadCount: Long,
     inRace: Boolean,
     disabledColor: Color
 ): Color {
-    val pending = uploadStatusText
-        .filter { it.isDigit() }
-        .toIntOrNull() ?: 0
-
-    if (!inRace && pending == 0) {
+    if (!inRace && pendingUploadCount == 0L) {
         return disabledColor
     }
 
     return when {
-        pending <= 10 -> RegattaGreen
-        pending <= 50 -> RegattaOrange
+        pendingUploadCount <= 10L -> RegattaGreen
+        pendingUploadCount <= 50L -> RegattaOrange
         else -> RegattaRed
     }
 }
 
 fun shortUploadStatus(
-    uploadStatusText: String,
+    pendingUploadCount: Long,
     inRace: Boolean,
     raceStatusCode: String,
     raceDataReady: Boolean,
     raceLegalAccepted: Boolean,
     hasRaceSetup: Boolean,
-    pendingText: (Int) -> String = { "$it pending" },
+    pendingText: (Long) -> String = { "$it pending" },
     blockedText: String = "blocked",
     offText: String = "off",
     waitingText: String = "waiting",
     readyText: String = "ready",
     idleText: String = "idle"
 ): String {
-    val pending = uploadStatusText
-        .filter { it.isDigit() }
-        .toIntOrNull() ?: 0
-
     if (!inRace) {
-        if (pending > 0) {
-            return pendingText(pending)
+        if (pendingUploadCount > 0L) {
+            return pendingText(pendingUploadCount)
         }
 
         return when {
@@ -1014,10 +999,11 @@ fun shortUploadStatus(
         }
     }
 
-    return if (pending <= 10) "OK" else "$pending"
+    return if (pendingUploadCount <= 10L) "OK" else "$pendingUploadCount"
 }
 
 fun raceStatusColor(
+
     raceStatusCode: String,
     inRace: Boolean
 ): Color {

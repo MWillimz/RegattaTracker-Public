@@ -156,6 +156,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private val statusText = mutableStateOf("")
     private val rowCountText = mutableStateOf("")
     private val uploadStatusText = mutableStateOf("")
+    private val pendingUploadCount = mutableStateOf(0L)
     private val serviceStatusText = mutableStateOf("")
 
     private val registerRaceStatusText = mutableStateOf("")
@@ -325,6 +326,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             statusText = statusText.value,
                             rowCountText = rowCountText.value,
                             uploadStatusText = uploadStatusText.value,
+                            pendingUploadCount = pendingUploadCount.value,
                             debugErrorText = debugErrorText.value,
                             serviceStatusText = serviceStatusText.value,
                             raceStatusCode = currentRaceStatus,
@@ -346,6 +348,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             ocsText = ocsText.value,
                             raceInfoText = raceInfoText.value,
                             raceShortenedText = raceShortenedText.value,
+                            raceShortened = rawRaceCourseShortened,
+                            hasRaceInfo = rawRaceInfo.trim().let { it.isNotBlank() && it != "--" },
                             raceStartFlags = raceStartFlags.value,
                             millisToStart = raceStartEpochMillis?.let { it - System.currentTimeMillis() },
                             startPanelText = startPanelText.value,
@@ -1606,26 +1610,25 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private fun updateStartPanelStatus() {
         val isOcs = localIsOcs
 
-        if (isOcs) {
+if (isOcs) {
             val startMillis = raceStartEpochMillis
-            val remainingSeconds = if (startMillis != null) {
-                (startMillis - System.currentTimeMillis()) / 1000L
-            } else {
-                null
-            }
+    val remainingSeconds = if (startMillis != null) {
+        (startMillis - System.currentTimeMillis()) / 1000L
+    } else {
+        null
+    }
 
-            startPanelText.value = if (remainingSeconds != null && remainingSeconds > 0L) {
-                val minutes = remainingSeconds / 60L
-                val seconds = remainingSeconds % 60L
-
-                getString(R.string.start_in, minutes, seconds)
-            } else {
-                getString(R.string.ocs)
-            }
-
-            startPanelMode.value = "ocs"
-            return
-        }
+    if (remainingSeconds != null && remainingSeconds > 0L) {
+        val minutes = remainingSeconds / 60L
+        val seconds = remainingSeconds % 60L
+        startPanelText.value = String.format(Locale.US, "%d:%02d", minutes, seconds)
+        startPanelMode.value = "ocs_countdown"
+    } else {
+        startPanelText.value = getString(R.string.ocs)
+        startPanelMode.value = "ocs"
+    }
+    return
+}
 
         if (currentRaceStatus.equals("finished", ignoreCase = true)) {
             startPanelText.value = getString(R.string.finished)
@@ -2271,6 +2274,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         val pending = db.countPendingSamples()
 
         rowCountText.value = getString(R.string.rows_stored, total)
+        pendingUploadCount.value = pending
 
         uploadStatusText.value = if (pending == 0L) {
             getString(R.string.upload_all_sent)
