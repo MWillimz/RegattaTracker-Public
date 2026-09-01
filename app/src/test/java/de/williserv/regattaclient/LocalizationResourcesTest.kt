@@ -1,6 +1,9 @@
 package de.williserv.regattaclient
 
+import java.io.File
+import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -84,5 +87,57 @@ class LocalizationResourcesTest {
             "Übertragung: aktiv · 7 ausstehend",
             resources.getString(R.string.upload_worker_pending, "aktiv", 7)
         )
+    }
+
+    @Test
+    fun localizedResourceFiles_matchDefaultKeysAndPlaceholders() {
+        val resRoot = sequenceOf(
+            File("src/main/res"),
+            File("app/src/main/res")
+        ).firstOrNull { File(it, "values/strings.xml").isFile }
+
+        assertTrue("Could not locate Android string resources", resRoot != null)
+        val root = requireNotNull(resRoot)
+        val defaultStrings = readStringResources(File(root, "values/strings.xml"))
+
+        listOf("values-de", "values-fr", "values-it", "values-es").forEach { localeDir ->
+            val localizedStrings = readStringResources(File(root, "$localeDir/strings.xml"))
+            assertEquals("String key mismatch in $localeDir", defaultStrings.keys, localizedStrings.keys)
+
+            defaultStrings.forEach { (key, defaultValue) ->
+                assertEquals(
+                    "Format placeholder mismatch for $key in $localeDir",
+                    formatPlaceholders(defaultValue),
+                    formatPlaceholders(localizedStrings.getValue(key))
+                )
+            }
+        }
+    }
+
+    private fun readStringResources(file: File): Map<String, String> {
+        val document = DocumentBuilderFactory.newInstance()
+            .newDocumentBuilder()
+            .parse(file)
+        val nodes = document.getElementsByTagName("string")
+        val strings = linkedMapOf<String, String>()
+
+        for (index in 0 until nodes.length) {
+            val node = nodes.item(index)
+            val name = node.attributes?.getNamedItem("name")?.nodeValue ?: continue
+            strings[name] = node.textContent
+        }
+
+        return strings
+    }
+
+    private fun formatPlaceholders(value: String): List<String> {
+        return FORMAT_PLACEHOLDER_REGEX.findAll(value)
+            .map { it.value }
+            .toList()
+    }
+
+    companion object {
+        private val FORMAT_PLACEHOLDER_REGEX =
+            Regex("%(?:\\d+\\$)?[-#+ 0,(]*\\d*(?:\\.\\d+)?[a-zA-Z%]")
     }
 }
