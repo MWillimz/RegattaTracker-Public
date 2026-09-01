@@ -69,7 +69,7 @@ class LocalizationResourcesTest {
             resources.getString(R.string.progress_value, 1, 3, 33.0)
         )
         assertEquals(
-            "Upload: aktiv · 7 ausstehend",
+            "Übertragung: aktiv · 7 ausstehend",
             resources.getString(R.string.upload_worker_pending, "aktiv", 7)
         )
     }
