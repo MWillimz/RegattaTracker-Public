@@ -1,0 +1,98 @@
+name: Apply local race state hardening
+
+on:
+  push:
+    branches:
+      - feature/64-localize-ui-strings
+    paths:
+      - .github/workflows/patch-local-race-state.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/64-localize-ui-strings
+          fetch-depth: 0
+
+      - name: Apply raw local race state patch
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          service = Path('app/src/main/java/de/williserv/regattaclient/RegattaTrackingService.kt')
+          main = Path('app/src/main/java/de/williserv/regattaclient/MainActivity.kt')
+
+          def replace_once(path: Path, old: str, new: str) -> None:
+              text = path.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one match, found {count}: {old[:140]!r}')
+              path.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              service,
+              '            .putString("boat_status_text", boatStatusText)\n            .apply()\n',
+              '            .putString("boat_status_text", boatStatusText)\n'
+              '            .putBoolean("is_ocs", isOcs)\n'
+              '            .putBoolean("race_started", raceStarted)\n'
+              '            .putBoolean("race_finished", raceFinished)\n'
+              '            .putInt("passed_marks", passedMarks)\n'
+              '            .apply()\n'
+          )
+
+          replace_once(
+              main,
+              '    private val ocsText = mutableStateOf("")\n    private val debugErrorText = mutableStateOf("")\n',
+              '    private val ocsText = mutableStateOf("")\n'
+              '    private val debugErrorText = mutableStateOf("")\n'
+              '    private var localIsOcs = false\n'
+              '    private var localRaceFinished = false\n'
+          )
+
+          replace_once(
+              main,
+              '        ocsText.value = prefs.getString("ocs_text", getString(R.string.ocs_unknown)) ?: getString(R.string.ocs_unknown)\n',
+              '        ocsText.value = prefs.getString("ocs_text", getString(R.string.ocs_unknown)) ?: getString(R.string.ocs_unknown)\n'
+              '        localIsOcs = prefs.getBoolean("is_ocs", false)\n'
+              '        localRaceFinished = prefs.getBoolean("race_finished", false)\n'
+          )
+
+          replace_once(
+              main,
+              '        val isOcs = ocsText.value.contains("yes", ignoreCase = true) ||\n                ocsText.value.contains("ja", ignoreCase = true)\n',
+              '        val isOcs = localIsOcs\n'
+          )
+
+          replace_once(
+              main,
+              '        val isFinished = boatRaceStatusText.value.contains("finished", ignoreCase = true)\n',
+              '        val isFinished = localRaceFinished\n'
+          )
+
+          replace_once(
+              main,
+              '        ocsText.value = getString(R.string.ocs_unknown)\n\n        rawRaceStatus = ""\n',
+              '        ocsText.value = getString(R.string.ocs_unknown)\n'
+              '        localIsOcs = false\n'
+              '        localRaceFinished = false\n\n'
+              '        rawRaceStatus = ""\n'
+          )
+          PY
+
+      - name: Commit patch and remove helper workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/patch-local-race-state.yml
+          git add app/src/main/java/de/williserv/regattaclient/RegattaTrackingService.kt \
+                  app/src/main/java/de/williserv/regattaclient/MainActivity.kt
+          git diff --cached --check
+          git commit -m "Use raw local race state for OCS and finish logic"
+          git push origin HEAD:feature/64-localize-ui-strings
