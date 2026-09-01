@@ -1,0 +1,120 @@
+name: Harden localized course display fallback
+
+on:
+  push:
+    branches:
+      - feature/64-localize-ui-strings
+    paths:
+      - .github/workflows/patch-course-display-fallback.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/64-localize-ui-strings
+          fetch-depth: 0
+      - name: Patch localized skipped marker fallback
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          course = Path('app/src/main/java/de/williserv/regattaclient/CourseScreen.kt')
+          test = Path('app/src/test/java/de/williserv/regattaclient/CourseProgressMarkStateTest.kt')
+
+          def replace_once(path, old, new):
+              text = path.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one match, found {count}')
+              path.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              course,
+              '''                } else {
+                    courseMarkDisplayItems(raceMarksText, stringResource(R.string.marks_prefix)).forEach { item ->
+''',
+              '''                } else {
+                    val localizedSkippedMarker = stringResource(R.string.mark_skipped_compact, 0, "")
+                        .removePrefix("0")
+                        .trim()
+                    courseMarkDisplayItems(
+                        raceMarksText = raceMarksText,
+                        marksPrefix = stringResource(R.string.marks_prefix),
+                        skippedMarker = localizedSkippedMarker
+                    ).forEach { item ->
+'''
+          )
+
+          replace_once(
+              course,
+              '''fun courseMarkDisplayItems(
+    raceMarksText: String,
+    marksPrefix: String = "Marks:"
+): List<CourseMarkDisplayItem> {
+''',
+              '''fun courseMarkDisplayItems(
+    raceMarksText: String,
+    marksPrefix: String = "Marks:",
+    skippedMarker: String = "[skipped]"
+): List<CourseMarkDisplayItem> {
+'''
+          )
+
+          replace_once(
+              course,
+              '''        .map { raw ->
+            val skipped = raw.contains("[skipped]", ignoreCase = true)
+            val label = raw
+                .replace("[skipped]", "", ignoreCase = true)
+                .trim()
+
+            CourseMarkDisplayItem(
+''',
+              '''        .map { raw ->
+            val skipped = skippedMarker.isNotBlank() &&
+                    raw.contains(skippedMarker, ignoreCase = true)
+            val label = if (skipped) {
+                raw.replace(skippedMarker, "", ignoreCase = true).trim()
+            } else {
+                raw
+            }
+
+            CourseMarkDisplayItem(
+'''
+          )
+
+          text = test.read_text()
+          marker = '\n}\n'
+          addition = '''
+    @Test
+    fun localizedDisplayFallbackRecognizesLocalizedSkippedMarker() {
+        val items = courseMarkDisplayItems(
+            raceMarksText = "Bahnmarken: 1 Tonne [übersprungen], 2 Tonne",
+            marksPrefix = "Bahnmarken:",
+            skippedMarker = "[übersprungen]"
+        )
+
+        assertEquals("1 Tonne", items[0].label)
+        assertTrue(items[0].skipped)
+        assertEquals("2 Tonne", items[1].label)
+        assertFalse(items[1].skipped)
+    }
+'''
+          if not text.endswith(marker):
+              raise SystemExit('unexpected test file ending')
+          test.write_text(text[:-len(marker)] + addition + marker)
+          PY
+      - name: Commit and remove helper
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/patch-course-display-fallback.yml
+          git add app/src/main/java/de/williserv/regattaclient/CourseScreen.kt app/src/test/java/de/williserv/regattaclient/CourseProgressMarkStateTest.kt
+          git diff --cached --check
+          git commit -m "Localize course skipped-mark display fallback"
+          git push origin HEAD:feature/64-localize-ui-strings
