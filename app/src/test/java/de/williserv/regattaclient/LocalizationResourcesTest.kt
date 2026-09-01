@@ -96,7 +96,7 @@ class LocalizationResourcesTest {
     @Test
     fun configurationContexts_switchLocalesWithoutStaleValues() {
         val app = RuntimeEnvironment.getApplication()
-        val expectedBackLabels = linkedMapOf(
+        val localeSequence = listOf(
             "en" to "Back",
             "de" to "Zurück",
             "fr" to "Retour",
@@ -105,7 +105,7 @@ class LocalizationResourcesTest {
             "de" to "Zurück"
         )
 
-        expectedBackLabels.forEach { (languageTag, expected) ->
+        localeSequence.forEach { (languageTag, expected) ->
             val configuration = Configuration(app.resources.configuration).apply {
                 setLocale(Locale.forLanguageTag(languageTag))
             }
