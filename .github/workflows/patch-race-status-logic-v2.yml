@@ -1,0 +1,324 @@
+name: Apply race status logic hardening v2
+
+on:
+  push:
+    branches:
+      - feature/64-localize-ui-strings
+    paths:
+      - .github/workflows/patch-race-status-logic-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/64-localize-ui-strings
+          fetch-depth: 0
+
+      - name: Apply race status patch
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+          import textwrap
+
+          home = Path('app/src/main/java/de/williserv/regattaclient/HomeScreen.kt')
+          main = Path('app/src/main/java/de/williserv/regattaclient/MainActivity.kt')
+          test = Path('app/src/test/java/de/williserv/regattaclient/HomeUploadStatusTest.kt')
+
+          def replace_once(path: Path, old: str, new: str) -> None:
+              text = path.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one match, found {count}: {old[:120]!r}')
+              path.write_text(text.replace(old, new, 1))
+
+          main_text = main.read_text()
+          main_pattern = r'(Screen\.HOME -> HomeScreen\(.*?serviceStatusText = serviceStatusText\.value,\n)\s+raceStatusText = raceStatusText\.value,\n'
+          matches = re.findall(main_pattern, main_text, flags=re.S)
+          if len(matches) != 1:
+              raise SystemExit(f'{main}: expected one HomeScreen race status argument, found {len(matches)}')
+          main_text = re.sub(
+              main_pattern,
+              lambda m: m.group(1) +
+                  '                            raceStatusCode = currentRaceStatus,\n' +
+                  '                            raceLegalAccepted = raceLegalAccepted.value,\n',
+              main_text,
+              count=1,
+              flags=re.S
+          )
+          main.write_text(main_text)
+
+          replace_once(
+              home,
+              '    raceStatusText: String,\n    raceEvent: String,\n',
+              '    raceStatusCode: String,\n    raceLegalAccepted: Boolean,\n    raceEvent: String,\n'
+          )
+          replace_once(
+              home,
+              '        raceShortenedText == stringResource(R.string.course_shortened_yes) &&\n'
+              '                !raceStatusText.contains("finished", ignoreCase = true) &&\n'
+              '                !raceStatusText.contains("cancelled", ignoreCase = true)\n\n'
+              '    val raceColor = raceStatusColor(raceStatusText, inRace)\n'
+              '    val racePrefix = stringResource(R.string.race_prefix)\n',
+              '        raceShortenedText == stringResource(R.string.course_shortened_yes) &&\n'
+              '                !raceStatusCode.equals("finished", ignoreCase = true) &&\n'
+              '                !raceStatusCode.equals("cancelled", ignoreCase = true)\n\n'
+              '    val raceColor = raceStatusColor(raceStatusCode, inRace)\n'
+          )
+          replace_once(
+              home,
+              '                raceStatusText = raceStatusText,\n'
+              '                raceStartText = raceStartText,\n'
+              '                inRace = inRace,\n'
+              '                racePrefix = racePrefix,\n',
+              '                raceStatusCode = raceStatusCode,\n'
+              '                raceStartText = raceStartText,\n'
+              '                inRace = inRace,\n'
+          )
+          replace_once(
+              home,
+              '                raceStatusText = raceStatusText,\n'
+              '                pendingText = { pending -> resources.getString(R.string.pending_value, pending) },\n',
+              '                raceStatusCode = raceStatusCode,\n'
+              '                raceDataReady = raceDataReady,\n'
+              '                raceLegalAccepted = raceLegalAccepted,\n'
+              '                hasRaceSetup = raceEvent.isNotBlank(),\n'
+              '                pendingText = { pending -> resources.getString(R.string.pending_value, pending) },\n'
+          )
+          text = home.read_text()
+          if text.count('isRaceFinished(raceStatusText)') != 2:
+              raise SystemExit(f'{home}: unexpected race-finished call count')
+          home.write_text(text.replace('isRaceFinished(raceStatusText)', 'isRaceFinished(raceStatusCode)'))
+
+          helpers = textwrap.dedent('''\
+          fun isRaceFinished(
+              raceStatusCode: String
+          ): Boolean {
+              return raceStatusCode.equals("finished", ignoreCase = true)
+          }
+
+          fun uploadStatusColor(
+              uploadStatusText: String,
+              inRace: Boolean,
+              disabledColor: Color
+          ): Color {
+              val pending = uploadStatusText
+                  .filter { it.isDigit() }
+                  .toIntOrNull() ?: 0
+
+              if (!inRace && pending == 0) {
+                  return disabledColor
+              }
+
+              return when {
+                  pending <= 10 -> RegattaGreen
+                  pending <= 50 -> RegattaOrange
+                  else -> RegattaRed
+              }
+          }
+
+          fun shortUploadStatus(
+              uploadStatusText: String,
+              inRace: Boolean,
+              raceStatusCode: String,
+              raceDataReady: Boolean,
+              raceLegalAccepted: Boolean,
+              hasRaceSetup: Boolean,
+              pendingText: (Int) -> String = { "$it pending" },
+              blockedText: String = "blocked",
+              offText: String = "off",
+              waitingText: String = "waiting",
+              readyText: String = "ready",
+              idleText: String = "idle"
+          ): String {
+              val pending = uploadStatusText
+                  .filter { it.isDigit() }
+                  .toIntOrNull() ?: 0
+
+              if (!inRace) {
+                  if (pending > 0) {
+                      return pendingText(pending)
+                  }
+
+                  return when {
+                      hasRaceSetup && !raceLegalAccepted -> blockedText
+                      !raceDataReady -> offText
+                      raceStatusCode.equals("planned", ignoreCase = true) -> waitingText
+                      raceStatusCode.equals("racing", ignoreCase = true) -> readyText
+                      raceStatusCode.equals("started", ignoreCase = true) -> readyText
+                      else -> idleText
+                  }
+              }
+
+              return if (pending <= 10) "OK" else "$pending"
+          }
+
+          fun raceStatusColor(
+              raceStatusCode: String,
+              inRace: Boolean
+          ): Color {
+              return when {
+                  raceStatusCode.equals("postponed", ignoreCase = true) -> RegattaOrange
+                  raceStatusCode.equals("cancelled", ignoreCase = true) -> RegattaRed
+                  raceStatusCode.equals("finished", ignoreCase = true) -> RegattaGreen
+                  inRace -> RegattaGreen
+                  else -> RegattaOrange
+              }
+          }
+
+          fun localizedRaceStatusValue(
+              raceStatusCode: String,
+              loadedText: String = "loaded",
+              plannedText: String = "planned",
+              racingText: String = "racing",
+              startedText: String = "started",
+              finishedText: String = "finished",
+              postponedText: String = "postponed",
+              cancelledText: String = "cancelled"
+          ): String {
+              val cleaned = raceStatusCode.trim()
+
+              return when {
+                  cleaned.equals("loaded", ignoreCase = true) -> loadedText
+                  cleaned.equals("planned", ignoreCase = true) -> plannedText
+                  cleaned.equals("racing", ignoreCase = true) -> racingText
+                  cleaned.equals("started", ignoreCase = true) -> startedText
+                  cleaned.equals("finished", ignoreCase = true) -> finishedText
+                  cleaned.equals("postponed", ignoreCase = true) -> postponedText
+                  cleaned.equals("cancelled", ignoreCase = true) -> cancelledText
+                  else -> cleaned
+              }
+          }
+
+          fun localizedRaceStatusCode(
+              raceStatusText: String,
+              racePrefix: String = "Race:",
+              loadedText: String = "loaded",
+              plannedText: String = "planned",
+              racingText: String = "racing",
+              startedText: String = "started",
+              finishedText: String = "finished",
+              postponedText: String = "postponed",
+              cancelledText: String = "cancelled"
+          ): String {
+              return localizedRaceStatusValue(
+                  raceStatusCode = raceStatusText.removePrefix(racePrefix).trim(),
+                  loadedText = loadedText,
+                  plannedText = plannedText,
+                  racingText = racingText,
+                  startedText = startedText,
+                  finishedText = finishedText,
+                  postponedText = postponedText,
+                  cancelledText = cancelledText
+              )
+          }
+
+          fun shortRaceStatusText(
+              raceStatusCode: String,
+              raceStartText: String,
+              inRace: Boolean,
+              startPrefix: String = "Start:",
+              activeText: String = "active",
+              notActiveText: String = "not active",
+              loadedText: String = "loaded",
+              plannedText: String = "planned",
+              racingText: String = "racing",
+              startedText: String = "started",
+              finishedText: String = "finished",
+              postponedText: String = "postponed",
+              cancelledText: String = "cancelled"
+          ): String {
+              val cleaned = raceStatusCode.trim()
+
+              if (cleaned.equals("finished", ignoreCase = true)) return finishedText
+              if (cleaned.equals("postponed", ignoreCase = true)) return postponedText
+              if (cleaned.equals("cancelled", ignoreCase = true)) return cancelledText
+
+              if (inRace) {
+                  val startTime = extractStartClockTime(raceStartText, startPrefix)
+                  return if (startTime.isNotBlank()) startTime else activeText
+              }
+
+              return if (cleaned.isBlank()) {
+                  notActiveText
+              } else {
+                  localizedRaceStatusValue(
+                      raceStatusCode = cleaned,
+                      loadedText = loadedText,
+                      plannedText = plannedText,
+                      racingText = racingText,
+                      startedText = startedText,
+                      finishedText = finishedText,
+                      postponedText = postponedText,
+                      cancelledText = cancelledText
+                  )
+              }
+          }
+          ''')
+
+          text = home.read_text()
+          pattern = r'fun isRaceFinished\(.*?\nfun extractStartClockTime\('
+          matches = re.findall(pattern, text, flags=re.S)
+          if len(matches) != 1:
+              raise SystemExit(f'{home}: expected one race helper block, found {len(matches)}')
+          home.write_text(re.sub(pattern, helpers + '\nfun extractStartClockTime(', text, count=1, flags=re.S))
+
+          test.write_text(textwrap.dedent('''\
+          package de.williserv.regattaclient
+
+          import org.junit.Assert.assertEquals
+          import org.junit.Test
+
+          class HomeUploadStatusTest {
+
+              @Test
+              fun pendingBacklogOutsideRace_isShownExplicitly() {
+                  assertEquals("37 pending", shortUploadStatus("Upload: 37 pending", false, "finished", true, true, true))
+              }
+
+              @Test
+              fun smallPendingBacklogOutsideRace_isNotCollapsedToOk() {
+                  assertEquals("3 pending", shortUploadStatus("Upload: 3 pending", false, "finished", true, true, true))
+              }
+
+              @Test
+              fun noRaceSetup_isOffWithoutParsingDisplayText() {
+                  assertEquals("off", shortUploadStatus("Übertragung: alles gesendet", false, "", false, false, false))
+              }
+
+              @Test
+              fun loadedSetupWithoutLegalAcceptance_isBlocked() {
+                  assertEquals("blocked", shortUploadStatus("Envoi : tout envoyé", false, "planned", false, false, true))
+              }
+
+              @Test
+              fun rawPlannedStatus_isWaiting() {
+                  assertEquals("waiting", shortUploadStatus("Carga: todo enviado", false, "planned", true, true, true))
+              }
+
+              @Test
+              fun rawStartedStatus_isReady() {
+                  assertEquals("ready", shortUploadStatus("Invio: tutto inviato", false, "started", true, true, true))
+              }
+          }
+          '''))
+          PY
+
+      - name: Commit patch and remove helper workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/patch-race-status-logic-v2.yml
+          git add app/src/main/java/de/williserv/regattaclient/HomeScreen.kt \
+                  app/src/main/java/de/williserv/regattaclient/MainActivity.kt \
+                  app/src/test/java/de/williserv/regattaclient/HomeUploadStatusTest.kt
+          git diff --cached --check
+          git commit -m "Use raw race status for home state logic"
+          git push origin HEAD:feature/64-localize-ui-strings
