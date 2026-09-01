@@ -68,7 +68,8 @@ fun HomeScreen(
     uploadStatusText: String,
     debugErrorText: String,
     serviceStatusText: String,
-    raceStatusText: String,
+    raceStatusCode: String,
+    raceLegalAccepted: Boolean,
     raceEvent: String,
     raceStartText: String,
     raceStopText: String,
@@ -147,11 +148,10 @@ fun HomeScreen(
 
     val showCourseShortened =
         raceShortenedText == stringResource(R.string.course_shortened_yes) &&
-                !raceStatusText.contains("finished", ignoreCase = true) &&
-                !raceStatusText.contains("cancelled", ignoreCase = true)
+                !raceStatusCode.equals("finished", ignoreCase = true) &&
+                !raceStatusCode.equals("cancelled", ignoreCase = true)
 
-    val raceColor = raceStatusColor(raceStatusText, inRace)
-    val racePrefix = stringResource(R.string.race_prefix)
+    val raceColor = raceStatusColor(raceStatusCode, inRace)
     val startPrefix = stringResource(R.string.start_prefix)
     val infoPrefix = stringResource(R.string.info_prefix)
     val distancePrefix = stringResource(R.string.distance_prefix)
@@ -218,10 +218,9 @@ fun HomeScreen(
             gpsStatus = gpsStatus,
             gpsColor = gpsColor,
             raceStatusText = shortRaceStatusText(
-                raceStatusText = raceStatusText,
+                raceStatusCode = raceStatusCode,
                 raceStartText = raceStartText,
                 inRace = inRace,
-                racePrefix = racePrefix,
                 startPrefix = startPrefix,
                 activeText = stringResource(R.string.status_active),
                 notActiveText = stringResource(R.string.status_not_active),
@@ -237,7 +236,10 @@ fun HomeScreen(
             uploadStatusText = shortUploadStatus(
                 uploadStatusText = uploadStatusText,
                 inRace = inRace,
-                raceStatusText = raceStatusText,
+                raceStatusCode = raceStatusCode,
+                raceDataReady = raceDataReady,
+                raceLegalAccepted = raceLegalAccepted,
+                hasRaceSetup = raceEvent.isNotBlank(),
                 pendingText = { pending -> resources.getString(R.string.pending_value, pending) },
                 blockedText = stringResource(R.string.status_blocked),
                 offText = stringResource(R.string.status_off),
@@ -260,7 +262,7 @@ fun HomeScreen(
         Spacer(modifier = Modifier.height(HomeGapMedium))
 
 
-        if (isRaceFinished(raceStatusText)) {
+        if (isRaceFinished(raceStatusCode)) {
             Button(
                 onClick = onResults,
                 enabled = raceDataReady,
@@ -295,7 +297,7 @@ fun HomeScreen(
         ActionRow(
             setupConfirmed = setupConfirmed,
             inRace = inRace,
-            raceFinished = isRaceFinished(raceStatusText),
+            raceFinished = isRaceFinished(raceStatusCode),
             onSetup = onBoatData,
             onRace = onRace
         )
@@ -954,9 +956,9 @@ fun DebugLine(
 }
 
 fun isRaceFinished(
-    raceStatusText: String
+    raceStatusCode: String
 ): Boolean {
-    return raceStatusText.contains("finished", ignoreCase = true)
+    return raceStatusCode.equals("finished", ignoreCase = true)
 }
 
 fun uploadStatusColor(
@@ -973,7 +975,6 @@ fun uploadStatusColor(
     }
 
     return when {
-        uploadStatusText.contains("all sent", ignoreCase = true) -> RegattaGreen
         pending <= 10 -> RegattaGreen
         pending <= 50 -> RegattaOrange
         else -> RegattaRed
@@ -983,7 +984,10 @@ fun uploadStatusColor(
 fun shortUploadStatus(
     uploadStatusText: String,
     inRace: Boolean,
-    raceStatusText: String,
+    raceStatusCode: String,
+    raceDataReady: Boolean,
+    raceLegalAccepted: Boolean,
+    hasRaceSetup: Boolean,
     pendingText: (Int) -> String = { "$it pending" },
     blockedText: String = "blocked",
     offText: String = "off",
@@ -1001,32 +1005,52 @@ fun shortUploadStatus(
         }
 
         return when {
-            raceStatusText.contains("accept race legal", ignoreCase = true) -> blockedText
-            raceStatusText.contains("not loaded", ignoreCase = true) -> offText
-            raceStatusText.contains("planned", ignoreCase = true) -> waitingText
-            raceStatusText.contains("racing", ignoreCase = true) -> readyText
-            raceStatusText.contains("started", ignoreCase = true) -> readyText
+            hasRaceSetup && !raceLegalAccepted -> blockedText
+            !raceDataReady -> offText
+            raceStatusCode.equals("planned", ignoreCase = true) -> waitingText
+            raceStatusCode.equals("racing", ignoreCase = true) -> readyText
+            raceStatusCode.equals("started", ignoreCase = true) -> readyText
             else -> idleText
         }
     }
 
-    return when {
-        uploadStatusText.contains("all sent", ignoreCase = true) -> "OK"
-        pending <= 10 -> "OK"
-        else -> "$pending"
-    }
+    return if (pending <= 10) "OK" else "$pending"
 }
 
 fun raceStatusColor(
-    raceStatusText: String,
+    raceStatusCode: String,
     inRace: Boolean
 ): Color {
     return when {
-        raceStatusText.contains("postponed", ignoreCase = true) -> RegattaOrange
-        raceStatusText.contains("cancelled", ignoreCase = true) -> RegattaRed
-        raceStatusText.contains("finished", ignoreCase = true) -> RegattaGreen
+        raceStatusCode.equals("postponed", ignoreCase = true) -> RegattaOrange
+        raceStatusCode.equals("cancelled", ignoreCase = true) -> RegattaRed
+        raceStatusCode.equals("finished", ignoreCase = true) -> RegattaGreen
         inRace -> RegattaGreen
         else -> RegattaOrange
+    }
+}
+
+fun localizedRaceStatusValue(
+    raceStatusCode: String,
+    loadedText: String = "loaded",
+    plannedText: String = "planned",
+    racingText: String = "racing",
+    startedText: String = "started",
+    finishedText: String = "finished",
+    postponedText: String = "postponed",
+    cancelledText: String = "cancelled"
+): String {
+    val cleaned = raceStatusCode.trim()
+
+    return when {
+        cleaned.equals("loaded", ignoreCase = true) -> loadedText
+        cleaned.equals("planned", ignoreCase = true) -> plannedText
+        cleaned.equals("racing", ignoreCase = true) -> racingText
+        cleaned.equals("started", ignoreCase = true) -> startedText
+        cleaned.equals("finished", ignoreCase = true) -> finishedText
+        cleaned.equals("postponed", ignoreCase = true) -> postponedText
+        cleaned.equals("cancelled", ignoreCase = true) -> cancelledText
+        else -> cleaned
     }
 }
 
@@ -1041,27 +1065,22 @@ fun localizedRaceStatusCode(
     postponedText: String = "postponed",
     cancelledText: String = "cancelled"
 ): String {
-    val cleaned = raceStatusText
-        .removePrefix(racePrefix)
-        .trim()
-
-    return when {
-        cleaned.equals("loaded", ignoreCase = true) -> loadedText
-        cleaned.equals("planned", ignoreCase = true) -> plannedText
-        cleaned.equals("racing", ignoreCase = true) -> racingText
-        cleaned.equals("started", ignoreCase = true) -> startedText
-        cleaned.equals("finished", ignoreCase = true) -> finishedText
-        cleaned.equals("postponed", ignoreCase = true) -> postponedText
-        cleaned.equals("cancelled", ignoreCase = true) -> cancelledText
-        else -> cleaned
-    }
+    return localizedRaceStatusValue(
+        raceStatusCode = raceStatusText.removePrefix(racePrefix).trim(),
+        loadedText = loadedText,
+        plannedText = plannedText,
+        racingText = racingText,
+        startedText = startedText,
+        finishedText = finishedText,
+        postponedText = postponedText,
+        cancelledText = cancelledText
+    )
 }
 
 fun shortRaceStatusText(
-    raceStatusText: String,
+    raceStatusCode: String,
     raceStartText: String,
     inRace: Boolean,
-    racePrefix: String = "Race:",
     startPrefix: String = "Start:",
     activeText: String = "active",
     notActiveText: String = "not active",
@@ -1073,37 +1092,22 @@ fun shortRaceStatusText(
     postponedText: String = "postponed",
     cancelledText: String = "cancelled"
 ): String {
-    val cleaned = raceStatusText
-        .removePrefix(racePrefix)
-        .trim()
+    val cleaned = raceStatusCode.trim()
 
-    if (cleaned.equals("finished", ignoreCase = true)) {
-        return finishedText
-    }
-
-    if (cleaned.equals("postponed", ignoreCase = true)) {
-        return postponedText
-    }
-
-    if (cleaned.equals("cancelled", ignoreCase = true)) {
-        return cancelledText
-    }
+    if (cleaned.equals("finished", ignoreCase = true)) return finishedText
+    if (cleaned.equals("postponed", ignoreCase = true)) return postponedText
+    if (cleaned.equals("cancelled", ignoreCase = true)) return cancelledText
 
     if (inRace) {
         val startTime = extractStartClockTime(raceStartText, startPrefix)
-
-        return if (startTime.isNotBlank()) {
-            startTime
-        } else {
-            activeText
-        }
+        return if (startTime.isNotBlank()) startTime else activeText
     }
 
-    return when {
-        cleaned.isBlank() || cleaned.equals("not loaded", ignoreCase = true) -> notActiveText
-        else -> localizedRaceStatusCode(
-            raceStatusText = raceStatusText,
-            racePrefix = racePrefix,
+    return if (cleaned.isBlank()) {
+        notActiveText
+    } else {
+        localizedRaceStatusValue(
+            raceStatusCode = cleaned,
             loadedText = loadedText,
             plannedText = plannedText,
             racingText = racingText,
