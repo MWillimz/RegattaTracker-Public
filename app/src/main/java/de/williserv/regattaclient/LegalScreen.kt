@@ -79,92 +79,28 @@ fun LegalScreen(
 
         LegalCard(
             title = stringResource(R.string.legal_notice),
-            body = """
-                Provider:
-                Max Willimzik
-
-                Contact:
-                webmaster@raceoffice.williserv.de
-
-                Responsible for contents:
-                Max Willimzik
-            """.trimIndent()
+            body = stringResource(R.string.legal_notice_body)
         )
 
         Spacer(modifier = Modifier.height(14.dp))
 
         LegalCard(
             title = stringResource(R.string.privacy_policy),
-            body = """
-                This app processes location data, boat data, and technical sensor data to provide regatta tracking.
-
-                Data processed:
-                - GPS position
-                - Timestamp
-                - Boat data
-                - Sail number
-                - Captain/skipper name
-                - Course over ground (COG)
-                - Speed over ground (SOG)
-                - GPS accuracy
-                - Acceleration and gyroscope data
-                - Event identifier, server address and server credential
-
-                Purpose of processing:
-                - Live regatta tracking
-                - Start line check
-                - OCS detection
-                - Course progress
-                - Finish detection
-                - CSV export and later analysis
-
-                Storage and transmission:
-                Data is first stored locally on the device. During a race session, tracking data may be transmitted to the compatible regatta server configured for that race. The operator of that server is responsible for server-side processing and retention.
-
-                Android backup:
-                App-local configuration, credentials and tracking data are excluded from Android backup and device transfer.
-
-                Manual training:
-                Manually recorded training data is stored locally and is not automatically transmitted to the server.
-
-                QR scanning:
-                Camera frames used for QR scanning are processed locally and are not intentionally stored or uploaded by the app.
-
-                Consent:
-                Location data is only processed if the user consents to processing and grants the Android location permission.
-            """.trimIndent()
+            body = stringResource(R.string.privacy_policy_body)
         )
 
         Spacer(modifier = Modifier.height(14.dp))
 
         LegalCard(
             title = stringResource(R.string.regatta_server),
-            body = """
-                The Regatta Server configured for an event is operated separately from this app.
-
-                Its operator and legal information are specific to that server and can be found under Server information on the Event screen.
-            """.trimIndent()
+            body = stringResource(R.string.regatta_server_body)
         )
 
         Spacer(modifier = Modifier.height(14.dp))
 
         LegalCard(
             title = stringResource(R.string.license_notices),
-            body = """
-                Regatta Tracker source code:
-                GNU General Public License v3.0 or later.
-
-                QR decoding:
-                ZXing Core 3.5.4 — Apache License 2.0.
-
-                The full ZXing license text is bundled with the app and can be viewed below.
-
-                Map and geodata:
-                © OpenStreetMap contributors
-                © OpenSeaMap contributors
-
-                OpenStreetMap data is available under the Open Data Commons Open Database License (ODbL).
-            """.trimIndent()
+            body = stringResource(R.string.license_notices_body)
         )
 
         TextButton(

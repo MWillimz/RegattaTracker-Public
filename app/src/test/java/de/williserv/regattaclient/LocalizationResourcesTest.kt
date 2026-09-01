@@ -15,6 +15,7 @@ class LocalizationResourcesTest {
     fun germanLocale_usesGermanResources() {
         val resources = RuntimeEnvironment.getApplication().resources
 
+        assertEquals("Anbieter:", resources.getString(R.string.legal_notice_body).lineSequence().first())
         assertEquals("Zurück", resources.getString(R.string.back))
         assertEquals("Regatta: nicht geladen", resources.getString(R.string.race_not_loaded))
     }
@@ -24,6 +25,7 @@ class LocalizationResourcesTest {
     fun frenchLocale_usesFrenchResources() {
         val resources = RuntimeEnvironment.getApplication().resources
 
+        assertEquals("Éditeur :", resources.getString(R.string.legal_notice_body).lineSequence().first())
         assertEquals("Retour", resources.getString(R.string.back))
         assertEquals("Course : non chargée", resources.getString(R.string.race_not_loaded))
     }
@@ -33,6 +35,7 @@ class LocalizationResourcesTest {
     fun italianLocale_usesItalianResources() {
         val resources = RuntimeEnvironment.getApplication().resources
 
+        assertEquals("Fornitore:", resources.getString(R.string.legal_notice_body).lineSequence().first())
         assertEquals("Indietro", resources.getString(R.string.back))
         assertEquals("Regata: non caricata", resources.getString(R.string.race_not_loaded))
     }
@@ -42,6 +45,7 @@ class LocalizationResourcesTest {
     fun spanishLocale_usesSpanishResources() {
         val resources = RuntimeEnvironment.getApplication().resources
 
+        assertEquals("Proveedor:", resources.getString(R.string.legal_notice_body).lineSequence().first())
         assertEquals("Atrás", resources.getString(R.string.back))
         assertEquals("Regata: no cargada", resources.getString(R.string.race_not_loaded))
     }
