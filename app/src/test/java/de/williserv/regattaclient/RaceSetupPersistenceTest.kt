@@ -14,6 +14,14 @@ class RaceSetupPersistenceTest {
     }
 
     @Test
+    fun legacyDisplayPayload_preservesColonsInsidePayload() {
+        assertEquals(
+            "2026-09-01T12:00:00+02:00",
+            legacyDisplayPayload("Start: 2026-09-01T12:00:00+02:00")
+        )
+    }
+
+    @Test
     fun legacyDisplayPayload_preservesUnprefixedValues() {
         assertEquals("planned", legacyDisplayPayload("planned"))
         assertEquals("--", legacyDisplayPayload("--"))
