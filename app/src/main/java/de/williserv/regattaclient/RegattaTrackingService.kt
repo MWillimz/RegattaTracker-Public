@@ -1224,7 +1224,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
             getString(R.string.dtl_meters, it)
         } ?: getString(R.string.dtl_unknown)
 
-        val targetText = buildTargetText().substringAfter(": ", buildTargetText())
+        val targetText = buildTargetText()
 
         val ocsText = if (isOcs) getString(R.string.ocs) else getString(R.string.clear_status)
 
