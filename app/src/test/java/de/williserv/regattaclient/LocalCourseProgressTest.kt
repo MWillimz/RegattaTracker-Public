@@ -1,10 +1,29 @@
 package de.williserv.regattaclient
 
+import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LocalCourseProgressTest {
+
+    private fun buildEnglishProgressText(
+        totalMarks: Int,
+        passedMarks: Int,
+        raceStarted: Boolean,
+        raceFinished: Boolean
+    ): String = buildLocalProgressText(
+        totalMarks = totalMarks,
+        passedMarks = passedMarks,
+        raceStarted = raceStarted,
+        raceFinished = raceFinished,
+        markedFormatter = { passed, total, percent ->
+            String.format(Locale.US, "Progress: %d/%d marks · %.0f%%", passed, total, percent)
+        },
+        directFormatter = { percent ->
+            String.format(Locale.US, "Progress: %.0f%%", percent)
+        }
+    )
 
     @Test
     fun courseSideReference_usesFinishMidpointWhenNoMarksExist() {
@@ -126,7 +145,7 @@ class LocalCourseProgressTest {
     fun directCourseProgress_reportsZeroBeforeStart() {
         assertEquals(
             "Progress: 0%",
-            buildLocalProgressText(
+            buildEnglishProgressText(
                 totalMarks = 0,
                 passedMarks = 0,
                 raceStarted = false,
@@ -139,7 +158,7 @@ class LocalCourseProgressTest {
     fun directCourseProgress_reportsFiftyWhileRacing() {
         assertEquals(
             "Progress: 50%",
-            buildLocalProgressText(
+            buildEnglishProgressText(
                 totalMarks = 0,
                 passedMarks = 0,
                 raceStarted = true,
@@ -152,7 +171,7 @@ class LocalCourseProgressTest {
     fun directCourseProgress_reportsHundredWhenFinished() {
         assertEquals(
             "Progress: 100%",
-            buildLocalProgressText(
+            buildEnglishProgressText(
                 totalMarks = 0,
                 passedMarks = 0,
                 raceStarted = true,
@@ -165,7 +184,7 @@ class LocalCourseProgressTest {
     fun markedCourseProgress_keepsExistingFormatAndCalculation() {
         assertEquals(
             "Progress: 1/2 marks · 50%",
-            buildLocalProgressText(
+            buildEnglishProgressText(
                 totalMarks = 2,
                 passedMarks = 1,
                 raceStarted = true,

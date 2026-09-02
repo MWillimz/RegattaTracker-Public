@@ -377,8 +377,8 @@ internal fun mergeTelemetryUploadStatusText(
     pendingStatusText: String,
     pendingCount: Long,
     workerStatus: String,
-    uploadWorkerPending: (String, Long) -> String = { worker, pending -> "Upload: $worker · $pending pending" },
-    uploadWorker: (String) -> String = { worker -> "Upload: $worker" }
+    uploadWorkerPending: (String, Long) -> String,
+    uploadWorker: (String) -> String
 ): String {
     if (workerStatus.isBlank()) return pendingStatusText
 
@@ -982,13 +982,13 @@ fun shortUploadStatus(
     raceDataReady: Boolean,
     raceLegalAccepted: Boolean,
     hasRaceSetup: Boolean,
-    pendingText: (Long) -> String = { "$it pending" },
-    blockedText: String = "blocked",
-    offText: String = "off",
-    waitingText: String = "waiting",
-    readyText: String = "ready",
-    idleText: String = "idle",
-    okText: String = "OK"
+    pendingText: (Long) -> String,
+    blockedText: String,
+    offText: String,
+    waitingText: String,
+    readyText: String,
+    idleText: String,
+    okText: String
 ): String {
     if (!inRace) {
         if (pendingUploadCount > 0L) {
@@ -1024,13 +1024,13 @@ fun raceStatusColor(
 
 fun localizedRaceStatusValue(
     raceStatusCode: String,
-    loadedText: String = "loaded",
-    plannedText: String = "planned",
-    racingText: String = "racing",
-    startedText: String = "started",
-    finishedText: String = "finished",
-    postponedText: String = "postponed",
-    cancelledText: String = "cancelled"
+    loadedText: String,
+    plannedText: String,
+    racingText: String,
+    startedText: String,
+    finishedText: String,
+    postponedText: String,
+    cancelledText: String
 ): String {
     val cleaned = raceStatusCode.trim()
 
@@ -1048,14 +1048,14 @@ fun localizedRaceStatusValue(
 
 fun localizedRaceStatusCode(
     raceStatusText: String,
-    racePrefix: String = "Race:",
-    loadedText: String = "loaded",
-    plannedText: String = "planned",
-    racingText: String = "racing",
-    startedText: String = "started",
-    finishedText: String = "finished",
-    postponedText: String = "postponed",
-    cancelledText: String = "cancelled"
+    racePrefix: String,
+    loadedText: String,
+    plannedText: String,
+    racingText: String,
+    startedText: String,
+    finishedText: String,
+    postponedText: String,
+    cancelledText: String
 ): String {
     return localizedRaceStatusValue(
         raceStatusCode = raceStatusText.removePrefix(racePrefix).trim(),
@@ -1075,17 +1075,17 @@ fun shortRaceStatusText(
     raceDataReady: Boolean = true,
     raceStartText: String,
     inRace: Boolean,
-    racePrefix: String = "Race:",
-    startPrefix: String = "Start:",
-    activeText: String = "active",
-    notActiveText: String = "not active",
-    loadedText: String = "loaded",
-    plannedText: String = "planned",
-    racingText: String = "racing",
-    startedText: String = "started",
-    finishedText: String = "finished",
-    postponedText: String = "postponed",
-    cancelledText: String = "cancelled"
+    racePrefix: String,
+    startPrefix: String,
+    activeText: String,
+    notActiveText: String,
+    loadedText: String,
+    plannedText: String,
+    racingText: String,
+    startedText: String,
+    finishedText: String,
+    postponedText: String,
+    cancelledText: String
 ): String {
     val cleaned = raceStatusCode.trim()
 
@@ -1123,7 +1123,7 @@ fun shortRaceStatusText(
 
 fun extractStartClockTime(
     raceStartText: String,
-    startPrefix: String = "Start:"
+    startPrefix: String
 ): String {
     val cleaned = raceStartText
         .removePrefix(startPrefix)
@@ -1150,10 +1150,10 @@ fun extractStartClockTime(
 
 fun displayDistanceText(
     distanceText: String,
-    distancePrefix: String = "Distance:",
-    dtlPrefix: String = "DTL:",
-    unknownText: String = "Distance --",
-    valueText: (String) -> String = { "Distance $it" }
+    distancePrefix: String,
+    dtlPrefix: String,
+    unknownText: String,
+    valueText: (String) -> String
 ): String {
     val cleaned = distanceText
         .removePrefix(distancePrefix)

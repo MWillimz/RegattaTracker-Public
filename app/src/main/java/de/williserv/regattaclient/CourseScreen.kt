@@ -589,8 +589,8 @@ data class CourseMarkDisplayItem(
 
 fun courseMarkDisplayItems(
     raceMarksText: String,
-    marksPrefix: String = "Marks:",
-    skippedMarker: String = "[skipped]"
+    marksPrefix: String,
+    skippedMarker: String
 ): List<CourseMarkDisplayItem> {
     val cleaned = raceMarksText
         .removePrefix(marksPrefix)
@@ -627,7 +627,7 @@ fun courseMarkDisplayItems(
 
 fun formatMarksForDisplay(
     raceMarksText: String,
-    marksPrefix: String = "Marks:"
+    marksPrefix: String
 ): String {
     val cleaned = raceMarksText
         .removePrefix(marksPrefix)

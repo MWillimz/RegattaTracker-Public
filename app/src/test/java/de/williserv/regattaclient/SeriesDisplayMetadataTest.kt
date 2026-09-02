@@ -10,6 +10,17 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class SeriesDisplayMetadataTest {
 
+    private val englishOrderFormatter: (Int, Int) -> String = { occurrence, planned ->
+        "$occurrence of $planned"
+    }
+
+    private fun buildEnglishEventSummarySeriesLine(
+        metadata: SeriesDisplayMetadata
+    ): String = buildEventSummarySeriesLine(
+        seriesDisplayMetadata = metadata,
+        orderFormatter = englishOrderFormatter
+    )
+
     @Test
     fun missingSeriesMetadataKeepsStandaloneHeaderUnchanged() {
         val parsed = parseSeriesDisplayMetadata(JSONObject().put("event_name", "standalone-event"))
@@ -23,7 +34,7 @@ class SeriesDisplayMetadataTest {
                 seriesDisplayMetadata = parsed
             )
         )
-        assertEquals("", buildEventSummarySeriesLine(parsed))
+        assertEquals("", buildEnglishEventSummarySeriesLine(parsed))
     }
 
     @Test
@@ -38,7 +49,7 @@ class SeriesDisplayMetadataTest {
         assertEquals("Langstrecke", parsed.runName)
         assertEquals(2, parsed.occurrenceNo)
         assertEquals(5, parsed.plannedRaceCount)
-        assertEquals("2 of 5", parsed.orderText())
+        assertEquals("2 of 5", parsed.orderText(englishOrderFormatter))
 
         val header = buildEventHeaderLines(
             raceEvent = "Elbe Cup",
@@ -46,8 +57,8 @@ class SeriesDisplayMetadataTest {
             seriesDisplayMetadata = parsed
         )
         assertEquals(listOf("Elbe Cup"), header)
-        assertEquals("Langstrecke · 2 of 5", buildEventSummarySeriesLine(parsed))
-        assertFalse(buildEventSummarySeriesLine(parsed).contains("Lauf", ignoreCase = true))
+        assertEquals("Langstrecke · 2 of 5", buildEnglishEventSummarySeriesLine(parsed))
+        assertFalse(buildEnglishEventSummarySeriesLine(parsed).contains("Lauf", ignoreCase = true))
     }
 
     @Test
@@ -58,7 +69,7 @@ class SeriesDisplayMetadataTest {
         )
 
         assertEquals(serverRunName, parsed.runName)
-        assertEquals(serverRunName, buildEventSummarySeriesLine(parsed))
+        assertEquals(serverRunName, buildEnglishEventSummarySeriesLine(parsed))
     }
 
     @Test
@@ -78,7 +89,7 @@ class SeriesDisplayMetadataTest {
                 seriesDisplayMetadata = parsed
             )
         )
-        assertEquals("2 of 5", buildEventSummarySeriesLine(parsed))
+        assertEquals("2 of 5", buildEnglishEventSummarySeriesLine(parsed))
     }
 
     @Test
@@ -89,7 +100,7 @@ class SeriesDisplayMetadataTest {
             plannedRaceCount = null
         )
 
-        assertEquals("", parsed.orderText())
+        assertEquals("", parsed.orderText(englishOrderFormatter))
         assertEquals(
             listOf("Elbe Cup"),
             buildEventHeaderLines(
@@ -98,7 +109,7 @@ class SeriesDisplayMetadataTest {
                 seriesDisplayMetadata = parsed
             )
         )
-        assertEquals("Langstrecke", buildEventSummarySeriesLine(parsed))
+        assertEquals("Langstrecke", buildEnglishEventSummarySeriesLine(parsed))
     }
 
     @Test

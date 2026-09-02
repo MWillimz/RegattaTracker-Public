@@ -1,7 +1,5 @@
 package de.williserv.regattaclient
 
-import java.util.Locale
-
 internal fun lineMidpoint(line: StartLine): GeoPoint {
     return GeoPoint(
         lat = (line.ref.lat + line.mark.lat) / 2.0,
@@ -24,12 +22,8 @@ internal fun buildLocalProgressText(
     passedMarks: Int,
     raceStarted: Boolean,
     raceFinished: Boolean,
-    markedFormatter: (Int, Int, Double) -> String = { passed, total, percent ->
-        String.format(Locale.US, "Progress: %d/%d marks · %.0f%%", passed, total, percent)
-    },
-    directFormatter: (Double) -> String = { percent ->
-        String.format(Locale.US, "Progress: %.0f%%", percent)
-    }
+    markedFormatter: (Int, Int, Double) -> String,
+    directFormatter: (Double) -> String
 ): String {
     if (totalMarks > 0) {
         val progressPercent = if (raceFinished) 100.0
