@@ -6,10 +6,10 @@ import java.net.URL
 
 enum class ServerLegalKind(
     val path: String,
-    val fallbackTitle: String
+    val fallbackTitleRes: Int
 ) {
-    IMPRESSUM("impressum", "Server Impressum"),
-    DATENSCHUTZ("datenschutz", "Server Datenschutz")
+    IMPRESSUM("impressum", R.string.server_impressum),
+    DATENSCHUTZ("datenschutz", R.string.server_datenschutz)
 }
 
 data class ServerLegalDocument(

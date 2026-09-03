@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import de.williserv.regattaclient.ui.theme.RegattaClientTheme
@@ -43,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.res.stringResource
 import de.williserv.regattaclient.ui.theme.RegattaGreen
 import de.williserv.regattaclient.ui.theme.RegattaOrange
 import de.williserv.regattaclient.ui.theme.RegattaRed
@@ -83,17 +86,17 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private val currentScreen = mutableStateOf(Screen.HOME)
 
-    private val boatName = mutableStateOf("Boat name")
-    private val skipperName = mutableStateOf("Max Mustermann")
-    private val hullColor = mutableStateOf("white")
-    private val sailNumber = mutableStateOf("GER 1234")
-    private val yardstick = mutableStateOf("100")
+    private val boatName = mutableStateOf("")
+    private val skipperName = mutableStateOf("")
+    private val hullColor = mutableStateOf("")
+    private val sailNumber = mutableStateOf("")
+    private val yardstick = mutableStateOf("")
 
     private val boatPrefsName = "boat_setup"
 
     private val racePrefsName = "race_setup"
 
-    private val boatType = mutableStateOf("Shark 24")
+    private val boatType = mutableStateOf("")
     private val setupConfirmed = mutableStateOf(false)
 
     private val raceServer = mutableStateOf("")
@@ -106,15 +109,15 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private val inRace = mutableStateOf(false)
     private val manualTracking = mutableStateOf(false)
 
-    private val raceStatusText = mutableStateOf("Race: not loaded")
-    private val raceStartText = mutableStateOf("Start: --")
-    private val raceStopText = mutableStateOf("Stop: --")
-    private val raceCourseText = mutableStateOf("Course: --")
-    private val raceStartLineText = mutableStateOf("Start line: --")
-    private val raceFinishLineText = mutableStateOf("Finish line: --")
-    private val raceMarksText = mutableStateOf("Marks: --")
-    private val raceInfoText = mutableStateOf("Info: --")
-    private val raceShortenedText = mutableStateOf("Course shortened: no")
+    private val raceStatusText = mutableStateOf("")
+    private val raceStartText = mutableStateOf("")
+    private val raceStopText = mutableStateOf("")
+    private val raceCourseText = mutableStateOf("")
+    private val raceStartLineText = mutableStateOf("")
+    private val raceFinishLineText = mutableStateOf("")
+    private val raceMarksText = mutableStateOf("")
+    private val raceInfoText = mutableStateOf("")
+    private val raceShortenedText = mutableStateOf("")
     private val courseMapMarks = mutableStateOf<List<CourseMapMark>>(emptyList())
     private val selectedCourseMapView = mutableStateOf<CourseMapView?>(null)
 
@@ -124,30 +127,39 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private val raceLegalStatusText = mutableStateOf("")
     private var raceLegalFetchRunning = false
 
-    private val currentTargetText = mutableStateOf("Next: --")
-    private val progressText = mutableStateOf("Progress: --")
-    private val boatRaceStatusText = mutableStateOf("Boat: --")
+    private val currentTargetText = mutableStateOf("")
+    private val progressText = mutableStateOf("")
+    private val boatRaceStatusText = mutableStateOf("")
 
-    private val dtlText = mutableStateOf("Distance: --")
-    private val ttlText = mutableStateOf("TTL: --")
-    private val ocsText = mutableStateOf("OCS: --")
-    private val debugErrorText = mutableStateOf("Last error: --")
+    private val dtlText = mutableStateOf("")
+    private val ttlText = mutableStateOf("")
+    private val ocsText = mutableStateOf("")
+    private val debugErrorText = mutableStateOf("")
+    private var localIsOcs = false
+    private var localRaceFinished = false
 
     private val showFinishDetectedDialog = mutableStateOf(false)
     private val raceDataReady = mutableStateOf(false)
 
-    private val startPanelText = mutableStateOf("CLEAR")
+    private val startPanelText = mutableStateOf("")
     private val startPanelMode = mutableStateOf("clear")
 
     private var raceStartEpochMillis: Long? = null
-    private var currentRaceStatus = ""
+    private var currentRaceStatus by mutableStateOf("")
+    private var rawRaceStatus = ""
+    private var rawRaceStart = ""
+    private var rawRaceStop = ""
+    private var rawRaceInfo = ""
+    private var rawRaceCourseJson = ""
+    private var rawRaceCourseShortened = false
     private var raceDataFetchRunning = false
 
     private val raceRegistered = mutableStateOf(false)
-    private val statusText = mutableStateOf("Tracking stopped")
-    private val rowCountText = mutableStateOf("0 rows stored")
-    private val uploadStatusText = mutableStateOf("Upload: ready")
-    private val serviceStatusText = mutableStateOf("Service: stopped")
+    private val statusText = mutableStateOf("")
+    private val rowCountText = mutableStateOf("")
+    private val uploadStatusText = mutableStateOf("")
+    private val pendingUploadCount = mutableStateOf(0L)
+    private val serviceStatusText = mutableStateOf("")
 
     private val registerRaceStatusText = mutableStateOf("")
     private val resultsStatusText = mutableStateOf("")
@@ -161,14 +173,14 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private val showLeaveRaceWarningDialog = mutableStateOf(false)
     private val showAdvanced = mutableStateOf(false)
 
-    private val cogText = mutableStateOf("COG: --")
-    private val sogText = mutableStateOf("SOG: --")
-    private val gpsAccuracyText = mutableStateOf("GPS: --")
+    private val cogText = mutableStateOf("")
+    private val sogText = mutableStateOf("")
+    private val gpsAccuracyText = mutableStateOf("")
     private val gpsColor = mutableStateOf(RegattaRed)
 
     private val appStatePrefsName = "app_state"
 
-    private val lastCsvLine = mutableStateOf("CSV preview is no longer updated live by the service.")
+    private val lastCsvLine = mutableStateOf("")
 
     private var accelX = 0f
     private var accelY = 0f
@@ -230,7 +242,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             if (locationGranted) {
                 startGpsDisplayUpdates()
             } else {
-                statusText.value = "GPS permission denied"
+                statusText.value = getString(R.string.gps_permission_denied)
             }
         }
 
@@ -247,8 +259,44 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
     }
 
+
+    private fun initializeLocalizedUiText() {
+        boatName.value = getString(R.string.default_boat_name)
+        skipperName.value = getString(R.string.default_skipper_name)
+        hullColor.value = getString(R.string.default_hull_color)
+        sailNumber.value = getString(R.string.default_sail_number)
+        yardstick.value = getString(R.string.default_yardstick)
+        boatType.value = getString(R.string.default_boat_type)
+        raceStatusText.value = getString(R.string.race_not_loaded)
+        raceStartText.value = getString(R.string.start_unknown)
+        raceStopText.value = getString(R.string.stop_unknown)
+        raceCourseText.value = getString(R.string.course_unknown)
+        raceStartLineText.value = getString(R.string.start_line_unknown)
+        raceFinishLineText.value = getString(R.string.finish_line_unknown)
+        raceMarksText.value = getString(R.string.marks_unknown)
+        raceInfoText.value = getString(R.string.info_unknown)
+        raceShortenedText.value = getString(R.string.course_shortened_no)
+        currentTargetText.value = getString(R.string.next_unknown)
+        progressText.value = getString(R.string.progress_unknown)
+        boatRaceStatusText.value = getString(R.string.boat_status_unknown)
+        dtlText.value = getString(R.string.distance_unknown)
+        ttlText.value = getString(R.string.ttl_unknown)
+        ocsText.value = getString(R.string.ocs_unknown)
+        debugErrorText.value = getString(R.string.last_error_unknown)
+        startPanelText.value = getString(R.string.app_name)
+        statusText.value = getString(R.string.tracking_stopped)
+        rowCountText.value = getString(R.string.rows_stored, 0)
+        uploadStatusText.value = getString(R.string.upload_ready)
+        serviceStatusText.value = getString(R.string.service_stopped)
+        cogText.value = "${getString(R.string.cog_prefix)} --"
+        sogText.value = "${getString(R.string.sog_prefix)} --"
+        gpsAccuracyText.value = getString(R.string.gps_accuracy_unknown)
+        lastCsvLine.value = getString(R.string.csv_preview_not_live)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        initializeLocalizedUiText()
 
         db = TrackingDbHelper(this)
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -280,9 +328,12 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             statusText = statusText.value,
                             rowCountText = rowCountText.value,
                             uploadStatusText = uploadStatusText.value,
+                            pendingUploadCount = pendingUploadCount.value,
                             debugErrorText = debugErrorText.value,
                             serviceStatusText = serviceStatusText.value,
-                            raceStatusText = raceStatusText.value,
+                            raceStatusCode = currentRaceStatus,
+                            raceStatusDisplayText = raceStatusText.value,
+                            raceLegalAccepted = raceLegalAccepted.value,
                             raceEvent = raceEvent.value,
                             seriesDisplayMetadata = raceSeriesDisplayMetadata.value,
                             raceStartText = raceStartText.value,
@@ -300,6 +351,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             ocsText = ocsText.value,
                             raceInfoText = raceInfoText.value,
                             raceShortenedText = raceShortenedText.value,
+                            raceShortened = rawRaceCourseShortened,
+                            hasRaceInfo = rawRaceInfo.trim().let { it.isNotBlank() && it != "--" },
                             raceStartFlags = raceStartFlags.value,
                             millisToStart = raceStartEpochMillis?.let { it - System.currentTimeMillis() },
                             startPanelText = startPanelText.value,
@@ -334,7 +387,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                 showOcsDecisionDialog.value = true
                             },
                             onResults = {
-                                if (raceDataReady.value && raceStatusText.value.contains("finished", ignoreCase = true)) {
+                                if (raceDataReady.value && currentRaceStatus.equals("finished", ignoreCase = true)) {
                                     currentScreen.value = Screen.RESULTS
                                     fetchEventResults()
                                 }
@@ -454,6 +507,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             canRegisterRace = setupConfirmed.value && raceDataReady.value && !inRace.value,
                             registerRaceStatusText = registerRaceStatusText.value,
                             raceShortenedText = raceShortenedText.value,
+                            raceShortened = rawRaceCourseShortened,
                             seriesDisplayMetadata = raceSeriesDisplayMetadata.value,
                             modifier = Modifier.padding(innerPadding),
                             onRaceServerChange = {
@@ -475,15 +529,15 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                 clearResolvedEventContextForAccessChange()
 
                                 if (it.isBlank()) {
-                                    raceStatusText.value = "Race: not loaded"
-                                    raceStartText.value = "Start: --"
-                                    raceStopText.value = "Stop: --"
-                                    raceCourseText.value = "Course: --"
-                                    raceStartLineText.value = "Start line: --"
-                                    raceFinishLineText.value = "Finish line: --"
-                                    raceMarksText.value = "Marks: --"
-                                    raceInfoText.value = "Info: --"
-                                    raceShortenedText.value = "Course shortened: no"
+                                    raceStatusText.value = getString(R.string.race_not_loaded)
+                                    raceStartText.value = getString(R.string.start_unknown)
+                                    raceStopText.value = getString(R.string.stop_unknown)
+                                    raceCourseText.value = getString(R.string.course_unknown)
+                                    raceStartLineText.value = getString(R.string.start_line_unknown)
+                                    raceFinishLineText.value = getString(R.string.finish_line_unknown)
+                                    raceMarksText.value = getString(R.string.marks_unknown)
+                                    raceInfoText.value = getString(R.string.info_unknown)
+                                    raceShortenedText.value = getString(R.string.course_shortened_no)
                                 }
                             },
                             onRaceSecretChange = {
@@ -499,11 +553,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             onEnterRace = {
                                 when {
                                     !raceDataReady.value -> {
-                                        raceStatusText.value = "Race: load valid race data first"
+                                        raceStatusText.value = getString(R.string.race_load_valid_data_first)
                                     }
 
                                     !setupConfirmed.value -> {
-                                        statusText.value = "Confirm boat setup first"
+                                        statusText.value = getString(R.string.confirm_boat_setup_first)
                                     }
 
                                     else -> {
@@ -531,6 +585,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             raceMarksText = raceMarksText.value,
                             raceInfoText = raceInfoText.value,
                             raceShortenedText = raceShortenedText.value,
+                            raceShortened = rawRaceCourseShortened,
                             currentTargetText = currentTargetText.value,
                             courseMapMarks = courseMapMarks.value,
                             onSetCourseProgress = { passedMarks, raceStarted ->
@@ -690,7 +745,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         if (access == null) {
             android.widget.Toast.makeText(
                 this,
-                "Shared text is not a valid RegattaTracker event link.",
+                getString(R.string.shared_text_invalid),
                 android.widget.Toast.LENGTH_LONG
             ).show()
             return
@@ -709,7 +764,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         if (eventAlreadyLoaded) {
             android.widget.Toast.makeText(
                 this,
-                "An event is already loaded. Clear the current event before importing another link.",
+                getString(R.string.event_already_loaded),
                 android.widget.Toast.LENGTH_LONG
             ).show()
             return
@@ -737,29 +792,190 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             plannedRaceCount = prefs.getInt("series_planned_race_count", 0).takeIf { it > 0 }
         )
 
-        raceStatusText.value = prefs.getString("race_status_text", raceStatusText.value) ?: raceStatusText.value
-        raceStartText.value = prefs.getString("race_start_text", raceStartText.value) ?: raceStartText.value
-        raceStopText.value = prefs.getString("race_stop_text", raceStopText.value) ?: raceStopText.value
-        raceCourseText.value = prefs.getString("race_course_text", raceCourseText.value) ?: raceCourseText.value
-        raceStartLineText.value = prefs.getString("race_start_line_text", raceStartLineText.value) ?: raceStartLineText.value
-        raceFinishLineText.value = prefs.getString("race_finish_line_text", raceFinishLineText.value) ?: raceFinishLineText.value
-        raceMarksText.value = prefs.getString("race_marks_text", raceMarksText.value) ?: raceMarksText.value
-        raceInfoText.value = prefs.getString("race_info_text", raceInfoText.value) ?: raceInfoText.value
-        raceShortenedText.value = prefs.getString("race_shortened_text", raceShortenedText.value) ?: raceShortenedText.value
-
         raceDataReady.value = prefs.getBoolean("race_data_ready", false)
         if (resolvedEventName.value.isBlank()) {
             raceDataReady.value = false
         }
 
-        currentRaceStatus = raceStatusText.value
-            .replace("Race:", "")
-            .trim()
+        if (!raceDataReady.value) {
+            currentRaceStatus = ""
+            raceStartEpochMillis = null
+            return
+        }
 
-        raceStartEpochMillis = parseServerTimeToMillis(
-            raceStartText.value.replace("Start:", "").trim()
-        )
+        val hasRawState =
+            prefs.getInt("race_raw_state_version", 0) >= RACE_RAW_STATE_VERSION
+
+        if (hasRawState) {
+            rawRaceStatus = prefs.getString("race_status_raw", "").orEmpty()
+            rawRaceStart = prefs.getString("race_start_raw", "").orEmpty()
+            rawRaceStop = prefs.getString("race_stop_raw", "").orEmpty()
+            rawRaceInfo = prefs.getString("race_info_raw", "").orEmpty()
+            rawRaceCourseJson = prefs.getString("race_course_json_raw", "").orEmpty()
+            rawRaceCourseShortened = prefs.getBoolean("race_course_shortened_raw", false)
+            renderRawRaceSetup()
+        } else {
+            raceStatusText.value = prefs.getString("race_status_text", raceStatusText.value) ?: raceStatusText.value
+            raceStartText.value = prefs.getString("race_start_text", raceStartText.value) ?: raceStartText.value
+            raceStopText.value = prefs.getString("race_stop_text", raceStopText.value) ?: raceStopText.value
+            raceCourseText.value = prefs.getString("race_course_text", raceCourseText.value) ?: raceCourseText.value
+            raceStartLineText.value = prefs.getString("race_start_line_text", raceStartLineText.value) ?: raceStartLineText.value
+            raceFinishLineText.value = prefs.getString("race_finish_line_text", raceFinishLineText.value) ?: raceFinishLineText.value
+            raceMarksText.value = prefs.getString("race_marks_text", raceMarksText.value) ?: raceMarksText.value
+            raceInfoText.value = prefs.getString("race_info_text", raceInfoText.value) ?: raceInfoText.value
+            raceShortenedText.value = prefs.getString("race_shortened_text", raceShortenedText.value) ?: raceShortenedText.value
+
+            val migratedLegacyState = migrateLegacyRaceDisplayState(
+                raceStatusText = raceStatusText.value,
+                raceStartText = raceStartText.value,
+                raceStopText = raceStopText.value,
+                raceInfoText = raceInfoText.value,
+                raceShortenedText = raceShortenedText.value,
+                raceMarksText = raceMarksText.value
+            )
+            rawRaceStatus = migratedLegacyState.raceStatus
+            rawRaceStart = migratedLegacyState.raceStart
+            rawRaceStop = migratedLegacyState.raceStop
+            rawRaceInfo = migratedLegacyState.raceInfo
+            rawRaceCourseShortened = migratedLegacyState.courseShortened
+            courseMapMarks.value = migratedLegacyState.courseMarks.map { mark ->
+                CourseMapMark(
+                    order = mark.order,
+                    label = mark.label,
+                    skipped = mark.skipped
+                )
+            }
+            renderMigratedLegacyRaceSetup(migratedLegacyState)
+        }
     }
+
+    private fun renderMigratedLegacyRaceSetup(migratedLegacyState: LegacyRaceDisplayState) {
+        raceStatusText.value = if (rawRaceStatus.isBlank()) {
+            getString(R.string.race_not_loaded)
+        } else {
+            getString(R.string.race_value, rawRaceStatus)
+        }
+        raceStartText.value = if (rawRaceStart.isBlank() || rawRaceStart == "--") {
+            getString(R.string.start_unknown)
+        } else {
+            getString(R.string.start_value, rawRaceStart)
+        }
+        raceStopText.value = if (rawRaceStop.isBlank() || rawRaceStop == "--") {
+            getString(R.string.stop_unknown)
+        } else {
+            getString(R.string.stop_value, rawRaceStop)
+        }
+        raceInfoText.value = if (rawRaceInfo.isBlank() || rawRaceInfo == "--") {
+            getString(R.string.info_unknown)
+        } else {
+            getString(R.string.info_value, rawRaceInfo)
+        }
+        raceShortenedText.value = if (rawRaceCourseShortened) {
+            getString(R.string.course_shortened_yes)
+        } else {
+            getString(R.string.course_shortened_no)
+        }
+
+        val markCount = Regex("\\d+")
+            .find(legacyDisplayPayload(raceCourseText.value))
+            ?.value
+            ?.toIntOrNull()
+        raceCourseText.value = if (markCount != null) {
+            getString(R.string.course_mark_count, markCount)
+        } else {
+            getString(R.string.course_unknown)
+        }
+
+        raceStartLineText.value = localizeLegacyCourseLine(
+            displayText = raceStartLineText.value,
+            unknownRes = R.string.start_line_unknown,
+            valueRes = R.string.start_line_value
+        )
+        raceFinishLineText.value = localizeLegacyCourseLine(
+            displayText = raceFinishLineText.value,
+            unknownRes = R.string.finish_line_unknown,
+            valueRes = R.string.finish_line_value
+        )
+
+        raceMarksText.value = if (migratedLegacyState.courseMarks.isEmpty()) {
+            getString(R.string.marks_unknown)
+        } else {
+            getString(
+                R.string.marks_value,
+                migratedLegacyState.courseMarks.joinToString(", ") { it.label }
+            )
+        }
+
+        currentRaceStatus = rawRaceStatus
+        raceStartEpochMillis = parseServerTimeToMillis(rawRaceStart)
+    }
+
+    private fun localizeLegacyCourseLine(
+        displayText: String,
+        unknownRes: Int,
+        valueRes: Int
+    ): String {
+        val payload = legacyDisplayPayload(displayText)
+        if (payload.isBlank() || payload == "--") {
+            return getString(unknownRes)
+        }
+
+        val parts = payload.split("→", limit = 2).map { it.trim() }
+        return if (parts.size == 2 && parts.all { it.isNotBlank() }) {
+            getString(valueRes, parts[0], parts[1])
+        } else {
+            getString(unknownRes)
+        }
+    }
+
+    private fun renderRawRaceSetup() {
+        raceStatusText.value = if (rawRaceStatus.isBlank()) {
+            getString(R.string.race_not_loaded)
+        } else {
+            getString(R.string.race_value, rawRaceStatus)
+        }
+        raceStartText.value = if (rawRaceStart.isBlank() || rawRaceStart == "--") {
+            getString(R.string.start_unknown)
+        } else {
+            getString(R.string.start_value, rawRaceStart)
+        }
+        raceStopText.value = if (rawRaceStop.isBlank() || rawRaceStop == "--") {
+            getString(R.string.stop_unknown)
+        } else {
+            getString(R.string.stop_value, rawRaceStop)
+        }
+        raceInfoText.value = if (rawRaceInfo.isBlank() || rawRaceInfo == "--") {
+            getString(R.string.info_unknown)
+        } else {
+            getString(R.string.info_value, rawRaceInfo)
+        }
+        raceShortenedText.value = if (rawRaceCourseShortened) {
+            getString(R.string.course_shortened_yes)
+        } else {
+            getString(R.string.course_shortened_no)
+        }
+
+        val courseObj = rawRaceCourseJson
+            .takeIf { it.isNotBlank() }
+            ?.let { raw -> runCatching { JSONObject(raw) }.getOrNull() }
+        val courseSummary = buildCourseSummary(
+            courseObj = courseObj,
+            courseShortened = rawRaceCourseShortened
+        )
+
+        raceCourseText.value = courseSummary.courseText
+        raceStartLineText.value = courseSummary.startLineText
+        raceFinishLineText.value = courseSummary.finishLineText
+        raceMarksText.value = courseSummary.marksText
+        courseMapMarks.value = buildCourseMapMarks(
+            courseObj = courseObj,
+            courseShortened = rawRaceCourseShortened
+        )
+
+        currentRaceStatus = rawRaceStatus
+        raceStartEpochMillis = parseServerTimeToMillis(rawRaceStart)
+    }
+
 
     private fun resetRaceLegalState() {
         raceLegalAccepted.value = false
@@ -773,27 +989,33 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private fun resetRunSpecificClientState(clearLegal: Boolean) {
         raceDataReady.value = false
-        raceStatusText.value = "Race: not loaded"
-        raceStartText.value = "Start: --"
-        raceStopText.value = "Stop: --"
-        raceCourseText.value = "Course: --"
-        raceStartLineText.value = "Start line: --"
-        raceFinishLineText.value = "Finish line: --"
-        raceMarksText.value = "Marks: --"
-        raceInfoText.value = "Info: --"
-        raceShortenedText.value = "Course shortened: no"
+        raceStatusText.value = getString(R.string.race_not_loaded)
+        raceStartText.value = getString(R.string.start_unknown)
+        raceStopText.value = getString(R.string.stop_unknown)
+        raceCourseText.value = getString(R.string.course_unknown)
+        raceStartLineText.value = getString(R.string.start_line_unknown)
+        raceFinishLineText.value = getString(R.string.finish_line_unknown)
+        raceMarksText.value = getString(R.string.marks_unknown)
+        raceInfoText.value = getString(R.string.info_unknown)
+        raceShortenedText.value = getString(R.string.course_shortened_no)
         raceSeriesDisplayMetadata.value = SeriesDisplayMetadata()
         courseMapMarks.value = emptyList()
         selectedCourseMapView.value = null
         raceStartFlags.value = RaceStartFlags()
 
-        currentTargetText.value = "Next: --"
-        progressText.value = "Progress: --"
-        boatRaceStatusText.value = "Boat: --"
-        dtlText.value = "Distance: --"
-        ttlText.value = "TTL: --"
-        ocsText.value = "OCS: --"
+        currentTargetText.value = getString(R.string.next_unknown)
+        progressText.value = getString(R.string.progress_unknown)
+        boatRaceStatusText.value = getString(R.string.boat_status_unknown)
+        dtlText.value = getString(R.string.distance_unknown)
+        ttlText.value = getString(R.string.ttl_unknown)
+        ocsText.value = getString(R.string.ocs_unknown)
 
+        rawRaceStatus = ""
+        rawRaceStart = ""
+        rawRaceStop = ""
+        rawRaceInfo = ""
+        rawRaceCourseJson = ""
+        rawRaceCourseShortened = false
         currentRaceStatus = ""
         raceStartEpochMillis = null
         raceRegistered.value = false
@@ -849,7 +1071,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private fun clearRaceSetup() {
         if (inRace.value) {
-            raceStatusText.value = "Race: cannot clear setup while in race"
+            raceStatusText.value = getString(R.string.race_cannot_clear_while_running)
             return
         }
         stopRaceDataRefresh()
@@ -861,27 +1083,33 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         raceRegistered.value = false
         registerRaceStatusText.value = ""
 
-        raceStatusText.value = "Race: not loaded"
-        raceStartText.value = "Start: --"
-        raceStopText.value = "Stop: --"
-        raceCourseText.value = "Course: --"
-        raceStartLineText.value = "Start line: --"
-        raceFinishLineText.value = "Finish line: --"
-        raceMarksText.value = "Marks: --"
-        raceInfoText.value = "Info: --"
-        raceShortenedText.value = "Course shortened: no"
+        raceStatusText.value = getString(R.string.race_not_loaded)
+        raceStartText.value = getString(R.string.start_unknown)
+        raceStopText.value = getString(R.string.stop_unknown)
+        raceCourseText.value = getString(R.string.course_unknown)
+        raceStartLineText.value = getString(R.string.start_line_unknown)
+        raceFinishLineText.value = getString(R.string.finish_line_unknown)
+        raceMarksText.value = getString(R.string.marks_unknown)
+        raceInfoText.value = getString(R.string.info_unknown)
+        raceShortenedText.value = getString(R.string.course_shortened_no)
         raceSeriesDisplayMetadata.value = SeriesDisplayMetadata()
         courseMapMarks.value = emptyList()
         selectedCourseMapView.value = null
         raceStartFlags.value = RaceStartFlags()
 
-        currentTargetText.value = "Next: --"
-        progressText.value = "Progress: --"
-        boatRaceStatusText.value = "Boat: --"
-        dtlText.value = "Distance: --"
-        ttlText.value = "TTL: --"
-        ocsText.value = "OCS: --"
+        currentTargetText.value = getString(R.string.next_unknown)
+        progressText.value = getString(R.string.progress_unknown)
+        boatRaceStatusText.value = getString(R.string.boat_status_unknown)
+        dtlText.value = getString(R.string.distance_unknown)
+        ttlText.value = getString(R.string.ttl_unknown)
+        ocsText.value = getString(R.string.ocs_unknown)
 
+        rawRaceStatus = ""
+        rawRaceStart = ""
+        rawRaceStop = ""
+        rawRaceInfo = ""
+        rawRaceCourseJson = ""
+        rawRaceCourseShortened = false
         currentRaceStatus = ""
         raceStartEpochMillis = null
         clearSavedRaceDataReady()
@@ -914,6 +1142,13 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             .putString("series_run_name", raceSeriesDisplayMetadata.value.runName)
             .putInt("series_occurrence_no", raceSeriesDisplayMetadata.value.occurrenceNo ?: 0)
             .putInt("series_planned_race_count", raceSeriesDisplayMetadata.value.plannedRaceCount ?: 0)
+            .putInt("race_raw_state_version", RACE_RAW_STATE_VERSION)
+            .putString("race_status_raw", rawRaceStatus)
+            .putString("race_start_raw", rawRaceStart)
+            .putString("race_stop_raw", rawRaceStop)
+            .putString("race_info_raw", rawRaceInfo)
+            .putString("race_course_json_raw", rawRaceCourseJson)
+            .putBoolean("race_course_shortened_raw", rawRaceCourseShortened)
             .putString("race_status_text", raceStatusText.value)
             .putString("race_start_text", raceStartText.value)
             .putString("race_stop_text", raceStopText.value)
@@ -994,7 +1229,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private fun cancelTrackingConsent() {
         pendingTrackingAction = null
         showTrackingConsentDialog.value = false
-        statusText.value = "GPS tracking consent not granted"
+        statusText.value = getString(R.string.gps_consent_not_granted)
     }
 
     private fun executeTrackingAction(action: PendingTrackingAction) {
@@ -1024,15 +1259,15 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         manualTracking.value = prefs.getBoolean("manual_tracking", false)
 
         serviceStatusText.value = when {
-            inRace.value -> "Service: race running"
-            manualTracking.value -> "Service: manual tracking running"
-            else -> "Service: stopped"
+            inRace.value -> getString(R.string.service_race_running)
+            manualTracking.value -> getString(R.string.service_manual_running)
+            else -> getString(R.string.service_stopped)
         }
 
         statusText.value = when {
-            inRace.value -> "In Race"
-            manualTracking.value -> "Manual tracking running"
-            else -> "Tracking stopped"
+            inRace.value -> getString(R.string.in_race)
+            manualTracking.value -> getString(R.string.manual_tracking_running)
+            else -> getString(R.string.tracking_stopped)
         }
     }
 
@@ -1053,7 +1288,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             val secret = json.optString("secret", "").trim()
 
             if (server.isBlank() || event.isBlank() || secret.isBlank()) {
-                raceStatusText.value = "QR code incomplete"
+                raceStatusText.value = getString(R.string.qr_code_incomplete)
                 currentScreen.value = Screen.RACE
                 return
             }
@@ -1066,13 +1301,13 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             raceRegistered.value = false
             registerRaceStatusText.value = ""
 
-            raceStatusText.value = "QR code loaded"
+            raceStatusText.value = getString(R.string.qr_code_loaded)
 
             raceLegalAccepted.value = false
             raceLegalText.value = ""
             raceLegalHash.value = ""
             raceLegalVersion.value = ""
-            raceLegalStatusText.value = "Loading race notice..."
+            raceLegalStatusText.value = getString(R.string.loading_race_notice)
             raceLegalAcceptStatusText.value = ""
 
             clearSavedRaceDataReady()
@@ -1082,10 +1317,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             fetchRaceLegalText()
 
         } catch (_: JSONException) {
-            raceStatusText.value = "QR code is not valid race JSON"
+            raceStatusText.value = getString(R.string.qr_invalid_json)
             currentScreen.value = Screen.RACE
         } catch (e: Exception) {
-            raceStatusText.value = "QR error: ${e.message}"
+            raceStatusText.value = getString(R.string.qr_error, e.message ?: "")
             currentScreen.value = Screen.RACE
         }
     }
@@ -1098,7 +1333,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         val previousLegalEventIdentity = raceLegalResolvedEventName
         val previousLegalHash = raceLegalHash.value
 
-        raceLegalStatusText.value = "Loading race legal text..."
+        raceLegalStatusText.value = getString(R.string.loading_race_legal)
 
         thread {
             try {
@@ -1128,7 +1363,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 if (responseCode !in 200..299) {
                     runOnUiThread {
                         raceLegalStatusText.value =
-                            "Legal text failed $responseCode: ${body.take(160)}"
+                            getString(R.string.legal_text_failed_code, responseCode, body.take(160))
                         raceLegalAccepted.value = false
                         currentScreen.value = Screen.RACE
                     }
@@ -1149,20 +1384,20 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 runOnUiThread {
                     when {
                         legalResolvedEventName.isBlank() -> {
-                            raceLegalStatusText.value = "Race notice event identity is missing"
+                            raceLegalStatusText.value = getString(R.string.race_notice_identity_missing)
                             raceLegalAccepted.value = false
                             raceLegalResolvedEventName = ""
                             currentScreen.value = Screen.RACE
                         }
 
                         legalText.isBlank() -> {
-                            raceLegalStatusText.value = "Race notice is empty"
+                            raceLegalStatusText.value = getString(R.string.race_notice_empty)
                             raceLegalAccepted.value = false
                             currentScreen.value = Screen.RACE
                         }
 
                         legalHash.isBlank() -> {
-                            raceLegalStatusText.value = "Race notice hash is missing"
+                            raceLegalStatusText.value = getString(R.string.race_notice_hash_missing)
                             raceLegalAccepted.value = false
                             currentScreen.value = Screen.RACE
                         }
@@ -1183,7 +1418,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             raceLegalVersion.value = legalVersion
                             raceLegalStatusText.value = ""
                             raceLegalAcceptStatusText.value = if (preserveAcceptance) {
-                                "Race notice accepted"
+                                getString(R.string.race_notice_accepted)
                             } else {
                                 ""
                             }
@@ -1194,7 +1429,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 }
             } catch (e: Exception) {
                 runOnUiThread {
-                    raceLegalStatusText.value = "Legal text failed: ${e.message}"
+                    raceLegalStatusText.value = getString(R.string.legal_text_failed, e.message ?: "")
                     raceLegalAccepted.value = false
                     currentScreen.value = Screen.RACE
                 }
@@ -1209,7 +1444,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         raceLegalAcceptRunning = true
 
 
-        raceLegalAcceptStatusText.value = "Accepting race notice..."
+        raceLegalAcceptStatusText.value = getString(R.string.accepting_race_notice)
 
         thread {
             try {
@@ -1263,12 +1498,12 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         ) {
                             resetRaceLegalState()
                             raceLegalAcceptStatusText.value =
-                                "Race notice changed while accepting; reload required"
+                                getString(R.string.race_notice_changed)
                             currentScreen.value = Screen.RACE
                             fetchRaceLegalText()
                         } else {
                             raceLegalAccepted.value = true
-                            raceLegalAcceptStatusText.value = "Race notice accepted"
+                            raceLegalAcceptStatusText.value = getString(R.string.race_notice_accepted)
                             currentScreen.value = Screen.RACE
                             fetchRaceDataForDisplay()
                             startRaceDataRefresh()
@@ -1276,13 +1511,13 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     } else {
                         raceLegalAccepted.value = false
                         raceLegalAcceptStatusText.value =
-                            "Accept failed $responseCode: ${body.take(160)}"
+                            getString(R.string.accept_failed_code, responseCode, body.take(160))
                     }
                 }
                 } catch (e: Exception) {
                 runOnUiThread {
                     raceLegalAccepted.value = false
-                    raceLegalAcceptStatusText.value = "Accept failed: ${e.message}"
+                    raceLegalAcceptStatusText.value = getString(R.string.accept_failed, e.message ?: "")
                 }
             } finally {
                 raceLegalAcceptRunning = false
@@ -1292,36 +1527,92 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private fun updateLocalRaceStatus() {
         val prefs = getSharedPreferences("regatta_local_status", Context.MODE_PRIVATE)
+        val currentLocaleTag = resources.configuration.locales[0].toLanguageTag()
+        val previousLocaleTag = prefs.getString("display_locale_tag", "").orEmpty()
+        if (previousLocaleTag != currentLocaleTag) {
+            prefs.edit()
+                .remove("debug_error_text")
+                .putString("display_locale_tag", currentLocaleTag)
+                .apply()
+        }
 
-        dtlText.value = prefs.getString("dtl_text", "Distance: --") ?: "Distance: --"
-        ttlText.value = prefs.getString("ttl_text", "TTL: --") ?: "TTL: --"
-        ocsText.value = prefs.getString("ocs_text", "OCS: --") ?: "OCS: --"
+        localIsOcs = prefs.getBoolean("is_ocs", false)
+        localRaceFinished = prefs.getBoolean("race_finished", false)
+        val raceStarted = prefs.getBoolean("race_started", false)
+        val passedMarks = prefs.getInt("passed_marks", 0).coerceAtLeast(0)
+        val activeCourseMarks = courseMapMarks.value.filterNot { it.skipped }
 
-        currentTargetText.value = prefs.getString(
-            "target_text",
-            fallbackTargetText()
-        ) ?: fallbackTargetText()
+        val storedDistanceText = prefs.getString("dtl_text", "").orEmpty()
+        val distanceMeters = firstLocalizedNumber(storedDistanceText)
+        dtlText.value = if (distanceMeters != null) {
+            getString(R.string.distance_meters, distanceMeters)
+        } else {
+            getString(R.string.distance_unknown)
+        }
+        ttlText.value = getString(R.string.ttl_unknown)
+        ocsText.value = if (localIsOcs) {
+            getString(R.string.ocs_yes)
+        } else {
+            getString(R.string.ocs_no)
+        }
 
+        currentTargetText.value = when {
+            localRaceFinished -> getString(R.string.next_finished)
+            localIsOcs -> getString(R.string.next_return_start)
+            !raceStarted -> getString(R.string.next_start_line)
+            else -> {
+                val mark = activeCourseMarks.getOrNull(passedMarks)
+                if (mark != null) {
+                    val order = mark.order ?: (passedMarks + 1)
+                    val markName = mark.label
+                        .removePrefix("$order ")
+                        .trim()
+                        .ifBlank { mark.label }
+                    getString(R.string.next_mark_value, order, markName)
+                } else {
+                    getString(R.string.next_finish_line)
+                }
+            }
+        }
 
-        progressText.value = prefs.getString(
-            "progress_text",
-            "Progress: --"
-        ) ?: "Progress: --"
+        progressText.value = buildLocalProgressText(
+            totalMarks = activeCourseMarks.size,
+            passedMarks = passedMarks,
+            raceStarted = raceStarted,
+            raceFinished = localRaceFinished,
+            markedFormatter = { passed, total, percent ->
+                getString(R.string.progress_value, passed, total, percent)
+            },
+            directFormatter = { percent ->
+                getString(R.string.progress_direct_value, percent)
+            }
+        )
 
-        boatRaceStatusText.value = prefs.getString(
-            "boat_status_text",
-            "Boat: --"
-        ) ?: "Boat: --"
+        val boatStatus = when {
+            localRaceFinished -> getString(R.string.boat_status_finished)
+            localIsOcs -> getString(R.string.boat_status_ocs)
+            raceStarted -> getString(R.string.boat_status_racing)
+            else -> getString(R.string.boat_status_not_started)
+        }
+        boatRaceStatusText.value = getString(R.string.boat_status_value, boatStatus)
 
         val debugError = prefs.getString("debug_error_text", "") ?: ""
         debugErrorText.value = if (debugError.isBlank()) {
-            "Last error: --"
+            getString(R.string.last_error_unknown)
         } else {
-            "Last error: $debugError"
+            getString(R.string.last_error_value, debugError)
         }
 
         updateStartPanelStatus()
         updateAutoLeaveAfterFinish()
+    }
+
+    private fun firstLocalizedNumber(value: String): Double? {
+        val raw = Regex("-?\\d+(?:[.,]\\d+)?")
+            .find(value)
+            ?.value
+            ?: return null
+        return raw.replace(',', '.').toDoubleOrNull()
     }
 
 
@@ -1353,12 +1644,12 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private fun fallbackTargetText(): String {
         return when (startPanelMode.value) {
-            "ocs" -> "Next: return across start line"
-            "countdown" -> "Next: start line"
-            "clear" -> "Next: start line"
-            "postponed" -> "Next: wait"
-            "started" -> "Next: course"
-            else -> "Next: --"
+            "ocs" -> getString(R.string.next_return_start)
+            "countdown" -> getString(R.string.next_start_line)
+            "clear" -> getString(R.string.next_start_line)
+            "postponed" -> getString(R.string.next_wait)
+            "started" -> getString(R.string.next_course)
+            else -> getString(R.string.next_unknown)
         }
     }
 
@@ -1366,24 +1657,24 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         onSuccess: (() -> Unit)? = null
     ) {
         if (!setupConfirmed.value) {
-            registerRaceStatusText.value = "Confirm boat setup first."
+            registerRaceStatusText.value = getString(R.string.confirm_boat_setup_first_period)
             return
         }
 
         if (!raceDataReady.value) {
-            registerRaceStatusText.value = "Load valid race data first."
+            registerRaceStatusText.value = getString(R.string.load_valid_race_data_first)
             return
         }
 
         val registrationTimestamp = RaceRegistrationPolicy.registrationTimestamp(
-            raceStartText.value.removePrefix("Start:").trim()
+            rawRaceStart.ifBlank { legacyDisplayPayload(raceStartText.value) }
         )
         if (registrationTimestamp == null) {
-            registerRaceStatusText.value = "Load a race with a valid start time first."
+            registerRaceStatusText.value = getString(R.string.load_valid_race_start_first)
             return
         }
 
-        registerRaceStatusText.value = "Registering..."
+        registerRaceStatusText.value = getString(R.string.registering)
 
         thread {
             try {
@@ -1442,23 +1733,23 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 runOnUiThread {
                     if (responseCode in 200..299) {
                         raceRegistered.value = true
-                        registerRaceStatusText.value = "Registered for race."
+                        registerRaceStatusText.value = getString(R.string.registered_for_race)
                         onSuccess?.invoke()
                     } else {
                         registerRaceStatusText.value =
-                            "Registration failed $responseCode: ${body.take(120)}"
+                            getString(R.string.registration_failed_code, responseCode, body.take(120))
                     }
                 }
             } catch (e: Exception) {
                 runOnUiThread {
-                    registerRaceStatusText.value = "Registration failed: ${e.message}"
+                    registerRaceStatusText.value = getString(R.string.registration_failed, e.message ?: "")
                 }
             }
         }
     }
 
     private fun updateAutoLeaveAfterFinish() {
-        val isFinished = boatRaceStatusText.value.contains("finished", ignoreCase = true)
+        val isFinished = localRaceFinished
 
         if (inRace.value && isFinished) {
             if (!showFinishDetectedDialog.value) {
@@ -1470,8 +1761,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     }
 
     private fun updateStartPanelStatus() {
-        val isOcs = ocsText.value.contains("yes", ignoreCase = true) ||
-                ocsText.value.contains("ja", ignoreCase = true)
+        val isOcs = localIsOcs
 
         if (isOcs) {
             val startMillis = raceStartEpochMillis
@@ -1481,32 +1771,26 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 null
             }
 
-            startPanelText.value = if (remainingSeconds != null && remainingSeconds > 0L) {
+            if (remainingSeconds != null && remainingSeconds > 0L) {
                 val minutes = remainingSeconds / 60L
                 val seconds = remainingSeconds % 60L
-
-                String.format(
-                    Locale.US,
-                    "START IN %d:%02d",
-                    minutes,
-                    seconds
-                )
+                startPanelText.value = String.format(Locale.US, "%d:%02d", minutes, seconds)
+                startPanelMode.value = "ocs_countdown"
             } else {
-                "OCS"
+                startPanelText.value = getString(R.string.ocs)
+                startPanelMode.value = "ocs"
             }
-
-            startPanelMode.value = "ocs"
             return
         }
 
         if (currentRaceStatus.equals("finished", ignoreCase = true)) {
-            startPanelText.value = "FINISHED"
+            startPanelText.value = getString(R.string.finished)
             startPanelMode.value = "finished"
             return
         }
 
         if (currentRaceStatus.equals("postponed", ignoreCase = true)) {
-            startPanelText.value = "POSTPONED"
+            startPanelText.value = getString(R.string.postponed)
             startPanelMode.value = "postponed"
             return
         }
@@ -1514,7 +1798,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         val startMillis = raceStartEpochMillis
 
         if (startMillis == null) {
-            startPanelText.value = "Regatta Tracker"
+            startPanelText.value = getString(R.string.app_name)
             startPanelMode.value = "clear"
             return
         }
@@ -1523,7 +1807,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
         when {
             remainingSeconds > 600L -> {
-                startPanelText.value = "Regatta Tracker"
+                startPanelText.value = getString(R.string.app_name)
                 startPanelMode.value = "clear"
             }
 
@@ -1531,12 +1815,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 val minutes = remainingSeconds / 60L
                 val seconds = remainingSeconds % 60L
 
-                startPanelText.value = String.format(
-                    Locale.US,
-                    "START IN %d:%02d",
-                    minutes,
-                    seconds
-                )
+                startPanelText.value = getString(R.string.start_in, minutes, seconds)
                 startPanelMode.value = "countdown"
             }
 
@@ -1637,8 +1916,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private fun enterRace() {
         inRace.value = true
-        statusText.value = "In Race"
-        serviceStatusText.value = "Service: starting"
+        statusText.value = getString(R.string.in_race)
+        serviceStatusText.value = getString(R.string.service_starting)
         saveAppState()
 
         fetchRaceDataForDisplay()
@@ -1655,8 +1934,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         manualTracking.value = false
         saveAppState()
 
-        statusText.value = "Race left"
-        serviceStatusText.value = "Service: stopped"
+        statusText.value = getString(R.string.race_left)
+        serviceStatusText.value = getString(R.string.service_stopped)
 
         stopRegattaForegroundService()
 
@@ -1665,21 +1944,21 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private fun startManualTracking() {
         manualTracking.value = true
-        statusText.value = "Manual tracking running"
-        serviceStatusText.value = "Service: manual tracking running"
+        statusText.value = getString(R.string.manual_tracking_running)
+        serviceStatusText.value = getString(R.string.service_manual_running)
         saveAppState()
         startRegattaForegroundService(manualMode = true)
     }
 
     private fun stopManualTracking() {
         manualTracking.value = false
-        statusText.value = "Manual tracking stopped"
+        statusText.value = getString(R.string.manual_tracking_stopped)
 
         if (inRace.value) {
-            serviceStatusText.value = "Service: race continues"
+            serviceStatusText.value = getString(R.string.service_race_continues)
             startRegattaForegroundService(manualMode = false)
         } else {
-            serviceStatusText.value = "Service: stopped"
+            serviceStatusText.value = getString(R.string.service_stopped)
             stopRegattaForegroundService()
         }
     }
@@ -1706,9 +1985,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         ContextCompat.startForegroundService(this, intent)
 
         serviceStatusText.value = if (manualMode) {
-            "Service: manual tracking running"
+            getString(R.string.service_manual_running)
         } else {
-            "Service: race running"
+            getString(R.string.service_race_running)
         }
     }
 
@@ -1718,14 +1997,14 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
 
         startService(intent)
-        serviceStatusText.value = "Service: stopped"
+        serviceStatusText.value = getString(R.string.service_stopped)
     }
 
     private fun fetchEventResults() {
         if (resultsFetchRunning) return
         resultsFetchRunning = true
 
-        resultsStatusText.value = "Loading results..."
+        resultsStatusText.value = getString(R.string.loading_results)
 
         thread {
             try {
@@ -1754,7 +2033,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                 if (responseCode !in 200..299) {
                     runOnUiThread {
-                        resultsStatusText.value = "Results failed $responseCode: ${body.take(160)}"
+                        resultsStatusText.value = getString(R.string.results_failed_code, responseCode, body.take(160))
                         resultsPublished.value = false
                         resultRows.value = emptyList()
                     }
@@ -1794,14 +2073,14 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     resultsPublishedAt.value = publishedAt
                     resultRows.value = rows
                     resultsStatusText.value = if (published) {
-                        "Results loaded"
+                        getString(R.string.results_loaded)
                     } else {
-                        "Results not published yet"
+                        getString(R.string.results_not_published)
                     }
                 }
             } catch (e: Exception) {
                 runOnUiThread {
-                    resultsStatusText.value = "Results failed: ${e.message}"
+                    resultsStatusText.value = getString(R.string.results_failed, e.message ?: "")
                     resultsPublished.value = false
                     resultRows.value = emptyList()
                 }
@@ -1813,7 +2092,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private fun fetchRaceDataForDisplay() {
         if (!raceLegalAccepted.value) {
-            raceStatusText.value = "Race: accept race legal first"
+            raceStatusText.value = getString(R.string.race_accept_legal_first)
 
             if (raceLegalText.value.isNotBlank()) {
                 currentScreen.value = Screen.RACE_LEGAL
@@ -1858,7 +2137,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                 if (responseCode !in 200..299) {
                     runOnUiThread {
-                        raceStatusText.value = "Race: error $responseCode"
+                        raceStatusText.value = getString(R.string.race_error_code, responseCode)
                         raceDataReady.value = false
                     }
                     return@thread
@@ -1869,7 +2148,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                 if (responseResolvedEventName.isBlank()) {
                     runOnUiThread {
-                        raceStatusText.value = "Race: response missing event_name"
+                        raceStatusText.value = getString(R.string.race_response_missing_event)
                         raceDataReady.value = false
                     }
                     return@thread
@@ -1917,38 +2196,20 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     ?: json.optJSONObject("race_course")
                     ?: json.optJSONObject("track")
 
-                val courseSummary = buildCourseSummary(
-                    courseObj = courseObj,
-                    courseShortened = courseShortened
-                )
-                val parsedCourseMapMarks = buildCourseMapMarks(
-                    courseObj = courseObj,
-                    courseShortened = courseShortened
-                )
+                val courseJson = courseObj?.toString().orEmpty()
 
                 runOnUiThread {
                     adoptResolvedEventName(responseResolvedEventName)
                     raceSeriesDisplayMetadata.value = parsedSeriesDisplayMetadata
-                    raceStartText.value = "Start: $start"
-                    raceStopText.value = "Stop: $stop"
+                    rawRaceStatus = status
+                    rawRaceStart = start
+                    rawRaceStop = stop
+                    rawRaceInfo = raceInfo
+                    rawRaceCourseJson = courseJson
+                    rawRaceCourseShortened = courseShortened
                     raceDataReady.value = true
-                    raceCourseText.value = courseSummary.courseText
-                    raceStartLineText.value = courseSummary.startLineText
-                    raceFinishLineText.value = courseSummary.finishLineText
-                    raceMarksText.value = courseSummary.marksText
-                    courseMapMarks.value = parsedCourseMapMarks
-
-                    raceStatusText.value = "Race: $status"
-                    raceInfoText.value = "Info: $raceInfo"
-                    raceShortenedText.value = if (courseShortened) {
-                        "Course shortened: YES"
-                    } else {
-                        "Course shortened: no"
-                    }
                     raceStartFlags.value = parsedStartFlags
-
-                    currentRaceStatus = status
-                    raceStartEpochMillis = parseServerTimeToMillis(start)
+                    renderRawRaceSetup()
                     saveRaceSetup()
                     updateStartPanelStatus()
                     updateLocalRaceStatus()
@@ -1956,7 +2217,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
             } catch (e: Exception) {
                 runOnUiThread {
-                    raceStatusText.value = "Race: ${e.message}"
+                    raceStatusText.value = getString(R.string.race_error, e.message ?: "")
                     raceDataReady.value = false
                 }
             } finally {
@@ -2009,10 +2270,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     ): CourseSummary {
         if (courseObj == null) {
             return CourseSummary(
-                courseText = "Course: --",
-                startLineText = "Start line: --",
-                finishLineText = "Finish line: --",
-                marksText = "Marks: --"
+                courseText = getString(R.string.course_unknown),
+                startLineText = getString(R.string.start_line_unknown),
+                finishLineText = getString(R.string.finish_line_unknown),
+                marksText = getString(R.string.marks_unknown)
             )
         }
 
@@ -2047,7 +2308,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 val omitWhenShortened = mark.optBoolean("omit_when_shortened", false)
 
                 val label = if (courseShortened && omitWhenShortened) {
-                    "$order $name [skipped]"
+                    getString(R.string.mark_skipped_compact, order, name)
                 } else {
                     "$order $name"
                 }
@@ -2059,13 +2320,13 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         val markCount = marks?.length() ?: 0
 
         return CourseSummary(
-            courseText = "Course: $markCount marks",
-            startLineText = "Start line: $startRefLabel → $startMarkLabel",
-            finishLineText = "Finish line: $finishRefLabel → $finishMarkLabel",
+            courseText = getString(R.string.course_mark_count, markCount),
+            startLineText = getString(R.string.start_line_value, startRefLabel, startMarkLabel),
+            finishLineText = getString(R.string.finish_line_value, finishRefLabel, finishMarkLabel),
             marksText = if (markNames.isEmpty()) {
-                "Marks: --"
+                getString(R.string.marks_unknown)
             } else {
-                "Marks: ${markNames.joinToString(", ")}"
+                getString(R.string.marks_value, markNames.joinToString(", "))
             }
         )
     }
@@ -2092,14 +2353,14 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private fun clearOldData() {
         if (inRace.value || manualTracking.value) {
-            statusText.value = "Stop Race/Manual Tracking before deleting data"
+            statusText.value = getString(R.string.stop_tracking_before_delete)
             return
         }
 
         db.deleteAllSamples()
         updateStorageText()
-        lastCsvLine.value = "No CSV line yet"
-        statusText.value = "Old data deleted"
+        lastCsvLine.value = getString(R.string.no_csv_line_yet)
+        statusText.value = getString(R.string.old_data_deleted)
     }
 
     private fun startGpsDisplayUpdates() {
@@ -2118,9 +2379,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             }
 
         } catch (e: SecurityException) {
-            statusText.value = "No GPS permission"
+            statusText.value = getString(R.string.no_gps_permission)
         } catch (e: Exception) {
-            statusText.value = "GPS error: ${e.message}"
+            statusText.value = getString(R.string.gps_error, e.message ?: "")
         }
     }
 
@@ -2129,9 +2390,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         val sog = location.speed
         val accuracy = location.accuracy
 
-        cogText.value = String.format(Locale.US, "COG: %.1f°", cog)
-        sogText.value = String.format(Locale.US, "SOG: %.2f m/s", sog)
-        gpsAccuracyText.value = String.format(Locale.US, "GPS: %.1f m", accuracy)
+        cogText.value = getString(R.string.cog_value, cog)
+        sogText.value = getString(R.string.sog_value, sog)
+        gpsAccuracyText.value = getString(R.string.gps_accuracy_value, accuracy)
 
         gpsColor.value = when {
             accuracy <= 10f -> RegattaGreen
@@ -2165,12 +2426,13 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         val total = db.countSamples()
         val pending = db.countPendingSamples()
 
-        rowCountText.value = "$total rows stored"
+        rowCountText.value = getString(R.string.rows_stored, total)
+        pendingUploadCount.value = pending
 
         uploadStatusText.value = if (pending == 0L) {
-            "Upload: all sent"
+            getString(R.string.upload_all_sent)
         } else {
-            "Upload: $pending pending"
+            getString(R.string.upload_pending, pending)
         }
     }
 
@@ -2180,9 +2442,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             contentResolver.openOutputStream(uri)?.use { outputStream ->
                 outputStream.write(csv.toByteArray(Charsets.UTF_8))
             }
-            statusText.value = "CSV exported"
+            statusText.value = getString(R.string.csv_exported)
         } catch (e: Exception) {
-            statusText.value = "CSV export failed: ${e.message}"
+            statusText.value = getString(R.string.csv_export_failed, e.message ?: "")
         }
     }
 
@@ -2229,25 +2491,21 @@ fun OcsDecisionDialog(
     AlertDialog(
         onDismissRequest = onOk,
         title = {
-            Text("OCS detected")
+            Text(stringResource(R.string.ocs_detected))
         },
         text = {
             Text(
-                text = """
-                    The boat appears to be over the start line early.
-
-                    Return across the start line, or ignore this warning and continue the course?
-                """.trimIndent()
+                text = stringResource(R.string.ocs_detected_message)
             )
         },
         confirmButton = {
             TextButton(onClick = onOk) {
-                Text("OK")
+                Text(stringResource(R.string.ok))
             }
         },
         dismissButton = {
             TextButton(onClick = onContinueCourse) {
-                Text("Ignore / continue course")
+                Text(stringResource(R.string.ignore_continue_course))
             }
         }
     )
@@ -2261,27 +2519,21 @@ fun FinishDetectedDialog(
     AlertDialog(
         onDismissRequest = onContinue,
         title = {
-            Text("Finish detected")
+            Text(stringResource(R.string.finish_detected))
         },
         text = {
             Text(
-                text = """
-                    The boat appears to have finished.
-
-                    Stop race tracking now?
-
-                    If you do nothing, the background tracking service will stop automatically after 5 minutes.
-                """.trimIndent()
+                text = stringResource(R.string.finish_detected_message)
             )
         },
         confirmButton = {
             TextButton(onClick = onStopTracking) {
-                Text("Stop tracking")
+                Text(stringResource(R.string.stop_tracking))
             }
         },
         dismissButton = {
             TextButton(onClick = onContinue) {
-                Text("Continue")
+                Text(stringResource(R.string.continue_action))
             }
         }
     )
@@ -2295,29 +2547,21 @@ fun TrackingConsentDialog(
     AlertDialog(
         onDismissRequest = onCancel,
         title = {
-            Text("GPS Tracking Consent")
+            Text(stringResource(R.string.gps_tracking_consent))
         },
         text = {
             Text(
-                text = """
-                    This app processes location data to enable regatta tracking, start line checks, OCS detection, course progress, and finish detection.
-
-                    During a race session, location data may be transmitted to the configured regatta server.
-
-                    During manual training, data is stored locally and is not automatically transmitted to the server.
-
-                    The Android location permission is also required.
-                """.trimIndent()
+                text = stringResource(R.string.gps_tracking_consent_message)
             )
         },
         confirmButton = {
             TextButton(onClick = onAccept) {
-                Text("I agree")
+                Text(stringResource(R.string.i_agree))
             }
         },
         dismissButton = {
             TextButton(onClick = onCancel) {
-                Text("Cancel")
+                Text(stringResource(R.string.cancel))
             }
         }
     )
@@ -2331,25 +2575,21 @@ fun LeaveRaceWarningDialog(
     AlertDialog(
         onDismissRequest = onCancel,
         title = {
-            Text("Retire / Finish?")
+            Text(stringResource(R.string.retire_finish_title))
         },
         text = {
             Text(
-                text = """
-                    Use this only if you are retiring from the race or have finished.
-
-                    This stops race tracking for this boat. If you retire, you may be out of scoring.
-                """.trimIndent()
+                text = stringResource(R.string.retire_finish_message)
             )
         },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text("Retire / Finish")
+                Text(stringResource(R.string.retire_finish))
             }
         },
         dismissButton = {
             TextButton(onClick = onCancel) {
-                Text("Cancel")
+                Text(stringResource(R.string.cancel))
             }
         }
     )
@@ -2369,32 +2609,21 @@ fun BoatConfirmDialog(
     AlertDialog(
         onDismissRequest = onCancel,
         title = {
-            Text("Is this your boat?")
+            Text(stringResource(R.string.is_this_your_boat))
         },
         text = {
             Text(
-                text = """
-                    Please confirm your boat data before entering the race.
-
-                    Boat name: $boatName
-                    Skipper: $skipperName
-                    Sail number: $sailNumber
-                    Boat type: $boatType
-                    Hull color: $hullColor
-                    Yardstick: $yardstick
-
-                    These values will be used for race tracking and sent to the race server.
-                """.trimIndent()
+                text = stringResource(R.string.confirm_boat_message, boatName, skipperName, sailNumber, boatType, hullColor, yardstick)
             )
         },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text("Enter Race")
+                Text(stringResource(R.string.enter_race))
             }
         },
         dismissButton = {
             TextButton(onClick = onCancel) {
-                Text("Cancel")
+                Text(stringResource(R.string.cancel))
             }
         }
     )
@@ -2408,27 +2637,21 @@ fun ClearRaceSetupDialog(
     AlertDialog(
         onDismissRequest = onCancel,
         title = {
-            Text("Clear Race?")
+            Text(stringResource(R.string.clear_race_title))
         },
         text = {
             Text(
-                text = """
-                    This removes the scanned race from this device.
-
-                    Boat setup will not be changed.
-
-                    You will need to scan the race QR code again before registering or entering the race.
-                """.trimIndent()
+                text = stringResource(R.string.clear_race_message)
             )
         },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text("Clear Race")
+                Text(stringResource(R.string.clear_race))
             }
         },
         dismissButton = {
             TextButton(onClick = onCancel) {
-                Text("Cancel")
+                Text(stringResource(R.string.cancel))
             }
         }
     )

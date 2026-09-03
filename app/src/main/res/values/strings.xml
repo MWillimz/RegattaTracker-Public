@@ -1,3 +1,347 @@
 <resources>
     <string name="app_name">Regatta Tracker</string>
+
+    <!-- Common actions -->
+    <string name="back">Back</string>
+    <string name="cancel">Cancel</string>
+    <string name="continue_action">Continue</string>
+    <string name="delete">Delete</string>
+    <string name="refresh">Refresh</string>
+    <string name="close">Close</string>
+    <string name="clear">Clear</string>
+    <string name="ok">OK</string>
+
+    <!-- Navigation and common labels -->
+    <string name="results">Results</string>
+    <string name="setup">Setup</string>
+    <string name="advanced">Advanced</string>
+    <string name="hide">Hide</string>
+    <string name="legal_about">Legal / About</string>
+    <string name="boat">Boat</string>
+    <string name="event">Event</string>
+    <string name="course">Course</string>
+    <string name="map">Map</string>
+    <string name="race">Race</string>
+    <string name="upload">Upload</string>
+    <string name="gps">GPS</string>
+    <string name="info">Info</string>
+    <string name="class_label">Class</string>
+    <string name="export">Export</string>
+
+    <!-- Setup -->
+    <string name="boat_data">Boat Data</string>
+    <string name="boat_name">Boat name</string>
+    <string name="skipper">Skipper</string>
+    <string name="hull_color">Hull color</string>
+    <string name="sail_number">Sail number</string>
+    <string name="yardstick">Yardstick</string>
+    <string name="boat_type">Boat type</string>
+    <string name="setup_confirmed">Setup confirmed</string>
+    <string name="confirm_setup">Confirm Setup</string>
+    <string name="scan_qr_code">Scan QR Code</string>
+    <string name="retire_finish">Retire / Finish</string>
+    <string name="race_notice">Race Notice</string>
+    <string name="accept_notice">Accept Notice</string>
+    <string name="registered">Registered</string>
+    <string name="register_for_race">Register for Race</string>
+    <string name="enter_race">Enter Race</string>
+    <string name="enter_race_requirements">Confirm boat setup, accept race notice, and load valid race data first.</string>
+    <string name="clear_race">Clear Race</string>
+    <string name="event_value">Event: %1$s</string>
+
+    <!-- Home / tracking -->
+    <string name="start_manual_tracking">Start Manual Tracking</string>
+    <string name="stop_manual_tracking">Stop Manual Tracking</string>
+    <string name="stored_rows">Stored rows</string>
+    <string name="last_error">Last error</string>
+    <string name="pending">Pending</string>
+    <string name="accuracy">Accuracy</string>
+    <string name="delete_old_data_title">Delete old data?</string>
+    <string name="delete_old_data_message">All stored tracking data on this device will be deleted. This cannot be undone.</string>
+    <string name="course_shortened_banner">COURSE SHORTENED</string>
+    <string name="next_target">Next target</string>
+
+    <!-- Course -->
+    <string name="override_course_title">Override course?</string>
+    <string name="override_course_message">This manually changes course progress for this boat. Use it only if automatic mark detection is wrong.</string>
+    <string name="confirm_override">Confirm Override</string>
+    <string name="next">Next</string>
+    <string name="set_next_target">Set next target</string>
+    <string name="restart_at_start_line">Restart at start line</string>
+    <string name="start_line">Start line</string>
+    <string name="finish_line">Finish line</string>
+    <string name="marks">Marks</string>
+    <string name="race_info">Race Info</string>
+    <string name="mark_skipped">%1$s — skipped</string>
+
+    <!-- Map -->
+    <string name="course_map">Course map</string>
+    <string name="loading_map">Loading map…</string>
+    <string name="map_unavailable">Map unavailable</string>
+    <string name="map_could_not_be_loaded">Map could not be loaded</string>
+
+    <!-- Legal / server information -->
+    <string name="settings_about_legal">Settings / About / Legal</string>
+    <string name="legal_notice">Legal Notice</string>
+    <string name="privacy_policy">Privacy Policy</string>
+    <string name="regatta_server">Regatta Server</string>
+    <string name="license_notices">License Notices</string>
+    <string name="third_party_licenses">Third-party licenses</string>
+    <string name="app">App</string>
+    <string name="build_value">Build: %1$s</string>
+    <string name="legal_notice_body">Provider:\nMax Willimzik\n\nContact:\nwebmaster@raceoffice.williserv.de\n\nResponsible for contents:\nMax Willimzik</string>
+    <string name="privacy_policy_body">This app processes location data, boat data, and technical sensor data to provide regatta tracking.\n\nData processed:\n- GPS position\n- Timestamp\n- Boat data\n- Sail number\n- Captain/skipper name\n- Course over ground (COG)\n- Speed over ground (SOG)\n- GPS accuracy\n- Acceleration and gyroscope data\n- Event identifier, server address and server credential\n\nPurpose of processing:\n- Live regatta tracking\n- Start line check\n- OCS detection\n- Course progress\n- Finish detection\n- CSV export and later analysis\n\nStorage and transmission:\nData is first stored locally on the device. During a race session, tracking data may be transmitted to the compatible regatta server configured for that race. The operator of that server is responsible for server-side processing and retention.\n\nAndroid backup:\nApp-local configuration, credentials and tracking data are excluded from Android backup and device transfer.\n\nManual training:\nManually recorded training data is stored locally and is not automatically transmitted to the server.\n\nQR scanning:\nCamera frames used for QR scanning are processed locally and are not intentionally stored or uploaded by the app.\n\nConsent:\nLocation data is only processed if the user consents to processing and grants the Android location permission.</string>
+    <string name="regatta_server_body">The Regatta Server configured for an event is operated separately from this app.\n\nIts operator and legal information are specific to that server and can be found under Server information on the Event screen.</string>
+    <string name="license_notices_body">Regatta Tracker source code:\nGNU General Public License v3.0 or later.\n\nQR decoding:\nZXing Core 3.5.4 — Apache License 2.0.\n\nThe full ZXing license text is bundled with the app and can be viewed below.\n\nMap and geodata:\n© OpenStreetMap contributors\n© OpenSeaMap contributors\n\nOpenStreetMap data is available under the Open Data Commons Open Database License (ODbL).</string>
+    <string name="third_party_license_unavailable">Third-party license text is unavailable.</string>
+    <string name="server_information">Server information</string>
+    <string name="share_event">Share Event</string>
+    <string name="share_event_page">Share Event Page</string>
+    <string name="server_legal">Server Legal</string>
+    <string name="impressum">Legal Notice</string>
+    <string name="datenschutz">Privacy Policy</string>
+    <string name="connected_regatta_server">Connected Regatta Server</string>
+    <string name="operator">Operator</string>
+    <string name="website">Website</string>
+    <string name="contact">Contact</string>
+    <string name="event_access">Event access</string>
+    <string name="visit_event_page">Visit Event Page</string>
+    <string name="server_operator_unavailable">Server operator information is unavailable.</string>
+    <string name="server_legal_unavailable">Server legal information is unavailable.</string>
+    <string name="loading_server_legal">Loading server legal information…</string>
+
+    <!-- Results -->
+    <string name="published_value">Published: %1$s</string>
+    <string name="results_not_published">Results not published yet</string>
+    <string name="rank">Rank</string>
+    <string name="boat_sail">Boat / Sail</string>
+    <string name="time">Time</string>
+    <string name="status">Status</string>
+
+    <!-- Race notice -->
+    <string name="event_unknown">Event: --</string>
+    <string name="no_legal_text_loaded">No legal text loaded.</string>
+    <string name="i_accept">I accept</string>
+
+    <!-- QR -->
+    <string name="camera_permission_missing">Camera permission missing</string>
+
+    <!-- Main activity status text -->
+    <string name="race_not_loaded">Race: not loaded</string>
+    <string name="start_unknown">Start: --</string>
+    <string name="stop_unknown">Stop: --</string>
+    <string name="course_unknown">Course: --</string>
+    <string name="start_line_unknown">Start line: --</string>
+    <string name="finish_line_unknown">Finish line: --</string>
+    <string name="marks_unknown">Marks: --</string>
+    <string name="info_unknown">Info: --</string>
+    <string name="course_shortened_no">Course shortened: no</string>
+    <string name="course_shortened_yes">Course shortened: YES</string>
+    <string name="next_unknown">Next: --</string>
+    <string name="progress_unknown">Progress: --</string>
+    <string name="boat_status_unknown">Boat: --</string>
+    <string name="distance_unknown">Distance: --</string>
+    <string name="ttl_unknown">TTL: --</string>
+    <string name="ocs_unknown">OCS: --</string>
+    <string name="last_error_unknown">Last error: --</string>
+    <string name="tracking_stopped">Tracking stopped</string>
+    <string name="rows_stored">%1$d rows stored</string>
+    <string name="upload_ready">Upload: ready</string>
+    <string name="upload_all_sent">Upload: all sent</string>
+    <string name="upload_pending">Upload: %1$d pending</string>
+    <string name="service_stopped">Service: stopped</string>
+    <string name="service_starting">Service: starting</string>
+    <string name="service_race_running">Service: race running</string>
+    <string name="service_manual_running">Service: manual tracking running</string>
+    <string name="manual_tracking_running">Manual tracking running</string>
+    <string name="manual_tracking_stopped">Manual tracking stopped</string>
+    <string name="race_left">Race left</string>
+    <string name="in_race">In Race</string>
+    <string name="gps_permission_denied">GPS permission denied</string>
+    <string name="gps_consent_not_granted">GPS tracking consent not granted</string>
+    <string name="qr_code_incomplete">QR code incomplete</string>
+    <string name="qr_code_loaded">QR code loaded</string>
+    <string name="qr_invalid_json">QR code is not valid race JSON</string>
+    <string name="qr_error">QR error: %1$s</string>
+    <string name="shared_text_invalid">Shared text is not a valid RegattaTracker event link.</string>
+    <string name="event_already_loaded">An event is already loaded. Clear the current event before importing another link.</string>
+    <string name="loading_race_notice">Loading race notice…</string>
+    <string name="race_notice_accepted">Race notice accepted</string>
+    <string name="race_notice_empty">Race notice is empty</string>
+    <string name="race_notice_hash_missing">Race notice hash is missing</string>
+    <string name="race_notice_identity_missing">Race notice event identity is missing</string>
+    <string name="legal_text_failed">Legal text failed: %1$s</string>
+    <string name="legal_text_failed_code">Legal text failed %1$d: %2$s</string>
+    <string name="accepting_race_notice">Accepting race notice…</string>
+    <string name="race_notice_changed">Race notice changed while accepting; reload required</string>
+    <string name="accept_failed">Accept failed: %1$s</string>
+    <string name="accept_failed_code">Accept failed %1$d: %2$s</string>
+    <string name="confirm_boat_setup_first">Confirm boat setup first</string>
+    <string name="confirm_boat_setup_first_period">Confirm boat setup first.</string>
+    <string name="load_valid_race_data_first">Load valid race data first.</string>
+    <string name="load_valid_race_start_first">Load a race with a valid start time first.</string>
+    <string name="race_load_valid_data_first">Race: load valid race data first</string>
+    <string name="registering">Registering…</string>
+    <string name="registered_for_race">Registered for race.</string>
+    <string name="registration_failed">Registration failed: %1$s</string>
+    <string name="registration_failed_code">Registration failed %1$d: %2$s</string>
+    <string name="loading_results">Loading results…</string>
+    <string name="results_loaded">Results loaded</string>
+    <string name="results_failed">Results failed: %1$s</string>
+    <string name="results_failed_code">Results failed %1$d: %2$s</string>
+    <string name="race_accept_legal_first">Race: accept race legal first</string>
+    <string name="race_error_code">Race: error %1$d</string>
+    <string name="race_response_missing_event">Race: response missing event_name</string>
+    <string name="race_error">Race: %1$s</string>
+    <string name="race_value">Race: %1$s</string>
+    <string name="start_value">Start: %1$s</string>
+    <string name="stop_value">Stop: %1$s</string>
+    <string name="info_value">Info: %1$s</string>
+    <string name="course_mark_count">Course: %1$d marks</string>
+    <string name="start_line_value">Start line: %1$s → %2$s</string>
+    <string name="finish_line_value">Finish line: %1$s → %2$s</string>
+    <string name="marks_value">Marks: %1$s</string>
+    <string name="mark_skipped_compact">%1$d %2$s [skipped]</string>
+    <string name="stop_tracking_before_delete">Stop Race/Manual Tracking before deleting data</string>
+    <string name="no_csv_line_yet">No CSV line yet</string>
+    <string name="old_data_deleted">Old data deleted</string>
+    <string name="no_gps_permission">No GPS permission</string>
+    <string name="gps_error">GPS error: %1$s</string>
+    <string name="cog_value">COG: %1$.1f°</string>
+    <string name="sog_value">SOG: %1$.2f m/s</string>
+    <string name="gps_accuracy_value">GPS: %1$.1f m</string>
+    <string name="gps_accuracy_unknown">GPS: --</string>
+    <string name="csv_exported">CSV exported</string>
+    <string name="csv_export_failed">CSV export failed: %1$s</string>
+    <string name="next_return_start">Next: return across start line</string>
+    <string name="next_start_line">Next: start line</string>
+    <string name="next_wait">Next: wait</string>
+    <string name="next_course">Next: course</string>
+    <string name="start_in">START IN %1$d:%2$02d</string>
+    <string name="ocs">OCS</string>
+    <string name="finished">FINISHED</string>
+    <string name="postponed">POSTPONED</string>
+
+    <string name="csv_preview_not_live">CSV preview is no longer updated live by the service.</string>
+    <string name="race_cannot_clear_while_running">Race: cannot clear setup while in race</string>
+    <string name="clear_race_load_first">Race: load valid race data first</string>
+    <string name="loading_race_legal">Loading race legal text…</string>
+    <string name="race_notice_accepting">Accepting race notice…</string>
+    <string name="service_race_continues">Service: race continues</string>
+    <string name="start_prefix">Start:</string>
+    <string name="last_error_value">Last error: %1$s</string>
+    <string name="distance_value">Distance: %1$s</string>
+    <string name="ttl_value">TTL: %1$s</string>
+    <string name="ocs_value">OCS: %1$s</string>
+
+    <string name="tracking_active">Tracking active</string>
+    <string name="next_finished">Next: finished</string>
+    <string name="next_finish_line">Next: finish line</string>
+    <string name="next_mark">Next: mark</string>
+    <string name="next_mark_value">Next: %1$d %2$s</string>
+    <string name="progress_value">Progress: %1$d/%2$d marks · %3$.0f%%</string>
+    <string name="boat_status_value">Boat: %1$s</string>
+    <string name="boat_status_finished">finished</string>
+    <string name="boat_status_ocs">OCS</string>
+    <string name="boat_status_racing">racing</string>
+    <string name="boat_status_not_started">not started</string>
+    <string name="distance_meters">Distance: %1$.0f m</string>
+    <string name="ocs_yes">OCS: yes</string>
+    <string name="ocs_no">OCS: no</string>
+    <string name="tracking_notification_channel">Regatta Tracking</string>
+    <string name="tracking_notification_title">Regatta Tracking active</string>
+    <string name="stop">Stop</string>
+    <string name="dtl_meters">DTL %1$.1f m</string>
+    <string name="dtl_unknown">DTL --</string>
+    <string name="notification_manual">Manual · %1$s · %2$s · %3$s · pending: %4$d</string>
+    <string name="notification_race">Race · %1$s · %2$s · %3$s · pending: %4$d</string>
+    <string name="notification_waiting">Waiting · %1$s · %2$s · %3$s · pending: %4$d</string>
+    <string name="clear_status">clear</string>
+
+    <string name="status_prefix">Status:</string>
+    <string name="race_prefix">Race:</string>
+    <string name="info_prefix">Info:</string>
+    <string name="upload_prefix">Upload:</string>
+    <string name="gps_prefix">GPS:</string>
+    <string name="cog_prefix">COG:</string>
+    <string name="sog_prefix">SOG:</string>
+    <string name="distance_prefix">Distance:</string>
+    <string name="dtl_prefix">DTL:</string>
+    <string name="course_shortened_prefix">Course shortened:</string>
+    <string name="start_line_prefix">Start line:</string>
+    <string name="finish_line_prefix">Finish line:</string>
+    <string name="marks_prefix">Marks:</string>
+    <string name="next_prefix">Next:</string>
+    <string name="pending_value">%1$d pending</string>
+    <string name="upload_worker_pending">Upload: %1$s · %2$d pending</string>
+    <string name="upload_worker">Upload: %1$s</string>
+    <string name="status_blocked">blocked</string>
+    <string name="status_off">off</string>
+    <string name="status_waiting">waiting</string>
+    <string name="status_ready">ready</string>
+    <string name="status_idle">idle</string>
+    <string name="status_active">active</string>
+
+    <string name="status_loaded">loaded</string>
+    <string name="status_planned">planned</string>
+    <string name="status_racing">racing</string>
+    <string name="status_started">started</string>
+    <string name="status_finished">finished</string>
+    <string name="status_postponed">postponed</string>
+    <string name="status_cancelled">cancelled</string>
+    <string name="status_not_active">not active</string>
+    <string name="distance_display_unknown">Distance --</string>
+    <string name="distance_display_value">Distance %1$s</string>
+    <string name="ocs_countdown">OCS: %1$s</string>
+
+    <string name="status_value">Status: %1$s</string>
+    <string name="map_error_code">Map error %1$d: %2$s</string>
+    <string name="map_invalid_png">Map response is not a valid PNG</string>
+    <string name="map_load_failed">Map load failed: %1$s</string>
+
+    <string name="override_course_confirmation">Override current target to:\n\n%1$s\n\nOnly use this if the displayed course progress is wrong.\n\nBe prepared to discuss telemetry with Event Management.</string>
+
+    <string name="show_qr_code">Show QR Code</string>
+    <string name="event_qr_code">Event QR Code</string>
+    <string name="event_access_qr_code">Event access QR code</string>
+    <string name="qr_generation_failed">QR code could not be generated.</string>
+
+    <string name="status_temporary_error">temporary error</string>
+    <string name="status_all_sent">all sent</string>
+    <string name="upload_error_code">Upload error %1$d: %2$s</string>
+    <string name="upload_exception">Upload exception: %1$s</string>
+    <string name="storage_error_access_context">Storage error: event access context is incomplete</string>
+    <string name="server_impressum">Server Legal Notice</string>
+    <string name="server_datenschutz">Server Privacy Policy</string>
+    <string name="server_document_title">Server %1$s</string>
+
+    <string name="series_order">%1$d of %2$d</string>
+    <string name="default_boat_name" translatable="false">Boat name</string>
+    <string name="default_skipper_name" translatable="false">Max Mustermann</string>
+    <string name="default_hull_color" translatable="false">white</string>
+    <string name="default_sail_number" translatable="false">GER 1234</string>
+    <string name="default_yardstick" translatable="false">100</string>
+    <string name="default_boat_type" translatable="false">Shark 24</string>
+    <string name="zxing_license_name" translatable="false">ZXing Core 3.5.4</string>
+    <string name="zxing_copyright" translatable="false">Copyright ZXing authors</string>
+    <string name="apache_license_name" translatable="false">Apache License 2.0</string>
+
+    <string name="progress_direct_value">Progress: %1$.0f%%</string>
+
+    <!-- Dialogs -->
+    <string name="ocs_detected">OCS detected</string>
+    <string name="ocs_detected_message">The boat appears to be over the start line early.\n\nReturn across the start line, or ignore this warning and continue the course?</string>
+    <string name="ignore_continue_course">Ignore / continue course</string>
+    <string name="finish_detected">Finish detected</string>
+    <string name="finish_detected_message">The boat appears to have finished.\n\nStop race tracking now?\n\nIf you do nothing, the background tracking service will stop automatically after 5 minutes.</string>
+    <string name="stop_tracking">Stop tracking</string>
+    <string name="gps_tracking_consent">GPS Tracking Consent</string>
+    <string name="gps_tracking_consent_message">This app processes location data to enable regatta tracking, start line checks, OCS detection, course progress, and finish detection.\n\nDuring a race session, location data may be transmitted to the configured regatta server.\n\nDuring manual training, data is stored locally and is not automatically transmitted to the server.\n\nThe Android location permission is also required.</string>
+    <string name="i_agree">I agree</string>
+    <string name="retire_finish_title">Retire / Finish?</string>
+    <string name="retire_finish_message">Use this only if you are retiring from the race or have finished.\n\nThis stops race tracking for this boat. If you retire, you may be out of scoring.</string>
+    <string name="is_this_your_boat">Is this your boat?</string>
+    <string name="confirm_boat_message">Please confirm your boat data before entering the race.\n\nBoat name: %1$s\nSkipper: %2$s\nSail number: %3$s\nBoat type: %4$s\nHull color: %5$s\nYardstick: %6$s\n\nThese values will be used for race tracking and sent to the race server.</string>
+    <string name="clear_race_title">Clear Race?</string>
+    <string name="clear_race_message">This removes the scanned race from this device.\n\nBoat setup will not be changed.\n\nYou will need to scan the race QR code again before registering or entering the race.</string>
 </resources>

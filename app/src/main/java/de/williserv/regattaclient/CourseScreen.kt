@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
 
 @Composable
 fun CourseScreen(
@@ -38,6 +39,7 @@ fun CourseScreen(
     raceMarksText: String,
     raceInfoText: String,
     raceShortenedText: String,
+    raceShortened: Boolean,
     currentTargetText: String,
     courseMapMarks: List<CourseMapMark>,
     onSetCourseProgress: (Int, Boolean) -> Unit,
@@ -54,7 +56,7 @@ fun CourseScreen(
             .verticalScroll(rememberScrollState())
     ) {
         Text(
-            text = "Course",
+            text = stringResource(R.string.course),
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold
         )
@@ -66,7 +68,8 @@ fun CourseScreen(
             raceStatusText = raceStatusText,
             raceStartText = raceStartText,
             raceStopText = raceStopText,
-            raceShortenedText = raceShortenedText
+            raceShortenedText = raceShortenedText,
+            raceShortened = raceShortened
         )
 
         Spacer(modifier = Modifier.height(14.dp))
@@ -99,13 +102,13 @@ fun CourseScreen(
             onClick = onBack,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Back")
+            Text(stringResource(R.string.back))
         }
 
     }
     if (showTargetDialog.value) {
         CourseTargetDialog(
-            raceMarksText = raceMarksText,
+            courseMapMarks = courseMapMarks,
             onDismiss = {
                 showTargetDialog.value = false
             },
@@ -123,19 +126,14 @@ fun CourseScreen(
                 pendingCourseOverride.value = null
             },
             title = {
-                Text("Override course?")
+                Text(stringResource(R.string.override_course_title))
             },
             text = {
                 Text(
-                    text = """
-                    Override current target to:
-                    
-                    ${pending.confirmLabel}
-
-                    Only use this if the displayed course progress is wrong.
-
-                    Be prepared to discuss telemetry with Event Management.
-                """.trimIndent()
+                    text = stringResource(
+                        R.string.override_course_confirmation,
+                        pending.confirmLabel
+                    )
                 )
             },
             confirmButton = {
@@ -148,7 +146,7 @@ fun CourseScreen(
                         )
                     }
                 ) {
-                    Text("Confirm Override")
+                    Text(stringResource(R.string.confirm_override))
                 }
             },
             dismissButton = {
@@ -157,7 +155,7 @@ fun CourseScreen(
                         pendingCourseOverride.value = null
                     }
                 ) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -170,7 +168,7 @@ fun CourseTargetCard(
     onClick: () -> Unit
 ) {
     val cleaned = currentTargetText
-        .replace("Next:", "")
+        .removePrefix(stringResource(R.string.next_prefix))
         .trim()
         .ifBlank { "--" }
 
@@ -189,7 +187,7 @@ fun CourseTargetCard(
             modifier = Modifier.padding(18.dp)
         ) {
             Text(
-                text = "Next",
+                text = stringResource(R.string.next),
                 fontSize = 18.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onPrimary
@@ -208,16 +206,16 @@ fun CourseTargetCard(
 
 @Composable
 fun CourseTargetDialog(
-    raceMarksText: String,
+    courseMapMarks: List<CourseMapMark>,
     onDismiss: () -> Unit,
     onSelectOption: (CourseProgressOption) -> Unit
 ) {
-    val options = courseProgressOptions(raceMarksText)
+    val options = courseProgressOptions(courseMapMarks)
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text("Set next target")
+            Text(stringResource(R.string.set_next_target))
         },
         text = {
             Column {
@@ -244,7 +242,7 @@ fun CourseTargetDialog(
         confirmButton = {},
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text(stringResource(R.string.cancel))
             }
         }
     )
@@ -258,36 +256,64 @@ data class CourseProgressOption(
     val enabled: Boolean = true
 )
 
-fun courseProgressOptions(
-    raceMarksText: String
-): List<CourseProgressOption> {
-    val marks = courseMarkDisplayItems(raceMarksText)
-        .filter { it.label.isNotBlank() && it.label != "--" }
+data class CourseProgressMarkState(
+    val label: String,
+    val passedMarks: Int,
+    val skipped: Boolean
+)
 
-    val activeMarks = marks.filterNot { it.skipped }
+internal fun buildCourseProgressMarkStates(
+    courseMapMarks: List<CourseMapMark>
+): List<CourseProgressMarkState> {
+    var activeMarksBefore = 0
+
+    return courseMapMarks.mapNotNull { mark ->
+        val label = mark.label.trim()
+        if (label.isBlank() || label == "--") {
+            null
+        } else if (mark.skipped) {
+            CourseProgressMarkState(
+                label = label,
+                passedMarks = 0,
+                skipped = true
+            )
+        } else {
+            CourseProgressMarkState(
+                label = label,
+                passedMarks = activeMarksBefore++,
+                skipped = false
+            )
+        }
+    }
+}
+
+@Composable
+fun courseProgressOptions(
+    courseMapMarks: List<CourseMapMark>
+): List<CourseProgressOption> {
+    val marks = buildCourseProgressMarkStates(courseMapMarks)
+    val activeMarkCount = marks.count { !it.skipped }
 
     return buildList {
         add(
             CourseProgressOption(
-                label = "Restart at start line",
-                confirmLabel = "Start line",
+                label = stringResource(R.string.restart_at_start_line),
+                confirmLabel = stringResource(R.string.start_line),
                 passedMarks = 0,
                 raceStarted = false
             )
         )
 
         marks.forEach { mark ->
-            val activeIndex = activeMarks.indexOfFirst { it.label == mark.label }
-
             add(
                 CourseProgressOption(
                     label = if (mark.skipped) {
-                        "${mark.label} — skipped"
+                        stringResource(R.string.mark_skipped, mark.label)
                     } else {
                         mark.label
                     },
                     confirmLabel = mark.label,
-                    passedMarks = if (mark.skipped) 0 else activeIndex,
+                    passedMarks = mark.passedMarks,
                     raceStarted = true,
                     enabled = !mark.skipped
                 )
@@ -296,9 +322,9 @@ fun courseProgressOptions(
 
         add(
             CourseProgressOption(
-                label = "Finish line",
-                confirmLabel = "Finish line",
-                passedMarks = activeMarks.size,
+                label = stringResource(R.string.finish_line),
+                confirmLabel = stringResource(R.string.finish_line),
+                passedMarks = activeMarkCount,
                 raceStarted = true
             )
         )
@@ -311,7 +337,8 @@ fun CourseInfoCard(
     raceStatusText: String,
     raceStartText: String,
     raceStopText: String,
-    raceShortenedText: String
+    raceShortenedText: String,
+    raceShortened: Boolean
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -324,47 +351,47 @@ fun CourseInfoCard(
             modifier = Modifier.padding(18.dp)
         ) {
             Text(
-                text = "Event: $raceEvent",
+                text = stringResource(R.string.event_value, raceEvent),
                 fontSize = 22.sp,
                 fontWeight = FontWeight.SemiBold
             )
 
             Text(
-                text = raceStatusText.replace("Race:", "Status:"),
+                text = stringResource(
+                    R.string.status_value,
+                    localizedRaceStatusCode(
+                        raceStatusText = raceStatusText,
+                        racePrefix = stringResource(R.string.race_prefix),
+                        loadedText = stringResource(R.string.status_loaded),
+                        plannedText = stringResource(R.string.status_planned),
+                        racingText = stringResource(R.string.status_racing),
+                        startedText = stringResource(R.string.status_started),
+                        finishedText = stringResource(R.string.status_finished),
+                        postponedText = stringResource(R.string.status_postponed),
+                        cancelledText = stringResource(R.string.status_cancelled)
+                    )
+                ),
                 fontSize = 18.sp,
                 modifier = Modifier.padding(top = 8.dp)
             )
 
             Text(
-                text = raceStartText.replace("Start:", "Start:"),
+                text = raceStartText,
                 fontSize = 18.sp,
                 modifier = Modifier.padding(top = 4.dp)
             )
 
             Text(
-                text = raceStopText.replace("Stop:", "Stop:"),
+                text = raceStopText,
                 fontSize = 18.sp,
                 modifier = Modifier.padding(top = 4.dp)
             )
 
             Text(
-                text = raceShortenedText
-                    .replace("Bahnverkürzung:", "Course shortened:")
-                    .replace("JA", "YES")
-                    .replace("nein", "no"),
+                text = raceShortenedText,
                 fontSize = 18.sp,
-                fontWeight = if (
-                    raceShortenedText.contains("JA", ignoreCase = true) ||
-                    raceShortenedText.contains("YES", ignoreCase = true)
-                ) {
-                    FontWeight.Bold
-                } else {
-                    FontWeight.Normal
-                },
-                color = if (
-                    raceShortenedText.contains("JA", ignoreCase = true) ||
-                    raceShortenedText.contains("YES", ignoreCase = true)
-                ) {
+                fontWeight = if (raceShortened) FontWeight.Bold else FontWeight.Normal,
+                color = if (raceShortened) {
                     MaterialTheme.colorScheme.error
                 } else {
                     MaterialTheme.colorScheme.secondary
@@ -401,7 +428,7 @@ fun CourseRouteCard(
                     }
             ) {
                 Text(
-                    text = "Start line",
+                    text = stringResource(R.string.start_line),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
@@ -409,8 +436,7 @@ fun CourseRouteCard(
 
                 Text(
                     text = raceStartLineText
-                        .replace("Start line:", "")
-                        .replace("Startlinie:", "")
+                        .removePrefix(stringResource(R.string.start_line_prefix))
                         .trim(),
                     fontSize = 18.sp,
                     color = MaterialTheme.colorScheme.primary,
@@ -421,7 +447,7 @@ fun CourseRouteCard(
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "Marks",
+                text = stringResource(R.string.marks),
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -461,7 +487,14 @@ fun CourseRouteCard(
                         )
                     }
                 } else {
-                    courseMarkDisplayItems(raceMarksText).forEach { item ->
+                    val localizedSkippedMarker = stringResource(R.string.mark_skipped_compact, 0, "")
+                        .removePrefix("0")
+                        .trim()
+                    courseMarkDisplayItems(
+                        raceMarksText = raceMarksText,
+                        marksPrefix = stringResource(R.string.marks_prefix),
+                        skippedMarker = localizedSkippedMarker
+                    ).forEach { item ->
                         Text(
                             text = item.label,
                             fontSize = 18.sp,
@@ -491,7 +524,7 @@ fun CourseRouteCard(
                     }
             ) {
                 Text(
-                    text = "Finish line",
+                    text = stringResource(R.string.finish_line),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
@@ -499,8 +532,7 @@ fun CourseRouteCard(
 
                 Text(
                     text = raceFinishLineText
-                        .replace("Finish line:", "")
-                        .replace("Ziellinie:", "")
+                        .removePrefix(stringResource(R.string.finish_line_prefix))
                         .trim(),
                     fontSize = 18.sp,
                     color = MaterialTheme.colorScheme.primary,
@@ -516,7 +548,7 @@ fun CourseRaceInfoCard(
     raceInfoText: String
 ) {
     val cleaned = raceInfoText
-        .replace("Info:", "")
+        .removePrefix(stringResource(R.string.info_prefix))
         .trim()
 
     if (cleaned.isBlank() || cleaned == "--") {
@@ -534,7 +566,7 @@ fun CourseRaceInfoCard(
             modifier = Modifier.padding(18.dp)
         ) {
             Text(
-                text = "Race Info",
+                text = stringResource(R.string.race_info),
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onTertiaryContainer
@@ -556,11 +588,12 @@ data class CourseMarkDisplayItem(
 )
 
 fun courseMarkDisplayItems(
-    raceMarksText: String
+    raceMarksText: String,
+    marksPrefix: String,
+    skippedMarker: String
 ): List<CourseMarkDisplayItem> {
     val cleaned = raceMarksText
-        .replace("Marks:", "")
-        .replace("Marken:", "")
+        .removePrefix(marksPrefix)
         .trim()
 
     if (cleaned.isBlank() || cleaned == "--") {
@@ -577,10 +610,13 @@ fun courseMarkDisplayItems(
         .map { it.trim() }
         .filter { it.isNotBlank() }
         .map { raw ->
-            val skipped = raw.contains("[skipped]", ignoreCase = true)
-            val label = raw
-                .replace("[skipped]", "", ignoreCase = true)
-                .trim()
+            val skipped = skippedMarker.isNotBlank() &&
+                    raw.contains(skippedMarker, ignoreCase = true)
+            val label = if (skipped) {
+                raw.replace(skippedMarker, "", ignoreCase = true).trim()
+            } else {
+                raw
+            }
 
             CourseMarkDisplayItem(
                 label = label,
@@ -590,11 +626,11 @@ fun courseMarkDisplayItems(
 }
 
 fun formatMarksForDisplay(
-    raceMarksText: String
+    raceMarksText: String,
+    marksPrefix: String
 ): String {
     val cleaned = raceMarksText
-        .replace("Marks:", "")
-        .replace("Marken:", "")
+        .removePrefix(marksPrefix)
         .trim()
 
     if (cleaned.isBlank() || cleaned == "--") {
