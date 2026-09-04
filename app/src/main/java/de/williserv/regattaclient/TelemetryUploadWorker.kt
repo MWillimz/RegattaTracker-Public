@@ -18,6 +18,7 @@ import java.util.concurrent.TimeUnit
 internal enum class TelemetryUploadAttemptResult {
     SUCCESS,
     TEMPORARY_FAILURE,
+    CLIENT_UPDATE_REQUIRED,
     OTHER_FAILURE
 }
 
@@ -37,8 +38,32 @@ internal fun classifyTelemetryUploadResponseCode(responseCode: Int): TelemetryUp
     }
 }
 
+internal fun classifyTelemetryUploadResponse(
+    responseCode: Int,
+    errorBody: String,
+    client: ClientBuildIdentity
+): TelemetryUploadAttemptResult {
+    if (shouldTreatAsClientUpdateRequired(responseCode, errorBody, client)) {
+        return TelemetryUploadAttemptResult.CLIENT_UPDATE_REQUIRED
+    }
+    return classifyTelemetryUploadResponseCode(responseCode)
+}
+
 internal fun shouldEnqueueTelemetryUpload(uploadablePendingCount: Long): Boolean {
     return uploadablePendingCount > 0L
+}
+
+internal fun shouldSuppressTelemetryUploadEnqueue(
+    context: Context,
+    serverUrl: String,
+    client: ClientBuildIdentity
+): Boolean {
+    if (serverUrl.isBlank()) return false
+    return ClientCompatibilityBlockStore.isBlocked(
+        context = context,
+        serverUrl = serverUrl,
+        versionCode = client.versionCode
+    )
 }
 
 internal fun decideTelemetryWorkerCompletion(
@@ -52,28 +77,6 @@ internal fun decideTelemetryWorkerCompletion(
     }
 }
 
-internal fun countUploadablePendingSamplesThrough(
-    db: TrackingDbHelper,
-    localId: Long
-): Long {
-    if (localId <= 0L) return 0L
-
-    db.readableDatabase.rawQuery(
-        """
-        SELECT COUNT(*)
-        FROM tracking_samples AS samples
-        INNER JOIN access_contexts AS contexts
-            ON contexts.id = samples.access_context_id
-        WHERE samples.uploaded = 0
-          AND samples.id <= ?
-        """.trimIndent(),
-        arrayOf(localId.toString())
-    ).use { cursor ->
-        cursor.moveToFirst()
-        return cursor.getLong(0)
-    }
-}
-
 internal fun getTelemetryUploadPage(
     db: TrackingDbHelper,
     afterLocalId: Long,
@@ -81,12 +84,145 @@ internal fun getTelemetryUploadPage(
 ): List<PendingTrackingSample> {
     require(limit > 0)
 
-    val rowsToSkip = countUploadablePendingSamplesThrough(db, afterLocalId)
-    if (rowsToSkip >= Int.MAX_VALUE - limit) return emptyList()
+    val result = mutableListOf<PendingTrackingSample>()
 
-    return db.getPendingSamples(limit = rowsToSkip.toInt() + limit)
-        .drop(rowsToSkip.toInt())
-        .take(limit)
+    db.readableDatabase.rawQuery(
+        """
+        SELECT
+            samples.id,
+            samples.sequence_id,
+            samples.timestamp,
+            samples.boat_name,
+            samples.captain_name,
+            samples.hull_color,
+            samples.sail_number,
+            samples.yardstick,
+            samples.boat_type,
+            samples.lat,
+            samples.lon,
+            samples.accuracy,
+            samples.cog,
+            samples.sog,
+            samples.accel_x,
+            samples.accel_y,
+            samples.accel_z,
+            samples.gyro_x,
+            samples.gyro_y,
+            samples.gyro_z,
+            contexts.id,
+            contexts.server_url,
+            contexts.access_identifier,
+            contexts.access_secret,
+            contexts.created_at,
+            contexts.last_used_at
+        FROM tracking_samples AS samples
+        INNER JOIN access_contexts AS contexts
+            ON contexts.id = samples.access_context_id
+        WHERE samples.uploaded = 0
+          AND samples.id > ?
+        ORDER BY samples.id ASC
+        LIMIT ?
+        """.trimIndent(),
+        arrayOf(afterLocalId.toString(), limit.toString())
+    ).use { cursor ->
+        while (cursor.moveToNext()) {
+            val accessContext = AccessContext(
+                id = cursor.getLong(20),
+                serverUrl = cursor.getString(21),
+                accessIdentifier = cursor.getString(22),
+                accessSecret = cursor.getString(23),
+                createdAt = cursor.getLong(24),
+                lastUsedAt = cursor.getLong(25)
+            )
+
+            result += PendingTrackingSample(
+                localId = cursor.getLong(0),
+                accessContext = accessContext,
+                sequenceId = cursor.getLong(1),
+                timestamp = cursor.getString(2),
+                boatName = cursor.getString(3),
+                captainName = cursor.getString(4),
+                hullColor = cursor.getString(5),
+                sailNumber = cursor.getString(6),
+                yardstick = cursor.getDouble(7),
+                boatType = cursor.getString(8),
+                lat = cursor.getDouble(9),
+                lon = cursor.getDouble(10),
+                accuracy = cursor.getFloat(11),
+                cog = cursor.getFloat(12),
+                sog = cursor.getFloat(13),
+                accelX = cursor.getFloat(14),
+                accelY = cursor.getFloat(15),
+                accelZ = cursor.getFloat(16),
+                gyroX = cursor.getFloat(17),
+                gyroY = cursor.getFloat(18),
+                gyroZ = cursor.getFloat(19)
+            )
+        }
+    }
+
+    return result
+}
+
+internal fun hasUnblockedUploadablePendingServerAfter(
+    db: TrackingDbHelper,
+    context: Context,
+    afterLocalId: Long,
+    client: ClientBuildIdentity
+): Boolean {
+    db.readableDatabase.rawQuery(
+        """
+        SELECT DISTINCT contexts.server_url
+        FROM tracking_samples AS samples
+        INNER JOIN access_contexts AS contexts
+            ON contexts.id = samples.access_context_id
+        WHERE samples.uploaded = 0
+          AND samples.id > ?
+        """.trimIndent(),
+        arrayOf(afterLocalId.toString())
+    ).use { cursor ->
+        while (cursor.moveToNext()) {
+            val serverUrl = cursor.getString(0)
+            if (
+                !ClientCompatibilityBlockStore.isBlocked(
+                    context = context,
+                    serverUrl = serverUrl,
+                    versionCode = client.versionCode
+                )
+            ) {
+                return true
+            }
+        }
+    }
+
+    return false
+}
+
+internal fun buildTelemetryUploadPayload(
+    sample: PendingTrackingSample,
+    client: ClientBuildIdentity
+): JSONObject = JSONObject().apply {
+    put("sequence_id", sample.sequenceId)
+    put("timestamp", sample.timestamp)
+    put("client_version_code", client.versionCode)
+    put("client_build_id", client.buildId)
+    put("boat_name", sample.boatName)
+    put("captain_name", sample.captainName)
+    put("hull_color", sample.hullColor)
+    put("sail_number", sample.sailNumber)
+    put("yardstick", sample.yardstick)
+    put("boat_type", sample.boatType)
+    put("lat", sample.lat)
+    put("lon", sample.lon)
+    put("accuracy", sample.accuracy)
+    put("cog", sample.cog)
+    put("sog", sample.sog)
+    put("accel_x", sample.accelX)
+    put("accel_y", sample.accelY)
+    put("accel_z", sample.accelZ)
+    put("gyro_x", sample.gyroX)
+    put("gyro_y", sample.gyroY)
+    put("gyro_z", sample.gyroZ)
 }
 
 internal object TelemetryUploadStatusStore {
@@ -109,6 +245,8 @@ internal object TelemetryUploadStatusStore {
 
 object TelemetryUploadScheduler {
     private const val UNIQUE_WORK_NAME = "regatta-telemetry-upload"
+    private const val RACE_SETUP_PREFS_NAME = "race_setup"
+    private const val RACE_SERVER_KEY = "race_server"
     internal const val AFTER_LOCAL_ID_KEY = "after_local_id"
 
     internal fun buildRequest(afterLocalId: Long = 0L): OneTimeWorkRequest {
@@ -129,6 +267,24 @@ object TelemetryUploadScheduler {
 
     fun enqueue(context: Context) {
         TelemetryUploadStatusStore.write(context, TelemetryUploadStatusStore.WAITING)
+
+        if (context is RegattaTrackingService) {
+            val appContext = context.applicationContext
+            val serverUrl = appContext
+                .getSharedPreferences(RACE_SETUP_PREFS_NAME, Context.MODE_PRIVATE)
+                .getString(RACE_SERVER_KEY, "")
+                .orEmpty()
+            if (
+                shouldSuppressTelemetryUploadEnqueue(
+                    context = appContext,
+                    serverUrl = serverUrl,
+                    client = currentClientBuildIdentity()
+                )
+            ) {
+                return
+            }
+        }
+
         WorkManager.getInstance(context.applicationContext)
             .enqueueUniqueWork(
                 UNIQUE_WORK_NAME,
@@ -172,6 +328,7 @@ class TelemetryUploadWorker(
     private val localStatusPrefsName = "regatta_local_status"
 
     override fun doWork(): Result {
+        val client = currentClientBuildIdentity()
         val afterLocalId = inputData.getLong(TelemetryUploadScheduler.AFTER_LOCAL_ID_KEY, 0L)
         val pendingSamples = getTelemetryUploadPage(
             db = db,
@@ -196,7 +353,17 @@ class TelemetryUploadWorker(
         var retryNeeded = false
 
         for (sample in pendingSamples) {
-            when (uploadSampleBlocking(sample)) {
+            if (
+                ClientCompatibilityBlockStore.isBlocked(
+                    context = applicationContext,
+                    serverUrl = sample.accessContext.serverUrl,
+                    versionCode = client.versionCode
+                )
+            ) {
+                continue
+            }
+
+            when (uploadSampleBlocking(sample, client)) {
                 TelemetryUploadAttemptResult.SUCCESS -> {
                     db.markUploaded(sample.localId)
                 }
@@ -205,16 +372,22 @@ class TelemetryUploadWorker(
                     retryNeeded = true
                 }
 
+                TelemetryUploadAttemptResult.CLIENT_UPDATE_REQUIRED,
                 TelemetryUploadAttemptResult.OTHER_FAILURE -> {
-                    // Keep this row pending, but continue with later rows in this batch.
+                    // Keep this row pending. A known 426 also blocks later requests to this server/version.
                 }
             }
         }
 
         val remaining = db.countUploadablePendingSamples()
         val lastLocalId = pendingSamples.last().localId
-        val remainingThroughLast = countUploadablePendingSamplesThrough(db, lastLocalId)
-        val hasLaterPendingSamples = remaining > remainingThroughLast
+        val hasLaterPendingSamples = remaining > 0L &&
+            hasUnblockedUploadablePendingServerAfter(
+                db = db,
+                context = applicationContext,
+                afterLocalId = lastLocalId,
+                client = client
+            )
 
         return when (
             decideTelemetryWorkerCompletion(
@@ -252,31 +425,17 @@ class TelemetryUploadWorker(
         }
     }
 
-    private fun uploadSampleBlocking(sample: PendingTrackingSample): TelemetryUploadAttemptResult {
+    private fun uploadSampleBlocking(
+        sample: PendingTrackingSample,
+        client: ClientBuildIdentity
+    ): TelemetryUploadAttemptResult {
         val accessContext = sample.accessContext
 
         return try {
-            val json = JSONObject().apply {
-                put("sequence_id", sample.sequenceId)
-                put("timestamp", sample.timestamp)
-                put("boat_name", sample.boatName)
-                put("captain_name", sample.captainName)
-                put("hull_color", sample.hullColor)
-                put("sail_number", sample.sailNumber)
-                put("yardstick", sample.yardstick)
-                put("boat_type", sample.boatType)
-                put("lat", sample.lat)
-                put("lon", sample.lon)
-                put("accuracy", sample.accuracy)
-                put("cog", sample.cog)
-                put("sog", sample.sog)
-                put("accel_x", sample.accelX)
-                put("accel_y", sample.accelY)
-                put("accel_z", sample.accelZ)
-                put("gyro_x", sample.gyroX)
-                put("gyro_y", sample.gyroY)
-                put("gyro_z", sample.gyroZ)
-            }
+            val json = buildTelemetryUploadPayload(
+                sample = sample,
+                client = client
+            )
 
             val connection = URL(buildIngestUrl(accessContext)).openConnection() as HttpURLConnection
 
@@ -296,23 +455,61 @@ class TelemetryUploadWorker(
             }
 
             val responseCode = connection.responseCode
-            val result = classifyTelemetryUploadResponseCode(responseCode)
-
-            if (result == TelemetryUploadAttemptResult.SUCCESS) {
-                publishDebugError("")
+            val errorBody = if (responseCode in 200..299) {
+                ""
             } else {
-                val errorBody = connection.errorStream
+                connection.errorStream
                     ?.bufferedReader()
                     ?.use { it.readText() }
                     ?: ""
+            }
+            val result = classifyTelemetryUploadResponse(
+                responseCode = responseCode,
+                errorBody = errorBody,
+                client = client
+            )
 
-                publishDebugError(
-                    applicationContext.getString(
-                        R.string.upload_error_code,
-                        responseCode,
-                        errorBody.take(200)
+            when (result) {
+                TelemetryUploadAttemptResult.SUCCESS -> {
+                    ClientCompatibilityBlockStore.clearBlocked(
+                        context = applicationContext,
+                        serverUrl = accessContext.serverUrl,
+                        versionCode = client.versionCode
                     )
-                )
+                    if (
+                        !ClientCompatibilityBlockStore.hasAnyBlockForVersion(
+                            context = applicationContext,
+                            versionCode = client.versionCode
+                        )
+                    ) {
+                        publishDebugError("")
+                    }
+                }
+
+                TelemetryUploadAttemptResult.CLIENT_UPDATE_REQUIRED -> {
+                    ClientCompatibilityBlockStore.markBlocked(
+                        context = applicationContext,
+                        serverUrl = accessContext.serverUrl,
+                        versionCode = client.versionCode
+                    )
+                    publishDebugError(
+                        applicationContext.getString(
+                            R.string.upload_error_code,
+                            responseCode,
+                            applicationContext.getString(R.string.client_update_required)
+                        )
+                    )
+                }
+
+                else -> {
+                    publishDebugError(
+                        applicationContext.getString(
+                            R.string.upload_error_code,
+                            responseCode,
+                            errorBody.take(200)
+                        )
+                    )
+                }
             }
 
             connection.disconnect()

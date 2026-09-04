@@ -1,0 +1,3 @@
+<resources>
+    <string name="client_update_required">Update required: This app version is no longer supported. Please update.</string>
+</resources>
