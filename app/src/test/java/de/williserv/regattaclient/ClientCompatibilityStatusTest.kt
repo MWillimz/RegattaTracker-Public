@@ -84,6 +84,11 @@ class ClientCompatibilityStatusTest {
         )
         assertNull(
             parseClientCompatibilityError(
+                """{"detail":{"reason":"client_version_required","min_client_version_code":2400}}"""
+            )
+        )
+        assertNull(
+            parseClientCompatibilityError(
                 """{"detail":{"reason":"client_version_too_old","min_client_version_code":2400,"client_version_code":null}}"""
             )
         )
@@ -100,7 +105,7 @@ class ClientCompatibilityStatusTest {
     }
 
     @Test
-    fun structured426_isClassifiedAsUpdateRequiredOnlyForReleaseClient() {
+    fun structured426_isClassifiedAsUpdateRequiredOnlyForMatchingReleaseClient() {
         val body =
             """{"detail":{"reason":"client_version_too_old","min_client_version_code":2400,"client_version_code":2322}}"""
 
@@ -117,7 +122,30 @@ class ClientCompatibilityStatusTest {
             classifyTelemetryUploadResponse(
                 responseCode = 426,
                 errorBody = body,
+                client = ClientBuildIdentity(2300, "different-release")
+            )
+        )
+        assertEquals(
+            TelemetryUploadAttemptResult.OTHER_FAILURE,
+            classifyTelemetryUploadResponse(
+                responseCode = 426,
+                errorBody = body,
                 client = ClientBuildIdentity(DEV_DEBUG_VERSION_CODE, "dev")
+            )
+        )
+    }
+
+    @Test
+    fun contradictoryTooOldThreshold_isNotPersistableCompatibilityState() {
+        val body =
+            """{"detail":{"reason":"client_version_too_old","min_client_version_code":2300,"client_version_code":2322}}"""
+
+        assertEquals(
+            TelemetryUploadAttemptResult.OTHER_FAILURE,
+            classifyTelemetryUploadResponse(
+                responseCode = 426,
+                errorBody = body,
+                client = ClientBuildIdentity(2322, "release")
             )
         )
     }
