@@ -89,6 +89,33 @@ internal fun getTelemetryUploadPage(
         .take(limit)
 }
 
+internal fun buildTelemetryUploadPayload(
+    sample: PendingTrackingSample,
+    client: ClientBuildIdentity
+): JSONObject = JSONObject().apply {
+    put("sequence_id", sample.sequenceId)
+    put("timestamp", sample.timestamp)
+    put("client_version_code", client.versionCode)
+    put("client_build_id", client.buildId)
+    put("boat_name", sample.boatName)
+    put("captain_name", sample.captainName)
+    put("hull_color", sample.hullColor)
+    put("sail_number", sample.sailNumber)
+    put("yardstick", sample.yardstick)
+    put("boat_type", sample.boatType)
+    put("lat", sample.lat)
+    put("lon", sample.lon)
+    put("accuracy", sample.accuracy)
+    put("cog", sample.cog)
+    put("sog", sample.sog)
+    put("accel_x", sample.accelX)
+    put("accel_y", sample.accelY)
+    put("accel_z", sample.accelZ)
+    put("gyro_x", sample.gyroX)
+    put("gyro_y", sample.gyroY)
+    put("gyro_z", sample.gyroZ)
+}
+
 internal object TelemetryUploadStatusStore {
     private const val PREFS_NAME = "regatta_local_status"
     const val STATUS_KEY = "upload_status_text"
@@ -256,27 +283,10 @@ class TelemetryUploadWorker(
         val accessContext = sample.accessContext
 
         return try {
-            val json = JSONObject().apply {
-                put("sequence_id", sample.sequenceId)
-                put("timestamp", sample.timestamp)
-                put("boat_name", sample.boatName)
-                put("captain_name", sample.captainName)
-                put("hull_color", sample.hullColor)
-                put("sail_number", sample.sailNumber)
-                put("yardstick", sample.yardstick)
-                put("boat_type", sample.boatType)
-                put("lat", sample.lat)
-                put("lon", sample.lon)
-                put("accuracy", sample.accuracy)
-                put("cog", sample.cog)
-                put("sog", sample.sog)
-                put("accel_x", sample.accelX)
-                put("accel_y", sample.accelY)
-                put("accel_z", sample.accelZ)
-                put("gyro_x", sample.gyroX)
-                put("gyro_y", sample.gyroY)
-                put("gyro_z", sample.gyroZ)
-            }
+            val json = buildTelemetryUploadPayload(
+                sample = sample,
+                client = currentClientBuildIdentity()
+            )
 
             val connection = URL(buildIngestUrl(accessContext)).openConnection() as HttpURLConnection
 

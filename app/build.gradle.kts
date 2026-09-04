@@ -70,7 +70,7 @@ android {
         applicationId = "de.williserv.regattaclient"
         minSdk = 30
         targetSdk = 36
-        versionCode = 3
+        versionCode = 42
         versionName = appBuildIdentifier
 
         buildConfigField("String", "APP_VERSION_NAME", "\"$appBuildIdentifier\"")
@@ -133,6 +133,7 @@ tasks.register("verifyBuildIdentifier") {
             buildZone
         )
 
+        check(android.defaultConfig.versionCode == 42)
         check(resolveBuildChannel(null) == "dev")
         check(createBuildIdentifier(fixedTimestamp, resolveBuildChannel("dev")) == "26.08.27-0953-dev")
         check(createBuildIdentifier(fixedTimestamp, resolveBuildChannel("staging")) == "26.08.27-0953-staging")
