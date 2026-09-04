@@ -349,6 +349,11 @@ class TelemetryUploadWorker(
 
             when (result) {
                 TelemetryUploadAttemptResult.SUCCESS -> {
+                    ClientCompatibilityBlockStore.clearBlocked(
+                        context = applicationContext,
+                        serverUrl = accessContext.serverUrl,
+                        versionCode = client.versionCode
+                    )
                     if (
                         !ClientCompatibilityBlockStore.hasAnyBlockForVersion(
                             context = applicationContext,
