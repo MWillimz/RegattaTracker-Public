@@ -2,11 +2,10 @@ package de.williserv.regattaclient
 
 import android.content.Context
 import org.json.JSONObject
-import java.util.concurrent.TimeUnit
 
 internal const val CLIENT_VERSION_TOO_OLD_REASON = "client_version_too_old"
 internal const val CLIENT_VERSION_REQUIRED_REASON = "client_version_required"
-internal val CLIENT_COMPATIBILITY_RECHECK_INTERVAL_MILLIS: Long = TimeUnit.HOURS.toMillis(1)
+internal const val CLIENT_COMPATIBILITY_RECHECK_INTERVAL_MILLIS = 60L * 60L * 1000L
 
 internal data class ClientCompatibilityError(
     val reason: String,
