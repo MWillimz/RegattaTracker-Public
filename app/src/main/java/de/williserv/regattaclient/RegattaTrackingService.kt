@@ -361,7 +361,10 @@ class RegattaTrackingService : Service(), SensorEventListener {
     }
 
     private fun startTrackingService() {
-        if (serviceRunning) return
+        if (serviceRunning) {
+            reconfigureSamplingSchedule()
+            return
+        }
 
         serviceRunning = true
 
@@ -375,6 +378,14 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
         publishLocalRaceStatus()
         updateNotification()
+    }
+
+    private fun reconfigureSamplingSchedule() {
+        handler.removeCallbacks(sampleRunnable)
+
+        val intervalMs = currentSamplingIntervalMs()
+        requestLocationUpdatesForInterval(intervalMs)
+        handler.postDelayed(sampleRunnable, intervalMs)
     }
 
     private fun stopTrackingService() {
