@@ -43,6 +43,68 @@ class TelemetryUploadPolicyTest {
     }
 
     @Test
+    fun telemetryPayload_addsClientIdentityWithoutChangingSampleFields() {
+        val sample = PendingTrackingSample(
+            localId = 99L,
+            accessContext = AccessContext(
+                id = 4L,
+                serverUrl = "https://raceoffice.example.org",
+                accessIdentifier = "Event A",
+                accessSecret = "secret-a",
+                createdAt = 1L,
+                lastUsedAt = 2L
+            ),
+            sequenceId = 7L,
+            timestamp = "2026-09-04T18:30:00Z",
+            boatName = "Test Boat",
+            captainName = "Test Captain",
+            hullColor = "white",
+            sailNumber = "GER 123",
+            yardstick = 100.5,
+            boatType = "Test Type",
+            lat = 53.4,
+            lon = 10.3,
+            accuracy = 3.0f,
+            cog = 180.0f,
+            sog = 5.5f,
+            accelX = 0.1f,
+            accelY = 0.2f,
+            accelZ = 0.3f,
+            gyroX = 0.4f,
+            gyroY = 0.5f,
+            gyroZ = 0.6f
+        )
+        val client = ClientBuildIdentity(
+            versionCode = 20_871_700,
+            buildId = "26.09.04-1830-staging"
+        )
+
+        val payload = buildTelemetryUploadPayload(sample, client)
+
+        assertEquals(7L, payload.getLong("sequence_id"))
+        assertEquals("2026-09-04T18:30:00Z", payload.getString("timestamp"))
+        assertEquals(20_871_700, payload.getInt("client_version_code"))
+        assertEquals("26.09.04-1830-staging", payload.getString("client_build_id"))
+        assertEquals("Test Boat", payload.getString("boat_name"))
+        assertEquals("Test Captain", payload.getString("captain_name"))
+        assertEquals("white", payload.getString("hull_color"))
+        assertEquals("GER 123", payload.getString("sail_number"))
+        assertEquals(100.5, payload.getDouble("yardstick"), 0.0)
+        assertEquals("Test Type", payload.getString("boat_type"))
+        assertEquals(53.4, payload.getDouble("lat"), 0.0)
+        assertEquals(10.3, payload.getDouble("lon"), 0.0)
+        assertEquals(3.0, payload.getDouble("accuracy"), 0.0)
+        assertEquals(180.0, payload.getDouble("cog"), 0.0)
+        assertEquals(5.5, payload.getDouble("sog"), 0.0)
+        assertEquals(0.1, payload.getDouble("accel_x"), 0.000001)
+        assertEquals(0.2, payload.getDouble("accel_y"), 0.000001)
+        assertEquals(0.3, payload.getDouble("accel_z"), 0.000001)
+        assertEquals(0.4, payload.getDouble("gyro_x"), 0.000001)
+        assertEquals(0.5, payload.getDouble("gyro_y"), 0.000001)
+        assertEquals(0.6, payload.getDouble("gyro_z"), 0.000001)
+    }
+
+    @Test
     fun schedulingDecision_onlyEnqueuesForUploadableBacklog() {
         assertFalse(shouldEnqueueTelemetryUpload(0L))
         assertTrue(shouldEnqueueTelemetryUpload(1L))
