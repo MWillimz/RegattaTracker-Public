@@ -349,7 +349,14 @@ class TelemetryUploadWorker(
 
             when (result) {
                 TelemetryUploadAttemptResult.SUCCESS -> {
-                    publishDebugError("")
+                    if (
+                        !ClientCompatibilityBlockStore.hasAnyBlockForVersion(
+                            context = applicationContext,
+                            versionCode = client.versionCode
+                        )
+                    ) {
+                        publishDebugError("")
+                    }
                 }
 
                 TelemetryUploadAttemptResult.CLIENT_UPDATE_REQUIRED -> {
