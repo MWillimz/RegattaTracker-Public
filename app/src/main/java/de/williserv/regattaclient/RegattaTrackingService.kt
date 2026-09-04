@@ -128,6 +128,9 @@ class RegattaTrackingService : Service(), SensorEventListener {
     private var lastTtlSeconds: Double? = null
     private var currentTargetDistanceM: Double? = null
 
+    private var samplingBand: SamplingDistanceBand? = null
+    private var activeLocationIntervalMs = 1_000L
+
     private var sequenceId = 0L
     private var lastLocation: Location? = null
 
@@ -147,6 +150,9 @@ class RegattaTrackingService : Service(), SensorEventListener {
     private val locationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
             lastLocation = location
+            if (!manualRecording) {
+                refreshLocationSampling(location)
+            }
         }
     }
 
@@ -160,7 +166,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
                 publishLocalRaceStatus()
             }
 
-            handler.postDelayed(this, 1000L)
+            handler.postDelayed(this, currentSamplingIntervalMs())
         }
     }
 
@@ -269,6 +275,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
         lastDtlM = null
         lastTtlSeconds = null
         currentTargetDistanceM = null
+        samplingBand = null
 
         handler.removeCallbacks(autoStopAfterFinishRunnable)
         autoStopAfterFinishScheduled = false
@@ -363,7 +370,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
         pollEvent()
 
-        handler.postDelayed(sampleRunnable, 1000L)
+        handler.postDelayed(sampleRunnable, currentSamplingIntervalMs())
         handler.postDelayed(eventPollRunnable, 10_000L)
 
         publishLocalRaceStatus()
@@ -407,6 +414,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
     }
 
     private fun startLocationUpdates() {
+        requestLocationUpdatesForInterval(currentSamplingIntervalMs())
+
         val permissionGranted = ContextCompat.checkSelfPermission(
             this,
             Manifest.permission.ACCESS_FINE_LOCATION
@@ -415,18 +424,78 @@ class RegattaTrackingService : Service(), SensorEventListener {
         if (!permissionGranted) return
 
         try {
+            val cachedLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+            if (cachedLocation != null) {
+                lastLocation = cachedLocation
+                if (!manualRecording) {
+                    refreshLocationSampling(cachedLocation)
+                }
+            }
+        } catch (_: SecurityException) {
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun currentSamplingDecision(): SamplingDecision {
+        if (manualRecording) {
+            return SamplingDecision(
+                intervalMs = 1_000L,
+                band = samplingBand,
+                nearestDistanceM = null
+            )
+        }
+
+        val position = lastLocation?.let {
+            GeoPoint(lat = it.latitude, lon = it.longitude)
+        }
+        val decision = SamplingPolicy.decide(
+            position = position,
+            startLine = startLine,
+            finishLine = finishLine,
+            courseMarks = courseMarks,
+            trackingProfile = TrackingProfileConfig.read(this),
+            sailNumber = sailNumber,
+            previousBand = samplingBand
+        )
+        samplingBand = decision.band
+        return decision
+    }
+
+    private fun currentSamplingIntervalMs(): Long {
+        return currentSamplingDecision().intervalMs
+    }
+
+    private fun refreshLocationSampling(location: Location?) {
+        if (!serviceRunning || manualRecording) return
+
+        if (location != null) {
+            lastLocation = location
+        }
+
+        val nextIntervalMs = currentSamplingIntervalMs()
+        if (nextIntervalMs != activeLocationIntervalMs) {
+            requestLocationUpdatesForInterval(nextIntervalMs)
+        }
+    }
+
+    private fun requestLocationUpdatesForInterval(intervalMs: Long) {
+        val permissionGranted = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (!permissionGranted) return
+
+        try {
+            locationManager.removeUpdates(locationListener)
             locationManager.requestLocationUpdates(
                 LocationManager.GPS_PROVIDER,
-                1000L,
+                intervalMs,
                 0f,
                 locationListener,
                 Looper.getMainLooper()
             )
-
-            val cachedLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-            if (cachedLocation != null) {
-                lastLocation = cachedLocation
-            }
+            activeLocationIntervalMs = intervalMs
         } catch (_: SecurityException) {
         } catch (_: Exception) {
         }
@@ -496,6 +565,9 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
                 if (responseCode in 200..299) {
                     parseEventResponse(body)
+                    handler.post {
+                        refreshLocationSampling(lastLocation)
+                    }
                     publishLocalRaceStatus()
                     updateNotification()
                 }
