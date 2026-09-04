@@ -53,17 +53,39 @@ internal fun shouldEnqueueTelemetryUpload(uploadablePendingCount: Long): Boolean
     return uploadablePendingCount > 0L
 }
 
-internal fun shouldSuppressTelemetryUploadEnqueue(
+internal fun hasUnblockedUploadablePendingServer(
     context: Context,
-    triggeringServerUrl: String,
     client: ClientBuildIdentity
 ): Boolean {
-    if (triggeringServerUrl.isBlank()) return false
-    return ClientCompatibilityBlockStore.isBlocked(
-        context = context,
-        serverUrl = triggeringServerUrl,
-        versionCode = client.versionCode
-    )
+    val db = TrackingDbHelper(context.applicationContext)
+    return try {
+        db.readableDatabase.rawQuery(
+            """
+            SELECT DISTINCT contexts.server_url
+            FROM tracking_samples AS samples
+            INNER JOIN access_contexts AS contexts
+                ON contexts.id = samples.access_context_id
+            WHERE samples.uploaded = 0
+            """.trimIndent(),
+            null
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val serverUrl = cursor.getString(0)
+                if (
+                    !ClientCompatibilityBlockStore.isBlocked(
+                        context = context,
+                        serverUrl = serverUrl,
+                        versionCode = client.versionCode
+                    )
+                ) {
+                    return true
+                }
+            }
+            false
+        }
+    } finally {
+        db.close()
+    }
 }
 
 internal fun decideTelemetryWorkerCompletion(
@@ -179,15 +201,18 @@ object TelemetryUploadScheduler {
             .build()
     }
 
-    fun enqueue(context: Context, triggeringServerUrl: String? = null) {
+    fun enqueue(context: Context) {
         TelemetryUploadStatusStore.write(context, TelemetryUploadStatusStore.WAITING)
 
+        val client = currentClientBuildIdentity()
         if (
-            triggeringServerUrl != null &&
-            shouldSuppressTelemetryUploadEnqueue(
+            ClientCompatibilityBlockStore.hasAnyBlockForVersion(
                 context = context.applicationContext,
-                triggeringServerUrl = triggeringServerUrl,
-                client = currentClientBuildIdentity()
+                versionCode = client.versionCode
+            ) &&
+            !hasUnblockedUploadablePendingServer(
+                context = context.applicationContext,
+                client = client
             )
         ) {
             return
