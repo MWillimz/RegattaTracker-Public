@@ -46,6 +46,11 @@ data class ServerMetadata(
             directDownloadRelease != null
 }
 
+internal fun hasServerOperatorMetadata(metadata: ServerMetadata?): Boolean =
+    metadata?.let {
+        it.operator != null || it.publicUrl != null || it.contactEmail != null
+    } == true
+
 internal fun buildServerMetadataUrl(server: String): String? {
     val trimmed = server.trim()
     if (trimmed.isBlank()) return null
