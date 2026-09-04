@@ -24,14 +24,12 @@ class ClientCompatibilityStatusTest {
     @Before
     fun setUp() {
         context = RuntimeEnvironment.getApplication()
-        context.deleteDatabase(DB_NAME)
         clearCompatibilityPrefs()
     }
 
     @After
     fun tearDown() {
         clearCompatibilityPrefs()
-        context.deleteDatabase(DB_NAME)
     }
 
     @Test
@@ -198,33 +196,42 @@ class ClientCompatibilityStatusTest {
     }
 
     @Test
-    fun enqueueEligibility_suppressesOnlyWhenEveryPendingServerIsBlocked() {
-        val helper = TrackingDbHelper(context)
-        val blockedContextId = helper.getOrCreateAccessContext(
-            serverUrl = "https://blocked.example.org",
-            accessIdentifier = "Event A",
-            accessSecret = "secret-a"
-        ) ?: error("blocked context missing")
-        val openContextId = helper.getOrCreateAccessContext(
-            serverUrl = "https://open.example.org",
-            accessIdentifier = "Event B",
-            accessSecret = "secret-b"
-        ) ?: error("open context missing")
+    fun automaticEnqueueSuppression_isServerAndVersionSpecific() {
         val client = ClientBuildIdentity(2322, "release")
-
-        insertSample(helper, sequenceId = 1L, accessContextId = blockedContextId)
         ClientCompatibilityBlockStore.markBlocked(
             context = context,
             serverUrl = "https://blocked.example.org",
             versionCode = client.versionCode
         )
 
-        assertFalse(hasUnblockedUploadablePendingServer(context, client))
-
-        insertSample(helper, sequenceId = 2L, accessContextId = openContextId)
-
-        assertTrue(hasUnblockedUploadablePendingServer(context, client))
-        helper.close()
+        assertTrue(
+            shouldSuppressTelemetryUploadEnqueue(
+                context = context,
+                serverUrl = "https://blocked.example.org/ingest/",
+                client = client
+            )
+        )
+        assertFalse(
+            shouldSuppressTelemetryUploadEnqueue(
+                context = context,
+                serverUrl = "https://open.example.org",
+                client = client
+            )
+        )
+        assertFalse(
+            shouldSuppressTelemetryUploadEnqueue(
+                context = context,
+                serverUrl = "",
+                client = client
+            )
+        )
+        assertFalse(
+            shouldSuppressTelemetryUploadEnqueue(
+                context = context,
+                serverUrl = "https://blocked.example.org",
+                client = ClientBuildIdentity(2450, "newer-release")
+            )
+        )
     }
 
     @Test
@@ -310,35 +317,6 @@ class ClientCompatibilityStatusTest {
         }
     }
 
-    private fun insertSample(
-        helper: TrackingDbHelper,
-        sequenceId: Long,
-        accessContextId: Long?
-    ): Long {
-        return helper.insertSample(
-            sequenceId = sequenceId,
-            timestamp = "2026-09-04T20:00:00",
-            boatName = "Test Boat",
-            captainName = "Tester",
-            hullColor = "white",
-            sailNumber = "GER 1",
-            yardstick = 100.0,
-            boatType = "Test",
-            lat = 53.5,
-            lon = 10.0,
-            accuracy = 5f,
-            cog = 0f,
-            sog = 0f,
-            accelX = 0f,
-            accelY = 0f,
-            accelZ = 0f,
-            gyroX = 0f,
-            gyroY = 0f,
-            gyroZ = 0f,
-            accessContextId = accessContextId
-        )
-    }
-
     private fun clearCompatibilityPrefs() {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
@@ -348,6 +326,5 @@ class ClientCompatibilityStatusTest {
 
     private companion object {
         const val PREFS_NAME = "regatta_local_status"
-        const val DB_NAME = "regatta_tracking.db"
     }
 }
