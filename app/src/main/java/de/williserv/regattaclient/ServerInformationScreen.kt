@@ -407,7 +407,7 @@ private fun ConnectedServerCard(
                 }
             }
 
-            if (metadataLoaded && metadata == null) {
+            if (metadataLoaded && !hasServerOperatorMetadata(metadata)) {
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
                     text = stringResource(R.string.server_operator_unavailable),
