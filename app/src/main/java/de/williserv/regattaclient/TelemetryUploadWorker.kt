@@ -109,6 +109,9 @@ internal fun getTelemetryUploadPage(
             samples.gyro_x,
             samples.gyro_y,
             samples.gyro_z,
+            samples.battery_percent,
+            samples.battery_charging,
+            samples.tracking_profile,
             contexts.id,
             contexts.server_url,
             contexts.access_identifier,
@@ -127,12 +130,12 @@ internal fun getTelemetryUploadPage(
     ).use { cursor ->
         while (cursor.moveToNext()) {
             val accessContext = AccessContext(
-                id = cursor.getLong(20),
-                serverUrl = cursor.getString(21),
-                accessIdentifier = cursor.getString(22),
-                accessSecret = cursor.getString(23),
-                createdAt = cursor.getLong(24),
-                lastUsedAt = cursor.getLong(25)
+                id = cursor.getLong(23),
+                serverUrl = cursor.getString(24),
+                accessIdentifier = cursor.getString(25),
+                accessSecret = cursor.getString(26),
+                createdAt = cursor.getLong(27),
+                lastUsedAt = cursor.getLong(28)
             )
 
             result += PendingTrackingSample(
@@ -156,7 +159,10 @@ internal fun getTelemetryUploadPage(
                 accelZ = cursor.getFloat(16),
                 gyroX = cursor.getFloat(17),
                 gyroY = cursor.getFloat(18),
-                gyroZ = cursor.getFloat(19)
+                gyroZ = cursor.getFloat(19),
+                batteryPercent = if (cursor.isNull(20)) null else cursor.getInt(20),
+                batteryCharging = if (cursor.isNull(21)) null else cursor.getInt(21) != 0,
+                trackingProfile = if (cursor.isNull(22)) null else cursor.getString(22)
             )
         }
     }
@@ -223,6 +229,9 @@ internal fun buildTelemetryUploadPayload(
     put("gyro_x", sample.gyroX)
     put("gyro_y", sample.gyroY)
     put("gyro_z", sample.gyroZ)
+    sample.batteryPercent?.let { put("battery_percent", it) }
+    sample.batteryCharging?.let { put("battery_charging", it) }
+    sample.trackingProfile?.let { put("tracking_profile", it) }
 }
 
 internal object TelemetryUploadStatusStore {
