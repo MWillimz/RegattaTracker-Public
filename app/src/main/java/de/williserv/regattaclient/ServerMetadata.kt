@@ -25,13 +25,13 @@ data class ServerMetadata(
     val operator: String?,
     val publicUrl: String?,
     val contactEmail: String?,
-    val serverBuildId: String?,
-    val serverBuildNumber: Int?,
-    val serverBuildType: String?,
-    val recommendedClientVersionCode: Int?,
-    val minClientVersionCode: Int?,
-    val productionRelease: ProductionReleaseMetadata?,
-    val directDownloadRelease: DirectDownloadReleaseMetadata?
+    val serverBuildId: String? = null,
+    val serverBuildNumber: Int? = null,
+    val serverBuildType: String? = null,
+    val recommendedClientVersionCode: Int? = null,
+    val minClientVersionCode: Int? = null,
+    val productionRelease: ProductionReleaseMetadata? = null,
+    val directDownloadRelease: DirectDownloadReleaseMetadata? = null
 ) {
     fun hasAnyValue(): Boolean =
         operator != null ||
