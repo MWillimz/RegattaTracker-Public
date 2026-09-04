@@ -18,6 +18,7 @@ import java.util.concurrent.TimeUnit
 internal enum class TelemetryUploadAttemptResult {
     SUCCESS,
     TEMPORARY_FAILURE,
+    CLIENT_UPDATE_REQUIRED,
     OTHER_FAILURE
 }
 
@@ -35,6 +36,17 @@ internal fun classifyTelemetryUploadResponseCode(responseCode: Int): TelemetryUp
         }
         else -> TelemetryUploadAttemptResult.OTHER_FAILURE
     }
+}
+
+internal fun classifyTelemetryUploadResponse(
+    responseCode: Int,
+    errorBody: String,
+    client: ClientBuildIdentity
+): TelemetryUploadAttemptResult {
+    if (shouldTreatAsClientUpdateRequired(responseCode, errorBody, client)) {
+        return TelemetryUploadAttemptResult.CLIENT_UPDATE_REQUIRED
+    }
+    return classifyTelemetryUploadResponseCode(responseCode)
 }
 
 internal fun shouldEnqueueTelemetryUpload(uploadablePendingCount: Long): Boolean {
@@ -199,6 +211,7 @@ class TelemetryUploadWorker(
     private val localStatusPrefsName = "regatta_local_status"
 
     override fun doWork(): Result {
+        val client = currentClientBuildIdentity()
         val afterLocalId = inputData.getLong(TelemetryUploadScheduler.AFTER_LOCAL_ID_KEY, 0L)
         val pendingSamples = getTelemetryUploadPage(
             db = db,
@@ -223,7 +236,17 @@ class TelemetryUploadWorker(
         var retryNeeded = false
 
         for (sample in pendingSamples) {
-            when (uploadSampleBlocking(sample)) {
+            if (
+                ClientCompatibilityBlockStore.isBlocked(
+                    context = applicationContext,
+                    serverUrl = sample.accessContext.serverUrl,
+                    versionCode = client.versionCode
+                )
+            ) {
+                continue
+            }
+
+            when (uploadSampleBlocking(sample, client)) {
                 TelemetryUploadAttemptResult.SUCCESS -> {
                     db.markUploaded(sample.localId)
                 }
@@ -232,8 +255,9 @@ class TelemetryUploadWorker(
                     retryNeeded = true
                 }
 
+                TelemetryUploadAttemptResult.CLIENT_UPDATE_REQUIRED,
                 TelemetryUploadAttemptResult.OTHER_FAILURE -> {
-                    // Keep this row pending, but continue with later rows in this batch.
+                    // Keep this row pending. A known 426 also blocks later requests to this server/version.
                 }
             }
         }
@@ -279,13 +303,16 @@ class TelemetryUploadWorker(
         }
     }
 
-    private fun uploadSampleBlocking(sample: PendingTrackingSample): TelemetryUploadAttemptResult {
+    private fun uploadSampleBlocking(
+        sample: PendingTrackingSample,
+        client: ClientBuildIdentity
+    ): TelemetryUploadAttemptResult {
         val accessContext = sample.accessContext
 
         return try {
             val json = buildTelemetryUploadPayload(
                 sample = sample,
-                client = currentClientBuildIdentity()
+                client = client
             )
 
             val connection = URL(buildIngestUrl(accessContext)).openConnection() as HttpURLConnection
@@ -306,23 +333,49 @@ class TelemetryUploadWorker(
             }
 
             val responseCode = connection.responseCode
-            val result = classifyTelemetryUploadResponseCode(responseCode)
-
-            if (result == TelemetryUploadAttemptResult.SUCCESS) {
-                publishDebugError("")
+            val errorBody = if (responseCode in 200..299) {
+                ""
             } else {
-                val errorBody = connection.errorStream
+                connection.errorStream
                     ?.bufferedReader()
                     ?.use { it.readText() }
                     ?: ""
+            }
+            val result = classifyTelemetryUploadResponse(
+                responseCode = responseCode,
+                errorBody = errorBody,
+                client = client
+            )
 
-                publishDebugError(
-                    applicationContext.getString(
-                        R.string.upload_error_code,
-                        responseCode,
-                        errorBody.take(200)
+            when (result) {
+                TelemetryUploadAttemptResult.SUCCESS -> {
+                    publishDebugError("")
+                }
+
+                TelemetryUploadAttemptResult.CLIENT_UPDATE_REQUIRED -> {
+                    ClientCompatibilityBlockStore.markBlocked(
+                        context = applicationContext,
+                        serverUrl = accessContext.serverUrl,
+                        versionCode = client.versionCode
                     )
-                )
+                    publishDebugError(
+                        applicationContext.getString(
+                            R.string.upload_error_code,
+                            responseCode,
+                            applicationContext.getString(R.string.client_update_required)
+                        )
+                    )
+                }
+
+                else -> {
+                    publishDebugError(
+                        applicationContext.getString(
+                            R.string.upload_error_code,
+                            responseCode,
+                            errorBody.take(200)
+                        )
+                    )
+                }
             }
 
             connection.disconnect()
