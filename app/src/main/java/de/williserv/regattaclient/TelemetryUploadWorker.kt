@@ -53,6 +53,19 @@ internal fun shouldEnqueueTelemetryUpload(uploadablePendingCount: Long): Boolean
     return uploadablePendingCount > 0L
 }
 
+internal fun shouldSuppressTelemetryUploadEnqueue(
+    context: Context,
+    triggeringServerUrl: String,
+    client: ClientBuildIdentity
+): Boolean {
+    if (triggeringServerUrl.isBlank()) return false
+    return ClientCompatibilityBlockStore.isBlocked(
+        context = context,
+        serverUrl = triggeringServerUrl,
+        versionCode = client.versionCode
+    )
+}
+
 internal fun decideTelemetryWorkerCompletion(
     retryNeeded: Boolean,
     hasLaterPendingSamples: Boolean
@@ -166,8 +179,20 @@ object TelemetryUploadScheduler {
             .build()
     }
 
-    fun enqueue(context: Context) {
+    fun enqueue(context: Context, triggeringServerUrl: String? = null) {
         TelemetryUploadStatusStore.write(context, TelemetryUploadStatusStore.WAITING)
+
+        if (
+            triggeringServerUrl != null &&
+            shouldSuppressTelemetryUploadEnqueue(
+                context = context.applicationContext,
+                triggeringServerUrl = triggeringServerUrl,
+                client = currentClientBuildIdentity()
+            )
+        ) {
+            return
+        }
+
         WorkManager.getInstance(context.applicationContext)
             .enqueueUniqueWork(
                 UNIQUE_WORK_NAME,
