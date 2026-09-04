@@ -27,7 +27,10 @@ data class PendingTrackingSample(
     val accelZ: Float,
     val gyroX: Float,
     val gyroY: Float,
-    val gyroZ: Float
+    val gyroZ: Float,
+    val batteryPercent: Int?,
+    val batteryCharging: Boolean?,
+    val trackingProfile: String?
 )
 
 data class AccessContext(
@@ -75,7 +78,7 @@ internal fun normalizeAccessContextKey(
 }
 
 class TrackingDbHelper(context: Context) :
-    SQLiteOpenHelper(context, "regatta_tracking.db", null, 4) {
+    SQLiteOpenHelper(context, "regatta_tracking.db", null, 5) {
 
     override fun onCreate(db: SQLiteDatabase) {
         createAccessContextsTable(db)
@@ -85,6 +88,9 @@ class TrackingDbHelper(context: Context) :
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 4 && newVersion >= 4) {
             migrateToVersion4(db)
+        }
+        if (oldVersion < 5 && newVersion >= 5) {
+            migrateToVersion5(db)
         }
     }
 
@@ -207,6 +213,9 @@ class TrackingDbHelper(context: Context) :
                 samples.gyro_x,
                 samples.gyro_y,
                 samples.gyro_z,
+                samples.battery_percent,
+                samples.battery_charging,
+                samples.tracking_profile,
                 contexts.id,
                 contexts.server_url,
                 contexts.access_identifier,
@@ -224,12 +233,12 @@ class TrackingDbHelper(context: Context) :
         ).use { cursor ->
             while (cursor.moveToNext()) {
                 val accessContext = AccessContext(
-                    id = cursor.getLong(20),
-                    serverUrl = cursor.getString(21),
-                    accessIdentifier = cursor.getString(22),
-                    accessSecret = cursor.getString(23),
-                    createdAt = cursor.getLong(24),
-                    lastUsedAt = cursor.getLong(25)
+                    id = cursor.getLong(23),
+                    serverUrl = cursor.getString(24),
+                    accessIdentifier = cursor.getString(25),
+                    accessSecret = cursor.getString(26),
+                    createdAt = cursor.getLong(27),
+                    lastUsedAt = cursor.getLong(28)
                 )
 
                 result.add(
@@ -254,7 +263,10 @@ class TrackingDbHelper(context: Context) :
                         accelZ = cursor.getFloat(16),
                         gyroX = cursor.getFloat(17),
                         gyroY = cursor.getFloat(18),
-                        gyroZ = cursor.getFloat(19)
+                        gyroZ = cursor.getFloat(19),
+                        batteryPercent = if (cursor.isNull(20)) null else cursor.getInt(20),
+                        batteryCharging = if (cursor.isNull(21)) null else cursor.getInt(21) != 0,
+                        trackingProfile = if (cursor.isNull(22)) null else cursor.getString(22)
                     )
                 )
             }
@@ -283,6 +295,9 @@ class TrackingDbHelper(context: Context) :
         gyroX: Float,
         gyroY: Float,
         gyroZ: Float,
+        batteryPercent: Int? = null,
+        batteryCharging: Boolean? = null,
+        trackingProfile: String? = null,
         accessContextId: Long? = null
     ): Long {
         val values = ContentValues().apply {
@@ -305,6 +320,10 @@ class TrackingDbHelper(context: Context) :
             put("gyro_x", gyroX)
             put("gyro_y", gyroY)
             put("gyro_z", gyroZ)
+
+            if (batteryPercent != null) put("battery_percent", batteryPercent) else putNull("battery_percent")
+            if (batteryCharging != null) put("battery_charging", if (batteryCharging) 1 else 0) else putNull("battery_charging")
+            if (trackingProfile != null) put("tracking_profile", trackingProfile) else putNull("tracking_profile")
 
             if (accessContextId != null) {
                 put("access_context_id", accessContextId)
@@ -461,6 +480,23 @@ class TrackingDbHelper(context: Context) :
         }
     }
 
+    private fun migrateToVersion5(db: SQLiteDatabase) {
+        if (!tableExists(db, "tracking_samples")) {
+            createTrackingSamplesTable(db)
+            return
+        }
+
+        if (!columnExists(db, "tracking_samples", "battery_percent")) {
+            db.execSQL("ALTER TABLE tracking_samples ADD COLUMN battery_percent INTEGER")
+        }
+        if (!columnExists(db, "tracking_samples", "battery_charging")) {
+            db.execSQL("ALTER TABLE tracking_samples ADD COLUMN battery_charging INTEGER")
+        }
+        if (!columnExists(db, "tracking_samples", "tracking_profile")) {
+            db.execSQL("ALTER TABLE tracking_samples ADD COLUMN tracking_profile TEXT")
+        }
+    }
+
     private fun createAccessContextsTable(db: SQLiteDatabase) {
         db.execSQL(
             """
@@ -502,7 +538,10 @@ class TrackingDbHelper(context: Context) :
                 gyro_y REAL NOT NULL,
                 gyro_z REAL NOT NULL,
                 uploaded INTEGER NOT NULL DEFAULT 0,
-                access_context_id INTEGER
+                access_context_id INTEGER,
+                battery_percent INTEGER,
+                battery_charging INTEGER,
+                tracking_profile TEXT
             )
             """.trimIndent()
         )
