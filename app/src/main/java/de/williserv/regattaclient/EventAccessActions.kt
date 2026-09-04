@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.google.zxing.BarcodeFormat
@@ -46,6 +47,7 @@ fun EventAccessActions(
     }
 
     val context = LocalContext.current
+    val shareEventChooserTitle = stringResource(R.string.share_event)
     val eventPayload = remember(server, event, secret) {
         buildEventQrPayload(server, event, secret)
     }
@@ -60,7 +62,7 @@ fun EventAccessActions(
                     type = "text/plain"
                     putExtra(Intent.EXTRA_TEXT, eventPayload)
                 }
-                context.startActivity(Intent.createChooser(shareIntent, "Share Event"))
+                context.startActivity(Intent.createChooser(shareIntent, shareEventChooserTitle))
             },
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.primary,
@@ -68,7 +70,7 @@ fun EventAccessActions(
             ),
             modifier = Modifier.weight(1f)
         ) {
-            Text("Share Event")
+            Text(stringResource(R.string.share_event))
         }
 
         EventQrButton(
@@ -104,7 +106,7 @@ fun EventQrButton(
         ),
         modifier = modifier
     ) {
-        Text("Show QR Code")
+        Text(stringResource(R.string.show_qr_code))
     }
 
     if (showQrCode) {
@@ -135,7 +137,7 @@ private fun EventQrDialog(
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Text(
-                    text = "Event QR Code",
+                    text = stringResource(R.string.event_qr_code),
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -157,7 +159,7 @@ private fun EventQrDialog(
                         Box(modifier = Modifier.padding(12.dp)) {
                             Image(
                                 bitmap = qrBitmap,
-                                contentDescription = "Event access QR code",
+                                contentDescription = stringResource(R.string.event_access_qr_code),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .aspectRatio(1f)
@@ -166,7 +168,7 @@ private fun EventQrDialog(
                     }
                 } else {
                     Text(
-                        text = "QR code could not be generated.",
+                        text = stringResource(R.string.qr_generation_failed),
                         color = MaterialTheme.colorScheme.error
                     )
                 }
@@ -177,7 +179,7 @@ private fun EventQrDialog(
                     onClick = onDismiss,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Close")
+                    Text(stringResource(R.string.close))
                 }
             }
         }

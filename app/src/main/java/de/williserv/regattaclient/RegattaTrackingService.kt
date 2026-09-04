@@ -197,7 +197,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
         when (intent?.action) {
             ACTION_START -> {
                 readIntentExtras(intent)
-                startForeground(NOTIFICATION_ID, buildNotification("Tracking active"))
+                startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.tracking_active)))
                 startTrackingService()
                 updateNotification()
                 return START_STICKY
@@ -723,7 +723,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
         }
 
         if (!manualRecording && sampleAccessContextId == null) {
-            publishDebugError("Storage error: event access context is incomplete")
+            publishDebugError(getString(R.string.storage_error_access_context))
             return
         }
 
@@ -831,18 +831,18 @@ class RegattaTrackingService : Service(), SensorEventListener {
                 )
             }
 
-            val crossedAfterStart = StartLineMath.crossedWithTolerance(
-                previousSignedDistanceM = metrics.previousSignedDistanceM,
-                currentSignedDistanceM = metrics.signedDistanceM,
-                toleranceM = startLineToleranceM
-            )
-
             val isOnCourseSide = isBoatOnCourseSide(
                 line = line,
                 boatSignedDistance = metrics.signedDistanceM
             )
 
-            if (!isOcs && !raceStarted && (crossedAfterStart || isOnCourseSide)) {
+            if (
+                shouldMarkRaceStarted(
+                    isOcs = isOcs,
+                    raceStarted = raceStarted,
+                    isOnCourseSide = isOnCourseSide
+                )
+            ) {
                 raceStarted = true
                 savePersistedRaceState()
             }
@@ -856,7 +856,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
         line: StartLine,
         boatSignedDistance: Double
     ) {
-        val mark = firstCourseMark ?: return
+        val mark = resolveCourseSideReference(firstCourseMark, finishLine) ?: return
 
         val markSignedDistance = StartLineMath.signedDistanceToStartLineM(
             point = mark,
@@ -887,7 +887,10 @@ class RegattaTrackingService : Service(), SensorEventListener {
         line: StartLine,
         boatSignedDistance: Double
     ): Boolean {
-        val lastMark = courseMarks.lastOrNull()?.point ?: return false
+        val lastMark = resolveFinishApproachReference(
+            courseMarks.lastOrNull()?.point,
+            startLine
+        ) ?: return false
 
         val lastMarkSignedDistance = StartLineMath.signedDistanceToStartLineM(
             point = lastMark,
@@ -907,7 +910,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
         line: StartLine,
         boatSignedDistance: Double
     ): Boolean {
-        val mark = firstCourseMark ?: return false
+        val mark = resolveCourseSideReference(firstCourseMark, finishLine) ?: return false
 
         val markSignedDistance = StartLineMath.signedDistanceToStartLineM(
             point = mark,
@@ -1042,42 +1045,36 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
     private fun buildTargetText(): String {
         return when (getCurrentTarget()) {
-            "finished" -> "Next: finished"
-            "ocs_clear" -> "Next: return across start line"
-            "start_line" -> "Next: start line"
-            "finish_line" -> "Next: finish line"
+            "finished" -> getString(R.string.next_finished)
+            "ocs_clear" -> getString(R.string.next_return_start)
+            "start_line" -> getString(R.string.next_start_line)
+            "finish_line" -> getString(R.string.next_finish_line)
             "mark" -> {
                 val mark = courseMarks.getOrNull(passedMarks)
                 if (mark != null) {
-                    "Next: ${mark.order} ${mark.name}"
+                    getString(R.string.next_mark_value, mark.order, mark.name)
                 } else {
-                    "Next: mark"
+                    getString(R.string.next_mark)
                 }
             }
 
-            else -> "Next: --"
+            else -> getString(R.string.next_unknown)
         }
     }
 
     private fun buildProgressText(): String {
-        val totalMarks = courseMarks.size
-        val progressPercent = when {
-            raceFinished -> 100.0
-            totalMarks <= 0 -> 0.0
-            else -> (passedMarks.toDouble() / totalMarks.toDouble()) * 100.0
-        }
-
-        return if (totalMarks > 0) {
-            String.format(
-                Locale.US,
-                "Progress: %d/%d marks · %.0f%%",
-                passedMarks,
-                totalMarks,
-                progressPercent
-            )
-        } else {
-            "Progress: --"
-        }
+        return buildLocalProgressText(
+            totalMarks = courseMarks.size,
+            passedMarks = passedMarks,
+            raceStarted = raceStarted,
+            raceFinished = raceFinished,
+            markedFormatter = { passed, total, percent ->
+                getString(R.string.progress_value, passed, total, percent)
+            },
+            directFormatter = { percent ->
+                getString(R.string.progress_direct_value, percent)
+            }
+        )
     }
 
     private fun setCourseProgressFromUser(
@@ -1110,13 +1107,13 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
     private fun buildBoatStatusText(): String {
         val status = when {
-            raceFinished -> "finished"
-            isOcs -> "OCS"
-            raceStarted -> "racing"
-            else -> "not started"
+            raceFinished -> getString(R.string.boat_status_finished)
+            isOcs -> getString(R.string.boat_status_ocs)
+            raceStarted -> getString(R.string.boat_status_racing)
+            else -> getString(R.string.boat_status_not_started)
         }
 
-        return "Boat: $status"
+        return getString(R.string.boat_status_value, status)
     }
 
     private fun buildTargetDistanceSuffix(): String {
@@ -1131,15 +1128,15 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
     private fun publishLocalRaceStatus() {
         val distanceText = currentTargetDistanceM?.let {
-            String.format(Locale.US, "Distance: %.0f m", it)
-        } ?: "Distance: --"
+            getString(R.string.distance_meters, it)
+        } ?: getString(R.string.distance_unknown)
 
-        val ttlText = "TTL: --"
+        val ttlText = getString(R.string.ttl_unknown)
 
         val ocsText = if (isOcs) {
-            "OCS: yes"
+            getString(R.string.ocs_yes)
         } else {
-            "OCS: no"
+            getString(R.string.ocs_no)
         }
 
         val targetText = buildTargetText()
@@ -1154,6 +1151,10 @@ class RegattaTrackingService : Service(), SensorEventListener {
             .putString("target_text", targetText)
             .putString("progress_text", progressText)
             .putString("boat_status_text", boatStatusText)
+            .putBoolean("is_ocs", isOcs)
+            .putBoolean("race_started", raceStarted)
+            .putBoolean("race_finished", raceFinished)
+            .putInt("passed_marks", passedMarks)
             .apply()
 
         updateAutoStopAfterFinish()
@@ -1171,7 +1172,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
         val channel = NotificationChannel(
             NOTIFICATION_CHANNEL_ID,
-            "Regatta Tracking",
+            getString(R.string.tracking_notification_channel),
             NotificationManager.IMPORTANCE_LOW
         )
 
@@ -1203,14 +1204,14 @@ class RegattaTrackingService : Service(), SensorEventListener {
         )
 
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setContentTitle("Regatta Tracking active")
+            .setContentTitle(getString(R.string.tracking_notification_title))
             .setContentText(message)
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setOngoing(true)
             .setContentIntent(openAppPendingIntent)
             .addAction(
                 android.R.drawable.ic_menu_close_clear_cancel,
-                "Stop",
+                getString(R.string.stop),
                 stopPendingIntent
             )
             .build()
@@ -1220,23 +1221,22 @@ class RegattaTrackingService : Service(), SensorEventListener {
         val pending = db.countPendingSamples()
 
         val dtlText = lastDtlM?.let {
-            String.format(Locale.US, "DTL %.1f m", it)
-        } ?: "DTL --"
+            getString(R.string.dtl_meters, it)
+        } ?: getString(R.string.dtl_unknown)
 
         val targetText = buildTargetText()
-            .replace("Next: ", "")
 
-        val ocsText = if (isOcs) "OCS" else "clear"
+        val ocsText = if (isOcs) getString(R.string.ocs) else getString(R.string.clear_status)
 
         val message = when {
             manualRecording ->
-                "Manual · $targetText · $dtlText · $ocsText · pending: $pending"
+                getString(R.string.notification_manual, targetText, dtlText, ocsText, pending)
 
             isInsideRaceWindow() ->
-                "Race · $targetText · $dtlText · $ocsText · pending: $pending"
+                getString(R.string.notification_race, targetText, dtlText, ocsText, pending)
 
             else ->
-                "Waiting · $targetText · $dtlText · $ocsText · pending: $pending"
+                getString(R.string.notification_waiting, targetText, dtlText, ocsText, pending)
         }
 
         val notificationManager =

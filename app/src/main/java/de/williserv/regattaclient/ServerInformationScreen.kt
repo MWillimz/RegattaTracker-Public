@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -57,7 +58,7 @@ fun ServerInformationEntry(
         colors = primaryButtonColors(),
         modifier = modifier.fillMaxWidth()
     ) {
-        Text("Server information")
+        Text(stringResource(R.string.server_information))
     }
 
     if (showServerInformation) {
@@ -137,7 +138,7 @@ private fun ServerInformationScreen(
             .verticalScroll(rememberScrollState())
     ) {
         Text(
-            text = "Server information",
+            text = stringResource(R.string.server_information),
             fontSize = 26.sp,
             fontWeight = FontWeight.Bold
         )
@@ -150,6 +151,9 @@ private fun ServerInformationScreen(
         )
 
         Spacer(modifier = Modifier.height(16.dp))
+
+        val shareEventChooserTitle = stringResource(R.string.share_event)
+        val shareEventPageChooserTitle = stringResource(R.string.share_event_page)
 
         ConnectedServerCard(
             metadata = serverMetadata,
@@ -177,7 +181,7 @@ private fun ServerInformationScreen(
                 shareText(
                     context = context,
                     text = eventPayload,
-                    chooserTitle = "Share Event"
+                    chooserTitle = shareEventChooserTitle
                 )
             },
             onVisitEventPage = {
@@ -193,7 +197,7 @@ private fun ServerInformationScreen(
                 shareText(
                     context = context,
                     text = eventPageUrl,
-                    chooserTitle = "Share Event Page"
+                    chooserTitle = shareEventPageChooserTitle
                 )
             }
         )
@@ -209,7 +213,7 @@ private fun ServerInformationScreen(
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
                 Text(
-                    text = "Server Legal",
+                    text = stringResource(R.string.server_legal),
                     fontSize = 22.sp,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -225,7 +229,7 @@ private fun ServerInformationScreen(
                         colors = primaryButtonColors(),
                         modifier = Modifier.weight(0.5f)
                     ) {
-                        Text("Impressum")
+                        Text(stringResource(R.string.impressum))
                     }
 
                     Button(
@@ -233,7 +237,7 @@ private fun ServerInformationScreen(
                         colors = primaryButtonColors(),
                         modifier = Modifier.weight(0.5f)
                     ) {
-                        Text("Datenschutz")
+                        Text(stringResource(R.string.datenschutz))
                     }
                 }
             }
@@ -245,7 +249,7 @@ private fun ServerInformationScreen(
             onClick = onClose,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Back")
+            Text(stringResource(R.string.back))
         }
     }
 }
@@ -287,8 +291,8 @@ private fun ServerLegalDocumentView(
         Text(
             text = document?.title
                 ?.takeIf { it.isNotBlank() }
-                ?.let { "Server $it" }
-                ?: kind.fallbackTitle,
+                ?.let { stringResource(R.string.server_document_title, it) }
+                ?: stringResource(kind.fallbackTitleRes),
             fontSize = 26.sp,
             fontWeight = FontWeight.Bold
         )
@@ -307,14 +311,14 @@ private fun ServerLegalDocumentView(
 
             loaded -> {
                 Text(
-                    text = "Server legal information is unavailable.",
+                    text = stringResource(R.string.server_legal_unavailable),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
             else -> {
                 Text(
-                    text = "Loading server legal information…",
+                    text = stringResource(R.string.loading_server_legal),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -326,7 +330,7 @@ private fun ServerLegalDocumentView(
             onClick = onBack,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Back")
+            Text(stringResource(R.string.back))
         }
     }
 }
@@ -350,7 +354,7 @@ private fun ConnectedServerCard(
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
             Text(
-                text = "Connected Regatta Server",
+                text = stringResource(R.string.connected_regatta_server),
                 fontSize = 22.sp,
                 fontWeight = FontWeight.SemiBold
             )
@@ -358,7 +362,7 @@ private fun ConnectedServerCard(
             metadata?.operator?.let { operator ->
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = "Operator",
+                    text = stringResource(R.string.operator),
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -373,7 +377,7 @@ private fun ConnectedServerCard(
             metadata?.publicUrl?.let { publicUrl ->
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = "Website",
+                    text = stringResource(R.string.website),
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -394,7 +398,7 @@ private fun ConnectedServerCard(
             metadata?.contactEmail?.let { contactEmail ->
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = "Contact",
+                    text = stringResource(R.string.contact),
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -406,7 +410,7 @@ private fun ConnectedServerCard(
             if (metadataLoaded && metadata == null) {
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = "Server operator information is unavailable.",
+                    text = stringResource(R.string.server_operator_unavailable),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -414,7 +418,7 @@ private fun ConnectedServerCard(
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "Event access",
+                text = stringResource(R.string.event_access),
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -426,7 +430,7 @@ private fun ConnectedServerCard(
                     .fillMaxWidth()
                     .padding(top = 8.dp)
             ) {
-                Text("Share Event")
+                Text(stringResource(R.string.share_event))
             }
 
             Row(
@@ -440,7 +444,7 @@ private fun ConnectedServerCard(
                     colors = primaryButtonColors(),
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text("Visit Event Page")
+                    Text(stringResource(R.string.visit_event_page))
                 }
 
                 Button(
@@ -448,7 +452,7 @@ private fun ConnectedServerCard(
                     colors = primaryButtonColors(),
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text("Share Event Page")
+                    Text(stringResource(R.string.share_event_page))
                 }
             }
         }

@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
 
 @Composable
 fun LegalScreen(
@@ -33,7 +34,18 @@ fun LegalScreen(
     val context = LocalContext.current
     val showThirdPartyLicenses = remember { mutableStateOf(false) }
 
-    val thirdPartyLicenseText = remember(context) {
+    val thirdPartyLicenseUnavailable = stringResource(R.string.third_party_license_unavailable)
+    val zxingLicenseName = stringResource(R.string.zxing_license_name)
+    val zxingCopyright = stringResource(R.string.zxing_copyright)
+    val apacheLicenseName = stringResource(R.string.apache_license_name)
+
+    val thirdPartyLicenseText = remember(
+        context,
+        thirdPartyLicenseUnavailable,
+        zxingLicenseName,
+        zxingCopyright,
+        apacheLicenseName
+    ) {
         runCatching {
             val apacheLicense = context.assets
                 .open("licenses/zxing-core-apache-2.0.txt")
@@ -41,14 +53,14 @@ fun LegalScreen(
                 .use { it.readText() }
 
             buildString {
-                appendLine("ZXing Core 3.5.4")
-                appendLine("Copyright ZXing authors")
-                appendLine("Apache License 2.0")
+                appendLine(zxingLicenseName)
+                appendLine(zxingCopyright)
+                appendLine(apacheLicenseName)
                 appendLine()
                 append(apacheLicense.trim())
             }
         }.getOrElse {
-            "Third-party license text is unavailable."
+            thirdPartyLicenseUnavailable
         }
     }
 
@@ -58,7 +70,7 @@ fun LegalScreen(
             .verticalScroll(rememberScrollState())
     ) {
         Text(
-            text = "Settings / About / Legal",
+            text = stringResource(R.string.settings_about_legal),
             fontSize = 26.sp,
             fontWeight = FontWeight.Bold
         )
@@ -66,107 +78,43 @@ fun LegalScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         LegalCard(
-            title = "Legal Notice",
-            body = """
-                Provider:
-                Max Willimzik
-
-                Contact:
-                webmaster@raceoffice.williserv.de
-
-                Responsible for contents:
-                Max Willimzik
-            """.trimIndent()
+            title = stringResource(R.string.legal_notice),
+            body = stringResource(R.string.legal_notice_body)
         )
 
         Spacer(modifier = Modifier.height(14.dp))
 
         LegalCard(
-            title = "Privacy Policy",
-            body = """
-                This app processes location data, boat data, and technical sensor data to provide regatta tracking.
-
-                Data processed:
-                - GPS position
-                - Timestamp
-                - Boat data
-                - Sail number
-                - Captain/skipper name
-                - Course over ground (COG)
-                - Speed over ground (SOG)
-                - GPS accuracy
-                - Acceleration and gyroscope data
-                - Event identifier, server address and server credential
-
-                Purpose of processing:
-                - Live regatta tracking
-                - Start line check
-                - OCS detection
-                - Course progress
-                - Finish detection
-                - CSV export and later analysis
-
-                Storage and transmission:
-                Data is first stored locally on the device. During a race session, tracking data may be transmitted to the compatible regatta server configured for that race. The operator of that server is responsible for server-side processing and retention.
-
-                Android backup:
-                App-local configuration, credentials and tracking data are excluded from Android backup and device transfer.
-
-                Manual training:
-                Manually recorded training data is stored locally and is not automatically transmitted to the server.
-
-                QR scanning:
-                Camera frames used for QR scanning are processed locally and are not intentionally stored or uploaded by the app.
-
-                Consent:
-                Location data is only processed if the user consents to processing and grants the Android location permission.
-            """.trimIndent()
+            title = stringResource(R.string.privacy_policy),
+            body = stringResource(R.string.privacy_policy_body)
         )
 
         Spacer(modifier = Modifier.height(14.dp))
 
         LegalCard(
-            title = "Regatta Server",
-            body = """
-                The Regatta Server configured for an event is operated separately from this app.
-
-                Its operator and legal information are specific to that server and can be found under Server information on the Event screen.
-            """.trimIndent()
+            title = stringResource(R.string.regatta_server),
+            body = stringResource(R.string.regatta_server_body)
         )
 
         Spacer(modifier = Modifier.height(14.dp))
 
         LegalCard(
-            title = "License Notices",
-            body = """
-                Regatta Tracker source code:
-                GNU General Public License v3.0 or later.
-
-                QR decoding:
-                ZXing Core 3.5.4 — Apache License 2.0.
-
-                The full ZXing license text is bundled with the app and can be viewed below.
-
-                Map and geodata:
-                © OpenStreetMap contributors
-                © OpenSeaMap contributors
-
-                OpenStreetMap data is available under the Open Data Commons Open Database License (ODbL).
-            """.trimIndent()
+            title = stringResource(R.string.license_notices),
+            body = stringResource(R.string.license_notices_body)
         )
 
         TextButton(
             onClick = { showThirdPartyLicenses.value = true },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Third-party licenses")
+            Text(stringResource(R.string.third_party_licenses))
         }
 
         Spacer(modifier = Modifier.height(14.dp))
 
         LegalCard(
-            title = "App",
-            body = "Build: ${BuildConfig.APP_VERSION_NAME}"
+            title = stringResource(R.string.app),
+            body = stringResource(R.string.build_value, BuildConfig.APP_VERSION_NAME)
         )
 
         Spacer(modifier = Modifier.height(20.dp))
@@ -175,7 +123,7 @@ fun LegalScreen(
             onClick = onBack,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Back")
+            Text(stringResource(R.string.back))
         }
     }
 
@@ -183,7 +131,7 @@ fun LegalScreen(
         AlertDialog(
             onDismissRequest = { showThirdPartyLicenses.value = false },
             title = {
-                Text("Third-party licenses")
+                Text(stringResource(R.string.third_party_licenses))
             },
             text = {
                 Column(
@@ -200,7 +148,7 @@ fun LegalScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showThirdPartyLicenses.value = false }) {
-                    Text("Close")
+                    Text(stringResource(R.string.close))
                 }
             }
         )
