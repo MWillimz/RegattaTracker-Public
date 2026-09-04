@@ -1,6 +1,7 @@
 package de.williserv.regattaclient
 
 import android.content.Context
+import android.content.SharedPreferences
 import org.json.JSONObject
 
 internal const val CLIENT_VERSION_TOO_OLD_REASON = "client_version_too_old"
@@ -136,6 +137,19 @@ internal object ClientCompatibilityBlockStore {
             .getStringSet(BLOCKED_SERVER_VERSIONS_KEY, emptySet())
             .orEmpty()
             .any { it.startsWith(prefix) }
+    }
+
+    fun observeBlockChanges(context: Context, onChanged: () -> Unit): () -> Unit {
+        val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == BLOCKED_SERVER_VERSIONS_KEY) {
+                onChanged()
+            }
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        return {
+            prefs.unregisterOnSharedPreferenceChangeListener(listener)
+        }
     }
 
     private fun blockPrefix(serverUrl: String, versionCode: Int): String =
