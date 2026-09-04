@@ -17,6 +17,12 @@ internal fun resolveFinishApproachReference(
     startLine: StartLine?
 ): GeoPoint? = lastCourseMark ?: startLine?.let(::lineMidpoint)
 
+internal fun shouldMarkRaceStarted(
+    isOcs: Boolean,
+    raceStarted: Boolean,
+    isOnCourseSide: Boolean
+): Boolean = !isOcs && !raceStarted && isOnCourseSide
+
 internal fun buildLocalProgressText(
     totalMarks: Int,
     passedMarks: Int,

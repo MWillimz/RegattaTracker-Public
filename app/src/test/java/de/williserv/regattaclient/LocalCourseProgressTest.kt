@@ -2,6 +2,7 @@ package de.williserv.regattaclient
 
 import java.util.Locale
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -139,6 +140,53 @@ class LocalCourseProgressTest {
         )
 
         assertTrue(approachDistance * boatDistance < 0.0)
+    }
+
+    @Test
+    fun raceStartGuard_requiresCourseSide() {
+        assertTrue(
+            shouldMarkRaceStarted(
+                isOcs = false,
+                raceStarted = false,
+                isOnCourseSide = true
+            )
+        )
+        assertFalse(
+            shouldMarkRaceStarted(
+                isOcs = false,
+                raceStarted = false,
+                isOnCourseSide = false
+            )
+        )
+    }
+
+    @Test
+    fun raceStartGuard_doesNotStartOnOcsReturnCrossing() {
+        assertFalse(
+            shouldMarkRaceStarted(
+                isOcs = false,
+                raceStarted = false,
+                isOnCourseSide = false
+            )
+        )
+    }
+
+    @Test
+    fun raceStartGuard_doesNotRestartExistingRaceOrOcsState() {
+        assertFalse(
+            shouldMarkRaceStarted(
+                isOcs = true,
+                raceStarted = false,
+                isOnCourseSide = true
+            )
+        )
+        assertFalse(
+            shouldMarkRaceStarted(
+                isOcs = false,
+                raceStarted = true,
+                isOnCourseSide = true
+            )
+        )
     }
 
     @Test

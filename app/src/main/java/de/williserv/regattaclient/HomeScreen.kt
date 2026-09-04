@@ -156,7 +156,7 @@ fun HomeScreen(
                 !raceStatusCode.equals("finished", ignoreCase = true) &&
                 !raceStatusCode.equals("cancelled", ignoreCase = true)
 
-    val raceColor = raceStatusColor(raceStatusCode, inRace)
+    val raceColor = raceStatusColor(raceStatusCode, inRace, raceDataReady)
     val startPrefix = stringResource(R.string.start_prefix)
     val infoPrefix = stringResource(R.string.info_prefix)
     val distancePrefix = stringResource(R.string.distance_prefix)
@@ -267,7 +267,7 @@ fun HomeScreen(
         Spacer(modifier = Modifier.height(HomeGapMedium))
 
 
-        if (isRaceFinished(raceStatusCode)) {
+        if (isRaceFinished(raceStatusCode, raceDataReady)) {
             Button(
                 onClick = onResults,
                 enabled = raceDataReady,
@@ -302,7 +302,7 @@ fun HomeScreen(
         ActionRow(
             setupConfirmed = setupConfirmed,
             inRace = inRace,
-            raceFinished = isRaceFinished(raceStatusCode),
+            raceFinished = isRaceFinished(raceStatusCode, raceDataReady),
             onSetup = onBoatData,
             onRace = onRace
         )
@@ -954,9 +954,10 @@ fun DebugLine(
 }
 
 fun isRaceFinished(
-    raceStatusCode: String
+    raceStatusCode: String,
+    raceDataReady: Boolean = true
 ): Boolean {
-    return raceStatusCode.equals("finished", ignoreCase = true)
+    return raceDataReady && raceStatusCode.equals("finished", ignoreCase = true)
 }
 
 fun uploadStatusColor(
@@ -1009,10 +1010,14 @@ fun shortUploadStatus(
 }
 
 fun raceStatusColor(
-
     raceStatusCode: String,
-    inRace: Boolean
+    inRace: Boolean,
+    raceDataReady: Boolean = true
 ): Color {
+    if (!raceDataReady) {
+        return if (inRace) RegattaGreen else RegattaOrange
+    }
+
     return when {
         raceStatusCode.equals("postponed", ignoreCase = true) -> RegattaOrange
         raceStatusCode.equals("cancelled", ignoreCase = true) -> RegattaRed

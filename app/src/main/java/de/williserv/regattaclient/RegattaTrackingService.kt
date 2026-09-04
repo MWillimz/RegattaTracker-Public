@@ -831,18 +831,18 @@ class RegattaTrackingService : Service(), SensorEventListener {
                 )
             }
 
-            val crossedAfterStart = StartLineMath.crossedWithTolerance(
-                previousSignedDistanceM = metrics.previousSignedDistanceM,
-                currentSignedDistanceM = metrics.signedDistanceM,
-                toleranceM = startLineToleranceM
-            )
-
             val isOnCourseSide = isBoatOnCourseSide(
                 line = line,
                 boatSignedDistance = metrics.signedDistanceM
             )
 
-            if (!isOcs && !raceStarted && (crossedAfterStart || isOnCourseSide)) {
+            if (
+                shouldMarkRaceStarted(
+                    isOcs = isOcs,
+                    raceStarted = raceStarted,
+                    isOnCourseSide = isOnCourseSide
+                )
+            ) {
                 raceStarted = true
                 savePersistedRaceState()
             }
