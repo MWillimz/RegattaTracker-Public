@@ -1,6 +1,8 @@
 package de.williserv.regattaclient
 
 import android.content.Context
+import android.content.res.Configuration
+import java.util.Locale
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -223,6 +225,29 @@ class ClientCompatibilityStatusTest {
                 DEV_DEBUG_VERSION_CODE
             )
         )
+    }
+
+    @Test
+    fun clientUpdateRequiredMessage_isLocalizedInAllSupportedLocales() {
+        val app = RuntimeEnvironment.getApplication()
+        val expectedPrefixes = linkedMapOf(
+            "en" to "Update required:",
+            "de" to "Update erforderlich:",
+            "fr" to "Mise à jour requise",
+            "it" to "Aggiornamento richiesto:",
+            "es" to "Actualización necesaria:"
+        )
+
+        expectedPrefixes.forEach { (languageTag, expectedPrefix) ->
+            val configuration = Configuration(app.resources.configuration).apply {
+                setLocale(Locale.forLanguageTag(languageTag))
+            }
+            val resources = app.createConfigurationContext(configuration).resources
+            assertTrue(
+                "$languageTag update-required message is not localized",
+                resources.getString(R.string.client_update_required).startsWith(expectedPrefix)
+            )
+        }
     }
 
     private fun clearCompatibilityPrefs() {
