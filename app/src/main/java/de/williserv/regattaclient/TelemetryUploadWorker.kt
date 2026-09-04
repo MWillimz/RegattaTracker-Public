@@ -53,39 +53,17 @@ internal fun shouldEnqueueTelemetryUpload(uploadablePendingCount: Long): Boolean
     return uploadablePendingCount > 0L
 }
 
-internal fun hasUnblockedUploadablePendingServer(
+internal fun shouldSuppressTelemetryUploadEnqueue(
     context: Context,
+    serverUrl: String,
     client: ClientBuildIdentity
 ): Boolean {
-    val db = TrackingDbHelper(context.applicationContext)
-    return try {
-        db.readableDatabase.rawQuery(
-            """
-            SELECT DISTINCT contexts.server_url
-            FROM tracking_samples AS samples
-            INNER JOIN access_contexts AS contexts
-                ON contexts.id = samples.access_context_id
-            WHERE samples.uploaded = 0
-            """.trimIndent(),
-            null
-        ).use { cursor ->
-            while (cursor.moveToNext()) {
-                val serverUrl = cursor.getString(0)
-                if (
-                    !ClientCompatibilityBlockStore.isBlocked(
-                        context = context,
-                        serverUrl = serverUrl,
-                        versionCode = client.versionCode
-                    )
-                ) {
-                    return true
-                }
-            }
-            false
-        }
-    } finally {
-        db.close()
-    }
+    if (serverUrl.isBlank()) return false
+    return ClientCompatibilityBlockStore.isBlocked(
+        context = context,
+        serverUrl = serverUrl,
+        versionCode = client.versionCode
+    )
 }
 
 internal fun decideTelemetryWorkerCompletion(
@@ -183,6 +161,8 @@ internal object TelemetryUploadStatusStore {
 
 object TelemetryUploadScheduler {
     private const val UNIQUE_WORK_NAME = "regatta-telemetry-upload"
+    private const val RACE_SETUP_PREFS_NAME = "race_setup"
+    private const val RACE_SERVER_KEY = "race_server"
     internal const val AFTER_LOCAL_ID_KEY = "after_local_id"
 
     internal fun buildRequest(afterLocalId: Long = 0L): OneTimeWorkRequest {
@@ -204,18 +184,21 @@ object TelemetryUploadScheduler {
     fun enqueue(context: Context) {
         TelemetryUploadStatusStore.write(context, TelemetryUploadStatusStore.WAITING)
 
-        val client = currentClientBuildIdentity()
-        if (
-            ClientCompatibilityBlockStore.hasAnyBlockForVersion(
-                context = context.applicationContext,
-                versionCode = client.versionCode
-            ) &&
-            !hasUnblockedUploadablePendingServer(
-                context = context.applicationContext,
-                client = client
-            )
-        ) {
-            return
+        if (context is RegattaTrackingService) {
+            val appContext = context.applicationContext
+            val serverUrl = appContext
+                .getSharedPreferences(RACE_SETUP_PREFS_NAME, Context.MODE_PRIVATE)
+                .getString(RACE_SERVER_KEY, "")
+                .orEmpty()
+            if (
+                shouldSuppressTelemetryUploadEnqueue(
+                    context = appContext,
+                    serverUrl = serverUrl,
+                    client = currentClientBuildIdentity()
+                )
+            ) {
+                return
+            }
         }
 
         WorkManager.getInstance(context.applicationContext)
