@@ -20,6 +20,7 @@ internal fun parseClientCompatibilityError(body: String): ClientCompatibilityErr
         if (reason != CLIENT_VERSION_TOO_OLD_REASON && reason != CLIENT_VERSION_REQUIRED_REASON) {
             return null
         }
+        if (!detail.has("client_version_code")) return null
 
         val minimumVersionCode = strictOptionalInt(detail, "min_client_version_code")
             ?.takeIf { it > 0 }
@@ -61,7 +62,13 @@ internal fun shouldTreatAsClientUpdateRequired(
     client: ClientBuildIdentity
 ): Boolean {
     if (responseCode != 426 || client.isDevDebug) return false
-    return parseClientCompatibilityError(errorBody) != null
+
+    val compatibilityError = parseClientCompatibilityError(errorBody) ?: return false
+    if (compatibilityError.reason == CLIENT_VERSION_TOO_OLD_REASON) {
+        return compatibilityError.clientVersionCode == client.versionCode &&
+            client.versionCode < compatibilityError.minimumVersionCode
+    }
+    return true
 }
 
 internal object ClientCompatibilityBlockStore {
