@@ -72,7 +72,7 @@ class ClientCompatibilityStatusTest {
     }
 
     @Test
-    fun parseCompatibilityError_rejectsMalformedAndUnknownResponses() {
+    fun parseCompatibilityError_rejectsMalformedUnknownAndContradictoryResponses() {
         assertNull(parseClientCompatibilityError("not-json"))
         assertNull(parseClientCompatibilityError("{}"))
         assertNull(
@@ -83,6 +83,11 @@ class ClientCompatibilityStatusTest {
         assertNull(
             parseClientCompatibilityError(
                 """{"detail":{"reason":"client_version_too_old","min_client_version_code":2400,"client_version_code":null}}"""
+            )
+        )
+        assertNull(
+            parseClientCompatibilityError(
+                """{"detail":{"reason":"client_version_required","min_client_version_code":2400,"client_version_code":2322}}"""
             )
         )
         assertNull(
@@ -158,6 +163,43 @@ class ClientCompatibilityStatusTest {
         )
         assertTrue(ClientCompatibilityBlockStore.hasAnyBlockForVersion(context, 2322))
         assertFalse(ClientCompatibilityBlockStore.hasAnyBlockForVersion(context, 2450))
+    }
+
+    @Test
+    fun compatibilityBlock_allowsHourlyRecheckAndCanClearAfterRecovery() {
+        val blockedAt = 10_000L
+        ClientCompatibilityBlockStore.markBlocked(
+            context = context,
+            serverUrl = "https://raceoffice.example.org",
+            versionCode = 2322,
+            blockedAtMillis = blockedAt
+        )
+
+        assertTrue(
+            ClientCompatibilityBlockStore.isBlocked(
+                context = context,
+                serverUrl = "https://raceoffice.example.org",
+                versionCode = 2322,
+                nowMillis = blockedAt + CLIENT_COMPATIBILITY_RECHECK_INTERVAL_MILLIS - 1L
+            )
+        )
+        assertFalse(
+            ClientCompatibilityBlockStore.isBlocked(
+                context = context,
+                serverUrl = "https://raceoffice.example.org",
+                versionCode = 2322,
+                nowMillis = blockedAt + CLIENT_COMPATIBILITY_RECHECK_INTERVAL_MILLIS
+            )
+        )
+        assertTrue(ClientCompatibilityBlockStore.hasAnyBlockForVersion(context, 2322))
+
+        ClientCompatibilityBlockStore.clearBlocked(
+            context = context,
+            serverUrl = "https://raceoffice.example.org",
+            versionCode = 2322
+        )
+
+        assertFalse(ClientCompatibilityBlockStore.hasAnyBlockForVersion(context, 2322))
     }
 
     @Test
