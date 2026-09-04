@@ -28,9 +28,9 @@ data class PendingTrackingSample(
     val gyroX: Float,
     val gyroY: Float,
     val gyroZ: Float,
-    val batteryPercent: Int?,
-    val batteryCharging: Boolean?,
-    val trackingProfile: String?
+    val batteryPercent: Int? = null,
+    val batteryCharging: Boolean? = null,
+    val trackingProfile: String? = null
 )
 
 data class AccessContext(
@@ -79,6 +79,11 @@ internal fun normalizeAccessContextKey(
 
 class TrackingDbHelper(context: Context) :
     SQLiteOpenHelper(context, "regatta_tracking.db", null, 5) {
+
+    private val appContext = context.applicationContext
+    private var lastBatteryReadAtMs: Long? = null
+    private var lastEmittedTrackingProfile: String? = null
+    private var lastTrackingProfileAtMs: Long? = null
 
     override fun onCreate(db: SQLiteDatabase) {
         createAccessContextsTable(db)
@@ -300,6 +305,32 @@ class TrackingDbHelper(context: Context) :
         trackingProfile: String? = null,
         accessContextId: Long? = null
     ): Long {
+        val nowMs = System.currentTimeMillis()
+        val shouldReadBattery = batteryPercent == null &&
+            batteryCharging == null &&
+            SampleMetadataPolicy.shouldReadBattery(lastBatteryReadAtMs, nowMs)
+        val automaticBattery = if (shouldReadBattery) {
+            BatteryTelemetry.read(appContext)
+        } else {
+            null
+        }
+
+        val currentProfile = trackingProfile
+            ?: TrackingProfileConfig.read(appContext).persistedValue
+        val automaticProfile = if (
+            trackingProfile != null ||
+            SampleMetadataPolicy.shouldEmitTrackingProfile(
+                lastEmittedProfile = lastEmittedTrackingProfile,
+                lastEmittedAtMs = lastTrackingProfileAtMs,
+                currentProfile = currentProfile,
+                nowMs = nowMs
+            )
+        ) {
+            currentProfile
+        } else {
+            null
+        }
+
         val values = ContentValues().apply {
             put("sequence_id", sequenceId)
             put("timestamp", timestamp)
@@ -321,9 +352,11 @@ class TrackingDbHelper(context: Context) :
             put("gyro_y", gyroY)
             put("gyro_z", gyroZ)
 
-            if (batteryPercent != null) put("battery_percent", batteryPercent) else putNull("battery_percent")
-            if (batteryCharging != null) put("battery_charging", if (batteryCharging) 1 else 0) else putNull("battery_charging")
-            if (trackingProfile != null) put("tracking_profile", trackingProfile) else putNull("tracking_profile")
+            val effectiveBatteryPercent = batteryPercent ?: automaticBattery?.percent
+            val effectiveBatteryCharging = batteryCharging ?: automaticBattery?.charging
+            if (effectiveBatteryPercent != null) put("battery_percent", effectiveBatteryPercent) else putNull("battery_percent")
+            if (effectiveBatteryCharging != null) put("battery_charging", if (effectiveBatteryCharging) 1 else 0) else putNull("battery_charging")
+            if (automaticProfile != null) put("tracking_profile", automaticProfile) else putNull("tracking_profile")
 
             if (accessContextId != null) {
                 put("access_context_id", accessContextId)
@@ -332,7 +365,18 @@ class TrackingDbHelper(context: Context) :
             }
         }
 
-        return writableDatabase.insert("tracking_samples", null, values)
+        val insertedId = writableDatabase.insert("tracking_samples", null, values)
+        if (insertedId != -1L) {
+            if (shouldReadBattery) {
+                lastBatteryReadAtMs = nowMs
+            }
+            if (automaticProfile != null) {
+                lastEmittedTrackingProfile = automaticProfile
+                lastTrackingProfileAtMs = nowMs
+            }
+        }
+
+        return insertedId
     }
 
     fun countSamples(): Long {
