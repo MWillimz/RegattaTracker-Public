@@ -33,11 +33,22 @@ fun LegalScreen(
 ) {
     val context = LocalContext.current
     val showThirdPartyLicenses = remember { mutableStateOf(false) }
+    val clientUpdateRequired = ClientCompatibilityBlockStore.hasAnyBlockForVersion(
+        context = context,
+        versionCode = BuildConfig.VERSION_CODE
+    )
 
     val thirdPartyLicenseUnavailable = stringResource(R.string.third_party_license_unavailable)
     val zxingLicenseName = stringResource(R.string.zxing_license_name)
     val zxingCopyright = stringResource(R.string.zxing_copyright)
     val apacheLicenseName = stringResource(R.string.apache_license_name)
+    val buildText = stringResource(R.string.build_value, BuildConfig.APP_VERSION_NAME)
+    val clientUpdateRequiredText = stringResource(R.string.client_update_required)
+    val appInfoText = if (clientUpdateRequired) {
+        "$buildText\n\n$clientUpdateRequiredText"
+    } else {
+        buildText
+    }
 
     val thirdPartyLicenseText = remember(
         context,
@@ -114,7 +125,7 @@ fun LegalScreen(
 
         LegalCard(
             title = stringResource(R.string.app),
-            body = stringResource(R.string.build_value, BuildConfig.APP_VERSION_NAME)
+            body = appInfoText
         )
 
         Spacer(modifier = Modifier.height(20.dp))
