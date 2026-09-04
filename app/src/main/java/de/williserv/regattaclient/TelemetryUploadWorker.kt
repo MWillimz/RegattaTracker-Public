@@ -77,28 +77,6 @@ internal fun decideTelemetryWorkerCompletion(
     }
 }
 
-internal fun countUploadablePendingSamplesThrough(
-    db: TrackingDbHelper,
-    localId: Long
-): Long {
-    if (localId <= 0L) return 0L
-
-    db.readableDatabase.rawQuery(
-        """
-        SELECT COUNT(*)
-        FROM tracking_samples AS samples
-        INNER JOIN access_contexts AS contexts
-            ON contexts.id = samples.access_context_id
-        WHERE samples.uploaded = 0
-          AND samples.id <= ?
-        """.trimIndent(),
-        arrayOf(localId.toString())
-    ).use { cursor ->
-        cursor.moveToFirst()
-        return cursor.getLong(0)
-    }
-}
-
 internal fun getTelemetryUploadPage(
     db: TrackingDbHelper,
     afterLocalId: Long,
@@ -106,12 +84,118 @@ internal fun getTelemetryUploadPage(
 ): List<PendingTrackingSample> {
     require(limit > 0)
 
-    val rowsToSkip = countUploadablePendingSamplesThrough(db, afterLocalId)
-    if (rowsToSkip >= Int.MAX_VALUE - limit) return emptyList()
+    val result = mutableListOf<PendingTrackingSample>()
 
-    return db.getPendingSamples(limit = rowsToSkip.toInt() + limit)
-        .drop(rowsToSkip.toInt())
-        .take(limit)
+    db.readableDatabase.rawQuery(
+        """
+        SELECT
+            samples.id,
+            samples.sequence_id,
+            samples.timestamp,
+            samples.boat_name,
+            samples.captain_name,
+            samples.hull_color,
+            samples.sail_number,
+            samples.yardstick,
+            samples.boat_type,
+            samples.lat,
+            samples.lon,
+            samples.accuracy,
+            samples.cog,
+            samples.sog,
+            samples.accel_x,
+            samples.accel_y,
+            samples.accel_z,
+            samples.gyro_x,
+            samples.gyro_y,
+            samples.gyro_z,
+            contexts.id,
+            contexts.server_url,
+            contexts.access_identifier,
+            contexts.access_secret,
+            contexts.created_at,
+            contexts.last_used_at
+        FROM tracking_samples AS samples
+        INNER JOIN access_contexts AS contexts
+            ON contexts.id = samples.access_context_id
+        WHERE samples.uploaded = 0
+          AND samples.id > ?
+        ORDER BY samples.id ASC
+        LIMIT ?
+        """.trimIndent(),
+        arrayOf(afterLocalId.toString(), limit.toString())
+    ).use { cursor ->
+        while (cursor.moveToNext()) {
+            val accessContext = AccessContext(
+                id = cursor.getLong(20),
+                serverUrl = cursor.getString(21),
+                accessIdentifier = cursor.getString(22),
+                accessSecret = cursor.getString(23),
+                createdAt = cursor.getLong(24),
+                lastUsedAt = cursor.getLong(25)
+            )
+
+            result += PendingTrackingSample(
+                localId = cursor.getLong(0),
+                accessContext = accessContext,
+                sequenceId = cursor.getLong(1),
+                timestamp = cursor.getString(2),
+                boatName = cursor.getString(3),
+                captainName = cursor.getString(4),
+                hullColor = cursor.getString(5),
+                sailNumber = cursor.getString(6),
+                yardstick = cursor.getDouble(7),
+                boatType = cursor.getString(8),
+                lat = cursor.getDouble(9),
+                lon = cursor.getDouble(10),
+                accuracy = cursor.getFloat(11),
+                cog = cursor.getFloat(12),
+                sog = cursor.getFloat(13),
+                accelX = cursor.getFloat(14),
+                accelY = cursor.getFloat(15),
+                accelZ = cursor.getFloat(16),
+                gyroX = cursor.getFloat(17),
+                gyroY = cursor.getFloat(18),
+                gyroZ = cursor.getFloat(19)
+            )
+        }
+    }
+
+    return result
+}
+
+internal fun hasUnblockedUploadablePendingServerAfter(
+    db: TrackingDbHelper,
+    context: Context,
+    afterLocalId: Long,
+    client: ClientBuildIdentity
+): Boolean {
+    db.readableDatabase.rawQuery(
+        """
+        SELECT DISTINCT contexts.server_url
+        FROM tracking_samples AS samples
+        INNER JOIN access_contexts AS contexts
+            ON contexts.id = samples.access_context_id
+        WHERE samples.uploaded = 0
+          AND samples.id > ?
+        """.trimIndent(),
+        arrayOf(afterLocalId.toString())
+    ).use { cursor ->
+        while (cursor.moveToNext()) {
+            val serverUrl = cursor.getString(0)
+            if (
+                !ClientCompatibilityBlockStore.isBlocked(
+                    context = context,
+                    serverUrl = serverUrl,
+                    versionCode = client.versionCode
+                )
+            ) {
+                return true
+            }
+        }
+    }
+
+    return false
 }
 
 internal fun buildTelemetryUploadPayload(
@@ -297,8 +381,13 @@ class TelemetryUploadWorker(
 
         val remaining = db.countUploadablePendingSamples()
         val lastLocalId = pendingSamples.last().localId
-        val remainingThroughLast = countUploadablePendingSamplesThrough(db, lastLocalId)
-        val hasLaterPendingSamples = remaining > remainingThroughLast
+        val hasLaterPendingSamples = remaining > 0L &&
+            hasUnblockedUploadablePendingServerAfter(
+                db = db,
+                context = applicationContext,
+                afterLocalId = lastLocalId,
+                client = client
+            )
 
         return when (
             decideTelemetryWorkerCompletion(
