@@ -25,8 +25,9 @@ internal fun parseClientCompatibilityError(body: String): ClientCompatibilityErr
             ?: return null
         val clientVersionCode = strictOptionalInt(detail, "client_version_code")
 
-        if (reason == CLIENT_VERSION_TOO_OLD_REASON && clientVersionCode == null) {
-            return null
+        when (reason) {
+            CLIENT_VERSION_TOO_OLD_REASON -> if (clientVersionCode == null) return null
+            CLIENT_VERSION_REQUIRED_REASON -> if (clientVersionCode != null) return null
         }
 
         ClientCompatibilityError(
@@ -42,8 +43,14 @@ private fun strictOptionalInt(json: JSONObject, key: String): Int? {
 
     return when (val value = json.get(key)) {
         is Int -> value
-        is Long -> value.takeIf { it in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong() }?.toInt()
-        else -> null
+        is Long -> {
+            if (value !in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong()) {
+                throw IllegalArgumentException("$key is outside the supported integer range")
+            }
+            value.toInt()
+        }
+
+        else -> throw IllegalArgumentException("$key must be an integer or null")
     }
 }
 
@@ -55,11 +62,6 @@ internal fun shouldTreatAsClientUpdateRequired(
     if (responseCode != 426 || client.isDevDebug) return false
     return parseClientCompatibilityError(errorBody) != null
 }
-
-internal fun isClientUpdateRequiredForVersion(
-    blockedVersionCode: Int?,
-    currentVersionCode: Int
-): Boolean = blockedVersionCode == currentVersionCode
 
 internal object ClientCompatibilityBlockStore {
     private const val PREFS_NAME = "regatta_local_status"
