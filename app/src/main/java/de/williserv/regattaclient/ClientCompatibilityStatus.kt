@@ -2,9 +2,11 @@ package de.williserv.regattaclient
 
 import android.content.Context
 import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 internal const val CLIENT_VERSION_TOO_OLD_REASON = "client_version_too_old"
 internal const val CLIENT_VERSION_REQUIRED_REASON = "client_version_required"
+internal val CLIENT_COMPATIBILITY_RECHECK_INTERVAL_MILLIS: Long = TimeUnit.HOURS.toMillis(1)
 
 internal data class ClientCompatibilityError(
     val reason: String,
@@ -67,25 +69,56 @@ internal object ClientCompatibilityBlockStore {
     private const val PREFS_NAME = "regatta_local_status"
     private const val BLOCKED_SERVER_VERSIONS_KEY = "client_update_required_server_versions"
 
-    fun markBlocked(context: Context, serverUrl: String, versionCode: Int) {
+    fun markBlocked(
+        context: Context,
+        serverUrl: String,
+        versionCode: Int,
+        blockedAtMillis: Long = System.currentTimeMillis()
+    ) {
         if (versionCode == DEV_DEBUG_VERSION_CODE) return
 
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val entries = prefs.getStringSet(BLOCKED_SERVER_VERSIONS_KEY, emptySet())
             .orEmpty()
             .toMutableSet()
-        entries += blockToken(serverUrl, versionCode)
+        val prefix = blockPrefix(serverUrl, versionCode)
+        entries.removeAll { it.startsWith(prefix) }
+        entries += "$prefix$blockedAtMillis"
         prefs.edit().putStringSet(BLOCKED_SERVER_VERSIONS_KEY, entries).apply()
     }
 
-    fun isBlocked(context: Context, serverUrl: String, versionCode: Int): Boolean {
+    fun isBlocked(
+        context: Context,
+        serverUrl: String,
+        versionCode: Int,
+        nowMillis: Long = System.currentTimeMillis()
+    ): Boolean {
         if (versionCode == DEV_DEBUG_VERSION_CODE) return false
 
-        val entries = context.applicationContext
+        val prefix = blockPrefix(serverUrl, versionCode)
+        val latestBlockedAt = context.applicationContext
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getStringSet(BLOCKED_SERVER_VERSIONS_KEY, emptySet())
             .orEmpty()
-        return blockToken(serverUrl, versionCode) in entries
+            .asSequence()
+            .filter { it.startsWith(prefix) }
+            .mapNotNull { it.removePrefix(prefix).toLongOrNull() }
+            .maxOrNull()
+            ?: return false
+
+        if (nowMillis <= latestBlockedAt) return true
+        return nowMillis - latestBlockedAt < CLIENT_COMPATIBILITY_RECHECK_INTERVAL_MILLIS
+    }
+
+    fun clearBlocked(context: Context, serverUrl: String, versionCode: Int) {
+        val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val entries = prefs.getStringSet(BLOCKED_SERVER_VERSIONS_KEY, emptySet())
+            .orEmpty()
+            .toMutableSet()
+        val prefix = blockPrefix(serverUrl, versionCode)
+        if (entries.removeAll { it.startsWith(prefix) }) {
+            prefs.edit().putStringSet(BLOCKED_SERVER_VERSIONS_KEY, entries).apply()
+        }
     }
 
     fun hasAnyBlockForVersion(context: Context, versionCode: Int): Boolean {
@@ -99,8 +132,8 @@ internal object ClientCompatibilityBlockStore {
             .any { it.startsWith(prefix) }
     }
 
-    private fun blockToken(serverUrl: String, versionCode: Int): String =
-        "$versionCode\n${normalizeServerUrl(serverUrl)}"
+    private fun blockPrefix(serverUrl: String, versionCode: Int): String =
+        "$versionCode\n${normalizeServerUrl(serverUrl)}\n"
 
     private fun normalizeServerUrl(serverUrl: String): String {
         val trimmed = serverUrl.trim().trimEnd('/')
