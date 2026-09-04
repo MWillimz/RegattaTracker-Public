@@ -1,6 +1,10 @@
 package de.williserv.regattaclient
 
+import de.williserv.regattaclient.ui.theme.RegattaGreen
+import de.williserv.regattaclient.ui.theme.RegattaOrange
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HomeUploadStatusTest {
@@ -132,6 +136,32 @@ class HomeUploadStatusTest {
                 raceDataReady = true,
                 raceStartText = "Start: --",
                 inRace = false
+            )
+        )
+    }
+
+    @Test
+    fun unavailableRaceData_doesNotExposeStaleFinishedState() {
+        assertFalse(isRaceFinished("finished", raceDataReady = false))
+        assertTrue(isRaceFinished("finished", raceDataReady = true))
+        assertEquals(
+            RegattaOrange,
+            raceStatusColor(
+                raceStatusCode = "finished",
+                inRace = false,
+                raceDataReady = false
+            )
+        )
+    }
+
+    @Test
+    fun unavailableRaceData_keepsActiveRaceColorWhileTrackingContinues() {
+        assertEquals(
+            RegattaGreen,
+            raceStatusColor(
+                raceStatusCode = "finished",
+                inRace = true,
+                raceDataReady = false
             )
         )
     }
