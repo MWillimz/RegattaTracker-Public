@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tracking_profile_title">Profilo di tracciamento</string>
+    <string name="tracking_profile_normal">Normale</string>
+    <string name="tracking_profile_battery_saver">Risparmio batteria</string>
+    <string name="tracking_profile_description">Il risparmio batteria riduce la risoluzione del tracciamento lontano dagli elementi del percorso per prolungare l’autonomia.</string>
+</resources>

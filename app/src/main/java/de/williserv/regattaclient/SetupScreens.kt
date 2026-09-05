@@ -117,6 +117,10 @@ fun BoatDataScreen(
                 .padding(top = 8.dp)
         )
 
+        TrackingProfileSelector(
+            modifier = Modifier.padding(top = 20.dp)
+        )
+
         Button(
             onClick = onConfirmSetup,
             colors = primaryButtonColors(),
