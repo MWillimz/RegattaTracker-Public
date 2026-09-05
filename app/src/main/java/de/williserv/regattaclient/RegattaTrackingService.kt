@@ -366,6 +366,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
             return
         }
 
+        db.resetTrackingSessionMetadata()
         serviceRunning = true
 
         startLocationUpdates()
@@ -485,7 +486,9 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
         val nextIntervalMs = currentSamplingIntervalMs()
         if (nextIntervalMs != activeLocationIntervalMs) {
+            handler.removeCallbacks(sampleRunnable)
             requestLocationUpdatesForInterval(nextIntervalMs)
+            handler.postDelayed(sampleRunnable, nextIntervalMs)
         }
     }
 

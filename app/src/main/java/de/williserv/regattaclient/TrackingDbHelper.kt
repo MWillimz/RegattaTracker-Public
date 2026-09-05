@@ -85,6 +85,11 @@ class TrackingDbHelper(context: Context) :
     private var lastEmittedTrackingProfile: String? = null
     private var lastTrackingProfileAtMs: Long? = null
 
+    fun resetTrackingSessionMetadata() {
+        lastEmittedTrackingProfile = null
+        lastTrackingProfileAtMs = null
+    }
+
     override fun onCreate(db: SQLiteDatabase) {
         createAccessContextsTable(db)
         createTrackingSamplesTable(db)
