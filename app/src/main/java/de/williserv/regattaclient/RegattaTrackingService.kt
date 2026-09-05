@@ -361,12 +361,13 @@ class RegattaTrackingService : Service(), SensorEventListener {
     }
 
     private fun startTrackingService() {
+        db.resetTrackingSessionMetadata()
+
         if (serviceRunning) {
             reconfigureSamplingSchedule()
             return
         }
 
-        db.resetTrackingSessionMetadata()
         serviceRunning = true
 
         startLocationUpdates()
