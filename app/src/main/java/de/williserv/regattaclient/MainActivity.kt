@@ -127,6 +127,15 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private val raceLegalStatusText = mutableStateOf("")
     private var raceLegalFetchRunning = false
 
+    private val showEventUpdateRecommendedDialog = mutableStateOf(false)
+    private val showEventUpdateRequiredDialog = mutableStateOf(false)
+    private var eventCompatibilityAllowedAccess: EventAccessKey? = null
+    private var eventCompatibilityWarningAccess: EventAccessKey? = null
+    private var eventCompatibilityBlockedAccess: EventAccessKey? = null
+    private var eventCompatibilityCheckAccess: EventAccessKey? = null
+    private var eventCompatibilityCheckGeneration = -1L
+    private var eventCompatibilityGeneration = 0L
+
     private val currentTargetText = mutableStateOf("")
     private val progressText = mutableStateOf("")
     private val boatRaceStatusText = mutableStateOf("")
@@ -715,6 +724,23 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     )
                 }
 
+                if (showEventUpdateRecommendedDialog.value) {
+                    EventUpdateRecommendedDialog(
+                        onContinue = ::continueAfterRecommendedEventUpdate,
+                        onCancel = {
+                            showEventUpdateRecommendedDialog.value = false
+                        }
+                    )
+                }
+
+                if (showEventUpdateRequiredDialog.value) {
+                    EventUpdateRequiredDialog(
+                        onDismiss = {
+                            showEventUpdateRequiredDialog.value = false
+                        }
+                    )
+                }
+
             }
         }
 
@@ -1036,7 +1062,19 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
     }
 
+    private fun resetEventCompatibilityState() {
+        eventCompatibilityGeneration += 1L
+        eventCompatibilityAllowedAccess = null
+        eventCompatibilityWarningAccess = null
+        eventCompatibilityBlockedAccess = null
+        eventCompatibilityCheckAccess = null
+        eventCompatibilityCheckGeneration = -1L
+        showEventUpdateRecommendedDialog.value = false
+        showEventUpdateRequiredDialog.value = false
+    }
+
     private fun clearResolvedEventContextForAccessChange() {
+        resetEventCompatibilityState()
         resolvedEventName.value = ""
         resetRunSpecificClientState(clearLegal = true)
 
@@ -1075,6 +1113,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             return
         }
         stopRaceDataRefresh()
+        resetEventCompatibilityState()
         raceServer.value = ""
         raceEvent.value = ""
         raceSecret.value = ""
@@ -1325,7 +1364,115 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
     }
 
+    private fun currentEventAccessKey(): EventAccessKey? =
+        eventAccessKey(
+            server = raceServer.value,
+            event = raceEvent.value,
+            secret = raceSecret.value
+        )
+
+    private fun continueAfterRecommendedEventUpdate() {
+        showEventUpdateRecommendedDialog.value = false
+        val access = eventCompatibilityWarningAccess ?: return
+        if (access != currentEventAccessKey()) {
+            return
+        }
+
+        eventCompatibilityWarningAccess = null
+        eventCompatibilityAllowedAccess = access
+        fetchRaceLegalTextAfterCompatibility()
+    }
+
     private fun fetchRaceLegalText() {
+        val access = currentEventAccessKey() ?: return
+        val generation = eventCompatibilityGeneration
+
+        when {
+            eventCompatibilityAllowedAccess == access -> {
+                fetchRaceLegalTextAfterCompatibility()
+                return
+            }
+
+            eventCompatibilityBlockedAccess == access -> {
+                showEventUpdateRequiredDialog.value = true
+                return
+            }
+
+            eventCompatibilityWarningAccess == access -> {
+                showEventUpdateRecommendedDialog.value = true
+                return
+            }
+
+            eventCompatibilityCheckAccess == access &&
+                eventCompatibilityCheckGeneration == generation -> return
+        }
+
+        eventCompatibilityCheckAccess = access
+        eventCompatibilityCheckGeneration = generation
+
+        thread {
+            val metadata = fetchServerMetadata(
+                server = access.server,
+                eventName = access.event,
+                sharedSecret = access.secret
+            )
+            val status = metadata?.let { serverMetadata ->
+                evaluateClientVersionStatus(
+                    client = currentClientBuildIdentity(),
+                    serverMetadata = serverMetadata
+                )
+            }
+            val decision = eventCompatibilityDecision(status)
+
+            runOnUiThread {
+                if (
+                    !shouldApplyEventCompatibilityResult(
+                        requestedAccess = access,
+                        requestedGeneration = generation,
+                        currentAccess = currentEventAccessKey(),
+                        currentGeneration = eventCompatibilityGeneration
+                    )
+                ) {
+                    if (
+                        eventCompatibilityCheckAccess == access &&
+                        eventCompatibilityCheckGeneration == generation
+                    ) {
+                        eventCompatibilityCheckAccess = null
+                        eventCompatibilityCheckGeneration = -1L
+                    }
+                    return@runOnUiThread
+                }
+
+                eventCompatibilityCheckAccess = null
+                eventCompatibilityCheckGeneration = -1L
+
+                when (decision) {
+                    EventCompatibilityDecision.PROCEED -> {
+                        eventCompatibilityAllowedAccess = access
+                        eventCompatibilityWarningAccess = null
+                        eventCompatibilityBlockedAccess = null
+                        fetchRaceLegalTextAfterCompatibility()
+                    }
+
+                    EventCompatibilityDecision.WARN -> {
+                        eventCompatibilityAllowedAccess = null
+                        eventCompatibilityWarningAccess = access
+                        eventCompatibilityBlockedAccess = null
+                        showEventUpdateRecommendedDialog.value = true
+                    }
+
+                    EventCompatibilityDecision.BLOCK -> {
+                        eventCompatibilityAllowedAccess = null
+                        eventCompatibilityWarningAccess = null
+                        eventCompatibilityBlockedAccess = access
+                        showEventUpdateRequiredDialog.value = true
+                    }
+                }
+            }
+        }
+    }
+
+    private fun fetchRaceLegalTextAfterCompatibility() {
         if (raceLegalFetchRunning) return
         raceLegalFetchRunning = true
 
