@@ -1,8 +1,10 @@
 package de.williserv.regattaclient
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EventCompatibilityGateTest {
@@ -62,6 +64,37 @@ class EventCompatibilityGateTest {
 
         assertEquals(first, same)
         assertNotEquals(first, changed)
+    }
+
+    @Test
+    fun compatibilityResultAppliesOnlyToSameAccessAndGeneration() {
+        val access = requireNotNull(eventAccessKey("https://server", "event", "secret"))
+        val changedAccess = requireNotNull(eventAccessKey("https://other", "event", "secret"))
+
+        assertTrue(
+            shouldApplyEventCompatibilityResult(
+                requestedAccess = access,
+                requestedGeneration = 4,
+                currentAccess = access,
+                currentGeneration = 4
+            )
+        )
+        assertFalse(
+            shouldApplyEventCompatibilityResult(
+                requestedAccess = access,
+                requestedGeneration = 4,
+                currentAccess = changedAccess,
+                currentGeneration = 4
+            )
+        )
+        assertFalse(
+            shouldApplyEventCompatibilityResult(
+                requestedAccess = access,
+                requestedGeneration = 4,
+                currentAccess = access,
+                currentGeneration = 5
+            )
+        )
     }
 
     private fun status(policyState: ClientVersionPolicyState) = ClientVersionStatus(
