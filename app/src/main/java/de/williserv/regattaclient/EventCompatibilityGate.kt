@@ -41,3 +41,11 @@ internal fun eventCompatibilityDecision(
     ClientVersionPolicyState.DEV_DEBUG,
     null -> EventCompatibilityDecision.PROCEED
 }
+
+internal fun shouldApplyEventCompatibilityResult(
+    requestedAccess: EventAccessKey,
+    requestedGeneration: Long,
+    currentAccess: EventAccessKey?,
+    currentGeneration: Long
+): Boolean =
+    requestedGeneration == currentGeneration && requestedAccess == currentAccess
