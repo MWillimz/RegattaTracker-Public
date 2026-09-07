@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="event_update_recommended_title">Mise à jour recommandée</string>
+    <string name="event_update_recommended_message">Une version plus récente de l’application est recommandée pour ce RegattaServer.</string>
+    <string name="event_update_required_title">Mise à jour requise</string>
+    <string name="event_update_required_message">Cette version de l’application n’est plus prise en charge par ce RegattaServer. Veuillez mettre à jour l’application.</string>
+</resources>
