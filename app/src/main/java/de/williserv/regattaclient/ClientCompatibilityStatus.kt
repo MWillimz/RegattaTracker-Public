@@ -165,11 +165,11 @@ internal object ClientCompatibilityBlockStore {
             .orEmpty()
             .toSet()
 
-        prefs.edit()
+        val migrated = prefs.edit()
             .putStringSet(BLOCKED_SERVER_VERSIONS_KEY, legacyEntries)
             .commit()
 
-        if (legacyPrefs.contains(BLOCKED_SERVER_VERSIONS_KEY)) {
+        if (migrated && legacyPrefs.contains(BLOCKED_SERVER_VERSIONS_KEY)) {
             legacyPrefs.edit().remove(BLOCKED_SERVER_VERSIONS_KEY).apply()
         }
         return prefs
