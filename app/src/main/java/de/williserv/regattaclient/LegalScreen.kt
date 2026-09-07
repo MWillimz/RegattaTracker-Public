@@ -1,5 +1,6 @@
 package de.williserv.regattaclient
 
+import android.content.Context
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,14 +19,38 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.res.stringResource
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+private data class SavedRaceAccess(
+    val server: String,
+    val event: String,
+    val secret: String
+)
+
+private fun loadSavedRaceAccess(context: Context): SavedRaceAccess? {
+    val prefs = context.getSharedPreferences("race_setup", Context.MODE_PRIVATE)
+    val server = prefs.getString("race_server", "").orEmpty().trim()
+    val event = prefs.getString("race_event", "").orEmpty().trim()
+    val secret = prefs.getString("race_secret", "").orEmpty().trim()
+
+    return if (server.isBlank() || event.isBlank() || secret.isBlank()) {
+        null
+    } else {
+        SavedRaceAccess(server = server, event = event, secret = secret)
+    }
+}
 
 @Composable
 fun LegalScreen(
@@ -42,6 +67,7 @@ fun LegalScreen(
             )
         )
     }
+    var clientVersionStatus by remember { mutableStateOf<ClientVersionStatus?>(null) }
 
     DisposableEffect(context, BuildConfig.VERSION_CODE) {
         val refreshClientUpdateRequired = {
@@ -61,16 +87,42 @@ fun LegalScreen(
         }
     }
 
+    LaunchedEffect(context, BuildConfig.VERSION_CODE) {
+        val access = loadSavedRaceAccess(context)
+        clientVersionStatus = if (access == null) {
+            null
+        } else {
+            withContext(Dispatchers.IO) {
+                fetchServerMetadata(
+                    server = access.server,
+                    eventName = access.event,
+                    sharedSecret = access.secret
+                )?.let { metadata ->
+                    evaluateClientVersionStatus(
+                        client = currentClientBuildIdentity(),
+                        serverMetadata = metadata
+                    )
+                }
+            }
+        }
+    }
+
     val thirdPartyLicenseUnavailable = stringResource(R.string.third_party_license_unavailable)
     val zxingLicenseName = stringResource(R.string.zxing_license_name)
     val zxingCopyright = stringResource(R.string.zxing_copyright)
     val apacheLicenseName = stringResource(R.string.apache_license_name)
     val buildText = stringResource(R.string.build_value, BuildConfig.APP_VERSION_NAME)
     val clientUpdateRequiredText = stringResource(R.string.client_update_required)
-    val appInfoText = if (clientUpdateRequired.value) {
-        "$buildText\n\n$clientUpdateRequiredText"
-    } else {
-        buildText
+    val clientUpdateRecommendedText = stringResource(R.string.client_update_recommended)
+    val appInfoText = when (
+        clientVersionNotice(
+            persistedHardBlock = clientUpdateRequired.value,
+            status = clientVersionStatus
+        )
+    ) {
+        ClientVersionNotice.UPDATE_REQUIRED -> "$buildText\n\n$clientUpdateRequiredText"
+        ClientVersionNotice.UPDATE_RECOMMENDED -> "$buildText\n\n$clientUpdateRecommendedText"
+        ClientVersionNotice.NONE -> buildText
     }
 
     val thirdPartyLicenseText = remember(
