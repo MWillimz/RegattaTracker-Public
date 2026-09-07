@@ -1,0 +1,44 @@
+name: Issue 92 branch edit
+
+on:
+  push:
+    branches:
+      - feature/92-remove-dead-race-screen-callbacks
+
+permissions:
+  contents: write
+
+jobs:
+  edit-main-activity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/92-remove-dead-race-screen-callbacks
+      - name: Remove dead RaceScreen callback arguments
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/java/de/williserv/regattaclient/MainActivity.kt')
+          text = path.read_text()
+          blocks = [
+              '''                            onRaceServerChange = {\n                                raceServer.value = it\n                                clearResolvedEventContextForAccessChange()\n                            },\n''',
+              '''                            onRaceEventChange = {\n                                raceEvent.value = it\n                                clearResolvedEventContextForAccessChange()\n\n                                if (it.isBlank()) {\n                                    raceStatusText.value = getString(R.string.race_not_loaded)\n                                    raceStartText.value = getString(R.string.start_unknown)\n                                    raceStopText.value = getString(R.string.stop_unknown)\n                                    raceCourseText.value = getString(R.string.course_unknown)\n                                    raceStartLineText.value = getString(R.string.start_line_unknown)\n                                    raceFinishLineText.value = getString(R.string.finish_line_unknown)\n                                    raceMarksText.value = getString(R.string.marks_unknown)\n                                    raceInfoText.value = getString(R.string.info_unknown)\n                                    raceShortenedText.value = getString(R.string.course_shortened_no)\n                                }\n                            },\n''',
+              '''                            onRaceSecretChange = {\n                                raceSecret.value = it\n                                clearResolvedEventContextForAccessChange()\n                            },\n''',
+          ]
+          for block in blocks:
+              count = text.count(block)
+              if count != 1:
+                  raise SystemExit(f'expected callback block exactly once, found {count}')
+              text = text.replace(block, '', 1)
+          path.write_text(text)
+          PY
+      - name: Remove temporary workflow and commit scoped change
+        run: |
+          rm .github/workflows/issue-92-edit.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/de/williserv/regattaclient/MainActivity.kt .github/workflows/issue-92-edit.yml
+          git commit -m "Remove obsolete RaceScreen callback wiring (#92)"
+          git push origin HEAD:feature/92-remove-dead-race-screen-callbacks
