@@ -519,10 +519,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             raceShortened = rawRaceCourseShortened,
                             seriesDisplayMetadata = raceSeriesDisplayMetadata.value,
                             modifier = Modifier.padding(innerPadding),
-                            onRaceServerChange = {
-                                raceServer.value = it
-                                clearResolvedEventContextForAccessChange()
-                            },
                             onClearRaceSetupClick = {
                                 showClearRaceSetupDialog.value = true
                             },
@@ -532,26 +528,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                 } else {
                                     currentScreen.value = Screen.RACE_LEGAL
                                 }
-                            },
-                            onRaceEventChange = {
-                                raceEvent.value = it
-                                clearResolvedEventContextForAccessChange()
-
-                                if (it.isBlank()) {
-                                    raceStatusText.value = getString(R.string.race_not_loaded)
-                                    raceStartText.value = getString(R.string.start_unknown)
-                                    raceStopText.value = getString(R.string.stop_unknown)
-                                    raceCourseText.value = getString(R.string.course_unknown)
-                                    raceStartLineText.value = getString(R.string.start_line_unknown)
-                                    raceFinishLineText.value = getString(R.string.finish_line_unknown)
-                                    raceMarksText.value = getString(R.string.marks_unknown)
-                                    raceInfoText.value = getString(R.string.info_unknown)
-                                    raceShortenedText.value = getString(R.string.course_shortened_no)
-                                }
-                            },
-                            onRaceSecretChange = {
-                                raceSecret.value = it
-                                clearResolvedEventContextForAccessChange()
                             },
                             onRefreshRaceData = {
                                 fetchRaceDataForDisplay()
