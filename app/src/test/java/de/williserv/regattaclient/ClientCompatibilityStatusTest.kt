@@ -196,6 +196,71 @@ class ClientCompatibilityStatusTest {
     }
 
     @Test
+    fun raceAndEventStatePreferenceClears_doNotRemoveCompatibilityBlock() {
+        val blockedAt = 10_000L
+        ClientCompatibilityBlockStore.markBlocked(
+            context = context,
+            serverUrl = "https://raceoffice.example.org",
+            versionCode = 2322,
+            blockedAtMillis = blockedAt
+        )
+
+        val raceLocalPrefs = context.getSharedPreferences(LEGACY_PREFS_NAME, Context.MODE_PRIVATE)
+        raceLocalPrefs.edit().putString("debug_error_text", "old error").commit()
+        raceLocalPrefs.edit().clear().commit()
+
+        assertFalse(raceLocalPrefs.contains("debug_error_text"))
+        assertTrue(
+            ClientCompatibilityBlockStore.isBlocked(
+                context = context,
+                serverUrl = "https://raceoffice.example.org",
+                versionCode = 2322,
+                nowMillis = blockedAt + 1L
+            )
+        )
+        assertTrue(ClientCompatibilityBlockStore.hasAnyBlockForVersion(context, 2322))
+
+        raceLocalPrefs.edit().putString("display_locale_tag", "de").commit()
+        raceLocalPrefs.edit().clear().commit()
+
+        assertFalse(raceLocalPrefs.contains("display_locale_tag"))
+        assertTrue(
+            ClientCompatibilityBlockStore.isBlocked(
+                context = context,
+                serverUrl = "https://raceoffice.example.org",
+                versionCode = 2322,
+                nowMillis = blockedAt + 2L
+            )
+        )
+    }
+
+    @Test
+    fun legacyCompatibilityBlock_isMigratedToDedicatedPreferences() {
+        val blockedAt = 20_000L
+        val entry = "2322\nhttps://raceoffice.example.org\n$blockedAt"
+        val legacyPrefs = context.getSharedPreferences(LEGACY_PREFS_NAME, Context.MODE_PRIVATE)
+        legacyPrefs.edit()
+            .putStringSet(BLOCKED_SERVER_VERSIONS_KEY, setOf(entry))
+            .commit()
+
+        assertTrue(
+            ClientCompatibilityBlockStore.isBlocked(
+                context = context,
+                serverUrl = "https://raceoffice.example.org",
+                versionCode = 2322,
+                nowMillis = blockedAt + 1L
+            )
+        )
+        assertFalse(legacyPrefs.contains(BLOCKED_SERVER_VERSIONS_KEY))
+        assertTrue(
+            context.getSharedPreferences(COMPATIBILITY_PREFS_NAME, Context.MODE_PRIVATE)
+                .getStringSet(BLOCKED_SERVER_VERSIONS_KEY, emptySet())
+                .orEmpty()
+                .contains(entry)
+        )
+    }
+
+    @Test
     fun automaticEnqueueSuppression_isServerAndVersionSpecific() {
         val client = ClientBuildIdentity(2322, "release")
         ClientCompatibilityBlockStore.markBlocked(
@@ -318,13 +383,17 @@ class ClientCompatibilityStatusTest {
     }
 
     private fun clearCompatibilityPrefs() {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .clear()
-            .commit()
+        listOf(LEGACY_PREFS_NAME, COMPATIBILITY_PREFS_NAME).forEach { prefsName ->
+            context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+                .edit()
+                .clear()
+                .commit()
+        }
     }
 
     private companion object {
-        const val PREFS_NAME = "regatta_local_status"
+        const val LEGACY_PREFS_NAME = "regatta_local_status"
+        const val COMPATIBILITY_PREFS_NAME = "client_compatibility_status"
+        const val BLOCKED_SERVER_VERSIONS_KEY = "client_update_required_server_versions"
     }
 }
