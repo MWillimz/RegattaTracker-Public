@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="server_version_value">Server-Version: %1$s</string>
+</resources>
