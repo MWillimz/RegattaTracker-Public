@@ -1,8 +1,6 @@
 package de.williserv.regattaclient
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ClientVersionStatusTest {
@@ -16,18 +14,17 @@ class ClientVersionStatusTest {
     }
 
     @Test
-    fun devDebug_isNeverComparedAgainstReleaseVersions() {
+    fun devDebug_isNeverComparedAgainstReleaseThresholds() {
         val status = evaluate(
             installed = 42,
             recommended = 2450,
-            minimum = 2400,
-            production = 2450,
-            direct = 2535
+            minimum = 2400
         )
 
         assertEquals(ClientVersionPolicyState.DEV_DEBUG, status.policyState)
-        assertFalse(status.newerProductionAvailable)
-        assertFalse(status.newerDirectDownloadAvailable)
+        assertEquals(42, status.installedVersionCode)
+        assertEquals(2450, status.recommendedVersionCode)
+        assertEquals(2400, status.minimumVersionCode)
     }
 
     @Test
@@ -35,14 +32,10 @@ class ClientVersionStatusTest {
         val status = evaluate(
             installed = 2535,
             recommended = 2450,
-            minimum = null,
-            production = 2450,
-            direct = 2535
+            minimum = null
         )
 
         assertEquals(ClientVersionPolicyState.CURRENT, status.policyState)
-        assertFalse(status.newerProductionAvailable)
-        assertFalse(status.newerDirectDownloadAvailable)
     }
 
     @Test
@@ -50,14 +43,10 @@ class ClientVersionStatusTest {
         val status = evaluate(
             installed = 2322,
             recommended = 2450,
-            minimum = null,
-            production = 2450,
-            direct = 2535
+            minimum = null
         )
 
         assertEquals(ClientVersionPolicyState.UPDATE_RECOMMENDED, status.policyState)
-        assertTrue(status.newerProductionAvailable)
-        assertTrue(status.newerDirectDownloadAvailable)
     }
 
     @Test
@@ -65,57 +54,10 @@ class ClientVersionStatusTest {
         val status = evaluate(
             installed = 2322,
             recommended = 2450,
-            minimum = 2400,
-            production = 2450,
-            direct = 2535
+            minimum = 2400
         )
 
         assertEquals(ClientVersionPolicyState.UPDATE_REQUIRED, status.policyState)
-    }
-
-    @Test
-    fun equalRecommendedAndAboveMinimum_isCurrentWithNewerDirectRelease() {
-        val status = evaluate(
-            installed = 2450,
-            recommended = 2450,
-            minimum = 2400,
-            production = 2450,
-            direct = 2535
-        )
-
-        assertEquals(ClientVersionPolicyState.CURRENT, status.policyState)
-        assertFalse(status.newerProductionAvailable)
-        assertTrue(status.newerDirectDownloadAvailable)
-    }
-
-    @Test
-    fun directReleaseCanBeNewerWithoutChangingPolicy() {
-        val status = evaluate(
-            installed = 2500,
-            recommended = null,
-            minimum = null,
-            production = 2450,
-            direct = 2535
-        )
-
-        assertEquals(ClientVersionPolicyState.CURRENT, status.policyState)
-        assertFalse(status.newerProductionAvailable)
-        assertTrue(status.newerDirectDownloadAvailable)
-    }
-
-    @Test
-    fun availableReleasesDoNotCreatePolicyWithoutServerThreshold() {
-        val status = evaluate(
-            installed = 2322,
-            recommended = null,
-            minimum = null,
-            production = 2450,
-            direct = 2535
-        )
-
-        assertEquals(ClientVersionPolicyState.CURRENT, status.policyState)
-        assertTrue(status.newerProductionAvailable)
-        assertTrue(status.newerDirectDownloadAvailable)
     }
 
     @Test
@@ -123,9 +65,7 @@ class ClientVersionStatusTest {
         val status = evaluate(
             installed = 2400,
             recommended = null,
-            minimum = 2400,
-            production = null,
-            direct = null
+            minimum = 2400
         )
 
         assertEquals(ClientVersionPolicyState.CURRENT, status.policyState)
@@ -136,78 +76,42 @@ class ClientVersionStatusTest {
         val status = evaluate(
             installed = 2450,
             recommended = 2450,
-            minimum = null,
-            production = null,
-            direct = null
+            minimum = null
         )
 
         assertEquals(ClientVersionPolicyState.CURRENT, status.policyState)
     }
 
     @Test
-    fun missingReleaseMetadata_producesNoAvailabilityFlags() {
+    fun missingPolicyMetadata_staysCurrent() {
         val status = evaluate(
             installed = 2450,
             recommended = null,
-            minimum = null,
-            production = null,
-            direct = null
+            minimum = null
         )
 
         assertEquals(ClientVersionPolicyState.CURRENT, status.policyState)
-        assertFalse(status.newerProductionAvailable)
-        assertFalse(status.newerDirectDownloadAvailable)
+        assertEquals(2450, status.installedVersionCode)
+        assertEquals(null, status.recommendedVersionCode)
+        assertEquals(null, status.minimumVersionCode)
     }
 
     private fun evaluate(
         installed: Int,
         recommended: Int?,
-        minimum: Int?,
-        production: Int?,
-        direct: Int?
+        minimum: Int?
     ): ClientVersionStatus = evaluateClientVersionStatus(
         client = ClientBuildIdentity(
             versionCode = installed,
             buildId = "test-build-$installed"
         ),
-        serverMetadata = serverMetadata(
-            recommended = recommended,
-            minimum = minimum,
-            production = production,
-            direct = direct
+        serverMetadata = ServerMetadata(
+            operator = null,
+            publicUrl = null,
+            contactEmail = null,
+            serverBuildId = "server-build",
+            recommendedClientVersionCode = recommended,
+            minClientVersionCode = minimum
         )
-    )
-
-    private fun serverMetadata(
-        recommended: Int?,
-        minimum: Int?,
-        production: Int?,
-        direct: Int?
-    ): ServerMetadata = ServerMetadata(
-        operator = null,
-        publicUrl = null,
-        contactEmail = null,
-        serverBuildId = "server-build",
-        serverBuildNumber = 1000,
-        serverBuildType = "release",
-        recommendedClientVersionCode = recommended,
-        minClientVersionCode = minimum,
-        productionRelease = production?.let {
-            ProductionReleaseMetadata(
-                versionCode = it,
-                versionName = "production-$it",
-                sourceSha = "a".repeat(40),
-                recordedAt = null
-            )
-        },
-        directDownloadRelease = direct?.let {
-            DirectDownloadReleaseMetadata(
-                versionCode = it,
-                versionName = "staging-$it",
-                sourceSha = "b".repeat(40),
-                uploadedAt = null,
-                downloadUrl = "/static/downloads/regatta-app.apk"
-            )
-        }
     )
 }
