@@ -36,9 +36,7 @@ class PromotionUiHardeningTest {
             operator = null,
             publicUrl = null,
             contactEmail = null,
-            serverBuildId = "dev-debug",
-            serverBuildNumber = 42,
-            serverBuildType = "dev-debug"
+            serverBuildId = "dev-debug"
         )
 
         assertTrue(metadata.hasAnyValue())
