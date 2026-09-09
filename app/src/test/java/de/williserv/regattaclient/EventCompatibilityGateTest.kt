@@ -101,10 +101,6 @@ class EventCompatibilityGateTest {
         policyState = policyState,
         installedVersionCode = 100,
         recommendedVersionCode = null,
-        minimumVersionCode = null,
-        productionVersionCode = null,
-        directDownloadVersionCode = null,
-        newerProductionAvailable = false,
-        newerDirectDownloadAvailable = false
+        minimumVersionCode = null
     )
 }
