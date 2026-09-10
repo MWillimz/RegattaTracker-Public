@@ -415,6 +415,15 @@ private fun ConnectedServerCard(
                 )
             }
 
+            metadata?.serverBuildId?.let { serverBuildId ->
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = stringResource(R.string.server_version_value, serverBuildId),
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(

@@ -77,7 +77,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private val raceLegalHash = mutableStateOf("")
     private val raceLegalVersion = mutableStateOf("")
     private val raceLegalAcceptStatusText = mutableStateOf("")
-    private var raceLegalAcceptRunning = false
+    private val eventLegalFlowState = EventLegalFlowState()
 
     private val showClearRaceSetupDialog = mutableStateOf(false)
     private lateinit var db: TrackingDbHelper
@@ -125,7 +125,15 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private val raceLegalText = mutableStateOf("")
     private val raceLegalAccepted = mutableStateOf(false)
     private val raceLegalStatusText = mutableStateOf("")
-    private var raceLegalFetchRunning = false
+
+    private val showEventUpdateRecommendedDialog = mutableStateOf(false)
+    private val showEventUpdateRequiredDialog = mutableStateOf(false)
+    private var eventCompatibilityAllowedAccess: EventAccessKey? = null
+    private var eventCompatibilityWarningAccess: EventAccessKey? = null
+    private var eventCompatibilityBlockedAccess: EventAccessKey? = null
+    private var eventCompatibilityCheckAccess: EventAccessKey? = null
+    private var eventCompatibilityCheckGeneration = -1L
+    private var eventCompatibilityGeneration = 0L
 
     private val currentTargetText = mutableStateOf("")
     private val progressText = mutableStateOf("")
@@ -510,10 +518,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             raceShortened = rawRaceCourseShortened,
                             seriesDisplayMetadata = raceSeriesDisplayMetadata.value,
                             modifier = Modifier.padding(innerPadding),
-                            onRaceServerChange = {
-                                raceServer.value = it
-                                clearResolvedEventContextForAccessChange()
-                            },
                             onClearRaceSetupClick = {
                                 showClearRaceSetupDialog.value = true
                             },
@@ -523,26 +527,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                 } else {
                                     currentScreen.value = Screen.RACE_LEGAL
                                 }
-                            },
-                            onRaceEventChange = {
-                                raceEvent.value = it
-                                clearResolvedEventContextForAccessChange()
-
-                                if (it.isBlank()) {
-                                    raceStatusText.value = getString(R.string.race_not_loaded)
-                                    raceStartText.value = getString(R.string.start_unknown)
-                                    raceStopText.value = getString(R.string.stop_unknown)
-                                    raceCourseText.value = getString(R.string.course_unknown)
-                                    raceStartLineText.value = getString(R.string.start_line_unknown)
-                                    raceFinishLineText.value = getString(R.string.finish_line_unknown)
-                                    raceMarksText.value = getString(R.string.marks_unknown)
-                                    raceInfoText.value = getString(R.string.info_unknown)
-                                    raceShortenedText.value = getString(R.string.course_shortened_no)
-                                }
-                            },
-                            onRaceSecretChange = {
-                                raceSecret.value = it
-                                clearResolvedEventContextForAccessChange()
                             },
                             onRefreshRaceData = {
                                 fetchRaceDataForDisplay()
@@ -711,6 +695,23 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         },
                         onCancel = {
                             showClearRaceSetupDialog.value = false
+                        }
+                    )
+                }
+
+                if (showEventUpdateRecommendedDialog.value) {
+                    EventUpdateRecommendedDialog(
+                        onContinue = ::continueAfterRecommendedEventUpdate,
+                        onCancel = {
+                            showEventUpdateRecommendedDialog.value = false
+                        }
+                    )
+                }
+
+                if (showEventUpdateRequiredDialog.value) {
+                    EventUpdateRequiredDialog(
+                        onDismiss = {
+                            showEventUpdateRequiredDialog.value = false
                         }
                     )
                 }
@@ -985,6 +986,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         raceLegalStatusText.value = ""
         raceLegalAcceptStatusText.value = ""
         raceLegalResolvedEventName = ""
+        eventLegalFlowState.clearDisplayedDocument()
     }
 
     private fun resetRunSpecificClientState(clearLegal: Boolean) {
@@ -1036,7 +1038,20 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
     }
 
+    private fun resetEventCompatibilityState() {
+        eventCompatibilityGeneration += 1L
+        eventCompatibilityAllowedAccess = null
+        eventCompatibilityWarningAccess = null
+        eventCompatibilityBlockedAccess = null
+        eventCompatibilityCheckAccess = null
+        eventCompatibilityCheckGeneration = -1L
+        eventLegalFlowState.invalidate()
+        showEventUpdateRecommendedDialog.value = false
+        showEventUpdateRequiredDialog.value = false
+    }
+
     private fun clearResolvedEventContextForAccessChange() {
+        resetEventCompatibilityState()
         resolvedEventName.value = ""
         resetRunSpecificClientState(clearLegal = true)
 
@@ -1075,6 +1090,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             return
         }
         stopRaceDataRefresh()
+        resetEventCompatibilityState()
         raceServer.value = ""
         raceEvent.value = ""
         raceSecret.value = ""
@@ -1325,22 +1341,171 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
     }
 
+    private fun currentEventAccessKey(): EventAccessKey? =
+        eventAccessKey(
+            server = raceServer.value,
+            event = raceEvent.value,
+            secret = raceSecret.value
+        )
+
+    private fun currentEventCompatibilityContext(access: EventAccessKey): EventCompatibilityContext =
+        EventCompatibilityContext(
+            access = access,
+            generation = eventCompatibilityGeneration
+        )
+
+    private fun isCurrentAllowedLegalContext(context: EventCompatibilityContext): Boolean =
+        shouldApplyEventLegalResult(
+            requestedContext = context,
+            currentAccess = currentEventAccessKey(),
+            currentGeneration = eventCompatibilityGeneration,
+            allowedAccess = eventCompatibilityAllowedAccess
+        )
+
+    private fun isCurrentActionableLegalDocument(document: EventLegalDocumentContext): Boolean =
+        eventLegalFlowState.displayedDocument == document &&
+            canAcceptEventLegal(
+                displayedDocument = document,
+                currentAccess = currentEventAccessKey(),
+                currentGeneration = eventCompatibilityGeneration,
+                allowedAccess = eventCompatibilityAllowedAccess,
+                currentResolvedEventName = raceLegalResolvedEventName,
+                currentLegalHash = raceLegalHash.value
+            )
+
+    private fun baseServerUrlForAccess(access: EventAccessKey): String {
+        val server = access.server.trim()
+        return if (server.endsWith("/ingest")) {
+            server.removeSuffix("/ingest")
+        } else {
+            server.trimEnd('/')
+        }
+    }
+
+    private fun continueAfterRecommendedEventUpdate() {
+        showEventUpdateRecommendedDialog.value = false
+        val access = eventCompatibilityWarningAccess ?: return
+        if (access != currentEventAccessKey()) {
+            return
+        }
+
+        eventCompatibilityWarningAccess = null
+        eventCompatibilityAllowedAccess = access
+        fetchRaceLegalTextAfterCompatibility(currentEventCompatibilityContext(access))
+    }
+
     private fun fetchRaceLegalText() {
-        if (raceLegalFetchRunning) return
-        raceLegalFetchRunning = true
+        val access = currentEventAccessKey() ?: return
+        val generation = eventCompatibilityGeneration
+        val compatibilityContext = EventCompatibilityContext(
+            access = access,
+            generation = generation
+        )
+
+        when {
+            eventCompatibilityAllowedAccess == access -> {
+                fetchRaceLegalTextAfterCompatibility(compatibilityContext)
+                return
+            }
+
+            eventCompatibilityBlockedAccess == access -> {
+                showEventUpdateRequiredDialog.value = true
+                return
+            }
+
+            eventCompatibilityWarningAccess == access -> {
+                showEventUpdateRecommendedDialog.value = true
+                return
+            }
+
+            eventCompatibilityCheckAccess == access &&
+                eventCompatibilityCheckGeneration == generation -> return
+        }
+
+        eventCompatibilityCheckAccess = access
+        eventCompatibilityCheckGeneration = generation
+
+        thread {
+            val metadata = fetchServerMetadata(
+                server = access.server,
+                eventName = access.event,
+                sharedSecret = access.secret
+            )
+            val status = metadata?.let { serverMetadata ->
+                evaluateClientVersionStatus(
+                    client = currentClientBuildIdentity(),
+                    serverMetadata = serverMetadata
+                )
+            }
+            val decision = eventCompatibilityDecision(status)
+
+            runOnUiThread {
+                if (
+                    !shouldApplyEventCompatibilityResult(
+                        requestedAccess = access,
+                        requestedGeneration = generation,
+                        currentAccess = currentEventAccessKey(),
+                        currentGeneration = eventCompatibilityGeneration
+                    )
+                ) {
+                    if (
+                        eventCompatibilityCheckAccess == access &&
+                        eventCompatibilityCheckGeneration == generation
+                    ) {
+                        eventCompatibilityCheckAccess = null
+                        eventCompatibilityCheckGeneration = -1L
+                    }
+                    return@runOnUiThread
+                }
+
+                eventCompatibilityCheckAccess = null
+                eventCompatibilityCheckGeneration = -1L
+
+                when (decision) {
+                    EventCompatibilityDecision.PROCEED -> {
+                        eventCompatibilityAllowedAccess = access
+                        eventCompatibilityWarningAccess = null
+                        eventCompatibilityBlockedAccess = null
+                        fetchRaceLegalTextAfterCompatibility(compatibilityContext)
+                    }
+
+                    EventCompatibilityDecision.WARN -> {
+                        eventCompatibilityAllowedAccess = null
+                        eventCompatibilityWarningAccess = access
+                        eventCompatibilityBlockedAccess = null
+                        showEventUpdateRecommendedDialog.value = true
+                    }
+
+                    EventCompatibilityDecision.BLOCK -> {
+                        eventCompatibilityAllowedAccess = null
+                        eventCompatibilityWarningAccess = null
+                        eventCompatibilityBlockedAccess = access
+                        showEventUpdateRequiredDialog.value = true
+                    }
+                }
+            }
+        }
+    }
+
+    private fun fetchRaceLegalTextAfterCompatibility(
+        compatibilityContext: EventCompatibilityContext
+    ) {
+        if (!isCurrentAllowedLegalContext(compatibilityContext)) return
+        if (!eventLegalFlowState.tryStartFetch(compatibilityContext)) return
 
         val previouslyAccepted = raceLegalAccepted.value
         val previousLegalEventIdentity = raceLegalResolvedEventName
         val previousLegalHash = raceLegalHash.value
+        val access = compatibilityContext.access
 
         raceLegalStatusText.value = getString(R.string.loading_race_legal)
 
         thread {
             try {
                 val url = buildNormalApiGetUrl(
-                    baseUrl = getBaseServerUrl(),
+                    baseUrl = baseServerUrlForAccess(access),
                     path = "/event/legal",
-                    eventName = raceEvent.value
+                    eventName = access.event
                 )
 
                 val connection = URL(url).openConnection() as HttpURLConnection
@@ -1348,7 +1513,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 connection.connectTimeout = 3000
                 connection.readTimeout = 3000
                 connection.setRequestProperty("Accept", "application/json")
-                connection.setRequestProperty("x-shared-secret", raceSecret.value)
+                connection.setRequestProperty("x-shared-secret", access.secret)
                 connection.setRequestProperty("x-api-version", RegattaTrackingService.API_VERSION)
 
                 val responseCode = connection.responseCode
@@ -1362,6 +1527,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                 if (responseCode !in 200..299) {
                     runOnUiThread {
+                        if (!isCurrentAllowedLegalContext(compatibilityContext)) {
+                            return@runOnUiThread
+                        }
                         raceLegalStatusText.value =
                             getString(R.string.legal_text_failed_code, responseCode, body.take(160))
                         raceLegalAccepted.value = false
@@ -1382,23 +1550,30 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 }
 
                 runOnUiThread {
+                    if (!isCurrentAllowedLegalContext(compatibilityContext)) {
+                        return@runOnUiThread
+                    }
+
                     when {
                         legalResolvedEventName.isBlank() -> {
                             raceLegalStatusText.value = getString(R.string.race_notice_identity_missing)
                             raceLegalAccepted.value = false
                             raceLegalResolvedEventName = ""
+                            eventLegalFlowState.clearDisplayedDocument()
                             currentScreen.value = Screen.RACE
                         }
 
                         legalText.isBlank() -> {
                             raceLegalStatusText.value = getString(R.string.race_notice_empty)
                             raceLegalAccepted.value = false
+                            eventLegalFlowState.clearDisplayedDocument()
                             currentScreen.value = Screen.RACE
                         }
 
                         legalHash.isBlank() -> {
                             raceLegalStatusText.value = getString(R.string.race_notice_hash_missing)
                             raceLegalAccepted.value = false
+                            eventLegalFlowState.clearDisplayedDocument()
                             currentScreen.value = Screen.RACE
                         }
 
@@ -1423,40 +1598,60 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                 ""
                             }
                             raceLegalAccepted.value = preserveAcceptance
+                            eventLegalFlowState.display(
+                                EventLegalDocumentContext(
+                                    compatibility = compatibilityContext,
+                                    resolvedEventName = legalResolvedEventName,
+                                    legalHash = legalHash
+                                )
+                            )
                             currentScreen.value = Screen.RACE_LEGAL
                         }
                     }
                 }
             } catch (e: Exception) {
                 runOnUiThread {
+                    if (!isCurrentAllowedLegalContext(compatibilityContext)) {
+                        return@runOnUiThread
+                    }
                     raceLegalStatusText.value = getString(R.string.legal_text_failed, e.message ?: "")
                     raceLegalAccepted.value = false
                     currentScreen.value = Screen.RACE
                 }
             } finally {
-                raceLegalFetchRunning = false
+                runOnUiThread {
+                    eventLegalFlowState.finishFetch(compatibilityContext)
+                }
             }
         }
     }
 
     private fun acceptRaceLegalAndLoadRaceData() {
-        if (raceLegalAcceptRunning) return
-        raceLegalAcceptRunning = true
+        val document = eventLegalFlowState.displayedDocument ?: return
+        if (!isCurrentActionableLegalDocument(document)) {
+            raceLegalAccepted.value = false
+            raceLegalAcceptStatusText.value = getString(R.string.race_notice_changed)
+            currentScreen.value = Screen.RACE
+            return
+        }
+        if (!eventLegalFlowState.tryStartAccept(document)) return
 
+        val access = document.compatibility.access
+        val acceptedLegalHash = document.legalHash
+        val expectedResolvedEventName = document.resolvedEventName
 
         raceLegalAcceptStatusText.value = getString(R.string.accepting_race_notice)
 
         thread {
             try {
-                val baseUrl = getBaseServerUrl()
-                val url = "$baseUrl/event/legal/accept"
+                val url = "${baseServerUrlForAccess(access)}/event/legal/accept"
 
                 val json = JSONObject().apply {
-                    put("event_name", raceEvent.value)
+                    put("event_name", access.event)
                     put("sail_number", sailNumber.value)
                     put("boat_name", boatName.value)
                     put("captain_name", skipperName.value)
-                    put("legal_text_hash", raceLegalHash.value)
+                    put("legal_text_hash", acceptedLegalHash)
                 }
 
                 val connection = URL(url).openConnection() as HttpURLConnection
@@ -1467,7 +1662,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                 connection.setRequestProperty("Content-Type", "application/json")
                 connection.setRequestProperty("Accept", "application/json")
-                connection.setRequestProperty("X-Shared-Secret", raceSecret.value)
+                connection.setRequestProperty("X-Shared-Secret", access.secret)
                 connection.setRequestProperty("x-api-version", RegattaTrackingService.API_VERSION)
 
                 connection.outputStream.use { outputStream ->
@@ -1484,6 +1679,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 connection.disconnect()
 
                 runOnUiThread {
+                    if (!isCurrentActionableLegalDocument(document)) {
+                        return@runOnUiThread
+                    }
+
                     if (responseCode in 200..299) {
                         val acceptedResolvedEventName = try {
                             JSONObject(body).optString("event_name", "").trim()
@@ -1493,8 +1692,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                         if (
                             acceptedResolvedEventName.isBlank() ||
-                            raceLegalResolvedEventName.isBlank() ||
-                            acceptedResolvedEventName != raceLegalResolvedEventName
+                            acceptedResolvedEventName != expectedResolvedEventName
                         ) {
                             resetRaceLegalState()
                             raceLegalAcceptStatusText.value =
@@ -1514,13 +1712,18 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             getString(R.string.accept_failed_code, responseCode, body.take(160))
                     }
                 }
-                } catch (e: Exception) {
+            } catch (e: Exception) {
                 runOnUiThread {
+                    if (!isCurrentActionableLegalDocument(document)) {
+                        return@runOnUiThread
+                    }
                     raceLegalAccepted.value = false
                     raceLegalAcceptStatusText.value = getString(R.string.accept_failed, e.message ?: "")
                 }
             } finally {
-                raceLegalAcceptRunning = false
+                runOnUiThread {
+                    eventLegalFlowState.finishAccept(document)
+                }
             }
         }
     }

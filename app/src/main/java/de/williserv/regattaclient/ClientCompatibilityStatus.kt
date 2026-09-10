@@ -73,7 +73,8 @@ internal fun shouldTreatAsClientUpdateRequired(
 }
 
 internal object ClientCompatibilityBlockStore {
-    private const val PREFS_NAME = "regatta_local_status"
+    private const val PREFS_NAME = "client_compatibility_status"
+    private const val LEGACY_PREFS_NAME = "regatta_local_status"
     private const val BLOCKED_SERVER_VERSIONS_KEY = "client_update_required_server_versions"
 
     fun markBlocked(
@@ -84,7 +85,7 @@ internal object ClientCompatibilityBlockStore {
     ) {
         if (versionCode == DEV_DEBUG_VERSION_CODE) return
 
-        val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val prefs = compatibilityPrefs(context)
         val entries = prefs.getStringSet(BLOCKED_SERVER_VERSIONS_KEY, emptySet())
             .orEmpty()
             .toMutableSet()
@@ -103,8 +104,7 @@ internal object ClientCompatibilityBlockStore {
         if (versionCode == DEV_DEBUG_VERSION_CODE) return false
 
         val prefix = blockPrefix(serverUrl, versionCode)
-        val latestBlockedAt = context.applicationContext
-            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val latestBlockedAt = compatibilityPrefs(context)
             .getStringSet(BLOCKED_SERVER_VERSIONS_KEY, emptySet())
             .orEmpty()
             .asSequence()
@@ -118,7 +118,7 @@ internal object ClientCompatibilityBlockStore {
     }
 
     fun clearBlocked(context: Context, serverUrl: String, versionCode: Int) {
-        val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val prefs = compatibilityPrefs(context)
         val entries = prefs.getStringSet(BLOCKED_SERVER_VERSIONS_KEY, emptySet())
             .orEmpty()
             .toMutableSet()
@@ -132,15 +132,14 @@ internal object ClientCompatibilityBlockStore {
         if (versionCode == DEV_DEBUG_VERSION_CODE) return false
 
         val prefix = "$versionCode\n"
-        return context.applicationContext
-            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return compatibilityPrefs(context)
             .getStringSet(BLOCKED_SERVER_VERSIONS_KEY, emptySet())
             .orEmpty()
             .any { it.startsWith(prefix) }
     }
 
     fun observeBlockChanges(context: Context, onChanged: () -> Unit): () -> Unit {
-        val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val prefs = compatibilityPrefs(context)
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             if (key == BLOCKED_SERVER_VERSIONS_KEY) {
                 onChanged()
@@ -150,6 +149,30 @@ internal object ClientCompatibilityBlockStore {
         return {
             prefs.unregisterOnSharedPreferenceChangeListener(listener)
         }
+    }
+
+    @Synchronized
+    private fun compatibilityPrefs(context: Context): SharedPreferences {
+        val appContext = context.applicationContext
+        val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (prefs.contains(BLOCKED_SERVER_VERSIONS_KEY)) {
+            return prefs
+        }
+
+        val legacyPrefs = appContext.getSharedPreferences(LEGACY_PREFS_NAME, Context.MODE_PRIVATE)
+        val legacyEntries = legacyPrefs
+            .getStringSet(BLOCKED_SERVER_VERSIONS_KEY, emptySet())
+            .orEmpty()
+            .toSet()
+
+        val migrated = prefs.edit()
+            .putStringSet(BLOCKED_SERVER_VERSIONS_KEY, legacyEntries)
+            .commit()
+
+        if (migrated && legacyPrefs.contains(BLOCKED_SERVER_VERSIONS_KEY)) {
+            legacyPrefs.edit().remove(BLOCKED_SERVER_VERSIONS_KEY).apply()
+        }
+        return prefs
     }
 
     private fun blockPrefix(serverUrl: String, versionCode: Int): String =

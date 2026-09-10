@@ -6,44 +6,21 @@ import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
 
-data class ProductionReleaseMetadata(
-    val versionCode: Int,
-    val versionName: String,
-    val sourceSha: String,
-    val recordedAt: String?
-)
-
-data class DirectDownloadReleaseMetadata(
-    val versionCode: Int,
-    val versionName: String,
-    val sourceSha: String,
-    val uploadedAt: String?,
-    val downloadUrl: String?
-)
-
 data class ServerMetadata(
     val operator: String?,
     val publicUrl: String?,
     val contactEmail: String?,
     val serverBuildId: String? = null,
-    val serverBuildNumber: Int? = null,
-    val serverBuildType: String? = null,
     val recommendedClientVersionCode: Int? = null,
-    val minClientVersionCode: Int? = null,
-    val productionRelease: ProductionReleaseMetadata? = null,
-    val directDownloadRelease: DirectDownloadReleaseMetadata? = null
+    val minClientVersionCode: Int? = null
 ) {
     fun hasAnyValue(): Boolean =
         operator != null ||
             publicUrl != null ||
             contactEmail != null ||
             serverBuildId != null ||
-            serverBuildNumber != null ||
-            serverBuildType != null ||
             recommendedClientVersionCode != null ||
-            minClientVersionCode != null ||
-            productionRelease != null ||
-            directDownloadRelease != null
+            minClientVersionCode != null
 }
 
 internal fun hasServerOperatorMetadata(metadata: ServerMetadata?): Boolean =
@@ -95,9 +72,6 @@ private fun optionalString(json: JSONObject, key: String): String? {
     return value.trim().takeIf { it.isNotBlank() }
 }
 
-private fun requiredString(json: JSONObject, key: String): String =
-    optionalString(json, key) ?: throw JSONException("$key is required")
-
 private fun optionalInt(json: JSONObject, key: String): Int? {
     if (!json.has(key) || json.isNull(key)) return null
 
@@ -114,39 +88,6 @@ private fun optionalInt(json: JSONObject, key: String): Int? {
     }
 }
 
-private fun requiredInt(json: JSONObject, key: String): Int =
-    optionalInt(json, key) ?: throw JSONException("$key is required")
-
-private fun optionalObject(json: JSONObject, key: String): JSONObject? {
-    if (!json.has(key) || json.isNull(key)) return null
-    val value = json.get(key)
-    if (value !is JSONObject) throw JSONException("$key must be an object or null")
-    return value
-}
-
-private fun parseProductionRelease(json: JSONObject?): ProductionReleaseMetadata? {
-    if (json == null) return null
-
-    return ProductionReleaseMetadata(
-        versionCode = requiredInt(json, "version_code"),
-        versionName = requiredString(json, "version_name"),
-        sourceSha = requiredString(json, "source_sha"),
-        recordedAt = optionalString(json, "recorded_at")
-    )
-}
-
-private fun parseDirectDownloadRelease(json: JSONObject?): DirectDownloadReleaseMetadata? {
-    if (json == null) return null
-
-    return DirectDownloadReleaseMetadata(
-        versionCode = requiredInt(json, "version_code"),
-        versionName = requiredString(json, "version_name"),
-        sourceSha = requiredString(json, "source_sha"),
-        uploadedAt = optionalString(json, "uploaded_at"),
-        downloadUrl = optionalString(json, "download_url")
-    )
-}
-
 internal fun parseServerMetadata(body: String): ServerMetadata {
     val json = JSONObject(body)
 
@@ -155,14 +96,8 @@ internal fun parseServerMetadata(body: String): ServerMetadata {
         publicUrl = optionalString(json, "public_url"),
         contactEmail = optionalString(json, "contact_email"),
         serverBuildId = optionalString(json, "server_build_id"),
-        serverBuildNumber = optionalInt(json, "server_build_number"),
-        serverBuildType = optionalString(json, "server_build_type"),
         recommendedClientVersionCode = optionalInt(json, "recommended_client_version_code"),
-        minClientVersionCode = optionalInt(json, "min_client_version_code"),
-        productionRelease = parseProductionRelease(optionalObject(json, "production_release")),
-        directDownloadRelease = parseDirectDownloadRelease(
-            optionalObject(json, "direct_download_release")
-        )
+        minClientVersionCode = optionalInt(json, "min_client_version_code")
     )
 }
 
