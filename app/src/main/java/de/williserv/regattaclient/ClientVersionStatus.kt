@@ -27,30 +27,19 @@ internal data class ClientVersionStatus(
     val policyState: ClientVersionPolicyState,
     val installedVersionCode: Int,
     val recommendedVersionCode: Int?,
-    val minimumVersionCode: Int?,
-    val productionVersionCode: Int?,
-    val directDownloadVersionCode: Int?,
-    val newerProductionAvailable: Boolean,
-    val newerDirectDownloadAvailable: Boolean
+    val minimumVersionCode: Int?
 )
 
 internal fun evaluateClientVersionStatus(
     client: ClientBuildIdentity,
     serverMetadata: ServerMetadata
 ): ClientVersionStatus {
-    val productionVersionCode = serverMetadata.productionRelease?.versionCode
-    val directDownloadVersionCode = serverMetadata.directDownloadRelease?.versionCode
-
     if (client.isDevDebug) {
         return ClientVersionStatus(
             policyState = ClientVersionPolicyState.DEV_DEBUG,
             installedVersionCode = client.versionCode,
             recommendedVersionCode = serverMetadata.recommendedClientVersionCode,
-            minimumVersionCode = serverMetadata.minClientVersionCode,
-            productionVersionCode = productionVersionCode,
-            directDownloadVersionCode = directDownloadVersionCode,
-            newerProductionAvailable = false,
-            newerDirectDownloadAvailable = false
+            minimumVersionCode = serverMetadata.minClientVersionCode
         )
     }
 
@@ -70,10 +59,6 @@ internal fun evaluateClientVersionStatus(
         policyState = policyState,
         installedVersionCode = client.versionCode,
         recommendedVersionCode = serverMetadata.recommendedClientVersionCode,
-        minimumVersionCode = serverMetadata.minClientVersionCode,
-        productionVersionCode = productionVersionCode,
-        directDownloadVersionCode = directDownloadVersionCode,
-        newerProductionAvailable = productionVersionCode?.let { client.versionCode < it } ?: false,
-        newerDirectDownloadAvailable = directDownloadVersionCode?.let { client.versionCode < it } ?: false
+        minimumVersionCode = serverMetadata.minClientVersionCode
     )
 }

@@ -62,7 +62,7 @@ class ServerMetadataTest {
     }
 
     @Test
-    fun parseServerMetadata_readsCompleteVersionContract() {
+    fun parseServerMetadata_readsFieldsUsedByClientAndIgnoresAdditionalServerMetadata() {
         val metadata = parseServerMetadata(
             """
             {
@@ -95,37 +95,13 @@ class ServerMetadataTest {
         assertEquals("https://raceoffice.example.org", metadata.publicUrl)
         assertEquals("raceoffice@example.org", metadata.contactEmail)
         assertEquals("26.09.04-0712-abcdef1", metadata.serverBuildId)
-        assertEquals(21345678, metadata.serverBuildNumber)
-        assertEquals("release", metadata.serverBuildType)
         assertEquals(2450, metadata.recommendedClientVersionCode)
         assertEquals(2400, metadata.minClientVersionCode)
-
-        requireNotNull(metadata.productionRelease)
-        assertEquals(2450, metadata.productionRelease.versionCode)
-        assertEquals("26.09.03-2110", metadata.productionRelease.versionName)
-        assertEquals(
-            "0123456789abcdef0123456789abcdef01234567",
-            metadata.productionRelease.sourceSha
-        )
-        assertEquals("2026-09-03T20:12:00+00:00", metadata.productionRelease.recordedAt)
-
-        requireNotNull(metadata.directDownloadRelease)
-        assertEquals(2535, metadata.directDownloadRelease.versionCode)
-        assertEquals("26.09.04-0735-staging", metadata.directDownloadRelease.versionName)
-        assertEquals(
-            "89abcdef0123456789abcdef0123456789abcdef",
-            metadata.directDownloadRelease.sourceSha
-        )
-        assertEquals("2026-09-04T05:36:00+00:00", metadata.directDownloadRelease.uploadedAt)
-        assertEquals(
-            "/static/downloads/regatta-app.apk",
-            metadata.directDownloadRelease.downloadUrl
-        )
         assertTrue(metadata.hasAnyValue())
     }
 
     @Test
-    fun parseServerMetadata_acceptsNullablePolicyAndReleaseFields() {
+    fun parseServerMetadata_acceptsNullablePolicyFields() {
         val metadata = parseServerMetadata(
             """
             {
@@ -133,8 +109,6 @@ class ServerMetadataTest {
               "public_url": null,
               "contact_email": null,
               "server_build_id": "26.09.04-0712-abcdef1",
-              "server_build_number": 21345678,
-              "server_build_type": "release",
               "recommended_client_version_code": null,
               "min_client_version_code": null,
               "production_release": null,
@@ -147,12 +121,8 @@ class ServerMetadataTest {
         assertNull(metadata.publicUrl)
         assertNull(metadata.contactEmail)
         assertEquals("26.09.04-0712-abcdef1", metadata.serverBuildId)
-        assertEquals(21345678, metadata.serverBuildNumber)
-        assertEquals("release", metadata.serverBuildType)
         assertNull(metadata.recommendedClientVersionCode)
         assertNull(metadata.minClientVersionCode)
-        assertNull(metadata.productionRelease)
-        assertNull(metadata.directDownloadRelease)
         assertTrue(metadata.hasAnyValue())
     }
 
@@ -171,12 +141,8 @@ class ServerMetadataTest {
         assertNull(metadata.publicUrl)
         assertNull(metadata.contactEmail)
         assertNull(metadata.serverBuildId)
-        assertNull(metadata.serverBuildNumber)
-        assertNull(metadata.serverBuildType)
         assertNull(metadata.recommendedClientVersionCode)
         assertNull(metadata.minClientVersionCode)
-        assertNull(metadata.productionRelease)
-        assertNull(metadata.directDownloadRelease)
         assertFalse(metadata.hasAnyValue())
     }
 
