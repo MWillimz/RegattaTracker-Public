@@ -75,7 +75,8 @@ internal class RaceSignalSchedule {
                 if (
                     thresholdMillis !in firedThresholds &&
                     previous > thresholdMillis &&
-                    remainingMillis <= thresholdMillis
+                    remainingMillis <= thresholdMillis &&
+                    remainingMillis >= thresholdMillis - MAX_SIGNAL_LATENESS_MILLIS
                 ) {
                     firedThresholds += thresholdMillis
                     cues += cue
@@ -88,6 +89,8 @@ internal class RaceSignalSchedule {
     }
 
     private companion object {
+        const val MAX_SIGNAL_LATENESS_MILLIS = 2_000L
+
         val THRESHOLDS = listOf(
             5 * 60 * 1000L to RaceSignalCue.FIVE_MINUTES,
             4 * 60 * 1000L to RaceSignalCue.FOUR_MINUTES,
