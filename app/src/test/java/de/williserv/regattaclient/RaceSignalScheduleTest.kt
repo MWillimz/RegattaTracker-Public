@@ -38,7 +38,7 @@ class RaceSignalScheduleTest {
     }
 
     @Test
-    fun delayedTickStillEmitsCrossedThresholds() {
+    fun delayedTickStillEmitsSlightlyLateCrossedThreshold() {
         val schedule = RaceSignalSchedule()
         val start = 1_000_000L
 
@@ -46,8 +46,18 @@ class RaceSignalScheduleTest {
 
         assertEquals(
             listOf(RaceSignalCue.FIVE_MINUTES),
-            schedule.update(start - 297_000L, start, true, false)
+            schedule.update(start - 299_000L, start, true, false)
         )
+    }
+
+    @Test
+    fun longDelayDoesNotReplayStaleStartSignals() {
+        val schedule = RaceSignalSchedule()
+        val start = 1_000_000L
+
+        schedule.reset(start - 305_000L, start, true, false)
+
+        assertTrue(schedule.update(start - 230_000L, start, true, false).isEmpty())
     }
 
     @Test
