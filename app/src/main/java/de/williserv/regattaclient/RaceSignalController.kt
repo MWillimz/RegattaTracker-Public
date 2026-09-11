@@ -53,7 +53,7 @@ internal class RaceSignalController(context: Context) :
         when (sharedPreferences) {
             racePrefs -> refreshConfiguration()
             localStatusPrefs -> {
-                if (key == KEY_RACE_FINISHED) {
+                if (key == KEY_RACE_FINISHED || key == null) {
                     evaluateAndPlay()
                 }
             }
