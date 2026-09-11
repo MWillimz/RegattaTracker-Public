@@ -30,6 +30,14 @@ internal class RaceSignalController(context: Context) :
     private var schedule: RaceSignalSchedule? = null
     private var started = false
 
+    private val runtimeStateListener: (RaceRuntimeState?) -> Unit = {
+        handler.post {
+            if (started) {
+                refreshConfiguration()
+            }
+        }
+    }
+
     private val tickRunnable = object : Runnable {
         override fun run() {
             evaluateAndPlay()
@@ -43,6 +51,7 @@ internal class RaceSignalController(context: Context) :
 
         racePrefs.registerOnSharedPreferenceChangeListener(this)
         localStatusPrefs.registerOnSharedPreferenceChangeListener(this)
+        RaceRuntimeStateStore.addListener(runtimeStateListener)
         refreshConfiguration()
     }
 
@@ -125,14 +134,28 @@ internal class RaceSignalController(context: Context) :
         handler.postDelayed(tickRunnable, delayMillis)
     }
 
+    private fun currentRuntimeState(): RaceRuntimeState? {
+        return RaceRuntimeStateStore.snapshotForAccessKey(
+            RaceSignalPreferences.currentEventKey(racePrefs)
+        )
+    }
+
     private fun startSignalsAllowed(): Boolean {
-        return when (racePrefs.getString(KEY_RACE_STATUS_RAW, "").orEmpty().trim().lowercase()) {
+        val status = currentRuntimeState()?.status
+            ?: racePrefs.getString(KEY_RACE_STATUS_RAW, "").orEmpty()
+
+        return when (status.trim().lowercase()) {
             "postponed", "cancelled", "canceled" -> false
             else -> true
         }
     }
 
     private fun currentStartEpochMillis(): Long? {
+        val runtimeState = currentRuntimeState()
+        if (runtimeState != null) {
+            return runtimeState.startEpochMillis
+        }
+
         return parseServerTime(
             racePrefs.getString(KEY_RACE_START_RAW, "").orEmpty()
         )?.toEpochMilli()

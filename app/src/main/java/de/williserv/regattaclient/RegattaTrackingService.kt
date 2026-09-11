@@ -391,6 +391,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
     }
 
     private fun stopTrackingService() {
+        RaceRuntimeStateStore.clearFor(serverUrl, eventName, sharedSecret)
         serviceRunning = false
         manualRecording = false
         accessContextId = null
@@ -648,6 +649,16 @@ class RegattaTrackingService : Service(), SensorEventListener {
         parseStartLine(course)
         parseFinishLine(course)
         parseMarks(course)
+
+        RaceRuntimeStateStore.publish(
+            server = serverUrl,
+            event = eventName,
+            secret = sharedSecret,
+            resolvedEventName = responseResolvedEventName,
+            status = raceStatus,
+            startEpochMillis = raceStartInstant?.toEpochMilli(),
+            stopEpochMillis = raceStopInstant?.toEpochMilli()
+        )
     }
 
     private fun parseStartLine(course: JSONObject?) {
@@ -1356,6 +1367,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
     }
 
     override fun onDestroy() {
+        RaceRuntimeStateStore.clearFor(serverUrl, eventName, sharedSecret)
         handler.removeCallbacks(sampleRunnable)
         handler.removeCallbacks(eventPollRunnable)
 
