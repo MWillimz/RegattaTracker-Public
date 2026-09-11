@@ -193,36 +193,41 @@ private class RaceSignalPlayer(
     }
 
     private fun playTone(durationMillis: Int, delayMillis: Long = 0L) {
+        if (delayMillis == 0L) {
+            startTone(durationMillis)
+        } else {
+            handler.postDelayed({ startTone(durationMillis) }, delayMillis)
+        }
+    }
+
+    private fun startTone(durationMillis: Int) {
+        val generator = try {
+            ToneGenerator(AudioManager.STREAM_MUSIC, 100)
+        } catch (_: RuntimeException) {
+            null
+        } ?: return
+
+        val started = try {
+            generator.startTone(ToneGenerator.TONE_PROP_BEEP, durationMillis)
+        } catch (_: RuntimeException) {
+            false
+        }
+
+        if (!started) {
+            release(generator)
+            return
+        }
+
         handler.postDelayed(
-            {
-                val generator = try {
-                    ToneGenerator(AudioManager.STREAM_MUSIC, 100)
-                } catch (_: RuntimeException) {
-                    null
-                } ?: return@postDelayed
-
-                val started = try {
-                    generator.startTone(ToneGenerator.TONE_PROP_BEEP, durationMillis)
-                } catch (_: RuntimeException) {
-                    false
-                }
-
-                if (!started) {
-                    generator.release()
-                    return@postDelayed
-                }
-
-                handler.postDelayed(
-                    {
-                        try {
-                            generator.release()
-                        } catch (_: RuntimeException) {
-                        }
-                    },
-                    durationMillis + 100L
-                )
-            },
-            delayMillis
+            { release(generator) },
+            durationMillis + 100L
         )
+    }
+
+    private fun release(generator: ToneGenerator) {
+        try {
+            generator.release()
+        } catch (_: RuntimeException) {
+        }
     }
 }
