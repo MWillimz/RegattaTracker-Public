@@ -144,6 +144,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
     private var autoStopAfterFinishScheduled = false
     private var eventPollRunning = false
+    private val eventPollLifecycleLock = Any()
+    private var eventPollGeneration = 0L
 
     private var courseShortened = false
 
@@ -202,6 +204,9 @@ class RegattaTrackingService : Service(), SensorEventListener {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
+                synchronized(eventPollLifecycleLock) {
+                    eventPollGeneration += 1
+                }
                 readIntentExtras(intent)
                 startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.tracking_active)))
                 startTrackingService()
@@ -391,7 +396,11 @@ class RegattaTrackingService : Service(), SensorEventListener {
     }
 
     private fun stopTrackingService() {
-        serviceRunning = false
+        synchronized(eventPollLifecycleLock) {
+            eventPollGeneration += 1
+            serviceRunning = false
+            RaceRuntimeStateStore.clearFor(serverUrl, eventName, sharedSecret)
+        }
         manualRecording = false
         accessContextId = null
 
@@ -554,6 +563,9 @@ class RegattaTrackingService : Service(), SensorEventListener {
     private fun pollEvent() {
         if (eventPollRunning) return
 
+        val pollGeneration = synchronized(eventPollLifecycleLock) {
+            eventPollGeneration
+        }
         eventPollRunning = true
 
         thread {
@@ -579,12 +591,21 @@ class RegattaTrackingService : Service(), SensorEventListener {
                 connection.disconnect()
 
                 if (responseCode in 200..299) {
-                    parseEventResponse(body)
-                    handler.post {
-                        refreshLocationSampling(lastLocation)
+                    val applied = synchronized(eventPollLifecycleLock) {
+                        if (!serviceRunning || pollGeneration != eventPollGeneration) {
+                            false
+                        } else {
+                            parseEventResponse(body)
+                            publishLocalRaceStatus()
+                            updateNotification()
+                            true
+                        }
                     }
-                    publishLocalRaceStatus()
-                    updateNotification()
+                    if (applied) {
+                        handler.post {
+                            refreshLocationSampling(lastLocation)
+                        }
+                    }
                 }
             } catch (_: Exception) {
             } finally {
@@ -648,6 +669,16 @@ class RegattaTrackingService : Service(), SensorEventListener {
         parseStartLine(course)
         parseFinishLine(course)
         parseMarks(course)
+
+        RaceRuntimeStateStore.publish(
+            server = serverUrl,
+            event = eventName,
+            secret = sharedSecret,
+            resolvedEventName = responseResolvedEventName,
+            status = raceStatus,
+            startEpochMillis = raceStartInstant?.toEpochMilli(),
+            stopEpochMillis = raceStopInstant?.toEpochMilli()
+        )
     }
 
     private fun parseStartLine(course: JSONObject?) {
@@ -786,7 +817,6 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
         val timestamp = LocalDateTime.now().format(localTimestampFormatter)
         val location = lastLocation
-
         val lat = location?.latitude ?: 0.0
         val lon = location?.longitude ?: 0.0
         val accuracy = location?.accuracy ?: 9999f
@@ -1356,6 +1386,11 @@ class RegattaTrackingService : Service(), SensorEventListener {
     }
 
     override fun onDestroy() {
+        synchronized(eventPollLifecycleLock) {
+            eventPollGeneration += 1
+            serviceRunning = false
+            RaceRuntimeStateStore.clearFor(serverUrl, eventName, sharedSecret)
+        }
         handler.removeCallbacks(sampleRunnable)
         handler.removeCallbacks(eventPollRunnable)
 

@@ -204,6 +204,13 @@ fun RaceScreen(
                 seriesDisplayMetadata = seriesDisplayMetadata
             )
 
+            RaceSignalToggle(
+                raceServer = raceServer,
+                raceEvent = raceEvent,
+                raceSecret = raceSecret,
+                modifier = Modifier.padding(top = 12.dp)
+            )
+
             Spacer(modifier = Modifier.height(22.dp))
         }
 
