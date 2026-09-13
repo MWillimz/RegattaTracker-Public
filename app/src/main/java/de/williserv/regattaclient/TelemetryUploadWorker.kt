@@ -527,12 +527,12 @@ class TelemetryUploadWorker(
             connection.disconnect()
             result
         } catch (e: Exception) {
-    if (!serverResponded) {
-        ServerConnectionStateStore.markNoConnection(applicationContext, accessContext.serverUrl)
-    }
-    publishDebugError(applicationContext.getString(R.string.upload_exception, e.message ?: ""))
-    TelemetryUploadAttemptResult.TEMPORARY_FAILURE
-}
+            if (!serverResponded) {
+                ServerConnectionStateStore.markNoConnection(applicationContext, accessContext.serverUrl)
+            }
+            publishDebugError(applicationContext.getString(R.string.upload_exception, e.message ?: ""))
+            TelemetryUploadAttemptResult.TEMPORARY_FAILURE
+        }
     }
 
     private fun buildIngestUrl(accessContext: AccessContext): String {

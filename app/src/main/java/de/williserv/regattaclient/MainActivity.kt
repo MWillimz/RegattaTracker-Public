@@ -2021,21 +2021,21 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     }
                 }
             } catch (e: Exception) {
-    if (!serverResponded) {
-        ServerConnectionStateStore.markNoConnection(this, raceServer.value)
-    }
-    runOnUiThread {
-        if (currentBoatSetupValues() != registrationBoatSetup) {
-            return@runOnUiThread
-        }
-        updateConnectionUiState()
-        registerRaceStatusText.value = if (serverResponded) {
-            getString(R.string.registration_failed, e.message ?: "")
-        } else {
-            getString(R.string.status_no_connection)
-        }
-    }
-}
+                if (!serverResponded) {
+                    ServerConnectionStateStore.markNoConnection(this, raceServer.value)
+                }
+                runOnUiThread {
+                    if (currentBoatSetupValues() != registrationBoatSetup) {
+                        return@runOnUiThread
+                    }
+                    updateConnectionUiState()
+                    registerRaceStatusText.value = if (serverResponded) {
+                        getString(R.string.registration_failed, e.message ?: "")
+                    } else {
+                        getString(R.string.status_no_connection)
+                    }
+                }
+            }
         }
     }
 
@@ -2177,23 +2177,23 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     }
 
     private fun updateConnectionUiState() {
-    val server = raceServer.value
-    if (server.isBlank()) {
-        serverNoConnection.value = false
-        return
-    }
+        val server = raceServer.value
+        if (server.isBlank()) {
+            serverNoConnection.value = false
+            return
+        }
 
-    val connectionState = ServerConnectionStateStore.state(this, server)
-    if (
-        !ServerConnectionStateStore.hasActiveNetwork(this) &&
-        connectionState != ServerConnectionState.REACHABLE
-    ) {
-        ServerConnectionStateStore.markNoConnection(this, server)
-    }
+        val connectionState = ServerConnectionStateStore.state(this, server)
+        if (
+            !ServerConnectionStateStore.hasActiveNetwork(this) &&
+            connectionState != ServerConnectionState.REACHABLE
+        ) {
+            ServerConnectionStateStore.markNoConnection(this, server)
+        }
 
-    serverNoConnection.value =
-        ServerConnectionStateStore.state(this, server) == ServerConnectionState.NO_CONNECTION
-}
+        serverNoConnection.value =
+            ServerConnectionStateStore.state(this, server) == ServerConnectionState.NO_CONNECTION
+    }
 
     private fun startRaceDataRefresh() {
         handler.removeCallbacks(raceDataRefreshRunnable)

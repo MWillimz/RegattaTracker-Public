@@ -146,9 +146,9 @@ fun HomeScreen(
     )
 
     val uploadColor = uploadStatusColor(
-    pendingUploadCount = pendingUploadCount,
-    noConnection = noConnection
-)
+        pendingUploadCount = pendingUploadCount,
+        noConnection = noConnection
+    )
 
     val showCourseShortened =
         raceShortened &&
@@ -237,13 +237,13 @@ fun HomeScreen(
             ),
             raceColor = raceColor,
             uploadStatusText = shortUploadStatus(
-    pendingUploadCount = pendingUploadCount,
-    inRace = inRace,
-    noConnection = noConnection,
-    pendingText = { pending -> resources.getString(R.string.pending_value, pending) },
-    okText = stringResource(R.string.ok),
-    noConnectionText = stringResource(R.string.status_no_connection)
-),
+                pendingUploadCount = pendingUploadCount,
+                inRace = inRace,
+                noConnection = noConnection,
+                pendingText = { pending -> resources.getString(R.string.pending_value, pending) },
+                okText = stringResource(R.string.ok),
+                noConnectionText = stringResource(R.string.status_no_connection)
+            ),
             uploadColor = uploadColor
         )
 
