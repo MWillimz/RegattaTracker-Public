@@ -237,6 +237,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
                 readStartIntentExtras(intent, requestedManual)
                 getSharedPreferences("app_state", Context.MODE_PRIVATE)
                     .edit()
+                    .putBoolean("in_race", !manualRecording)
                     .putBoolean("manual_tracking", manualRecording)
                     .apply()
                 startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.tracking_active)))
