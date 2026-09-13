@@ -138,6 +138,32 @@ class RegattaTrackingServiceLifecycleTest {
     }
 
     @Test
+    fun `explicit race start clears stale persisted manual mode`() {
+        seedAppState(inRace = true, manualTracking = true)
+
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+        setField(service, "eventPollRunning", true)
+
+        val raceIntent = Intent(context, RegattaTrackingService::class.java).apply {
+            action = RegattaTrackingService.ACTION_START
+            putExtra(RegattaTrackingService.EXTRA_SERVER_URL, "https://raceoffice.example.org")
+            putExtra(RegattaTrackingService.EXTRA_EVENT_NAME, "Event A")
+            putExtra(RegattaTrackingService.EXTRA_SHARED_SECRET, "secret")
+            putExtra(RegattaTrackingService.EXTRA_MANUAL_RECORDING, false)
+        }
+
+        assertEquals(Service.START_STICKY, service.onStartCommand(raceIntent, 0, 1))
+        assertFalse(getField<Boolean>(service, "manualRecording"))
+        assertFalse(
+            context.getSharedPreferences("app_state", Context.MODE_PRIVATE)
+                .getBoolean("manual_tracking", true)
+        )
+
+        controller.destroy()
+    }
+
+    @Test
     fun `unknown non-null action stays non-sticky`() {
         val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
         val service = controller.get()
