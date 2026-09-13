@@ -212,9 +212,20 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     }
 
     private fun canEnterRaceNow(): Boolean {
+        val isSeriesAccess =
+            raceSeriesDisplayMetadata.value.runName.isNotBlank() ||
+                (resolvedEventName.value.isNotBlank() && resolvedEventName.value != raceEvent.value)
+        val cachedSeriesRunObsolete = isCachedSeriesRunObsolete(
+            isSeriesAccess = isSeriesAccess,
+            status = rawRaceStatus,
+            stopEpochMillis = parseServerTimeToMillis(rawRaceStop),
+            nowEpochMillis = System.currentTimeMillis()
+        )
+
         return canEnterRaceWithLocalState(
             raceDataReady = raceDataReady.value,
-            setupConfirmed = setupConfirmed.value
+            setupConfirmed = setupConfirmed.value,
+            cachedSeriesRunObsolete = cachedSeriesRunObsolete
         )
     }
 
@@ -345,7 +356,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             serviceStatusText = serviceStatusText.value,
                             raceStatusCode = currentRaceStatus,
                             raceStatusDisplayText = raceStatusText.value,
-                            raceLegalAccepted = raceLegalAccepted.value,
                             raceEvent = raceEvent.value,
                             seriesDisplayMetadata = raceSeriesDisplayMetadata.value,
                             raceStartText = raceStartText.value,
@@ -1526,6 +1536,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         raceLegalStatusText.value = getString(R.string.loading_race_legal)
 
         thread {
+            var serverResponded = false
             try {
                 val url = buildNormalApiGetUrl(
                     baseUrl = baseServerUrlForAccess(access),
@@ -1542,6 +1553,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 connection.setRequestProperty("x-api-version", RegattaTrackingService.API_VERSION)
 
                 val responseCode = connection.responseCode
+                serverResponded = true
+                ServerConnectionStateStore.markReachable(this, access.server)
                 val body = if (responseCode in 200..299) {
                     connection.inputStream.bufferedReader().use { it.readText() }
                 } else {
@@ -1635,11 +1648,19 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     }
                 }
             } catch (e: Exception) {
+                if (!serverResponded) {
+                    ServerConnectionStateStore.markNoConnection(this, access.server)
+                }
                 runOnUiThread {
                     if (!isCurrentAllowedLegalContext(compatibilityContext)) {
                         return@runOnUiThread
                     }
-                    raceLegalStatusText.value = getString(R.string.legal_text_failed, e.message ?: "")
+                    updateConnectionUiState()
+                    raceLegalStatusText.value = if (serverResponded) {
+                        getString(R.string.legal_text_failed, e.message ?: "")
+                    } else {
+                        getString(R.string.status_no_connection)
+                    }
                     raceLegalAccepted.value = false
                     currentScreen.value = Screen.RACE
                 }
@@ -1669,6 +1690,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         raceLegalAcceptStatusText.value = getString(R.string.accepting_race_notice)
 
         thread {
+            var serverResponded = false
             try {
                 val url = "${baseServerUrlForAccess(access)}/event/legal/accept"
 
@@ -1696,6 +1718,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 }
 
                 val responseCode = connection.responseCode
+                serverResponded = true
+                ServerConnectionStateStore.markReachable(this, access.server)
                 val body = if (responseCode in 200..299) {
                     connection.inputStream.bufferedReader().use { it.readText() }
                 } else {
@@ -1742,6 +1766,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     }
                 }
             } catch (e: Exception) {
+                if (!serverResponded) {
+                    ServerConnectionStateStore.markNoConnection(this, access.server)
+                }
                 runOnUiThread {
                     if (
                         !isCurrentActionableLegalDocument(document) ||
@@ -1749,8 +1776,13 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     ) {
                         return@runOnUiThread
                     }
+                    updateConnectionUiState()
                     raceLegalAccepted.value = false
-                    raceLegalAcceptStatusText.value = getString(R.string.accept_failed, e.message ?: "")
+                    raceLegalAcceptStatusText.value = if (serverResponded) {
+                        getString(R.string.accept_failed, e.message ?: "")
+                    } else {
+                        getString(R.string.status_no_connection)
+                    }
                 }
             } finally {
                 runOnUiThread {
@@ -2223,7 +2255,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             return false
         }
 
-        TelemetryUploadScheduler.enqueue(this)
+        runCatching { TelemetryUploadScheduler.enqueue(this) }
         return true
     }
 
