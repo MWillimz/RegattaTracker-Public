@@ -34,6 +34,7 @@ internal object ServerConnectionStateStore {
     }
 
     fun hasActiveNetwork(context: Context): Boolean {
+        // This is only a device-network hint; successful server requests take precedence.
         val manager = context.applicationContext
             .getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val network = manager.activeNetwork ?: return false
