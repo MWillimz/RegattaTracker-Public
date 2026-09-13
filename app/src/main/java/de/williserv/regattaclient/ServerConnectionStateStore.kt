@@ -41,18 +41,22 @@ internal object ServerConnectionStateStore {
     }
 
     private fun write(
-    context: Context,
-    server: String,
-    state: ServerConnectionState
-) {
-    val normalized = normalizeServer(server)
-    if (normalized.isBlank()) return
-    val prefs = context.applicationContext
-        .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    val key = KEY_PREFIX + normalized
-    if (prefs.getString(key, "") == state.name) return
-    prefs.edit().putString(key, state.name).apply()
-}
+        context: Context,
+        server: String,
+        state: ServerConnectionState
+    ) {
+        val normalized = normalizeServer(server)
+        if (normalized.isBlank()) return
+
+        val prefs = context.applicationContext
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val key = KEY_PREFIX + normalized
+        if (prefs.getString(key, "") == state.name) return
+
+        prefs.edit()
+            .putString(key, state.name)
+            .apply()
+    }
 
     internal fun normalizeServer(server: String): String {
         val trimmed = server.trim().trimEnd('/')
