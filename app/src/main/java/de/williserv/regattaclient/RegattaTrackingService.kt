@@ -250,13 +250,11 @@ class RegattaTrackingService : Service(), SensorEventListener {
             ACTION_SET_COURSE_PROGRESS -> {
                 val persistedInRace = getSharedPreferences("app_state", Context.MODE_PRIVATE)
                     .getBoolean("in_race", false)
-                if (!serviceRunning || !persistedInRace) {
-                    if (!serviceRunning) {
-                        stopSelf()
-                    }
+                if (!serviceRunning) {
+                    stopSelf()
                     return START_NOT_STICKY
                 }
-                if (manualRecording) {
+                if (manualRecording || !persistedInRace) {
                     return START_STICKY
                 }
 
