@@ -484,6 +484,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                     setupConfirmed.value = true
                                     saveBoatSetup()
 
+                                    if (manualTracking.value) {
+                                        startRegattaForegroundService(manualMode = true)
+                                    }
+
                                     if (invalidateRegistration) {
                                         raceRegistered.value = false
                                         registerRaceStatusText.value = ""
