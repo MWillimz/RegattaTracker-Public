@@ -90,7 +90,7 @@ class RaceOfflinePolicyTest {
     }
 
     @Test
-    fun snapshotMustContainAParseableRaceStart() {
+    fun snapshotMustContainAResolvedEventAndParseableRaceStart() {
         assertTrue(
             isUsableRaceEventSnapshot(
                 RaceEventSnapshot(
@@ -120,12 +120,12 @@ class RaceOfflinePolicyTest {
         assertFalse(
             isUsableRaceEventSnapshot(
                 RaceEventSnapshot(
-                    resolvedEventName = "race-1",
+                    resolvedEventName = "",
                     status = "planned",
                     startRaw = "2026-09-20T12:00:00Z",
                     stopRaw = "",
                     raceInfo = "",
-                    courseJson = "{broken",
+                    courseJson = "",
                     courseShortened = false
                 )
             )
