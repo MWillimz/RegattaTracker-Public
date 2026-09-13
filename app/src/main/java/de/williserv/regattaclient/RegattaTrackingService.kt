@@ -202,7 +202,11 @@ class RegattaTrackingService : Service(), SensorEventListener {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
+        if (intent == null) {
+            return handleStickyRestart()
+        }
+
+        when (intent.action) {
             ACTION_START -> {
                 synchronized(eventPollLifecycleLock) {
                     eventPollGeneration += 1
@@ -330,6 +334,79 @@ class RegattaTrackingService : Service(), SensorEventListener {
             .putBoolean("is_ocs", isOcs)
             .putLong("saved_at", System.currentTimeMillis())
             .apply()
+    }
+
+    private fun handleStickyRestart(): Int {
+        synchronized(eventPollLifecycleLock) {
+            eventPollGeneration += 1
+        }
+
+        if (!restoreStickyStartContext()) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.tracking_active)))
+        startTrackingService()
+        updateNotification()
+        return START_STICKY
+    }
+
+    private fun restoreStickyStartContext(): Boolean {
+        val appPrefs = getSharedPreferences("app_state", Context.MODE_PRIVATE)
+        val inRace = appPrefs.getBoolean("in_race", false)
+        val manual = appPrefs.getBoolean("manual_tracking", false)
+
+        if (!manual && !inRace) {
+            return false
+        }
+
+        restoreBoatSetupForStickyRestart()
+        restoreRaceSetupForStickyRestart()
+
+        manualRecording = manual
+        if (manualRecording) {
+            accessContextId = null
+            return true
+        }
+
+        if (
+            serverUrl.isBlank() ||
+            eventName.isBlank() ||
+            sharedSecret.isBlank()
+        ) {
+            accessContextId = null
+            return false
+        }
+
+        refreshAccessContextId()
+        return accessContextId != null
+    }
+
+    private fun restoreBoatSetupForStickyRestart() {
+        val prefs = getSharedPreferences("boat_setup", Context.MODE_PRIVATE)
+
+        boatName = prefs.getString("boat_name", boatName) ?: boatName
+        captainName = prefs.getString("skipper_name", captainName) ?: captainName
+        hullColor = prefs.getString("hull_color", hullColor) ?: hullColor
+        sailNumber = prefs.getString("sail_number", sailNumber) ?: sailNumber
+        yardstick = prefs.getString("yardstick", yardstick.toString())
+            ?.toDoubleOrNull()
+            ?: yardstick
+        boatType = prefs.getString("boat_type", boatType) ?: boatType
+    }
+
+    private fun restoreRaceSetupForStickyRestart() {
+        val prefs = getSharedPreferences("race_setup", Context.MODE_PRIVATE)
+
+        serverUrl = prefs.getString("race_server", "").orEmpty()
+        eventName = prefs.getString("race_event", "").orEmpty()
+        sharedSecret = prefs.getString("race_secret", "").orEmpty()
+
+        prefs.getString("resolved_event_name", "")
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let(::adoptResolvedEventName)
     }
 
     private fun readIntentExtras(intent: Intent) {
