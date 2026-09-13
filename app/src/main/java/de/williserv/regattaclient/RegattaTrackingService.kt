@@ -212,6 +212,10 @@ class RegattaTrackingService : Service(), SensorEventListener {
                     eventPollGeneration += 1
                 }
                 readIntentExtras(intent)
+                getSharedPreferences("app_state", Context.MODE_PRIVATE)
+                    .edit()
+                    .putBoolean("manual_tracking", manualRecording)
+                    .apply()
                 startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.tracking_active)))
                 startTrackingService()
                 updateNotification()
