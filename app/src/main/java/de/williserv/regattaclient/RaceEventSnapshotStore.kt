@@ -45,14 +45,7 @@ internal fun shouldPreserveEventSnapshotForHttpStatus(responseCode: Int): Boolea
 
 internal fun isUsableRaceEventSnapshot(snapshot: RaceEventSnapshot): Boolean {
     if (snapshot.resolvedEventName.isBlank()) return false
-    if (RaceRegistrationPolicy.registrationTimestamp(snapshot.startRaw) == null) return false
-
-    if (snapshot.courseJson.isNotBlank()) {
-        val courseValid = runCatching { JSONObject(snapshot.courseJson) }.isSuccess
-        if (!courseValid) return false
-    }
-
-    return true
+    return RaceRegistrationPolicy.registrationTimestamp(snapshot.startRaw) != null
 }
 
 internal fun parseRaceEventSnapshot(body: String): RaceEventSnapshot {
