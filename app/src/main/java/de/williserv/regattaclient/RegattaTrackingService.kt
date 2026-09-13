@@ -373,6 +373,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
             return
         }
 
+        restoreCachedEventSnapshot()
         serviceRunning = true
 
         startLocationUpdates()
@@ -569,6 +570,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
         eventPollRunning = true
 
         thread {
+            var serverResponded = false
             try {
                 val eventUrl = buildEventUrl()
                 val connection = URL(eventUrl).openConnection() as HttpURLConnection
@@ -582,6 +584,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
                 connection.setRequestProperty("x-api-version", API_VERSION)
 
                 val responseCode = connection.responseCode
+                serverResponded = true
+                ServerConnectionStateStore.markReachable(this, serverUrl)
                 val body = if (responseCode in 200..299) {
                     connection.inputStream.bufferedReader().use { it.readText() }
                 } else {
@@ -608,6 +612,9 @@ class RegattaTrackingService : Service(), SensorEventListener {
                     }
                 }
             } catch (_: Exception) {
+                if (!serverResponded) {
+                    ServerConnectionStateStore.markNoConnection(this, serverUrl)
+                }
             } finally {
                 eventPollRunning = false
             }
@@ -632,39 +639,46 @@ class RegattaTrackingService : Service(), SensorEventListener {
         }
     }
 
+    private fun restoreCachedEventSnapshot() {
+        val snapshot = RaceEventSnapshotStore.loadMatching(
+            context = this,
+            server = serverUrl,
+            event = eventName,
+            secret = sharedSecret,
+            expectedResolvedEventName = resolvedEventName
+        ) ?: return
+
+        applyRaceEventSnapshot(snapshot)
+    }
+
     private fun parseEventResponse(body: String) {
-        val obj = JSONObject(body)
-        val responseResolvedEventName = obj.optString("event_name", "").trim()
+        val snapshot = parseRaceEventSnapshot(body)
+        applyRaceEventSnapshot(snapshot)
+        RaceEventSnapshotStore.save(
+            context = this,
+            server = serverUrl,
+            event = eventName,
+            secret = sharedSecret,
+            snapshot = snapshot
+        )
+    }
 
-        if (responseResolvedEventName.isBlank()) {
-            throw IllegalArgumentException("/event response is missing event_name")
-        }
+    private fun applyRaceEventSnapshot(snapshot: RaceEventSnapshot) {
+        adoptResolvedEventName(snapshot.resolvedEventName)
 
-        adoptResolvedEventName(responseResolvedEventName)
+        raceStatus = snapshot.status.ifBlank { "unknown" }
+        courseShortened = snapshot.courseShortened
+        raceStartInstant = parseServerInstant(snapshot.startRaw)
+        raceStopInstant = parseServerInstant(snapshot.stopRaw)
 
-        raceStatus = if (obj.has("race_status") && !obj.isNull("race_status")) {
-            obj.optString("race_status", raceStatus)
-        } else {
-            obj.optString("status", raceStatus)
-        }
-        courseShortened = obj.optBoolean("course_shortened", false)
+        startLine = null
+        finishLine = null
+        courseMarks = emptyList()
+        firstCourseMark = null
 
-        val startRaw = if (obj.has("start_time") && !obj.isNull("start_time")) {
-            obj.optString("start_time", "")
-        } else {
-            ""
-        }
-
-        val stopRaw = if (obj.has("stop_time") && !obj.isNull("stop_time")) {
-            obj.optString("stop_time", "")
-        } else {
-            ""
-        }
-
-        raceStartInstant = parseServerInstant(startRaw)
-        raceStopInstant = parseServerInstant(stopRaw)
-
-        val course = obj.optJSONObject("course")
+        val course = snapshot.courseJson
+            .takeIf { it.isNotBlank() }
+            ?.let { raw -> runCatching { JSONObject(raw) }.getOrNull() }
 
         parseStartLine(course)
         parseFinishLine(course)
@@ -674,7 +688,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
             server = serverUrl,
             event = eventName,
             secret = sharedSecret,
-            resolvedEventName = responseResolvedEventName,
+            resolvedEventName = snapshot.resolvedEventName,
             status = raceStatus,
             startEpochMillis = raceStartInstant?.toEpochMilli(),
             stopEpochMillis = raceStopInstant?.toEpochMilli()

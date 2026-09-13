@@ -302,4 +302,9 @@
     <string name="confirm_boat_message">Bitte bestätige deine Bootsdaten vor dem Start der Regatta.\n\nBootsname: %1$s\nSkipper: %2$s\nSegelnummer: %3$s\nBootstyp: %4$s\nRumpffarbe: %5$s\nYardstick: %6$s\n\nDiese Werte werden für die Regatta-Aufzeichnung verwendet und an den Regatta-Server übertragen.</string>
     <string name="clear_race_title">Regatta löschen?</string>
     <string name="clear_race_message">Dadurch wird die gescannte Regatta von diesem Gerät entfernt.\n\nDie Bootseinrichtung bleibt unverändert.\n\nVor der Registrierung oder dem Start der Regatta muss der QR-Code erneut gescannt werden.</string>
+
+    <string name="status_no_connection">Keine Verbindung</string>
+    <string name="race_first_load_online_required">Eventdaten nicht verfügbar. Lade dieses Event einmal online, bevor du es ohne Verbindung verwendest.</string>
+    <string name="race_response_invalid">Eventdaten konnten nicht aktualisiert werden.</string>
+    <string name="race_entry_store_failed">Der Startpunkt konnte nicht lokal gespeichert werden. Die Regatta wurde nicht gestartet.</string>
 </resources>
