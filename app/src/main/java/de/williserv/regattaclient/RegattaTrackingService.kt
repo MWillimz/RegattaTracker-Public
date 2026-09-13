@@ -1209,6 +1209,27 @@ class RegattaTrackingService : Service(), SensorEventListener {
         return boatSide == -lastMarkSide
     }
 
+    private fun isBoatOnFinishApproachSide(
+        line: StartLine,
+        boatSignedDistance: Double
+    ): Boolean {
+        val approachReference = resolveFinishApproachReference(
+            courseMarks.lastOrNull()?.point,
+            startLine
+        ) ?: return false
+
+        val approachSignedDistance = StartLineMath.signedDistanceToStartLineM(
+            point = approachReference,
+            startLine = line
+        )
+
+        val approachSide = sideWithTolerance(approachSignedDistance)
+        val boatSide = sideWithTolerance(boatSignedDistance)
+
+        if (approachSide == 0 || boatSide == 0) return false
+        return boatSide == approachSide
+    }
+
     private fun isBoatOnCourseSide(
         line: StartLine,
         boatSignedDistance: Double
@@ -1288,7 +1309,12 @@ class RegattaTrackingService : Service(), SensorEventListener {
         )
 
         if (finishDetectionSuppressed) {
-            if (!isOnFinishSide) {
+            if (
+                isBoatOnFinishApproachSide(
+                    line = line,
+                    boatSignedDistance = metrics.signedDistanceM
+                )
+            ) {
                 finishDetectionSuppressed = false
                 savePersistedRaceState()
             }
