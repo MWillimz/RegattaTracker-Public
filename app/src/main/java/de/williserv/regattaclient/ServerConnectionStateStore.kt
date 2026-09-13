@@ -11,8 +11,7 @@ internal enum class ServerConnectionState {
 
 internal object ServerConnectionStateStore {
     private const val PREFS_NAME = "regatta_connection_state"
-    private const val KEY_SERVER = "server"
-    private const val KEY_STATE = "state"
+    private const val KEY_PREFIX = "state:"
 
     fun markReachable(context: Context, server: String) {
         write(context, server, ServerConnectionState.REACHABLE)
@@ -27,12 +26,10 @@ internal object ServerConnectionStateStore {
         if (normalized.isBlank()) return ServerConnectionState.UNKNOWN
 
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        if (prefs.getString(KEY_SERVER, "").orEmpty() != normalized) {
-            return ServerConnectionState.UNKNOWN
-        }
-
         return runCatching {
-            ServerConnectionState.valueOf(prefs.getString(KEY_STATE, "").orEmpty())
+            ServerConnectionState.valueOf(
+                prefs.getString(KEY_PREFIX + normalized, "").orEmpty()
+            )
         }.getOrDefault(ServerConnectionState.UNKNOWN)
     }
 
@@ -54,8 +51,7 @@ internal object ServerConnectionStateStore {
         context.applicationContext
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
-            .putString(KEY_SERVER, normalized)
-            .putString(KEY_STATE, state.name)
+            .putString(KEY_PREFIX + normalized, state.name)
             .apply()
     }
 
