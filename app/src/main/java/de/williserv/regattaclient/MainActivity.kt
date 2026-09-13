@@ -1302,6 +1302,12 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
         inRace.value = prefs.getBoolean("in_race", false)
         manualTracking.value = prefs.getBoolean("manual_tracking", false)
+        if (inRace.value && manualTracking.value) {
+            manualTracking.value = false
+            prefs.edit()
+                .putBoolean("manual_tracking", false)
+                .apply()
+        }
 
         serviceStatusText.value = when {
             inRace.value -> getString(R.string.service_race_running)
@@ -1887,21 +1893,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         passedMarks: Int,
         raceStarted: Boolean
     ) {
+        if (!inRace.value) return
+
         val intent = Intent(this, RegattaTrackingService::class.java).apply {
             action = RegattaTrackingService.ACTION_SET_COURSE_PROGRESS
-
-            putExtra(RegattaTrackingService.EXTRA_SERVER_URL, raceServer.value)
-            putExtra(RegattaTrackingService.EXTRA_EVENT_NAME, raceEvent.value)
-            putExtra(RegattaTrackingService.EXTRA_SHARED_SECRET, raceSecret.value)
-            putExtra(RegattaTrackingService.EXTRA_RESOLVED_EVENT_NAME, resolvedEventName.value)
-
-            putExtra(RegattaTrackingService.EXTRA_BOAT_NAME, boatName.value)
-            putExtra(RegattaTrackingService.EXTRA_CAPTAIN_NAME, skipperName.value)
-            putExtra(RegattaTrackingService.EXTRA_HULL_COLOR, hullColor.value)
-            putExtra(RegattaTrackingService.EXTRA_SAIL_NUMBER, sailNumber.value)
-            putExtra(RegattaTrackingService.EXTRA_YARDSTICK, yardstick.value)
-            putExtra(RegattaTrackingService.EXTRA_BOAT_TYPE, boatType.value)
-
             putExtra(RegattaTrackingService.EXTRA_PASSED_MARKS, passedMarks)
             putExtra(RegattaTrackingService.EXTRA_RACE_STARTED, raceStarted)
         }
@@ -2275,6 +2270,12 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     }
 
     private fun enterRace() {
+        if (manualTracking.value) {
+            manualTracking.value = false
+            saveAppState()
+            stopRegattaForegroundService()
+        }
+
         if (!storeRaceEntrySample()) return
 
         inRace.value = true
@@ -2305,6 +2306,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     }
 
     private fun startManualTracking() {
+        if (inRace.value) return
+
         manualTracking.value = true
         statusText.value = getString(R.string.manual_tracking_running)
         serviceStatusText.value = getString(R.string.service_manual_running)
@@ -2316,14 +2319,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         manualTracking.value = false
         saveAppState()
         statusText.value = getString(R.string.manual_tracking_stopped)
-
-        if (inRace.value) {
-            serviceStatusText.value = getString(R.string.service_race_continues)
-            startRegattaForegroundService(manualMode = false)
-        } else {
-            serviceStatusText.value = getString(R.string.service_stopped)
-            stopRegattaForegroundService()
-        }
+        serviceStatusText.value = getString(R.string.service_stopped)
+        stopRegattaForegroundService()
     }
 
     private fun startRegattaForegroundService(manualMode: Boolean) {
