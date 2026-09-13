@@ -48,6 +48,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
     companion object {
         const val ACTION_START = "de.williserv.regattaclient.START_TRACKING_SERVICE"
         const val ACTION_STOP = "de.williserv.regattaclient.STOP_TRACKING_SERVICE"
+        const val ACTION_CONTINUE_AFTER_FINISH =
+            "de.williserv.regattaclient.CONTINUE_AFTER_FINISH"
 
         const val EXTRA_SERVER_URL = "server_url"
         const val EXTRA_EVENT_NAME = "event_name"
@@ -122,6 +124,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
     private var isOcs = false
     private var raceStarted = false
     private var raceFinished = false
+    private var finishDetectionSuppressed = false
     private var passedMarks = 0
 
     private var lastDtlM: Double? = null
@@ -234,6 +237,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
                 readStartIntentExtras(intent, requestedManual)
                 getSharedPreferences("app_state", Context.MODE_PRIVATE)
                     .edit()
+                    .putBoolean("in_race", !manualRecording)
                     .putBoolean("manual_tracking", manualRecording)
                     .apply()
                 startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.tracking_active)))
@@ -245,6 +249,21 @@ class RegattaTrackingService : Service(), SensorEventListener {
             ACTION_STOP -> {
                 stopTrackingService()
                 return START_NOT_STICKY
+            }
+
+            ACTION_CONTINUE_AFTER_FINISH -> {
+                val persistedInRace = getSharedPreferences("app_state", Context.MODE_PRIVATE)
+                    .getBoolean("in_race", false)
+                if (!serviceRunning) {
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+                if (manualRecording || !persistedInRace) {
+                    return START_STICKY
+                }
+
+                continueAfterDetectedFinish()
+                return START_STICKY
             }
 
             ACTION_SET_COURSE_PROGRESS -> {
@@ -311,6 +330,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
         isOcs = false
         raceStarted = false
         raceFinished = false
+        finishDetectionSuppressed = false
         passedMarks = 0
 
         lastDtlM = null
@@ -344,6 +364,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
         raceStarted = prefs.getBoolean("race_started", false)
         raceFinished = prefs.getBoolean("race_finished", false)
+        finishDetectionSuppressed = prefs.getBoolean("finish_detection_suppressed", false)
         passedMarks = prefs.getInt("passed_marks", 0)
         isOcs = prefs.getBoolean("is_ocs", false)
 
@@ -362,6 +383,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
             .putString("sail_number", sailNumber)
             .putBoolean("race_started", raceStarted)
             .putBoolean("race_finished", raceFinished)
+            .putBoolean("finish_detection_suppressed", finishDetectionSuppressed)
             .putInt("passed_marks", passedMarks)
             .putBoolean("is_ocs", isOcs)
             .putLong("saved_at", System.currentTimeMillis())
@@ -533,7 +555,17 @@ class RegattaTrackingService : Service(), SensorEventListener {
         handler.postDelayed(sampleRunnable, intervalMs)
     }
 
+    private fun persistTrackingStoppedState() {
+        getSharedPreferences("app_state", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("in_race", false)
+            .putBoolean("manual_tracking", false)
+            .commit()
+    }
+
     private fun stopTrackingService() {
+        persistTrackingStoppedState()
+
         synchronized(eventPollLifecycleLock) {
             eventPollGeneration += 1
             serviceRunning = false
@@ -1177,6 +1209,27 @@ class RegattaTrackingService : Service(), SensorEventListener {
         return boatSide == -lastMarkSide
     }
 
+    private fun isBoatOnFinishApproachSide(
+        line: StartLine,
+        boatSignedDistance: Double
+    ): Boolean {
+        val approachReference = resolveFinishApproachReference(
+            courseMarks.lastOrNull()?.point,
+            startLine
+        ) ?: return false
+
+        val approachSignedDistance = StartLineMath.signedDistanceToStartLineM(
+            point = approachReference,
+            startLine = line
+        )
+
+        val approachSide = sideWithTolerance(approachSignedDistance)
+        val boatSide = sideWithTolerance(boatSignedDistance)
+
+        if (approachSide == 0 || boatSide == 0) return false
+        return boatSide == approachSide
+    }
+
     private fun isBoatOnCourseSide(
         line: StartLine,
         boatSignedDistance: Double
@@ -1254,6 +1307,22 @@ class RegattaTrackingService : Service(), SensorEventListener {
             line = line,
             boatSignedDistance = metrics.signedDistanceM
         )
+
+        if (finishDetectionSuppressed) {
+            if (
+                isBoatOnFinishApproachSide(
+                    line = line,
+                    boatSignedDistance = metrics.signedDistanceM
+                )
+            ) {
+                finishDetectionSuppressed = false
+                savePersistedRaceState()
+            }
+
+            previousFinishLinePosition = currentGeoPoint
+            previousFinishLineTimestampMillis = nowMillis
+            return
+        }
 
         if (!raceFinished && (crossedFinish || isOnFinishSide)) {
             raceFinished = true
@@ -1348,6 +1417,21 @@ class RegattaTrackingService : Service(), SensorEventListener {
         )
     }
 
+    private fun continueAfterDetectedFinish() {
+        if (!serviceRunning || manualRecording || !raceFinished) return
+
+        raceFinished = false
+        finishDetectionSuppressed = true
+        currentTargetDistanceM = null
+
+        handler.removeCallbacks(autoStopAfterFinishRunnable)
+        autoStopAfterFinishScheduled = false
+
+        savePersistedRaceState()
+        publishLocalRaceStatus()
+        updateNotification()
+    }
+
     private fun setCourseProgressFromUser(
         passedMarksFromUser: Int,
         raceStartedFromUser: Boolean
@@ -1361,6 +1445,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
         isOcs = false
         raceStarted = raceStartedFromUser
         raceFinished = false
+        finishDetectionSuppressed = false
         passedMarks = if (raceStartedFromUser) {
             safePassedMarks
         } else {
