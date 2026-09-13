@@ -102,8 +102,6 @@ class RegattaTrackingServiceLifecycleTest {
         looper.idleFor(1L, TimeUnit.MILLISECONDS)
         assertTrue(statusPrefs.contains("target_text"))
 
-        // Let the recursively scheduled fast callback terminate, then verify that the
-        // original 60 s callback was actually removed rather than left behind.
         setField(service, "serviceRunning", false)
         clearLocalStatusPrefs()
         looper.idleFor(2_000L, TimeUnit.MILLISECONDS)
@@ -120,7 +118,6 @@ class RegattaTrackingServiceLifecycleTest {
     fun `normal start and stop actions keep existing sticky semantics`() {
         val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
         val service = controller.get()
-        setField(service, "eventPollRunning", true)
 
         val startIntent = Intent(context, RegattaTrackingService::class.java).apply {
             action = RegattaTrackingService.ACTION_START
@@ -164,6 +161,28 @@ class RegattaTrackingServiceLifecycleTest {
     }
 
     @Test
+    fun `manual start is rejected while race is persisted active`() {
+        seedAppState(inRace = true, manualTracking = false)
+
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+        val manualIntent = Intent(context, RegattaTrackingService::class.java).apply {
+            action = RegattaTrackingService.ACTION_START
+            putExtra(RegattaTrackingService.EXTRA_MANUAL_RECORDING, true)
+        }
+
+        assertEquals(Service.START_NOT_STICKY, service.onStartCommand(manualIntent, 0, 1))
+        assertFalse(getField<Boolean>(service, "serviceRunning"))
+        assertFalse(getField<Boolean>(service, "manualRecording"))
+        assertFalse(
+            context.getSharedPreferences("app_state", Context.MODE_PRIVATE)
+                .getBoolean("manual_tracking", true)
+        )
+
+        controller.destroy()
+    }
+
+    @Test
     fun `unknown non-null action stays non-sticky`() {
         val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
         val service = controller.get()
@@ -195,7 +214,6 @@ class RegattaTrackingServiceLifecycleTest {
 
         val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
         val service = controller.get()
-        setField(service, "eventPollRunning", true)
 
         assertEquals(Service.START_STICKY, service.onStartCommand(null, 0, 1))
         assertTrue(getField<Boolean>(service, "serviceRunning"))
@@ -210,8 +228,66 @@ class RegattaTrackingServiceLifecycleTest {
     }
 
     @Test
-    fun `sticky restart prefers manual mode when both app flags are active`() {
+    fun `manual sticky restart ignores persisted race context and snapshot`() {
         seedBoatSetup()
+        seedRaceSetup()
+        seedRaceProgress()
+        seedAppState(inRace = false, manualTracking = true)
+
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+
+        assertEquals(Service.START_STICKY, service.onStartCommand(null, 0, 1))
+        assertTrue(getField<Boolean>(service, "manualRecording"))
+        assertEquals("", getField<String>(service, "serverUrl"))
+        assertEquals("", getField<String>(service, "eventName"))
+        assertEquals("", getField<String>(service, "sharedSecret"))
+        assertNull(getField<String?>(service, "resolvedEventName"))
+        assertNull(getField<Long?>(service, "accessContextId"))
+        assertNull(getField<Any?>(service, "raceStartInstant"))
+        assertFalse(
+            context.getSharedPreferences(LOCAL_STATUS_PREFS, Context.MODE_PRIVATE)
+                .contains("target_text")
+        )
+
+        controller.destroy()
+    }
+
+    @Test
+    fun `manual sample does not mutate persisted race progress or local race status`() {
+        seedBoatSetup()
+        seedRaceSetup()
+        seedRaceProgress()
+        seedAppState(inRace = false, manualTracking = true)
+
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+        val helper = getField<TrackingDbHelper>(service, "db")
+
+        assertEquals(Service.START_STICKY, service.onStartCommand(null, 0, 1))
+        invokeNoArg(service, "generateAndStoreSample")
+
+        val racePrefs = context.getSharedPreferences("regatta_race_state", Context.MODE_PRIVATE)
+        assertTrue(racePrefs.getBoolean("race_started", false))
+        assertFalse(racePrefs.getBoolean("race_finished", true))
+        assertEquals(2, racePrefs.getInt("passed_marks", -1))
+        assertTrue(racePrefs.getBoolean("is_ocs", false))
+        assertFalse(
+            context.getSharedPreferences(LOCAL_STATUS_PREFS, Context.MODE_PRIVATE)
+                .contains("target_text")
+        )
+        assertEquals(1L, helper.countSamples())
+        assertEquals(0L, helper.countPendingSamples())
+
+        controller.destroy()
+        helper.close()
+    }
+
+    @Test
+    fun `sticky restart normalizes legacy double mode to race`() {
+        seedBoatSetup()
+        seedRaceSetup()
+        seedRaceProgress()
         seedAppState(inRace = true, manualTracking = true)
 
         val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
@@ -219,8 +295,13 @@ class RegattaTrackingServiceLifecycleTest {
         setField(service, "eventPollRunning", true)
 
         assertEquals(Service.START_STICKY, service.onStartCommand(null, 0, 1))
-        assertTrue(getField<Boolean>(service, "manualRecording"))
-        assertNull(getField<Long?>(service, "accessContextId"))
+        assertFalse(getField<Boolean>(service, "manualRecording"))
+        assertTrue(getField<Long?>(service, "accessContextId") != null)
+        assertEquals("Race 7", getField<String?>(service, "resolvedEventName"))
+        assertFalse(
+            context.getSharedPreferences("app_state", Context.MODE_PRIVATE)
+                .getBoolean("manual_tracking", true)
+        )
 
         controller.destroy()
     }
@@ -274,6 +355,68 @@ class RegattaTrackingServiceLifecycleTest {
     }
 
     @Test
+    fun `course progress on stopped service is non-sticky and does not start tracking`() {
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+        val intent = courseProgressIntent(passedMarks = 3, raceStarted = true)
+
+        assertEquals(Service.START_NOT_STICKY, service.onStartCommand(intent, 0, 1))
+        assertFalse(getField<Boolean>(service, "serviceRunning"))
+        assertEquals(0, getField<Int>(service, "passedMarks"))
+        assertFalse(getField<Boolean>(service, "raceStarted"))
+
+        controller.destroy()
+    }
+
+    @Test
+    fun `course progress is ignored while manual tracking remains active`() {
+        seedAppState(inRace = false, manualTracking = true)
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+
+        val startIntent = Intent(context, RegattaTrackingService::class.java).apply {
+            action = RegattaTrackingService.ACTION_START
+            putExtra(RegattaTrackingService.EXTRA_MANUAL_RECORDING, true)
+        }
+        assertEquals(Service.START_STICKY, service.onStartCommand(startIntent, 0, 1))
+
+        assertEquals(
+            Service.START_STICKY,
+            service.onStartCommand(courseProgressIntent(3, true), 0, 2)
+        )
+        assertTrue(getField<Boolean>(service, "serviceRunning"))
+        assertTrue(getField<Boolean>(service, "manualRecording"))
+        assertEquals(0, getField<Int>(service, "passedMarks"))
+        assertFalse(getField<Boolean>(service, "raceStarted"))
+
+        controller.destroy()
+    }
+
+    @Test
+    fun `course progress still applies to active race without changing mode`() {
+        seedAppState(inRace = true, manualTracking = false)
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+        setField(service, "serviceRunning", true)
+        setField(service, "manualRecording", false)
+        setField(service, "resolvedEventName", "Race 7")
+        setField(service, "eventName", "Stable Series")
+        setField(service, "sailNumber", "GER 104")
+        setField(service, "eventPollRunning", true)
+
+        assertEquals(
+            Service.START_STICKY,
+            service.onStartCommand(courseProgressIntent(3, true), 0, 1)
+        )
+        assertFalse(getField<Boolean>(service, "manualRecording"))
+        assertEquals(3, getField<Int>(service, "passedMarks"))
+        assertTrue(getField<Boolean>(service, "raceStarted"))
+
+        setField(service, "serviceRunning", false)
+        controller.destroy()
+    }
+
+    @Test
     fun `repeated sticky restart does not duplicate manual sample loop`() {
         seedBoatSetup()
         seedAppState(inRace = false, manualTracking = true)
@@ -282,7 +425,6 @@ class RegattaTrackingServiceLifecycleTest {
         val service = controller.get()
         val helper = getField<TrackingDbHelper>(service, "db")
         val looper = shadowOf(Looper.getMainLooper())
-        setField(service, "eventPollRunning", true)
 
         assertEquals(Service.START_STICKY, service.onStartCommand(null, 0, 1))
         assertEquals(Service.START_STICKY, service.onStartCommand(null, 0, 2))
@@ -293,6 +435,13 @@ class RegattaTrackingServiceLifecycleTest {
         controller.destroy()
         helper.close()
     }
+
+    private fun courseProgressIntent(passedMarks: Int, raceStarted: Boolean): Intent =
+        Intent(context, RegattaTrackingService::class.java).apply {
+            action = RegattaTrackingService.ACTION_SET_COURSE_PROGRESS
+            putExtra(RegattaTrackingService.EXTRA_PASSED_MARKS, passedMarks)
+            putExtra(RegattaTrackingService.EXTRA_RACE_STARTED, raceStarted)
+        }
 
     private fun seedAppState(inRace: Boolean, manualTracking: Boolean) {
         context.getSharedPreferences("app_state", Context.MODE_PRIVATE)

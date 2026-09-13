@@ -302,6 +302,7 @@ fun HomeScreen(
         if (showAdvanced) {
             AdvancedDebugBlock(
                 manualTracking = manualTracking,
+                inRace = inRace,
                 rowCountText = rowCountText,
                 uploadStatusText = advancedUploadStatusText,
                 debugErrorText = debugErrorText,
@@ -835,6 +836,7 @@ fun SmallActionButton(
 @Composable
 fun AdvancedDebugBlock(
     manualTracking: Boolean,
+    inRace: Boolean,
     rowCountText: String,
     uploadStatusText: String,
     debugErrorText: String,
@@ -867,6 +869,7 @@ fun AdvancedDebugBlock(
 
             Button(
                 onClick = onToggleManualTracking,
+                enabled = manualTracking || !inRace,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (manualTracking) {
