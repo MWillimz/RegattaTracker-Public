@@ -15,7 +15,8 @@ class HomeUploadStatusTest {
         raceStatusCode: String,
         raceDataReady: Boolean,
         raceLegalAccepted: Boolean,
-        hasRaceSetup: Boolean
+        hasRaceSetup: Boolean,
+        noConnection: Boolean = false
     ): String = shortUploadStatus(
         pendingUploadCount = pendingUploadCount,
         inRace = inRace,
@@ -29,7 +30,9 @@ class HomeUploadStatusTest {
         waitingText = "waiting",
         readyText = "ready",
         idleText = "idle",
-        okText = "OK"
+        okText = "OK",
+        noConnection = noConnection,
+        noConnectionText = "No connection"
     )
 
     private fun shortRaceStatusEnglish(
@@ -75,8 +78,20 @@ class HomeUploadStatusTest {
     }
 
     @Test
-    fun loadedSetupWithoutLegalAcceptance_isBlocked() {
-        assertEquals("blocked", shortUploadStatusEnglish(0L, false, "planned", false, false, true))
+    fun loadedSetupWithoutLegalAcceptance_isNotBlocked() {
+        assertEquals("waiting", shortUploadStatusEnglish(0L, false, "planned", true, false, true))
+    }
+
+    @Test
+    fun noConnection_hasPriorityAndShowsPendingCount() {
+        assertEquals(
+            "No connection · 7 pending",
+            shortUploadStatusEnglish(7L, true, "racing", true, false, true, noConnection = true)
+        )
+        assertEquals(
+            "No connection",
+            shortUploadStatusEnglish(0L, false, "planned", true, true, true, noConnection = true)
+        )
     }
 
     @Test

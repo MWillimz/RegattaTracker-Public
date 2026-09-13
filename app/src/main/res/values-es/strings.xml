@@ -302,4 +302,9 @@
     <string name="confirm_boat_message">Confirma los datos del barco antes de entrar en regata.\n\nNombre del barco: %1$s\nPatrón: %2$s\nNúmero de vela: %3$s\nTipo de barco: %4$s\nColor del casco: %5$s\nYardstick: %6$s\n\nEstos valores se utilizarán para el seguimiento de regata y se enviarán al servidor de regata.</string>
     <string name="clear_race_title">¿Borrar regata?</string>
     <string name="clear_race_message">Esto elimina la regata escaneada de este dispositivo.\n\nLa configuración del barco no cambiará.\n\nTendrás que volver a escanear el código QR antes de registrarte o entrar en regata.</string>
+
+    <string name="status_no_connection">Sin conexión</string>
+    <string name="race_first_load_online_required">Los datos del evento no están disponibles. Carga este evento en línea una vez antes de usarlo sin conexión.</string>
+    <string name="race_response_invalid">No se pudieron actualizar los datos del evento.</string>
+    <string name="race_entry_store_failed">No se pudo guardar localmente el punto de entrada en regata. La regata no se inició.</string>
 </resources>

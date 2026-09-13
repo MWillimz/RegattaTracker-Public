@@ -344,4 +344,9 @@
     <string name="confirm_boat_message">Please confirm your boat data before entering the race.\n\nBoat name: %1$s\nSkipper: %2$s\nSail number: %3$s\nBoat type: %4$s\nHull color: %5$s\nYardstick: %6$s\n\nThese values will be used for race tracking and sent to the race server.</string>
     <string name="clear_race_title">Clear Race?</string>
     <string name="clear_race_message">This removes the scanned race from this device.\n\nBoat setup will not be changed.\n\nYou will need to scan the race QR code again before registering or entering the race.</string>
+
+    <string name="status_no_connection">No connection</string>
+    <string name="race_first_load_online_required">Event data unavailable. Load this event online once before using it without a connection.</string>
+    <string name="race_response_invalid">Event data could not be updated.</string>
+    <string name="race_entry_store_failed">Could not store the race entry sample. Race was not started.</string>
 </resources>

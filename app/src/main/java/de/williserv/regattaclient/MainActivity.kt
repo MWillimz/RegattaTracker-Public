@@ -167,6 +167,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private val rowCountText = mutableStateOf("")
     private val uploadStatusText = mutableStateOf("")
     private val pendingUploadCount = mutableStateOf(0L)
+    private val serverNoConnection = mutableStateOf(false)
     private val serviceStatusText = mutableStateOf("")
 
     private val registerRaceStatusText = mutableStateOf("")
@@ -205,14 +206,16 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         override fun run() {
             updateStorageText()
             updateLocalRaceStatus()
+            updateConnectionUiState()
             handler.postDelayed(this, 1000L)
         }
     }
 
     private fun canEnterRaceNow(): Boolean {
-        return raceDataReady.value &&
-                setupConfirmed.value &&
-                raceLegalAccepted.value
+        return canEnterRaceWithLocalState(
+            raceDataReady = raceDataReady.value,
+            setupConfirmed = setupConfirmed.value
+        )
     }
 
     private fun navigateBack() {
@@ -235,7 +238,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private val raceDataRefreshRunnable = object : Runnable {
         override fun run() {
-            if (canEnterRaceNow() || inRace.value) {
+            if (currentEventAccessKey() != null) {
                 fetchRaceDataForDisplay()
                 handler.postDelayed(this, 10_000L)
             }
@@ -337,6 +340,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             rowCountText = rowCountText.value,
                             uploadStatusText = uploadStatusText.value,
                             pendingUploadCount = pendingUploadCount.value,
+                            noConnection = serverNoConnection.value,
                             debugErrorText = debugErrorText.value,
                             serviceStatusText = serviceStatusText.value,
                             raceStatusCode = currentRaceStatus,
@@ -552,10 +556,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                         statusText.value = getString(R.string.confirm_boat_setup_first)
                                     }
 
-                                    !raceLegalAccepted.value -> {
-                                        raceStatusText.value = getString(R.string.race_accept_legal_first)
-                                    }
-
                                     else -> {
                                         showBoatConfirmDialog.value = true
                                     }
@@ -676,11 +676,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         onConfirm = {
                             showBoatConfirmDialog.value = false
 
-                            registerForRace(
-                                onSuccess = {
-                                    requestTrackingConsent(PendingTrackingAction.ENTER_RACE)
-                                }
-                            )
+                            requestTrackingConsent(PendingTrackingAction.ENTER_RACE)
                         },
                         onCancel = {
                             showBoatConfirmDialog.value = false
@@ -732,6 +728,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
 
         handleIncomingShareIntent(intent)
+        if (currentEventAccessKey() != null) {
+            fetchRaceLegalText()
+        }
+        updateConnectionUiState()
         requestPermissionsForApp()
         startImuUpdates()
         handler.postDelayed(uiRefreshRunnable, 1000L)
@@ -1406,6 +1406,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
         eventCompatibilityWarningAccess = null
         eventCompatibilityAllowedAccess = access
+        fetchRaceDataForDisplay()
+        startRaceDataRefresh()
         fetchRaceLegalTextAfterCompatibility(currentEventCompatibilityContext(access))
     }
 
@@ -1419,6 +1421,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
         when {
             eventCompatibilityAllowedAccess == access -> {
+                fetchRaceDataForDisplay()
+                startRaceDataRefresh()
                 fetchRaceLegalTextAfterCompatibility(compatibilityContext)
                 return
             }
@@ -1481,6 +1485,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         eventCompatibilityAllowedAccess = access
                         eventCompatibilityWarningAccess = null
                         eventCompatibilityBlockedAccess = null
+                        fetchRaceDataForDisplay()
+                        startRaceDataRefresh()
                         fetchRaceLegalTextAfterCompatibility(compatibilityContext)
                     }
 
@@ -2123,6 +2129,21 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
     }
 
+    private fun updateConnectionUiState() {
+        val server = raceServer.value
+        if (server.isBlank()) {
+            serverNoConnection.value = false
+            return
+        }
+
+        if (!ServerConnectionStateStore.hasActiveNetwork(this)) {
+            ServerConnectionStateStore.markNoConnection(this, server)
+        }
+
+        serverNoConnection.value =
+            ServerConnectionStateStore.state(this, server) == ServerConnectionState.NO_CONNECTION
+    }
+
     private fun startRaceDataRefresh() {
         handler.removeCallbacks(raceDataRefreshRunnable)
         handler.postDelayed(raceDataRefreshRunnable, 10_000L)
@@ -2152,7 +2173,59 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
     }
 
+    private fun storeRaceEntrySample(): Boolean {
+        val entry = buildRaceEntrySample(
+            rawRaceStart = rawRaceStart.ifBlank { legacyDisplayPayload(raceStartText.value) },
+            boatSetup = currentBoatSetupValues()
+        ) ?: run {
+            statusText.value = getString(R.string.load_valid_race_start_first)
+            return false
+        }
+
+        val accessContextId = db.getOrCreateAccessContext(
+            serverUrl = raceServer.value,
+            accessIdentifier = raceEvent.value,
+            accessSecret = raceSecret.value
+        ) ?: run {
+            statusText.value = getString(R.string.race_entry_store_failed)
+            return false
+        }
+
+        val insertedId = db.insertSample(
+            sequenceId = entry.sequenceId,
+            timestamp = entry.timestamp,
+            boatName = entry.boatName,
+            captainName = entry.captainName,
+            hullColor = entry.hullColor,
+            sailNumber = entry.sailNumber,
+            yardstick = entry.yardstick,
+            boatType = entry.boatType,
+            lat = entry.lat,
+            lon = entry.lon,
+            accuracy = entry.accuracy,
+            cog = entry.cog,
+            sog = entry.sog,
+            accelX = entry.accelX,
+            accelY = entry.accelY,
+            accelZ = entry.accelZ,
+            gyroX = entry.gyroX,
+            gyroY = entry.gyroY,
+            gyroZ = entry.gyroZ,
+            accessContextId = accessContextId
+        )
+
+        if (insertedId == -1L) {
+            statusText.value = getString(R.string.race_entry_store_failed)
+            return false
+        }
+
+        TelemetryUploadScheduler.enqueue(this)
+        return true
+    }
+
     private fun enterRace() {
+        if (!storeRaceEntrySample()) return
+
         inRace.value = true
         statusText.value = getString(R.string.in_race)
         serviceStatusText.value = getString(R.string.service_starting)
@@ -2329,27 +2402,17 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     }
 
     private fun fetchRaceDataForDisplay() {
-        if (!raceLegalAccepted.value) {
-            raceStatusText.value = getString(R.string.race_accept_legal_first)
-
-            if (raceLegalText.value.isNotBlank()) {
-                currentScreen.value = Screen.RACE_LEGAL
-            } else {
-                fetchRaceLegalText()
-            }
-
-            return
-        }
-
+        val access = currentEventAccessKey() ?: return
         if (raceDataFetchRunning) return
         raceDataFetchRunning = true
 
         thread {
+            var serverResponded = false
             try {
                 val url = buildNormalApiGetUrl(
-                    baseUrl = getBaseServerUrl(),
+                    baseUrl = baseServerUrlForAccess(access),
                     path = "/event",
-                    eventName = raceEvent.value
+                    eventName = access.event
                 )
 
                 val connection = URL(url).openConnection() as HttpURLConnection
@@ -2357,106 +2420,72 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 connection.connectTimeout = 3000
                 connection.readTimeout = 3000
                 connection.setRequestProperty("accept", "application/json")
-                connection.setRequestProperty("x-event-name", raceEvent.value)
-                connection.setRequestProperty("x-shared-secret", raceSecret.value)
+                connection.setRequestProperty("x-event-name", access.event)
+                connection.setRequestProperty("x-shared-secret", access.secret)
                 connection.setRequestProperty(
                     "x-api-version",
                     RegattaTrackingService.API_VERSION
                 )
 
                 val responseCode = connection.responseCode
+                serverResponded = true
+                ServerConnectionStateStore.markReachable(this, access.server)
+
                 val body = if (responseCode in 200..299) {
                     connection.inputStream.bufferedReader().use { it.readText() }
                 } else {
                     connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
                 }
-
                 connection.disconnect()
 
                 if (responseCode !in 200..299) {
                     runOnUiThread {
-                        raceStatusText.value = getString(R.string.race_error_code, responseCode)
-                        raceDataReady.value = false
+                        updateConnectionUiState()
+                        if (shouldInvalidateEventSnapshotForHttpStatus(responseCode)) {
+                            raceStatusText.value = getString(R.string.race_error_code, responseCode)
+                            clearSavedRaceDataReady()
+                        } else if (!raceDataReady.value) {
+                            raceStatusText.value = getString(R.string.race_error_code, responseCode)
+                        }
                     }
                     return@thread
                 }
 
+                val snapshot = parseRaceEventSnapshot(body)
                 val json = JSONObject(body)
-                val responseResolvedEventName = json.optString("event_name", "").trim()
-
-                if (responseResolvedEventName.isBlank()) {
-                    runOnUiThread {
-                        raceStatusText.value = getString(R.string.race_response_missing_event)
-                        raceDataReady.value = false
-                    }
-                    return@thread
-                }
-
                 val parsedSeriesDisplayMetadata = parseSeriesDisplayMetadata(json)
                 val parsedStartFlags = parseRaceStartFlags(json)
 
-                val start = getJsonStringAny(
-                    json,
-                    listOf("start_time", "startTime", "tracking_start", "trackingStart", "start")
-                ) ?: "--"
-
-                val stop = if (json.has("stop_time") && !json.isNull("stop_time")) {
-                    getJsonStringAny(
-                        json,
-                        listOf(
-                            "stop_time",
-                            "stopTime",
-                            "tracking_stop",
-                            "trackingStop",
-                            "end_time",
-                            "endTime",
-                            "stop"
-                        )
-                    ) ?: "--"
-                } else {
-                    "--"
-                }
-
-                val status = getJsonStringAny(
-                    json,
-                    listOf("race_status", "status", "state", "event_status")
-                ) ?: "loaded"
-
-                val raceInfo = getJsonStringAny(
-                    json,
-                    listOf("race_info", "info", "notice", "message")
-                ) ?: "--"
-
-                val courseShortened = json.optBoolean("course_shortened", false)
-
-                val courseObj = json.optJSONObject("course")
-                    ?: json.optJSONObject("kurs")
-                    ?: json.optJSONObject("race_course")
-                    ?: json.optJSONObject("track")
-
-                val courseJson = courseObj?.toString().orEmpty()
-
                 runOnUiThread {
-                    adoptResolvedEventName(responseResolvedEventName)
+                    adoptResolvedEventName(snapshot.resolvedEventName)
                     raceSeriesDisplayMetadata.value = parsedSeriesDisplayMetadata
-                    rawRaceStatus = status
-                    rawRaceStart = start
-                    rawRaceStop = stop
-                    rawRaceInfo = raceInfo
-                    rawRaceCourseJson = courseJson
-                    rawRaceCourseShortened = courseShortened
+                    rawRaceStatus = snapshot.status
+                    rawRaceStart = snapshot.startRaw
+                    rawRaceStop = snapshot.stopRaw
+                    rawRaceInfo = snapshot.raceInfo
+                    rawRaceCourseJson = snapshot.courseJson
+                    rawRaceCourseShortened = snapshot.courseShortened
                     raceDataReady.value = true
                     raceStartFlags.value = parsedStartFlags
                     renderRawRaceSetup()
                     saveRaceSetup()
                     updateStartPanelStatus()
                     updateLocalRaceStatus()
+                    updateConnectionUiState()
                 }
-
-            } catch (e: Exception) {
+            } catch (_: Exception) {
+                if (!serverResponded) {
+                    ServerConnectionStateStore.markNoConnection(this, access.server)
+                }
                 runOnUiThread {
-                    raceStatusText.value = getString(R.string.race_error, e.message ?: "")
-                    raceDataReady.value = false
+                    updateConnectionUiState()
+                    if (!raceDataReady.value) {
+                        raceStatusText.value = if (serverResponded) {
+                            getString(R.string.race_response_invalid)
+                        } else {
+                            getString(R.string.race_first_load_online_required)
+                        }
+                    }
                 }
             } finally {
                 raceDataFetchRunning = false

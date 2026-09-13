@@ -464,6 +464,7 @@ class TelemetryUploadWorker(
             }
 
             val responseCode = connection.responseCode
+            ServerConnectionStateStore.markReachable(applicationContext, accessContext.serverUrl)
             val errorBody = if (responseCode in 200..299) {
                 ""
             } else {
@@ -524,6 +525,7 @@ class TelemetryUploadWorker(
             connection.disconnect()
             result
         } catch (e: Exception) {
+            ServerConnectionStateStore.markNoConnection(applicationContext, accessContext.serverUrl)
             publishDebugError(applicationContext.getString(R.string.upload_exception, e.message ?: ""))
             TelemetryUploadAttemptResult.TEMPORARY_FAILURE
         }

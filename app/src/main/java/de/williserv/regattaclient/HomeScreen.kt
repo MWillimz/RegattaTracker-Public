@@ -67,6 +67,7 @@ fun HomeScreen(
     rowCountText: String,
     uploadStatusText: String,
     pendingUploadCount: Long,
+    noConnection: Boolean = false,
     debugErrorText: String,
     serviceStatusText: String,
     raceStatusCode: String,
@@ -148,7 +149,8 @@ fun HomeScreen(
     val uploadColor = uploadStatusColor(
         pendingUploadCount = pendingUploadCount,
         inRace = inRace,
-        disabledColor = MaterialTheme.colorScheme.outlineVariant
+        disabledColor = MaterialTheme.colorScheme.outlineVariant,
+        noConnection = noConnection
     )
 
     val showCourseShortened =
@@ -241,6 +243,7 @@ fun HomeScreen(
                 pendingUploadCount = pendingUploadCount,
                 inRace = inRace,
                 raceStatusCode = raceStatusCode,
+                noConnection = noConnection,
                 raceDataReady = raceDataReady,
                 raceLegalAccepted = raceLegalAccepted,
                 hasRaceSetup = raceEvent.isNotBlank(),
@@ -250,7 +253,8 @@ fun HomeScreen(
                 waitingText = stringResource(R.string.status_waiting),
                 readyText = stringResource(R.string.status_ready),
                 idleText = stringResource(R.string.status_idle),
-                okText = stringResource(R.string.ok)
+                okText = stringResource(R.string.ok),
+                noConnectionText = stringResource(R.string.status_no_connection)
             ),
             uploadColor = uploadColor
         )
@@ -964,8 +968,11 @@ fun isRaceFinished(
 fun uploadStatusColor(
     pendingUploadCount: Long,
     inRace: Boolean,
-    disabledColor: Color
+    disabledColor: Color,
+    noConnection: Boolean = false
 ): Color {
+    if (noConnection) return RegattaRed
+
     if (!inRace && pendingUploadCount == 0L) {
         return disabledColor
     }
@@ -990,15 +997,24 @@ fun shortUploadStatus(
     waitingText: String,
     readyText: String,
     idleText: String,
-    okText: String
+    okText: String,
+    noConnection: Boolean = false,
+    noConnectionText: String = "No connection"
 ): String {
+    if (noConnection) {
+        return if (pendingUploadCount > 0L) {
+            "$noConnectionText · ${pendingText(pendingUploadCount)}"
+        } else {
+            noConnectionText
+        }
+    }
+
     if (!inRace) {
         if (pendingUploadCount > 0L) {
             return pendingText(pendingUploadCount)
         }
 
         return when {
-            hasRaceSetup && !raceLegalAccepted -> blockedText
             !raceDataReady -> offText
             raceStatusCode.equals("planned", ignoreCase = true) -> waitingText
             raceStatusCode.equals("racing", ignoreCase = true) -> readyText
