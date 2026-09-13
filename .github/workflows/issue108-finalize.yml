@@ -1,0 +1,321 @@
+name: Finalize issue 108 implementation
+
+on:
+  push:
+    branches:
+      - fix/108-offline-recovery
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/108-offline-recovery
+          fetch-depth: 0
+
+      - name: Apply final scoped cleanups
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f"{path}: expected one match, found {count}: {old[:100]!r}")
+              p.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          main = "app/src/main/java/de/williserv/regattaclient/MainActivity.kt"
+          home = "app/src/main/java/de/williserv/regattaclient/HomeScreen.kt"
+          test = "app/src/test/java/de/williserv/regattaclient/HomeUploadStatusTest.kt"
+
+          replace_once(
+              main,
+              '''    private fun canEnterRaceNow(): Boolean {
+                  return canEnterRaceWithLocalState(
+                      raceDataReady = raceDataReady.value,
+                      setupConfirmed = setupConfirmed.value
+                  )
+              }
+          ''',
+              '''    private fun canEnterRaceNow(): Boolean {
+                  val isSeriesAccess =
+                      raceSeriesDisplayMetadata.value.runName.isNotBlank() ||
+                          (resolvedEventName.value.isNotBlank() && resolvedEventName.value != raceEvent.value)
+                  val cachedSeriesRunObsolete = isCachedSeriesRunObsolete(
+                      isSeriesAccess = isSeriesAccess,
+                      status = rawRaceStatus,
+                      stopEpochMillis = parseServerTimeToMillis(rawRaceStop),
+                      nowEpochMillis = System.currentTimeMillis()
+                  )
+
+                  return canEnterRaceWithLocalState(
+                      raceDataReady = raceDataReady.value,
+                      setupConfirmed = setupConfirmed.value,
+                      cachedSeriesRunObsolete = cachedSeriesRunObsolete
+                  )
+              }
+          ''',
+          )
+
+          replace_once(
+              main,
+              '''                            raceStatusDisplayText = raceStatusText.value,
+                              raceLegalAccepted = raceLegalAccepted.value,
+                              raceEvent = raceEvent.value,
+          ''',
+              '''                            raceStatusDisplayText = raceStatusText.value,
+                              raceEvent = raceEvent.value,
+          ''',
+          )
+
+          replace_once(
+              main,
+              '''        TelemetryUploadScheduler.enqueue(this)
+                  return true
+          ''',
+              '''        runCatching { TelemetryUploadScheduler.enqueue(this) }
+                  return true
+          ''',
+          )
+
+          # Any HTTP response proves that the configured server is reachable. Transport failures
+          # become the generic No connection state and never expose raw DNS/host exception text.
+          replace_once(
+              main,
+              '''                val responseCode = connection.responseCode
+                  val body = if (responseCode in 200..299) {
+                      connection.inputStream.bufferedReader().use { it.readText() }
+                  } else {
+                      connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                  }
+
+                  connection.disconnect()
+
+                  if (responseCode !in 200..299) {
+          ''',
+              '''                val responseCode = connection.responseCode
+                  ServerConnectionStateStore.markReachable(this, access.server)
+                  val body = if (responseCode in 200..299) {
+                      connection.inputStream.bufferedReader().use { it.readText() }
+                  } else {
+                      connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                  }
+
+                  connection.disconnect()
+
+                  if (responseCode !in 200..299) {
+          ''',
+          )
+
+          replace_once(
+              main,
+              '''            } catch (e: Exception) {
+                  runOnUiThread {
+                      if (!isCurrentAllowedLegalContext(compatibilityContext)) {
+                          return@runOnUiThread
+                      }
+                      raceLegalStatusText.value = getString(R.string.legal_text_failed, e.message ?: "")
+                      raceLegalAccepted.value = false
+                      currentScreen.value = Screen.RACE
+                  }
+          ''',
+              '''            } catch (_: Exception) {
+                  ServerConnectionStateStore.markNoConnection(this, access.server)
+                  runOnUiThread {
+                      if (!isCurrentAllowedLegalContext(compatibilityContext)) {
+                          return@runOnUiThread
+                      }
+                      updateConnectionUiState()
+                      raceLegalStatusText.value = getString(R.string.status_no_connection)
+                      raceLegalAccepted.value = false
+                      currentScreen.value = Screen.RACE
+                  }
+          ''',
+          )
+
+          # Legal acceptance request.
+          needle = '''                val responseCode = connection.responseCode
+                  val body = if (responseCode in 200..299) {
+                      connection.inputStream.bufferedReader().use { it.readText() }
+                  } else {
+                      connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                  }
+
+                  connection.disconnect()
+
+                  runOnUiThread {
+                      if (
+                          !isCurrentActionableLegalDocument(document) ||
+          '''
+          replacement = '''                val responseCode = connection.responseCode
+                  ServerConnectionStateStore.markReachable(this, access.server)
+                  val body = if (responseCode in 200..299) {
+                      connection.inputStream.bufferedReader().use { it.readText() }
+                  } else {
+                      connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                  }
+
+                  connection.disconnect()
+
+                  runOnUiThread {
+                      if (
+                          !isCurrentActionableLegalDocument(document) ||
+          '''
+          replace_once(main, needle, replacement)
+
+          replace_once(
+              main,
+              '''            } catch (e: Exception) {
+                  runOnUiThread {
+                      if (
+                          !isCurrentActionableLegalDocument(document) ||
+                          !hasSameLegalBoatIdentity(currentBoatSetupValues(), acceptedBoatSetup)
+                      ) {
+                          return@runOnUiThread
+                      }
+                      raceLegalAccepted.value = false
+                      raceLegalAcceptStatusText.value = getString(R.string.accept_failed, e.message ?: "")
+                  }
+          ''',
+              '''            } catch (_: Exception) {
+                  ServerConnectionStateStore.markNoConnection(this, access.server)
+                  runOnUiThread {
+                      if (
+                          !isCurrentActionableLegalDocument(document) ||
+                          !hasSameLegalBoatIdentity(currentBoatSetupValues(), acceptedBoatSetup)
+                      ) {
+                          return@runOnUiThread
+                      }
+                      updateConnectionUiState()
+                      raceLegalAccepted.value = false
+                      raceLegalAcceptStatusText.value = getString(R.string.status_no_connection)
+                  }
+          ''',
+          )
+
+          # Explicit Register Race remains a separate optional action, but connectivity errors are
+          # represented consistently and do not leak platform exception text.
+          replace_once(
+              main,
+              '''                val responseCode = connection.responseCode
+                  val body = if (responseCode in 200..299) {
+                      connection.inputStream.bufferedReader().use { it.readText() }
+                  } else {
+                      connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                  }
+
+                  connection.disconnect()
+
+                  runOnUiThread {
+                      if (currentBoatSetupValues() != registrationBoatSetup) {
+          ''',
+              '''                val responseCode = connection.responseCode
+                  ServerConnectionStateStore.markReachable(this, raceServer.value)
+                  val body = if (responseCode in 200..299) {
+                      connection.inputStream.bufferedReader().use { it.readText() }
+                  } else {
+                      connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                  }
+
+                  connection.disconnect()
+
+                  runOnUiThread {
+                      if (currentBoatSetupValues() != registrationBoatSetup) {
+          ''',
+          )
+
+          replace_once(
+              main,
+              '''            } catch (e: Exception) {
+                  runOnUiThread {
+                      if (currentBoatSetupValues() != registrationBoatSetup) {
+                          return@runOnUiThread
+                      }
+                      registerRaceStatusText.value = getString(R.string.registration_failed, e.message ?: "")
+                  }
+          ''',
+              '''            } catch (_: Exception) {
+                  ServerConnectionStateStore.markNoConnection(this, raceServer.value)
+                  runOnUiThread {
+                      if (currentBoatSetupValues() != registrationBoatSetup) {
+                          return@runOnUiThread
+                      }
+                      updateConnectionUiState()
+                      registerRaceStatusText.value = getString(R.string.status_no_connection)
+                  }
+          ''',
+          )
+
+          # Remove obsolete Legal/registration inputs from the compact upload-status function.
+          replace_once(home, '''    raceLegalAccepted: Boolean,
+          ''', '')
+          replace_once(
+              home,
+              '''                raceDataReady = raceDataReady,
+                  raceLegalAccepted = raceLegalAccepted,
+                  hasRaceSetup = raceEvent.isNotBlank(),
+                  pendingText = { pending -> resources.getString(R.string.pending_value, pending) },
+                  blockedText = stringResource(R.string.status_blocked),
+          ''',
+              '''                raceDataReady = raceDataReady,
+                  pendingText = { pending -> resources.getString(R.string.pending_value, pending) },
+          ''',
+          )
+          replace_once(
+              home,
+              '''    raceDataReady: Boolean,
+              raceLegalAccepted: Boolean,
+              hasRaceSetup: Boolean,
+              pendingText: (Long) -> String,
+              blockedText: String,
+          ''',
+              '''    raceDataReady: Boolean,
+              pendingText: (Long) -> String,
+          ''',
+          )
+
+          # The test helper keeps the old two booleans only to make the regression assertion explicit,
+          # but they are intentionally no longer forwarded to production status logic.
+          replace_once(
+              test,
+              '''        raceDataReady = raceDataReady,
+              raceLegalAccepted = raceLegalAccepted,
+              hasRaceSetup = hasRaceSetup,
+              pendingText = { "$it pending" },
+              blockedText = "blocked",
+          ''',
+              '''        raceDataReady = raceDataReady,
+              pendingText = { "$it pending" },
+          ''',
+          )
+
+          print("Final #108 cleanups applied")
+          PY
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run full Android verification
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:verifyBuildIdentifier test lint assembleDebug
+
+      - name: Commit final implementation and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/issue108-finalize.yml
+          git add -A
+          git commit -m "Finalize offline race recovery for #108"
+          git push origin HEAD:fix/108-offline-recovery
