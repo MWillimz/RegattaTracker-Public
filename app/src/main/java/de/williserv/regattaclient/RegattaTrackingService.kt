@@ -184,7 +184,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
     private val eventPollRunnable = object : Runnable {
         override fun run() {
-            if (!serviceRunning) return
+            if (!serviceRunning || manualRecording) return
 
             pollEvent()
             handler.postDelayed(this, 10_000L)
@@ -208,10 +208,30 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
         when (intent.action) {
             ACTION_START -> {
+                val requestedManual = intent.getBooleanExtra(EXTRA_MANUAL_RECORDING, false)
+                val persistedInRace = getSharedPreferences("app_state", Context.MODE_PRIVATE)
+                    .getBoolean("in_race", false)
+
+                if (requestedManual && persistedInRace) {
+                    getSharedPreferences("app_state", Context.MODE_PRIVATE)
+                        .edit()
+                        .putBoolean("manual_tracking", false)
+                        .apply()
+                    if (!serviceRunning) {
+                        stopSelf()
+                        return START_NOT_STICKY
+                    }
+                    return START_STICKY
+                }
+
+                if (serviceRunning && requestedManual != manualRecording) {
+                    return START_STICKY
+                }
+
                 synchronized(eventPollLifecycleLock) {
                     eventPollGeneration += 1
                 }
-                readIntentExtras(intent)
+                readStartIntentExtras(intent, requestedManual)
                 getSharedPreferences("app_state", Context.MODE_PRIVATE)
                     .edit()
                     .putBoolean("manual_tracking", manualRecording)
@@ -228,7 +248,17 @@ class RegattaTrackingService : Service(), SensorEventListener {
             }
 
             ACTION_SET_COURSE_PROGRESS -> {
-                readIntentExtras(intent)
+                val persistedInRace = getSharedPreferences("app_state", Context.MODE_PRIVATE)
+                    .getBoolean("in_race", false)
+                if (!serviceRunning || !persistedInRace) {
+                    if (!serviceRunning) {
+                        stopSelf()
+                    }
+                    return START_NOT_STICKY
+                }
+                if (manualRecording) {
+                    return START_STICKY
+                }
 
                 val passedMarksFromUser = intent.getIntExtra(EXTRA_PASSED_MARKS, passedMarks)
                 val raceStartedFromUser = intent.getBooleanExtra(EXTRA_RACE_STARTED, true)
@@ -359,20 +389,28 @@ class RegattaTrackingService : Service(), SensorEventListener {
     private fun restoreStickyStartContext(): Boolean {
         val appPrefs = getSharedPreferences("app_state", Context.MODE_PRIVATE)
         val inRace = appPrefs.getBoolean("in_race", false)
-        val manual = appPrefs.getBoolean("manual_tracking", false)
+        val persistedManual = appPrefs.getBoolean("manual_tracking", false)
+        val manual = persistedManual && !inRace
+
+        if (inRace && persistedManual) {
+            appPrefs.edit()
+                .putBoolean("manual_tracking", false)
+                .apply()
+        }
 
         if (!manual && !inRace) {
             return false
         }
 
         restoreBoatSetupForStickyRestart()
-        restoreRaceSetupForStickyRestart()
-
         manualRecording = manual
+
         if (manualRecording) {
-            accessContextId = null
+            clearRaceContextForManualMode()
             return true
         }
+
+        restoreRaceSetupForStickyRestart()
 
         if (
             serverUrl.isBlank() ||
@@ -413,10 +451,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
             ?.let(::adoptResolvedEventName)
     }
 
-    private fun readIntentExtras(intent: Intent) {
-        serverUrl = intent.getStringExtra(EXTRA_SERVER_URL) ?: serverUrl
-        eventName = intent.getStringExtra(EXTRA_EVENT_NAME) ?: eventName
-        sharedSecret = intent.getStringExtra(EXTRA_SHARED_SECRET) ?: sharedSecret
+    private fun readStartIntentExtras(intent: Intent, manualMode: Boolean) {
+        manualRecording = manualMode
 
         boatName = intent.getStringExtra(EXTRA_BOAT_NAME) ?: boatName
         captainName = intent.getStringExtra(EXTRA_CAPTAIN_NAME) ?: captainName
@@ -425,13 +461,29 @@ class RegattaTrackingService : Service(), SensorEventListener {
         yardstick = intent.getStringExtra(EXTRA_YARDSTICK)?.toDoubleOrNull() ?: yardstick
         boatType = intent.getStringExtra(EXTRA_BOAT_TYPE) ?: boatType
 
+        if (manualRecording) {
+            clearRaceContextForManualMode()
+            return
+        }
+
+        serverUrl = intent.getStringExtra(EXTRA_SERVER_URL) ?: serverUrl
+        eventName = intent.getStringExtra(EXTRA_EVENT_NAME) ?: eventName
+        sharedSecret = intent.getStringExtra(EXTRA_SHARED_SECRET) ?: sharedSecret
+
         intent.getStringExtra(EXTRA_RESOLVED_EVENT_NAME)
             ?.trim()
             ?.takeIf { it.isNotBlank() }
             ?.let(::adoptResolvedEventName)
 
-        manualRecording = intent.getBooleanExtra(EXTRA_MANUAL_RECORDING, false)
         refreshAccessContextId()
+    }
+
+    private fun clearRaceContextForManualMode() {
+        serverUrl = ""
+        eventName = ""
+        sharedSecret = ""
+        resolvedEventName = null
+        accessContextId = null
     }
 
     private fun refreshAccessContextId() {
@@ -454,18 +506,24 @@ class RegattaTrackingService : Service(), SensorEventListener {
             return
         }
 
-        restoreCachedEventSnapshot()
+        if (!manualRecording) {
+            restoreCachedEventSnapshot()
+        }
         serviceRunning = true
 
         startLocationUpdates()
         startImuUpdates()
 
-        pollEvent()
+        if (!manualRecording) {
+            pollEvent()
+        }
 
         handler.postDelayed(sampleRunnable, currentSamplingIntervalMs())
-        handler.postDelayed(eventPollRunnable, 10_000L)
+        if (!manualRecording) {
+            handler.postDelayed(eventPollRunnable, 10_000L)
+            publishLocalRaceStatus()
+        }
 
-        publishLocalRaceStatus()
         updateNotification()
     }
 
@@ -481,7 +539,9 @@ class RegattaTrackingService : Service(), SensorEventListener {
         synchronized(eventPollLifecycleLock) {
             eventPollGeneration += 1
             serviceRunning = false
-            RaceRuntimeStateStore.clearFor(serverUrl, eventName, sharedSecret)
+            if (!manualRecording) {
+                RaceRuntimeStateStore.clearFor(serverUrl, eventName, sharedSecret)
+            }
         }
         manualRecording = false
         accessContextId = null
@@ -643,7 +703,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
     }
 
     private fun pollEvent() {
-        if (eventPollRunning) return
+        if (!serviceRunning || manualRecording || eventPollRunning) return
 
         val pollGeneration = synchronized(eventPollLifecycleLock) {
             eventPollGeneration
@@ -677,7 +737,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
                 if (responseCode in 200..299) {
                     val applied = synchronized(eventPollLifecycleLock) {
-                        if (!serviceRunning || pollGeneration != eventPollGeneration) {
+                        if (!serviceRunning || manualRecording || pollGeneration != eventPollGeneration) {
                             false
                         } else {
                             parseEventResponse(body)
@@ -918,11 +978,13 @@ class RegattaTrackingService : Service(), SensorEventListener {
         val cog = location?.bearing ?: 0f
         val sog = location?.speed ?: 0f
 
-        calculateLocalRaceState(
-            lat = lat,
-            lon = lon,
-            accuracy = accuracy
-        )
+        if (!manualRecording) {
+            calculateLocalRaceState(
+                lat = lat,
+                lon = lon,
+                accuracy = accuracy
+            )
+        }
 
         val sampleAccessContextId = if (manualRecording) {
             null
@@ -966,7 +1028,6 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
         if (manualRecording) {
             db.markUploaded(insertedId)
-            publishLocalRaceStatus()
             updateNotification()
             return
         }
@@ -1432,23 +1493,26 @@ class RegattaTrackingService : Service(), SensorEventListener {
     private fun updateNotification() {
         val pending = db.countPendingSamples()
 
-        val dtlText = lastDtlM?.let {
-            getString(R.string.dtl_meters, it)
-        } ?: getString(R.string.dtl_unknown)
+        val message = if (manualRecording) {
+            getString(
+                R.string.notification_manual,
+                getString(R.string.next_unknown),
+                getString(R.string.dtl_unknown),
+                getString(R.string.clear_status),
+                pending
+            )
+        } else {
+            val dtlText = lastDtlM?.let {
+                getString(R.string.dtl_meters, it)
+            } ?: getString(R.string.dtl_unknown)
+            val targetText = buildTargetText()
+            val ocsText = if (isOcs) getString(R.string.ocs) else getString(R.string.clear_status)
 
-        val targetText = buildTargetText()
-
-        val ocsText = if (isOcs) getString(R.string.ocs) else getString(R.string.clear_status)
-
-        val message = when {
-            manualRecording ->
-                getString(R.string.notification_manual, targetText, dtlText, ocsText, pending)
-
-            isInsideRaceWindow() ->
+            if (isInsideRaceWindow()) {
                 getString(R.string.notification_race, targetText, dtlText, ocsText, pending)
-
-            else ->
+            } else {
                 getString(R.string.notification_waiting, targetText, dtlText, ocsText, pending)
+            }
         }
 
         val notificationManager =
@@ -1484,7 +1548,9 @@ class RegattaTrackingService : Service(), SensorEventListener {
         synchronized(eventPollLifecycleLock) {
             eventPollGeneration += 1
             serviceRunning = false
-            RaceRuntimeStateStore.clearFor(serverUrl, eventName, sharedSecret)
+            if (!manualRecording) {
+                RaceRuntimeStateStore.clearFor(serverUrl, eventName, sharedSecret)
+            }
         }
         handler.removeCallbacks(sampleRunnable)
         handler.removeCallbacks(eventPollRunnable)
