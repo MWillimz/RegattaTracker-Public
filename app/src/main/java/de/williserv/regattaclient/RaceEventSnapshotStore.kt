@@ -15,14 +15,45 @@ internal data class RaceEventSnapshot(
 
 internal fun canEnterRaceWithLocalState(
     raceDataReady: Boolean,
-    setupConfirmed: Boolean
-): Boolean = raceDataReady && setupConfirmed
+    setupConfirmed: Boolean,
+    cachedSeriesRunObsolete: Boolean = false
+): Boolean = raceDataReady && setupConfirmed && !cachedSeriesRunObsolete
+
+internal fun isCachedSeriesRunObsolete(
+    isSeriesAccess: Boolean,
+    status: String,
+    stopEpochMillis: Long?,
+    nowEpochMillis: Long
+): Boolean {
+    if (!isSeriesAccess) return false
+
+    if (
+        status.equals("finished", ignoreCase = true) ||
+        status.equals("cancelled", ignoreCase = true)
+    ) {
+        return true
+    }
+
+    return stopEpochMillis != null && nowEpochMillis > stopEpochMillis
+}
 
 internal fun shouldInvalidateEventSnapshotForHttpStatus(responseCode: Int): Boolean =
     responseCode == 401 || responseCode == 403 || responseCode == 404
 
 internal fun shouldPreserveEventSnapshotForHttpStatus(responseCode: Int): Boolean =
     !shouldInvalidateEventSnapshotForHttpStatus(responseCode)
+
+internal fun isUsableRaceEventSnapshot(snapshot: RaceEventSnapshot): Boolean {
+    if (snapshot.resolvedEventName.isBlank()) return false
+    if (RaceRegistrationPolicy.registrationTimestamp(snapshot.startRaw) == null) return false
+
+    if (snapshot.courseJson.isNotBlank()) {
+        val courseValid = runCatching { JSONObject(snapshot.courseJson) }.isSuccess
+        if (!courseValid) return false
+    }
+
+    return true
+}
 
 internal fun parseRaceEventSnapshot(body: String): RaceEventSnapshot {
     val obj = JSONObject(body)
@@ -58,7 +89,7 @@ internal fun parseRaceEventSnapshot(body: String): RaceEventSnapshot {
         ?: obj.optJSONObject("race_course")
         ?: obj.optJSONObject("track")
 
-    return RaceEventSnapshot(
+    val snapshot = RaceEventSnapshot(
         resolvedEventName = resolvedEventName,
         status = status,
         startRaw = start,
@@ -67,6 +98,9 @@ internal fun parseRaceEventSnapshot(body: String): RaceEventSnapshot {
         courseJson = course?.toString().orEmpty(),
         courseShortened = obj.optBoolean("course_shortened", false)
     )
+
+    require(isUsableRaceEventSnapshot(snapshot)) { "/event response is not usable for local tracking" }
+    return snapshot
 }
 
 internal object RaceEventSnapshotStore {
@@ -96,7 +130,7 @@ internal object RaceEventSnapshotStore {
             return null
         }
 
-        return RaceEventSnapshot(
+        val snapshot = RaceEventSnapshot(
             resolvedEventName = savedResolved,
             status = prefs.getString("race_status_raw", "").orEmpty(),
             startRaw = prefs.getString("race_start_raw", "").orEmpty(),
@@ -105,6 +139,8 @@ internal object RaceEventSnapshotStore {
             courseJson = prefs.getString("race_course_json_raw", "").orEmpty(),
             courseShortened = prefs.getBoolean("race_course_shortened_raw", false)
         )
+
+        return snapshot.takeIf(::isUsableRaceEventSnapshot)
     }
 
     fun save(
@@ -114,6 +150,8 @@ internal object RaceEventSnapshotStore {
         secret: String,
         snapshot: RaceEventSnapshot
     ) {
+        if (!isUsableRaceEventSnapshot(snapshot)) return
+
         context.applicationContext
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
