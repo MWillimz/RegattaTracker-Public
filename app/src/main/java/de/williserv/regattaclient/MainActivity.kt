@@ -2314,6 +2314,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private fun stopManualTracking() {
         manualTracking.value = false
+        saveAppState()
         statusText.value = getString(R.string.manual_tracking_stopped)
 
         if (inRace.value) {
