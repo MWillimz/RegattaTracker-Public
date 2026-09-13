@@ -14,6 +14,10 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -44,15 +48,29 @@ fun BoatDataScreen(
     boatType: String,
     setupConfirmed: Boolean,
     modifier: Modifier = Modifier,
-    onBoatNameChange: (String) -> Unit,
-    onSkipperNameChange: (String) -> Unit,
-    onHullColorChange: (String) -> Unit,
-    onSailNumberChange: (String) -> Unit,
-    onYardstickChange: (String) -> Unit,
-    onBoatTypeChange: (String) -> Unit,
-    onConfirmSetup: () -> Unit,
+    onConfirmSetup: (BoatSetupValues) -> Unit,
     onBack: () -> Unit
 ) {
+    val confirmedValues = BoatSetupValues(
+        boatName = boatName,
+        skipperName = skipperName,
+        hullColor = hullColor,
+        sailNumber = sailNumber,
+        yardstick = yardstick,
+        boatType = boatType
+    )
+    var draft by remember(
+        boatName,
+        skipperName,
+        hullColor,
+        sailNumber,
+        yardstick,
+        boatType
+    ) {
+        mutableStateOf(confirmedValues)
+    }
+    val draftMatchesConfirmed = draft == confirmedValues
+
     Column(
         modifier = modifier
             .padding(24.dp)
@@ -65,8 +83,8 @@ fun BoatDataScreen(
         )
 
         OutlinedTextField(
-            value = boatName,
-            onValueChange = onBoatNameChange,
+            value = draft.boatName,
+            onValueChange = { draft = draft.copy(boatName = it) },
             label = { Text(stringResource(R.string.boat_name)) },
             modifier = Modifier
                 .fillMaxWidth()
@@ -74,8 +92,8 @@ fun BoatDataScreen(
         )
 
         OutlinedTextField(
-            value = skipperName,
-            onValueChange = onSkipperNameChange,
+            value = draft.skipperName,
+            onValueChange = { draft = draft.copy(skipperName = it) },
             label = { Text(stringResource(R.string.skipper)) },
             modifier = Modifier
                 .fillMaxWidth()
@@ -83,8 +101,8 @@ fun BoatDataScreen(
         )
 
         OutlinedTextField(
-            value = hullColor,
-            onValueChange = onHullColorChange,
+            value = draft.hullColor,
+            onValueChange = { draft = draft.copy(hullColor = it) },
             label = { Text(stringResource(R.string.hull_color)) },
             modifier = Modifier
                 .fillMaxWidth()
@@ -92,8 +110,8 @@ fun BoatDataScreen(
         )
 
         OutlinedTextField(
-            value = sailNumber,
-            onValueChange = onSailNumberChange,
+            value = draft.sailNumber,
+            onValueChange = { draft = draft.copy(sailNumber = it) },
             label = { Text(stringResource(R.string.sail_number)) },
             modifier = Modifier
                 .fillMaxWidth()
@@ -101,16 +119,16 @@ fun BoatDataScreen(
         )
 
         OutlinedTextField(
-            value = yardstick,
-            onValueChange = onYardstickChange,
+            value = draft.yardstick,
+            onValueChange = { draft = draft.copy(yardstick = it) },
             label = { Text(stringResource(R.string.yardstick)) },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 8.dp)
         )
         OutlinedTextField(
-            value = boatType,
-            onValueChange = onBoatTypeChange,
+            value = draft.boatType,
+            onValueChange = { draft = draft.copy(boatType = it) },
             label = { Text(stringResource(R.string.boat_type)) },
             modifier = Modifier
                 .fillMaxWidth()
@@ -122,13 +140,17 @@ fun BoatDataScreen(
         )
 
         Button(
-            onClick = onConfirmSetup,
+            onClick = {
+                if (isBoatSetupValid(draft)) {
+                    onConfirmSetup(draft)
+                }
+            },
             colors = primaryButtonColors(),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 24.dp)
         ) {
-            if (setupConfirmed) {
+            if (setupConfirmed && draftMatchesConfirmed) {
                 Text(stringResource(R.string.setup_confirmed))
             } else {
                 Text(stringResource(R.string.confirm_setup))
