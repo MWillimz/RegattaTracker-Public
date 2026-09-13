@@ -204,6 +204,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private val uiRefreshRunnable = object : Runnable {
         override fun run() {
+            reconcileTrackingState()
             updateStorageText()
             updateLocalRaceStatus()
             updateConnectionUiState()
@@ -705,6 +706,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         },
                         onContinue = {
                             showFinishDetectedDialog.value = false
+                            continueRaceAfterDetectedFinish()
                         }
                     )
                 }
@@ -1322,6 +1324,39 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
     }
 
+    private fun reconcileTrackingState() {
+        val prefs = getSharedPreferences(appStatePrefsName, Context.MODE_PRIVATE)
+        val persistedInRace = prefs.getBoolean("in_race", false)
+        var persistedManual = prefs.getBoolean("manual_tracking", false)
+
+        if (persistedInRace && persistedManual) {
+            persistedManual = false
+            prefs.edit()
+                .putBoolean("manual_tracking", false)
+                .apply()
+        }
+
+        if (
+            inRace.value == persistedInRace &&
+            manualTracking.value == persistedManual
+        ) {
+            return
+        }
+
+        inRace.value = persistedInRace
+        manualTracking.value = persistedManual
+
+        serviceStatusText.value = when {
+            persistedInRace -> getString(R.string.service_race_running)
+            persistedManual -> getString(R.string.service_manual_running)
+            else -> getString(R.string.service_stopped)
+        }
+
+        if (!persistedInRace && !persistedManual) {
+            statusText.value = getString(R.string.tracking_stopped)
+        }
+    }
+
     private fun saveAppState() {
         getSharedPreferences(appStatePrefsName, Context.MODE_PRIVATE)
             .edit()
@@ -1888,6 +1923,15 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         return raw.replace(',', '.').toDoubleOrNull()
     }
 
+    private fun continueRaceAfterDetectedFinish() {
+        if (!inRace.value) return
+
+        val intent = Intent(this, RegattaTrackingService::class.java).apply {
+            action = RegattaTrackingService.ACTION_CONTINUE_AFTER_FINISH
+        }
+
+        startService(intent)
+    }
 
     private fun setCourseProgressFromUser(
         passedMarks: Int,
@@ -2894,9 +2938,7 @@ fun LeaveRaceWarningDialog(
             Text(stringResource(R.string.retire_finish_title))
         },
         text = {
-            Text(
-                text = stringResource(R.string.retire_finish_message)
-            )
+            Text(stringResource(R.string.retire_finish_message))
         },
         confirmButton = {
             TextButton(onClick = onConfirm) {
