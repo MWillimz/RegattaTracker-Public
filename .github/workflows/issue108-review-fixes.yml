@@ -30,60 +30,40 @@ jobs:
           STORE = Path("app/src/main/java/de/williserv/regattaclient/ServerConnectionStateStore.kt")
           HOME_TEST = Path("app/src/test/java/de/williserv/regattaclient/HomeUploadStatusTest.kt")
 
-          def replace_once(path, old, new):
+          def replace_between(path, start_marker, end_marker, replacement):
               text = path.read_text(encoding="utf-8")
-              count = text.count(old)
-              if count != 1:
-                  raise RuntimeError(f"{path}: expected 1 match, found {count}: {old[:120]!r}")
-              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+              start = text.index(start_marker)
+              end = text.index(end_marker, start)
+              path.write_text(text[:start] + replacement + text[end:], encoding="utf-8")
 
-          # Home upload state must describe upload connectivity/backlog only, not race state.
-          replace_once(
+          # Home upload state is independent from race/legal state.
+          replace_between(
               HOME,
+              "    val uploadColor = uploadStatusColor(",
+              "\n\n    val showCourseShortened",
               '''    val uploadColor = uploadStatusColor(
-                  pendingUploadCount = pendingUploadCount,
-                  inRace = inRace,
-                  disabledColor = MaterialTheme.colorScheme.outlineVariant,
-                  noConnection = noConnection
-              )
-          ''',
-              '''    val uploadColor = uploadStatusColor(
-                  pendingUploadCount = pendingUploadCount,
-                  noConnection = noConnection
-              )
-          ''',
+              pendingUploadCount = pendingUploadCount,
+              noConnection = noConnection
+          )'''
           )
-          replace_once(
+          replace_between(
               HOME,
+              "            uploadStatusText = shortUploadStatus(",
+              "\n            uploadColor = uploadColor",
               '''            uploadStatusText = shortUploadStatus(
-                  pendingUploadCount = pendingUploadCount,
-                  inRace = inRace,
-                  raceStatusCode = raceStatusCode,
-                  noConnection = noConnection,
-                  raceDataReady = raceDataReady,
-                  pendingText = { pending -> resources.getString(R.string.pending_value, pending) },
-                  offText = stringResource(R.string.status_off),
-                  waitingText = stringResource(R.string.status_waiting),
-                  readyText = stringResource(R.string.status_ready),
-                  idleText = stringResource(R.string.status_idle),
-                  okText = stringResource(R.string.ok),
-                  noConnectionText = stringResource(R.string.status_no_connection)
-              ),
-          ''',
-              '''            uploadStatusText = shortUploadStatus(
-                  pendingUploadCount = pendingUploadCount,
-                  inRace = inRace,
-                  noConnection = noConnection,
-                  pendingText = { pending -> resources.getString(R.string.pending_value, pending) },
-                  okText = stringResource(R.string.ok),
-                  noConnectionText = stringResource(R.string.status_no_connection)
-              ),
-          ''',
+              pendingUploadCount = pendingUploadCount,
+              inRace = inRace,
+              noConnection = noConnection,
+              pendingText = { pending -> resources.getString(R.string.pending_value, pending) },
+              okText = stringResource(R.string.ok),
+              noConnectionText = stringResource(R.string.status_no_connection)
+          ),'''
           )
-          start = HOME.read_text(encoding="utf-8").index("fun uploadStatusColor(")
-          end = HOME.read_text(encoding="utf-8").index("fun raceStatusColor(", start)
-          text = HOME.read_text(encoding="utf-8")
-          replacement = '''fun uploadStatusColor(
+          replace_between(
+              HOME,
+              "fun uploadStatusColor(",
+              "fun raceStatusColor(",
+              '''fun uploadStatusColor(
               pendingUploadCount: Long,
               noConnection: Boolean = false
           ): Color {
@@ -124,19 +104,22 @@ jobs:
           }
 
           '''
-          HOME.write_text(text[:start] + replacement + text[end:], encoding="utf-8")
+          )
 
-          # Actual successful server communication wins over the generic Android network hint.
-          replace_once(
+          # A successful request to the configured server has precedence over Android's generic
+          # active-network hint, which may be absent for reachable LAN servers.
+          replace_between(
               MAIN,
-              '''        if (!ServerConnectionStateStore.hasActiveNetwork(this)) {
-                  ServerConnectionStateStore.markNoConnection(this, server)
+              "    private fun updateConnectionUiState() {",
+              "    private fun startRaceDataRefresh() {",
+              '''    private fun updateConnectionUiState() {
+              val server = raceServer.value
+              if (server.isBlank()) {
+                  serverNoConnection.value = false
+                  return
               }
 
-              serverNoConnection.value =
-                  ServerConnectionStateStore.state(this, server) == ServerConnectionState.NO_CONNECTION
-          ''',
-              '''        val connectionState = ServerConnectionStateStore.state(this, server)
+              val connectionState = ServerConnectionStateStore.state(this, server)
               if (
                   !ServerConnectionStateStore.hasActiveNetwork(this) &&
                   connectionState != ServerConnectionState.REACHABLE
@@ -146,44 +129,37 @@ jobs:
 
               serverNoConnection.value =
                   ServerConnectionStateStore.state(this, server) == ServerConnectionState.NO_CONNECTION
-          ''',
+          }
+
+          '''
           )
 
-          # Explicit Register Race remains optional, but transport failures must not leak raw DNS text.
+          # Explicit Register Race remains optional; transport failures use the generic state and
+          # never expose DNS/socket exception text as the primary user message.
           main = MAIN.read_text(encoding="utf-8")
-          reg_start = main.index("    private fun registerForRace(")
-          reg_end = main.index("    private fun updateAutoLeaveAfterFinish()", reg_start)
-          reg = main[reg_start:reg_end]
+          start = main.index("    private fun registerForRace(")
+          end = main.index("    private fun updateAutoLeaveAfterFinish()", start)
+          reg = main[start:end]
+          thread_marker = "        thread {\n            try {"
+          if thread_marker not in reg:
+              raise RuntimeError("registerForRace thread marker missing")
           reg = reg.replace(
-              '''        thread {
-              try {
-          ''',
-              '''        thread {
-              var serverResponded = false
-              try {
-          ''',
+              thread_marker,
+              "        thread {\n            var serverResponded = false\n            try {",
               1,
           )
+          response_marker = "                val responseCode = connection.responseCode\n"
+          if response_marker not in reg:
+              raise RuntimeError("registerForRace response marker missing")
           reg = reg.replace(
-              '''                val responseCode = connection.responseCode
-              val body = if (responseCode in 200..299) {
-          ''',
-              '''                val responseCode = connection.responseCode
-              serverResponded = true
-              ServerConnectionStateStore.markReachable(this, raceServer.value)
-              val body = if (responseCode in 200..299) {
-          ''',
+              response_marker,
+              response_marker +
+              "                serverResponded = true\n" +
+              "                ServerConnectionStateStore.markReachable(this, raceServer.value)\n",
               1,
           )
-          old_catch = '''            } catch (e: Exception) {
-              runOnUiThread {
-                  if (currentBoatSetupValues() != registrationBoatSetup) {
-                      return@runOnUiThread
-                  }
-                  registerRaceStatusText.value = getString(R.string.registration_failed, e.message ?: "")
-              }
-          }
-          '''
+          catch_start = reg.index("            } catch (e: Exception) {")
+          thread_tail = reg.index("\n        }\n    }\n", catch_start)
           new_catch = '''            } catch (e: Exception) {
               if (!serverResponded) {
                   ServerConnectionStateStore.markNoConnection(this, raceServer.value)
@@ -199,89 +175,88 @@ jobs:
                       getString(R.string.status_no_connection)
                   }
               }
-          }
-          '''
-          if old_catch not in reg:
-              raise RuntimeError("registerForRace catch block not found")
-          reg = reg.replace(old_catch, new_catch, 1)
-          MAIN.write_text(main[:reg_start] + reg + main[reg_end:], encoding="utf-8")
+          }'''
+          reg = reg[:catch_start] + new_catch + reg[thread_tail:]
+          MAIN.write_text(main[:start] + reg + main[end:], encoding="utf-8")
 
-          # A response received from the server proves connectivity even if later local processing fails.
+          # Any HTTP response proves connectivity; only failures before responseCode are No connection.
           worker = WORKER.read_text(encoding="utf-8")
-          fn_start = worker.index("    private fun uploadSampleBlocking(")
-          fn_end = worker.index("    private fun buildIngestUrl(", fn_start)
-          fn = worker[fn_start:fn_end]
-          fn = fn.replace(
-              '''        return try {
-          ''',
-              '''        var serverResponded = false
-              return try {
-          ''',
-              1,
-          )
-          fn = fn.replace(
-              '''            val responseCode = connection.responseCode
-              ServerConnectionStateStore.markReachable(applicationContext, accessContext.serverUrl)
-          ''',
-              '''            val responseCode = connection.responseCode
-              serverResponded = true
-              ServerConnectionStateStore.markReachable(applicationContext, accessContext.serverUrl)
-          ''',
-              1,
-          )
-          fn = fn.replace(
-              '''        } catch (e: Exception) {
+          start = worker.index("    private fun uploadSampleBlocking(")
+          end = worker.index("    private fun buildIngestUrl(", start)
+          fn = worker[start:end]
+          return_marker = "        return try {"
+          if return_marker not in fn:
+              raise RuntimeError("uploadSampleBlocking return marker missing")
+          fn = fn.replace(return_marker, "        var serverResponded = false\n        return try {", 1)
+          response_marker = "            val responseCode = connection.responseCode\n"
+          if response_marker not in fn:
+              raise RuntimeError("uploadSampleBlocking response marker missing")
+          fn = fn.replace(response_marker, response_marker + "            serverResponded = true\n", 1)
+          old = '''        } catch (e: Exception) {
               ServerConnectionStateStore.markNoConnection(applicationContext, accessContext.serverUrl)
               publishDebugError(applicationContext.getString(R.string.upload_exception, e.message ?: ""))
-          ''',
-              '''        } catch (e: Exception) {
+          '''
+          new = '''        } catch (e: Exception) {
               if (!serverResponded) {
                   ServerConnectionStateStore.markNoConnection(applicationContext, accessContext.serverUrl)
               }
               publishDebugError(applicationContext.getString(R.string.upload_exception, e.message ?: ""))
-          ''',
-              1,
-          )
-          WORKER.write_text(worker[:fn_start] + fn + worker[fn_end:], encoding="utf-8")
+          '''
+          if old not in fn:
+              raise RuntimeError("uploadSampleBlocking catch marker missing")
+          fn = fn.replace(old, new, 1)
+          WORKER.write_text(worker[:start] + fn + worker[end:], encoding="utf-8")
 
-          # Corrupt cached course JSON must not crash an otherwise recoverable service start.
-          replace_once(
-              SERVICE,
-              '''        val course = snapshot.courseJson
-                  .takeIf { it.isNotBlank() }
-                  ?.let { JSONObject(it) }
-          ''',
-              '''        val course = snapshot.courseJson
-                  .takeIf { it.isNotBlank() }
-                  ?.let { raw -> runCatching { JSONObject(raw) }.getOrNull() }
-          ''',
+          # A damaged cached course must not crash service startup; usable timing data can still be restored.
+          service = SERVICE.read_text(encoding="utf-8")
+          marker = "            ?.let { JSONObject(it) }"
+          if service.count(marker) != 1:
+              raise RuntimeError("cached course parse marker missing or ambiguous")
+          SERVICE.write_text(
+              service.replace(marker, "            ?.let { raw -> runCatching { JSONObject(raw) }.getOrNull() }", 1),
+              encoding="utf-8"
           )
 
-          # Avoid writing the same reachability state to SharedPreferences once per uploaded sample.
-          replace_once(
+          # Reachability updates may happen per sample; make repeated same-state writes a no-op.
+          replace_between(
               STORE,
-              '''        context.applicationContext
-              .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-              .edit()
-              .putString(KEY_PREFIX + normalized, state.name)
-              .apply()
-          ''',
-              '''        val prefs = context.applicationContext
-              .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+              "    private fun write(",
+              "    internal fun normalizeServer(",
+              '''    private fun write(
+              context: Context,
+              server: String,
+              state: ServerConnectionState
+          ) {
+              val normalized = normalizeServer(server)
+              if (normalized.isBlank()) return
+
+              val prefs = context.applicationContext
+                  .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
               val key = KEY_PREFIX + normalized
               if (prefs.getString(key, "") == state.name) return
 
               prefs.edit()
                   .putString(key, state.name)
                   .apply()
-          ''',
+          }
+
+          '''
           )
 
-          # Replace upload-status tests with the final connectivity/backlog contract.
+          # Update focused upload-status tests to the final contract.
           test = HOME_TEST.read_text(encoding="utf-8")
-          helper_start = test.index("    private fun shortUploadStatusEnglish(")
-          helper_end = test.index("    private fun shortRaceStatusEnglish(", helper_start)
-          helper = '''    private fun shortUploadStatusEnglish(
+          if "import de.williserv.regattaclient.ui.theme.RegattaRed\n" not in test:
+              test = test.replace(
+                  "import de.williserv.regattaclient.ui.theme.RegattaOrange\n",
+                  "import de.williserv.regattaclient.ui.theme.RegattaOrange\nimport de.williserv.regattaclient.ui.theme.RegattaRed\n",
+                  1,
+              )
+          HOME_TEST.write_text(test, encoding="utf-8")
+          replace_between(
+              HOME_TEST,
+              "    private fun shortUploadStatusEnglish(",
+              "    private fun shortRaceStatusEnglish(",
+              '''    private fun shortUploadStatusEnglish(
               pendingUploadCount: Long,
               inRace: Boolean,
               noConnection: Boolean = false
@@ -295,11 +270,10 @@ jobs:
           )
 
           '''
-          test = test[:helper_start] + helper + test[helper_end:]
-
-          # Remove old upload tests before the race-status tests and insert final contract tests.
-          tests_start = test.index("    @Test\n    fun pendingBacklogOutsideRace")
-          tests_end = test.index("    @Test\n    fun unavailableRaceData_", tests_start)
+          )
+          test = HOME_TEST.read_text(encoding="utf-8")
+          start = test.index("    @Test\n    fun pendingBacklogOutsideRace")
+          end = test.index("    @Test\n    fun unavailableRaceData_", start)
           upload_tests = '''    @Test
               fun connectedWithoutBacklog_isOkRegardlessOfRaceState() {
                   assertEquals("OK", shortUploadStatusEnglish(0L, false))
@@ -339,7 +313,7 @@ jobs:
               }
 
           '''
-          HOME_TEST.write_text(test[:tests_start] + upload_tests + test[tests_end:], encoding="utf-8")
+          HOME_TEST.write_text(test[:start] + upload_tests + test[end:], encoding="utf-8")
 
           print("#108 production review fixes applied")
           PY
