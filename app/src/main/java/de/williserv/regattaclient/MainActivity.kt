@@ -460,34 +460,39 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             boatType = boatType.value,
                             setupConfirmed = setupConfirmed.value,
                             modifier = Modifier.padding(innerPadding),
-                            onBoatNameChange = {
-                                boatName.value = it
-                                setupConfirmed.value = false
-                            },
-                            onSkipperNameChange = {
-                                skipperName.value = it
-                                setupConfirmed.value = false
-                            },
-                            onHullColorChange = {
-                                hullColor.value = it
-                                setupConfirmed.value = false
-                            },
-                            onSailNumberChange = {
-                                sailNumber.value = it
-                                setupConfirmed.value = false
-                            },
-                            onYardstickChange = {
-                                yardstick.value = it
-                                setupConfirmed.value = false
-                            },
-                            onBoatTypeChange = {
-                                boatType.value = it
-                                setupConfirmed.value = false
-                            },
-                            onConfirmSetup = {
-                                setupConfirmed.value = isSetupValid()
-                                if (setupConfirmed.value) {
+                            onConfirmSetup = { values ->
+                                if (isBoatSetupValid(values)) {
+                                    val previousValues = currentBoatSetupValues()
+                                    val hadConfirmedSetup = setupConfirmed.value
+                                    val invalidateRegistration = shouldInvalidateRaceRegistration(
+                                        previous = previousValues,
+                                        next = values,
+                                        hadConfirmedSetup = hadConfirmedSetup
+                                    )
+                                    val invalidateLegal = shouldInvalidateRaceLegal(
+                                        previous = previousValues,
+                                        next = values,
+                                        hadConfirmedSetup = hadConfirmedSetup
+                                    )
+
+                                    boatName.value = values.boatName
+                                    skipperName.value = values.skipperName
+                                    hullColor.value = values.hullColor
+                                    sailNumber.value = values.sailNumber
+                                    yardstick.value = values.yardstick
+                                    boatType.value = values.boatType
+                                    setupConfirmed.value = true
                                     saveBoatSetup()
+
+                                    if (invalidateRegistration) {
+                                        raceRegistered.value = false
+                                        registerRaceStatusText.value = ""
+                                    }
+                                    if (invalidateLegal) {
+                                        stopRaceDataRefresh()
+                                        resetRaceLegalState()
+                                    }
+
                                     currentScreen.value = Screen.HOME
                                 }
                             },
@@ -496,7 +501,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                         Screen.RACE -> RaceScreen(
                             inRace = inRace.value,
-                            canEnterRace = raceDataReady.value && setupConfirmed.value,
+                            canEnterRace = canEnterRaceNow(),
                             raceLegalAccepted = raceLegalAccepted.value,
                             raceServer = raceServer.value,
                             raceEvent = raceEvent.value,
@@ -512,7 +517,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             currentTargetText = currentTargetText.value,
                             progressText = progressText.value,
                             raceInfoText = raceInfoText.value,
-                            canRegisterRace = setupConfirmed.value && raceDataReady.value && !inRace.value,
+                            canRegisterRace = setupConfirmed.value &&
+                                    raceDataReady.value &&
+                                    raceLegalAccepted.value &&
+                                    !inRace.value,
                             registerRaceStatusText = registerRaceStatusText.value,
                             raceShortenedText = raceShortenedText.value,
                             raceShortened = rawRaceCourseShortened,
@@ -542,6 +550,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                                     !setupConfirmed.value -> {
                                         statusText.value = getString(R.string.confirm_boat_setup_first)
+                                    }
+
+                                    !raceLegalAccepted.value -> {
+                                        raceStatusText.value = getString(R.string.race_accept_legal_first)
                                     }
 
                                     else -> {
@@ -1211,6 +1223,17 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             .apply()
     }
 
+    private fun currentBoatSetupValues(): BoatSetupValues {
+        return BoatSetupValues(
+            boatName = boatName.value,
+            skipperName = skipperName.value,
+            hullColor = hullColor.value,
+            sailNumber = sailNumber.value,
+            yardstick = yardstick.value,
+            boatType = boatType.value
+        )
+    }
+
     private fun requestTrackingConsent(action: PendingTrackingAction) {
         if (hasTrackingConsent()) {
             executeTrackingAction(action)
@@ -1258,14 +1281,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 startManualTracking()
             }
         }
-    }
-
-    private fun isSetupValid(): Boolean {
-        return boatName.value.isNotBlank() &&
-                skipperName.value.isNotBlank() &&
-                sailNumber.value.isNotBlank() &&
-                boatType.value.isNotBlank() &&
-                yardstick.value.toDoubleOrNull() != null
     }
 
     private fun loadAppState() {
@@ -1639,6 +1654,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         val access = document.compatibility.access
         val acceptedLegalHash = document.legalHash
         val expectedResolvedEventName = document.resolvedEventName
+        val acceptedBoatSetup = currentBoatSetupValues()
 
         raceLegalAcceptStatusText.value = getString(R.string.accepting_race_notice)
 
@@ -1648,9 +1664,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                 val json = JSONObject().apply {
                     put("event_name", access.event)
-                    put("sail_number", sailNumber.value)
-                    put("boat_name", boatName.value)
-                    put("captain_name", skipperName.value)
+                    put("sail_number", acceptedBoatSetup.sailNumber)
+                    put("boat_name", acceptedBoatSetup.boatName)
+                    put("captain_name", acceptedBoatSetup.skipperName)
                     put("legal_text_hash", acceptedLegalHash)
                 }
 
@@ -1679,7 +1695,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 connection.disconnect()
 
                 runOnUiThread {
-                    if (!isCurrentActionableLegalDocument(document)) {
+                    if (
+                        !isCurrentActionableLegalDocument(document) ||
+                        !hasSameLegalBoatIdentity(currentBoatSetupValues(), acceptedBoatSetup)
+                    ) {
                         return@runOnUiThread
                     }
 
@@ -1714,7 +1733,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 }
             } catch (e: Exception) {
                 runOnUiThread {
-                    if (!isCurrentActionableLegalDocument(document)) {
+                    if (
+                        !isCurrentActionableLegalDocument(document) ||
+                        !hasSameLegalBoatIdentity(currentBoatSetupValues(), acceptedBoatSetup)
+                    ) {
                         return@runOnUiThread
                     }
                     raceLegalAccepted.value = false
@@ -1869,6 +1891,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             return
         }
 
+        if (!raceLegalAccepted.value) {
+            registerRaceStatusText.value = getString(R.string.race_accept_legal_first)
+            return
+        }
+
         val registrationTimestamp = RaceRegistrationPolicy.registrationTimestamp(
             rawRaceStart.ifBlank { legacyDisplayPayload(raceStartText.value) }
         )
@@ -1877,6 +1904,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             return
         }
 
+        val registrationBoatSetup = currentBoatSetupValues()
         registerRaceStatusText.value = getString(R.string.registering)
 
         thread {
@@ -1887,12 +1915,12 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     put("sequence_id", System.currentTimeMillis())
                     put("timestamp", registrationTimestamp)
 
-                    put("boat_name", boatName.value)
-                    put("captain_name", skipperName.value)
-                    put("hull_color", hullColor.value)
-                    put("sail_number", sailNumber.value)
-                    put("yardstick", yardstick.value.toDoubleOrNull() ?: 0.0)
-                    put("boat_type", boatType.value)
+                    put("boat_name", registrationBoatSetup.boatName)
+                    put("captain_name", registrationBoatSetup.skipperName)
+                    put("hull_color", registrationBoatSetup.hullColor)
+                    put("sail_number", registrationBoatSetup.sailNumber)
+                    put("yardstick", registrationBoatSetup.yardstick.toDoubleOrNull() ?: 0.0)
+                    put("boat_type", registrationBoatSetup.boatType)
 
                     put("lat", 0.0)
                     put("lon", 0.0)
@@ -1934,6 +1962,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 connection.disconnect()
 
                 runOnUiThread {
+                    if (currentBoatSetupValues() != registrationBoatSetup) {
+                        return@runOnUiThread
+                    }
+
                     if (responseCode in 200..299) {
                         raceRegistered.value = true
                         registerRaceStatusText.value = getString(R.string.registered_for_race)
@@ -1945,6 +1977,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 }
             } catch (e: Exception) {
                 runOnUiThread {
+                    if (currentBoatSetupValues() != registrationBoatSetup) {
+                        return@runOnUiThread
+                    }
                     registerRaceStatusText.value = getString(R.string.registration_failed, e.message ?: "")
                 }
             }

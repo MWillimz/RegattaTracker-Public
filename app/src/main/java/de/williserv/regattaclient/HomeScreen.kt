@@ -772,6 +772,7 @@ fun ActionRow(
         SmallActionButton(
             text = stringResource(R.string.event),
             isOk = inRace || raceFinished,
+            enabled = setupConfirmed,
             modifier = Modifier.weight(
                 if (setupConfirmed) 0.65f else 0.35f
             ),
