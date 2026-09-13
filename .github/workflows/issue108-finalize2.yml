@@ -1,0 +1,319 @@
+name: Finalize issue 108 implementation v2
+
+on:
+  push:
+    branches:
+      - fix/108-offline-recovery
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/108-offline-recovery
+          fetch-depth: 0
+
+      - name: Apply final scoped cleanups
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f"{path}: expected one match, found {count}: {old[:100]!r}")
+              p.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          def replace_in_section(path, start_marker, end_marker, old, new):
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              start = text.index(start_marker)
+              end = text.index(end_marker, start)
+              section = text[start:end]
+              count = section.count(old)
+              if count != 1:
+                  raise RuntimeError(
+                      f"{path} section {start_marker!r}: expected one match, found {count}: {old[:100]!r}"
+                  )
+              section = section.replace(old, new, 1)
+              p.write_text(text[:start] + section + text[end:], encoding="utf-8")
+
+          main = "app/src/main/java/de/williserv/regattaclient/MainActivity.kt"
+          home = "app/src/main/java/de/williserv/regattaclient/HomeScreen.kt"
+          test = "app/src/test/java/de/williserv/regattaclient/HomeUploadStatusTest.kt"
+
+          replace_once(
+              main,
+              '''    private fun canEnterRaceNow(): Boolean {
+                  return canEnterRaceWithLocalState(
+                      raceDataReady = raceDataReady.value,
+                      setupConfirmed = setupConfirmed.value
+                  )
+              }
+          ''',
+              '''    private fun canEnterRaceNow(): Boolean {
+                  val isSeriesAccess =
+                      raceSeriesDisplayMetadata.value.runName.isNotBlank() ||
+                          (resolvedEventName.value.isNotBlank() && resolvedEventName.value != raceEvent.value)
+                  val cachedSeriesRunObsolete = isCachedSeriesRunObsolete(
+                      isSeriesAccess = isSeriesAccess,
+                      status = rawRaceStatus,
+                      stopEpochMillis = parseServerTimeToMillis(rawRaceStop),
+                      nowEpochMillis = System.currentTimeMillis()
+                  )
+
+                  return canEnterRaceWithLocalState(
+                      raceDataReady = raceDataReady.value,
+                      setupConfirmed = setupConfirmed.value,
+                      cachedSeriesRunObsolete = cachedSeriesRunObsolete
+                  )
+              }
+          ''',
+          )
+
+          replace_in_section(
+              main,
+              "                        Screen.HOME -> HomeScreen(",
+              "                        Screen.RACE_LEGAL -> RaceLegalScreen(",
+              "                            raceLegalAccepted = raceLegalAccepted.value,\n",
+              "",
+          )
+
+          replace_in_section(
+              main,
+              "    private fun storeRaceEntrySample(): Boolean {",
+              "    private fun enterRace() {",
+              "        TelemetryUploadScheduler.enqueue(this)\n",
+              "        runCatching { TelemetryUploadScheduler.enqueue(this) }\n",
+          )
+
+          # Legal text fetch: distinguish transport failure from a malformed response.
+          replace_in_section(
+              main,
+              "    private fun fetchRaceLegalTextAfterCompatibility(",
+              "    private fun acceptRaceLegalAndLoadRaceData() {",
+              "        thread {\n            try {\n",
+              "        thread {\n            var serverResponded = false\n            try {\n",
+          )
+          replace_in_section(
+              main,
+              "    private fun fetchRaceLegalTextAfterCompatibility(",
+              "    private fun acceptRaceLegalAndLoadRaceData() {",
+              "                val responseCode = connection.responseCode\n",
+              "                val responseCode = connection.responseCode\n                serverResponded = true\n                ServerConnectionStateStore.markReachable(this, access.server)\n",
+          )
+          replace_in_section(
+              main,
+              "    private fun fetchRaceLegalTextAfterCompatibility(",
+              "    private fun acceptRaceLegalAndLoadRaceData() {",
+              '''            } catch (e: Exception) {
+                  runOnUiThread {
+                      if (!isCurrentAllowedLegalContext(compatibilityContext)) {
+                          return@runOnUiThread
+                      }
+                      raceLegalStatusText.value = getString(R.string.legal_text_failed, e.message ?: "")
+                      raceLegalAccepted.value = false
+                      currentScreen.value = Screen.RACE
+                  }
+          ''',
+              '''            } catch (e: Exception) {
+                  if (!serverResponded) {
+                      ServerConnectionStateStore.markNoConnection(this, access.server)
+                  }
+                  runOnUiThread {
+                      if (!isCurrentAllowedLegalContext(compatibilityContext)) {
+                          return@runOnUiThread
+                      }
+                      updateConnectionUiState()
+                      raceLegalStatusText.value = if (serverResponded) {
+                          getString(R.string.legal_text_failed, e.message ?: "")
+                      } else {
+                          getString(R.string.status_no_connection)
+                      }
+                      raceLegalAccepted.value = false
+                      currentScreen.value = Screen.RACE
+                  }
+          ''',
+          )
+
+          # Legal acceptance: same reachability semantics.
+          replace_in_section(
+              main,
+              "    private fun acceptRaceLegalAndLoadRaceData() {",
+              "    private fun updateLocalRaceStatus() {",
+              "        thread {\n            try {\n",
+              "        thread {\n            var serverResponded = false\n            try {\n",
+          )
+          replace_in_section(
+              main,
+              "    private fun acceptRaceLegalAndLoadRaceData() {",
+              "    private fun updateLocalRaceStatus() {",
+              "                val responseCode = connection.responseCode\n",
+              "                val responseCode = connection.responseCode\n                serverResponded = true\n                ServerConnectionStateStore.markReachable(this, access.server)\n",
+          )
+          replace_in_section(
+              main,
+              "    private fun acceptRaceLegalAndLoadRaceData() {",
+              "    private fun updateLocalRaceStatus() {",
+              '''            } catch (e: Exception) {
+                  runOnUiThread {
+                      if (
+                          !isCurrentActionableLegalDocument(document) ||
+                          !hasSameLegalBoatIdentity(currentBoatSetupValues(), acceptedBoatSetup)
+                      ) {
+                          return@runOnUiThread
+                      }
+                      raceLegalAccepted.value = false
+                      raceLegalAcceptStatusText.value = getString(R.string.accept_failed, e.message ?: "")
+                  }
+          ''',
+              '''            } catch (e: Exception) {
+                  if (!serverResponded) {
+                      ServerConnectionStateStore.markNoConnection(this, access.server)
+                  }
+                  runOnUiThread {
+                      if (
+                          !isCurrentActionableLegalDocument(document) ||
+                          !hasSameLegalBoatIdentity(currentBoatSetupValues(), acceptedBoatSetup)
+                      ) {
+                          return@runOnUiThread
+                      }
+                      updateConnectionUiState()
+                      raceLegalAccepted.value = false
+                      raceLegalAcceptStatusText.value = if (serverResponded) {
+                          getString(R.string.accept_failed, e.message ?: "")
+                      } else {
+                          getString(R.string.status_no_connection)
+                      }
+                  }
+          ''',
+          )
+
+          # Explicit Register Race remains optional, but transport errors use No connection.
+          replace_in_section(
+              main,
+              "    private fun registerForRace(",
+              "    private fun updateAutoLeaveAfterFinish() {",
+              "        thread {\n            try {\n",
+              "        thread {\n            var serverResponded = false\n            try {\n",
+          )
+          replace_in_section(
+              main,
+              "    private fun registerForRace(",
+              "    private fun updateAutoLeaveAfterFinish() {",
+              "                val responseCode = connection.responseCode\n",
+              "                val responseCode = connection.responseCode\n                serverResponded = true\n                ServerConnectionStateStore.markReachable(this, raceServer.value)\n",
+          )
+          replace_in_section(
+              main,
+              "    private fun registerForRace(",
+              "    private fun updateAutoLeaveAfterFinish() {",
+              '''            } catch (e: Exception) {
+                  runOnUiThread {
+                      if (currentBoatSetupValues() != registrationBoatSetup) {
+                          return@runOnUiThread
+                      }
+                      registerRaceStatusText.value = getString(R.string.registration_failed, e.message ?: "")
+                  }
+          ''',
+              '''            } catch (e: Exception) {
+                  if (!serverResponded) {
+                      ServerConnectionStateStore.markNoConnection(this, raceServer.value)
+                  }
+                  runOnUiThread {
+                      if (currentBoatSetupValues() != registrationBoatSetup) {
+                          return@runOnUiThread
+                      }
+                      updateConnectionUiState()
+                      registerRaceStatusText.value = if (serverResponded) {
+                          getString(R.string.registration_failed, e.message ?: "")
+                      } else {
+                          getString(R.string.status_no_connection)
+                      }
+                  }
+          ''',
+          )
+
+          # Home status no longer depends on Legal/registration state.
+          replace_in_section(
+              home,
+              "fun HomeScreen(",
+              "@Composable\nfun TopEventName(",
+              "    raceLegalAccepted: Boolean,\n",
+              "",
+          )
+          replace_in_section(
+              home,
+              "fun HomeScreen(",
+              "@Composable\nfun TopEventName(",
+              '''                raceDataReady = raceDataReady,
+                  raceLegalAccepted = raceLegalAccepted,
+                  hasRaceSetup = raceEvent.isNotBlank(),
+                  pendingText = { pending -> resources.getString(R.string.pending_value, pending) },
+                  blockedText = stringResource(R.string.status_blocked),
+          ''',
+              '''                raceDataReady = raceDataReady,
+                  pendingText = { pending -> resources.getString(R.string.pending_value, pending) },
+          ''',
+          )
+          replace_in_section(
+              home,
+              "fun shortUploadStatus(",
+              "fun raceStatusColor(",
+              '''    raceDataReady: Boolean,
+              raceLegalAccepted: Boolean,
+              hasRaceSetup: Boolean,
+              pendingText: (Long) -> String,
+              blockedText: String,
+          ''',
+              '''    raceDataReady: Boolean,
+              pendingText: (Long) -> String,
+          ''',
+          )
+
+          # Keep the helper's Legal inputs as an explicit regression dimension; production ignores them.
+          replace_in_section(
+              test,
+              "    private fun shortUploadStatusEnglish(",
+              "    private fun shortRaceStatusEnglish(",
+              '''        raceDataReady = raceDataReady,
+              raceLegalAccepted = raceLegalAccepted,
+              hasRaceSetup = hasRaceSetup,
+              pendingText = { "$it pending" },
+              blockedText = "blocked",
+          ''',
+              '''        raceDataReady = raceDataReady,
+              pendingText = { "$it pending" },
+          ''',
+          )
+
+          print("Final #108 cleanups applied")
+          PY
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run full Android verification
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:verifyBuildIdentifier test lint assembleDebug
+
+      - name: Commit final implementation and remove temporary workflows
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/issue108-finalize.yml .github/workflows/issue108-finalize2.yml
+          git add -A
+          git commit -m "Finalize offline race recovery for #108"
+          git push origin HEAD:fix/108-offline-recovery
