@@ -4,6 +4,8 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import androidx.compose.runtime.MutableState
+import androidx.work.Configuration
+import androidx.work.WorkManager
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -146,6 +148,12 @@ class FinishStopLifecycleTest {
         val localPrefs = context.getSharedPreferences(LOCAL_STATUS_PREFS, Context.MODE_PRIVATE)
         assertFalse(localPrefs.getBoolean("race_finished", true))
 
+        runCatching {
+            WorkManager.initialize(
+                context,
+                Configuration.Builder().build()
+            )
+        }
         invokeNoArg(service, "generateAndStoreSample")
         assertEquals(1L, db.countPendingSamples())
         assertTrue(getField<Boolean>(service, "serviceRunning"))
