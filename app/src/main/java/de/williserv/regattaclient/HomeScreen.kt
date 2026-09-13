@@ -146,11 +146,9 @@ fun HomeScreen(
     )
 
     val uploadColor = uploadStatusColor(
-        pendingUploadCount = pendingUploadCount,
-        inRace = inRace,
-        disabledColor = MaterialTheme.colorScheme.outlineVariant,
-        noConnection = noConnection
-    )
+    pendingUploadCount = pendingUploadCount,
+    noConnection = noConnection
+)
 
     val showCourseShortened =
         raceShortened &&
@@ -239,19 +237,13 @@ fun HomeScreen(
             ),
             raceColor = raceColor,
             uploadStatusText = shortUploadStatus(
-                pendingUploadCount = pendingUploadCount,
-                inRace = inRace,
-                raceStatusCode = raceStatusCode,
-                noConnection = noConnection,
-                raceDataReady = raceDataReady,
-                pendingText = { pending -> resources.getString(R.string.pending_value, pending) },
-                offText = stringResource(R.string.status_off),
-                waitingText = stringResource(R.string.status_waiting),
-                readyText = stringResource(R.string.status_ready),
-                idleText = stringResource(R.string.status_idle),
-                okText = stringResource(R.string.ok),
-                noConnectionText = stringResource(R.string.status_no_connection)
-            ),
+    pendingUploadCount = pendingUploadCount,
+    inRace = inRace,
+    noConnection = noConnection,
+    pendingText = { pending -> resources.getString(R.string.pending_value, pending) },
+    okText = stringResource(R.string.ok),
+    noConnectionText = stringResource(R.string.status_no_connection)
+),
             uploadColor = uploadColor
         )
 
@@ -963,16 +955,9 @@ fun isRaceFinished(
 
 fun uploadStatusColor(
     pendingUploadCount: Long,
-    inRace: Boolean,
-    disabledColor: Color,
     noConnection: Boolean = false
 ): Color {
     if (noConnection) return RegattaRed
-
-    if (!inRace && pendingUploadCount == 0L) {
-        return disabledColor
-    }
-
     return when {
         pendingUploadCount <= 10L -> RegattaGreen
         pendingUploadCount <= 50L -> RegattaOrange
@@ -983,13 +968,7 @@ fun uploadStatusColor(
 fun shortUploadStatus(
     pendingUploadCount: Long,
     inRace: Boolean,
-    raceStatusCode: String,
-    raceDataReady: Boolean,
     pendingText: (Long) -> String,
-    offText: String,
-    waitingText: String,
-    readyText: String,
-    idleText: String,
     okText: String,
     noConnection: Boolean = false,
     noConnectionText: String = "No connection"
@@ -1001,22 +980,8 @@ fun shortUploadStatus(
             noConnectionText
         }
     }
-
-    if (!inRace) {
-        if (pendingUploadCount > 0L) {
-            return pendingText(pendingUploadCount)
-        }
-
-        return when {
-            !raceDataReady -> offText
-            raceStatusCode.equals("planned", ignoreCase = true) -> waitingText
-            raceStatusCode.equals("racing", ignoreCase = true) -> readyText
-            raceStatusCode.equals("started", ignoreCase = true) -> readyText
-            else -> idleText
-        }
-    }
-
-    return if (pendingUploadCount <= 10L) okText else "$pendingUploadCount"
+    if (!inRace && pendingUploadCount > 0L) return pendingText(pendingUploadCount)
+    return if (inRace && pendingUploadCount > 10L) "$pendingUploadCount" else okText
 }
 
 fun raceStatusColor(

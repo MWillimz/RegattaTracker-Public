@@ -678,7 +678,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
         val course = snapshot.courseJson
             .takeIf { it.isNotBlank() }
-            ?.let { JSONObject(it) }
+            ?.let { raw -> runCatching { JSONObject(raw) }.getOrNull() }
 
         parseStartLine(course)
         parseFinishLine(course)

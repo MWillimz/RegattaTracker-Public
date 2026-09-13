@@ -2,6 +2,7 @@ package de.williserv.regattaclient
 
 import de.williserv.regattaclient.ui.theme.RegattaGreen
 import de.williserv.regattaclient.ui.theme.RegattaOrange
+import de.williserv.regattaclient.ui.theme.RegattaRed
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -10,27 +11,17 @@ import org.junit.Test
 class HomeUploadStatusTest {
 
     private fun shortUploadStatusEnglish(
-        pendingUploadCount: Long,
-        inRace: Boolean,
-        raceStatusCode: String,
-        raceDataReady: Boolean,
-        raceLegalAccepted: Boolean,
-        hasRaceSetup: Boolean,
-        noConnection: Boolean = false
-    ): String = shortUploadStatus(
-        pendingUploadCount = pendingUploadCount,
-        inRace = inRace,
-        raceStatusCode = raceStatusCode,
-        raceDataReady = raceDataReady,
-        pendingText = { "$it pending" },
-        offText = "off",
-        waitingText = "waiting",
-        readyText = "ready",
-        idleText = "idle",
-        okText = "OK",
-        noConnection = noConnection,
-        noConnectionText = "No connection"
-    )
+    pendingUploadCount: Long,
+    inRace: Boolean,
+    noConnection: Boolean = false
+): String = shortUploadStatus(
+    pendingUploadCount = pendingUploadCount,
+    inRace = inRace,
+    pendingText = { "$it pending" },
+    okText = "OK",
+    noConnection = noConnection,
+    noConnectionText = "No connection"
+)
 
     private fun shortRaceStatusEnglish(
         raceStatusCode: String,
@@ -60,51 +51,35 @@ class HomeUploadStatusTest {
     )
 
     @Test
+    fun connectedWithoutBacklog_isOkRegardlessOfRaceState() {
+        assertEquals("OK", shortUploadStatusEnglish(0L, false))
+        assertEquals("OK", shortUploadStatusEnglish(0L, true))
+    }
+
+    @Test
     fun pendingBacklogOutsideRace_isShownExplicitly() {
-        assertEquals("37 pending", shortUploadStatusEnglish(37L, false, "finished", true, true, true))
-    }
-
-    @Test
-    fun smallPendingBacklogOutsideRace_isNotCollapsedToOk() {
-        assertEquals("3 pending", shortUploadStatusEnglish(3L, false, "finished", true, true, true))
-    }
-
-    @Test
-    fun noRaceSetup_isOffWithoutParsingDisplayText() {
-        assertEquals("off", shortUploadStatusEnglish(0L, false, "", false, false, false))
-    }
-
-    @Test
-    fun loadedSetupWithoutLegalAcceptance_isNotBlocked() {
-        assertEquals("waiting", shortUploadStatusEnglish(0L, false, "planned", true, false, true))
+        assertEquals("37 pending", shortUploadStatusEnglish(37L, false))
+        assertEquals("3 pending", shortUploadStatusEnglish(3L, false))
     }
 
     @Test
     fun noConnection_hasPriorityAndShowsPendingCount() {
-        assertEquals(
-            "No connection · 7 pending",
-            shortUploadStatusEnglish(7L, true, "racing", true, false, true, noConnection = true)
-        )
-        assertEquals(
-            "No connection",
-            shortUploadStatusEnglish(0L, false, "planned", true, true, true, noConnection = true)
-        )
+        assertEquals("No connection · 7 pending", shortUploadStatusEnglish(7L, true, true))
+        assertEquals("No connection", shortUploadStatusEnglish(0L, false, true))
     }
 
     @Test
-    fun rawPlannedStatus_isWaiting() {
-        assertEquals("waiting", shortUploadStatusEnglish(0L, false, "planned", true, true, true))
+    fun inRaceBacklog_preservesExistingCompactBehavior() {
+        assertEquals("42", shortUploadStatusEnglish(42L, true))
+        assertEquals("OK", shortUploadStatusEnglish(10L, true))
     }
 
     @Test
-    fun rawStartedStatus_isReady() {
-        assertEquals("ready", shortUploadStatusEnglish(0L, false, "started", true, true, true))
-    }
-
-    @Test
-    fun inRaceBacklog_usesRawPendingCount() {
-        assertEquals("42", shortUploadStatusEnglish(42L, true, "racing", true, true, true))
-        assertEquals("OK", shortUploadStatusEnglish(10L, true, "racing", true, true, true))
+    fun uploadColor_reflectsConnectionAndBacklog() {
+        assertEquals(RegattaRed, uploadStatusColor(0L, noConnection = true))
+        assertEquals(RegattaGreen, uploadStatusColor(0L))
+        assertEquals(RegattaGreen, uploadStatusColor(10L))
+        assertEquals(RegattaOrange, uploadStatusColor(11L))
     }
 
     @Test
