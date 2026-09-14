@@ -120,6 +120,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
     private var previousFinishLinePosition: GeoPoint? = null
     private var previousFinishLineTimestampMillis: Long? = null
+    private var lastFinishStableSide: Int? = null
 
     private var isOcs = false
     private var raceStarted = false
@@ -247,7 +248,11 @@ class RegattaTrackingService : Service(), SensorEventListener {
             }
 
             ACTION_STOP -> {
-                stopTrackingService()
+                val appPrefs = getSharedPreferences("app_state", Context.MODE_PRIVATE)
+                val explicitRaceLeave = !manualRecording &&
+                    !appPrefs.getBoolean("in_race", false) &&
+                    !appPrefs.getBoolean("manual_tracking", false)
+                stopTrackingService(clearLocalRaceStatus = explicitRaceLeave)
                 return START_NOT_STICKY
             }
 
@@ -326,6 +331,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
         previousStartLineTimestampMillis = null
         previousFinishLinePosition = null
         previousFinishLineTimestampMillis = null
+        lastFinishStableSide = null
 
         isOcs = false
         raceStarted = false
@@ -563,7 +569,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
             .commit()
     }
 
-    private fun stopTrackingService() {
+    private fun stopTrackingService(clearLocalRaceStatus: Boolean = false) {
         persistTrackingStoppedState()
 
         synchronized(eventPollLifecycleLock) {
@@ -581,6 +587,13 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
         handler.removeCallbacks(autoStopAfterFinishRunnable)
         autoStopAfterFinishScheduled = false
+
+        if (clearLocalRaceStatus) {
+            getSharedPreferences(localStatusPrefsName, Context.MODE_PRIVATE)
+                .edit()
+                .clear()
+                .commit()
+        }
 
         try {
             locationManager.removeUpdates(locationListener)
@@ -1267,9 +1280,19 @@ class RegattaTrackingService : Service(), SensorEventListener {
             return
         }
 
+        val line = finishLine
+        val currentFinishSignedDistance = line?.let {
+            StartLineMath.signedDistanceToStartLineM(currentGeoPoint, it)
+        }
+        val currentFinishStableSide = currentFinishSignedDistance?.let(::sideWithTolerance) ?: 0
+
         val nextMark = courseMarks.getOrNull(passedMarks)
 
         if (nextMark != null) {
+            if (currentFinishStableSide != 0) {
+                lastFinishStableSide = currentFinishStableSide
+            }
+
             val distanceToMark = StartLineMath.distanceBetweenMeters(
                 currentGeoPoint,
                 nextMark.point
@@ -1285,7 +1308,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
             return
         }
 
-        val line = finishLine ?: return
+        if (line == null) return
 
         val metrics = StartLineMath.calculateLineMetrics(
             previousPosition = previousFinishLinePosition,
@@ -1297,38 +1320,47 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
         currentTargetDistanceM = abs(metrics.signedDistanceM)
 
-        val crossedFinish = StartLineMath.crossedWithTolerance(
-            previousSignedDistanceM = metrics.previousSignedDistanceM,
-            currentSignedDistanceM = metrics.signedDistanceM,
-            toleranceM = startLineToleranceM
+        val stableSide = sideWithTolerance(metrics.signedDistanceM)
+        val approachReference = resolveFinishApproachReference(
+            courseMarks.lastOrNull()?.point,
+            startLine
         )
-
-        val isOnFinishSide = isBoatOnFinishSide(
-            line = line,
-            boatSignedDistance = metrics.signedDistanceM
-        )
+        val approachSide = approachReference?.let {
+            sideWithTolerance(
+                StartLineMath.signedDistanceToStartLineM(
+                    point = it,
+                    startLine = line
+                )
+            )
+        } ?: 0
 
         if (finishDetectionSuppressed) {
-            if (
-                isBoatOnFinishApproachSide(
-                    line = line,
-                    boatSignedDistance = metrics.signedDistanceM
-                )
-            ) {
+            if (approachSide != 0 && stableSide == approachSide) {
                 finishDetectionSuppressed = false
                 savePersistedRaceState()
             }
 
+            if (stableSide != 0) {
+                lastFinishStableSide = stableSide
+            }
             previousFinishLinePosition = currentGeoPoint
             previousFinishLineTimestampMillis = nowMillis
             return
         }
 
-        if (!raceFinished && (crossedFinish || isOnFinishSide)) {
+        val crossedFinishInRaceDirection =
+            approachSide != 0 &&
+                lastFinishStableSide == approachSide &&
+                stableSide == -approachSide
+
+        if (!raceFinished && crossedFinishInRaceDirection) {
             raceFinished = true
             savePersistedRaceState()
         }
 
+        if (stableSide != 0) {
+            lastFinishStableSide = stableSide
+        }
         previousFinishLinePosition = currentGeoPoint
         previousFinishLineTimestampMillis = nowMillis
     }
@@ -1451,6 +1483,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
         } else {
             0
         }
+        lastFinishStableSide = null
 
         currentTargetDistanceM = null
 
