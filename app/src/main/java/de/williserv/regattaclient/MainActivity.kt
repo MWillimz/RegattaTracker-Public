@@ -2313,6 +2313,19 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     }
 
     private fun enterRace() {
+        if (!raceDataReady.value) {
+            raceStatusText.value = getString(R.string.race_load_valid_data_first)
+            return
+        }
+        if (!setupConfirmed.value) {
+            statusText.value = getString(R.string.confirm_boat_setup_first)
+            return
+        }
+        if (!canEnterRaceNow()) {
+            raceStatusText.value = getString(R.string.race_load_valid_data_first)
+            return
+        }
+
         if (manualTracking.value) {
             manualTracking.value = false
             saveAppState()
@@ -2496,6 +2509,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private fun fetchRaceDataForDisplay() {
         val access = currentEventAccessKey() ?: return
         if (raceDataFetchRunning) return
+        val snapshotGeneration = RaceEventSnapshotStore.generation(this)
         raceDataFetchRunning = true
 
         thread {
@@ -2549,6 +2563,18 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 val parsedStartFlags = parseRaceStartFlags(json)
 
                 runOnUiThread {
+                    val persisted = RaceEventSnapshotStore.saveIfGenerationUnchanged(
+                        context = this,
+                        server = access.server,
+                        event = access.event,
+                        secret = access.secret,
+                        snapshot = snapshot,
+                        expectedGeneration = snapshotGeneration
+                    )
+                    if (!persisted) {
+                        return@runOnUiThread
+                    }
+
                     adoptResolvedEventName(snapshot.resolvedEventName)
                     raceSeriesDisplayMetadata.value = parsedSeriesDisplayMetadata
                     rawRaceStatus = snapshot.status
@@ -2560,7 +2586,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     raceDataReady.value = true
                     raceStartFlags.value = parsedStartFlags
                     renderRawRaceSetup()
-                    saveRaceSetup()
                     updateStartPanelStatus()
                     updateLocalRaceStatus()
                     updateConnectionUiState()
