@@ -429,7 +429,7 @@ class FinishStopLifecycleTest {
             "race_setup",
             RACE_STATE_PREFS,
             LOCAL_STATUS_PREFS,
-            "server_connection_state"
+            "regatta_connection_state"
         ).forEach { prefsName ->
             context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
                 .edit()
