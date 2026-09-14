@@ -1,0 +1,56 @@
+name: Apply promotion review fixes
+
+on:
+  push:
+    branches:
+      - fix/promotion-review-p1-p3
+    paths:
+      - .github/workflows/promotion-review-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fixes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/promotion-review-p1-p3
+          fetch-depth: 0
+
+      - name: Apply P1 and P3 fixes
+        shell: python
+        run: |
+          from pathlib import Path
+
+          main_activity = Path("app/src/main/java/de/williserv/regattaclient/MainActivity.kt")
+          text = main_activity.read_text()
+          old = """                                    if (invalidateLegal) {\n                                        stopRaceDataRefresh()\n                                        resetRaceLegalState()\n                                    }"""
+          new = """                                    if (invalidateLegal) {\n                                        resetRaceLegalState()\n                                    }"""
+          if text.count(old) != 1:
+              raise SystemExit(f"Expected exactly one P1 target, found {text.count(old)}")
+          main_activity.write_text(text.replace(old, new))
+
+          test_files = [
+              Path("app/src/test/java/de/williserv/regattaclient/FinishStopActivityLifecycleTest.kt"),
+              Path("app/src/test/java/de/williserv/regattaclient/FinishStopLifecycleTest.kt"),
+              Path("app/src/test/java/de/williserv/regattaclient/TrackingModeTransitionTest.kt"),
+          ]
+          for path in test_files:
+              text = path.read_text()
+              count = text.count('"server_connection_state"')
+              if count != 1:
+                  raise SystemExit(f"Expected exactly one P3 target in {path}, found {count}")
+              path.write_text(text.replace('"server_connection_state"', '"regatta_connection_state"'))
+
+          workflow = Path(".github/workflows/promotion-review-fix.yml")
+          workflow.unlink()
+
+      - name: Commit fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Fix promotion review P1 and P3 findings"
+          git push origin HEAD:fix/promotion-review-p1-p3
