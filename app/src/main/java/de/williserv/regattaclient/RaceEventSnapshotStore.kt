@@ -10,7 +10,8 @@ internal data class RaceEventSnapshot(
     val stopRaw: String,
     val raceInfo: String,
     val courseJson: String,
-    val courseShortened: Boolean
+    val courseShortened: Boolean,
+    val seriesDisplayMetadata: SeriesDisplayMetadata = SeriesDisplayMetadata()
 )
 
 internal fun canEnterRaceWithLocalState(
@@ -89,7 +90,8 @@ internal fun parseRaceEventSnapshot(body: String): RaceEventSnapshot {
         stopRaw = stop,
         raceInfo = raceInfo,
         courseJson = course?.toString().orEmpty(),
-        courseShortened = obj.optBoolean("course_shortened", false)
+        courseShortened = obj.optBoolean("course_shortened", false),
+        seriesDisplayMetadata = parseSeriesDisplayMetadata(obj)
     )
 
     require(isUsableRaceEventSnapshot(snapshot)) { "/event response is not usable for local tracking" }
@@ -130,7 +132,12 @@ internal object RaceEventSnapshotStore {
             stopRaw = prefs.getString("race_stop_raw", "").orEmpty(),
             raceInfo = prefs.getString("race_info_raw", "").orEmpty(),
             courseJson = prefs.getString("race_course_json_raw", "").orEmpty(),
-            courseShortened = prefs.getBoolean("race_course_shortened_raw", false)
+            courseShortened = prefs.getBoolean("race_course_shortened_raw", false),
+            seriesDisplayMetadata = SeriesDisplayMetadata(
+                runName = prefs.getString("series_run_name", "").orEmpty(),
+                occurrenceNo = prefs.getInt("series_occurrence_no", 0).takeIf { it > 0 },
+                plannedRaceCount = prefs.getInt("series_planned_race_count", 0).takeIf { it > 0 }
+            )
         )
 
         return snapshot.takeIf(::isUsableRaceEventSnapshot)
@@ -152,6 +159,9 @@ internal object RaceEventSnapshotStore {
             .putString("race_event", event)
             .putString("race_secret", secret)
             .putString("resolved_event_name", snapshot.resolvedEventName)
+            .putString("series_run_name", snapshot.seriesDisplayMetadata.runName)
+            .putInt("series_occurrence_no", snapshot.seriesDisplayMetadata.occurrenceNo ?: 0)
+            .putInt("series_planned_race_count", snapshot.seriesDisplayMetadata.plannedRaceCount ?: 0)
             .putInt("race_raw_state_version", RACE_RAW_STATE_VERSION)
             .putString("race_status_raw", snapshot.status)
             .putString("race_start_raw", snapshot.startRaw)
