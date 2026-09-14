@@ -508,7 +508,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                         registerRaceStatusText.value = ""
                                     }
                                     if (invalidateLegal) {
-                                        stopRaceDataRefresh()
                                         resetRaceLegalState()
                                     }
 
