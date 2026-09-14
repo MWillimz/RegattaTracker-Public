@@ -402,6 +402,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
         }
 
         if (!restoreStickyStartContext()) {
+            persistTrackingStoppedState()
             stopSelf()
             return START_NOT_STICKY
         }
