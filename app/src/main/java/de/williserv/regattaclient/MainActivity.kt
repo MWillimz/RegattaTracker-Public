@@ -2537,7 +2537,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                 val responseCode = connection.responseCode
                 serverResponded = true
-                ServerConnectionStateStore.markReachable(this, access.server)
 
                 val body = if (responseCode in 200..299) {
                     connection.inputStream.bufferedReader().use { it.readText() }
@@ -2557,6 +2556,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         ) {
                             return@runOnUiThread
                         }
+                        ServerConnectionStateStore.markReachable(this, access.server)
                         updateConnectionUiState()
                         if (shouldInvalidateEventSnapshotForHttpStatus(responseCode)) {
                             raceStatusText.value = getString(R.string.race_error_code, responseCode)
@@ -2584,6 +2584,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         return@runOnUiThread
                     }
 
+                    ServerConnectionStateStore.markReachable(this, access.server)
                     val persisted = RaceEventSnapshotStore.saveIfGenerationUnchanged(
                         context = this,
                         server = access.server,
@@ -2612,9 +2613,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     updateConnectionUiState()
                 }
             } catch (_: Exception) {
-                if (!serverResponded) {
-                    ServerConnectionStateStore.markNoConnection(this, access.server)
-                }
                 runOnUiThread {
                     if (
                         !raceDataRequestGate.isCurrent(
@@ -2624,6 +2622,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         )
                     ) {
                         return@runOnUiThread
+                    }
+                    if (serverResponded) {
+                        ServerConnectionStateStore.markReachable(this, access.server)
+                    } else {
+                        ServerConnectionStateStore.markNoConnection(this, access.server)
                     }
                     updateConnectionUiState()
                     if (!raceDataReady.value) {
