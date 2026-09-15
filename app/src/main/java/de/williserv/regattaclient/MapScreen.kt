@@ -102,8 +102,11 @@ fun MapScreen(
         }
     }
     val viewport = snapshot?.courseMapViewport
-    val overlayPoints = remember(snapshot?.courseJson) {
-        parseCourseOverlayPoints(snapshot?.courseJson.orEmpty())
+    val overlayPoints = remember(snapshot?.courseJson, snapshot?.courseShortened) {
+        parseCourseOverlayPoints(
+            courseJson = snapshot?.courseJson.orEmpty(),
+            courseShortened = snapshot?.courseShortened == true
+        )
     }
     val generationBoundUrl = remember(mapImageUrl, viewport?.generationId) {
         if (viewport == null) mapImageUrl else bindCourseMapGeneration(mapImageUrl, viewport.generationId)
@@ -447,7 +450,10 @@ private fun parseMapSnapshotContext(mapImageUrl: String): MapSnapshotContext? {
     }
 }
 
-private fun parseCourseOverlayPoints(courseJson: String): List<CourseOverlayGeoPoint> {
+private fun parseCourseOverlayPoints(
+    courseJson: String,
+    courseShortened: Boolean
+): List<CourseOverlayGeoPoint> {
     if (courseJson.isBlank()) return emptyList()
 
     return try {
@@ -462,7 +468,7 @@ private fun parseCourseOverlayPoints(courseJson: String): List<CourseOverlayGeoP
                     val mark = marks.optJSONObject(index) ?: continue
                     val point = mark.toCourseOverlayPoint(
                         kind = CourseOverlayKind.MARK,
-                        inactive = mark.optBoolean("omit_when_shortened", false)
+                        inactive = courseShortened && mark.optBoolean("omit_when_shortened", false)
                     )
                     if (point != null) add(point)
                 }
