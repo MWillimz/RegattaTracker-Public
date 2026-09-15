@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="register_with_race_committee">Beim Wettfahrtkomitee registrieren</string>
+    <string name="registered_with_race_committee">Beim Wettfahrtkomitee registriert</string>
+    <string name="remember_enter_race">Vor dem Ablegen „Enter Race“ drücken.</string>
+    <string name="enter_race_available_24h">„Enter Race“ ist ab 24 Stunden vor dem Start verfügbar.</string>
+</resources>
