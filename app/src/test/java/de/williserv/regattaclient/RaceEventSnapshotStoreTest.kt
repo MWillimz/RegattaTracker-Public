@@ -4,6 +4,7 @@ import android.content.Context
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -29,7 +30,7 @@ class RaceEventSnapshotStoreTest {
     }
 
     @Test
-    fun `save keeps resolved run and series display metadata in the same snapshot`() {
+    fun `save keeps resolved run series metadata and map viewport in the same snapshot`() {
         val snapshot = RaceEventSnapshot(
             resolvedEventName = "Series Race 2",
             status = "planned",
@@ -42,6 +43,15 @@ class RaceEventSnapshotStoreTest {
                 runName = "Sunday Race",
                 occurrenceNo = 2,
                 plannedRaceCount = 5
+            ),
+            courseMapViewport = CourseMapViewport(
+                projection = "web_mercator",
+                zoom = 15,
+                leftPx = 1234.5,
+                topPx = 6789.5,
+                widthPx = 2400,
+                heightPx = 1800,
+                generationId = "generation-42"
             )
         )
 
@@ -65,6 +75,8 @@ class RaceEventSnapshotStoreTest {
         assertEquals("Sunday Race", restored?.seriesDisplayMetadata?.runName)
         assertEquals(2, restored?.seriesDisplayMetadata?.occurrenceNo)
         assertEquals(5, restored?.seriesDisplayMetadata?.plannedRaceCount)
+        assertEquals("generation-42", restored?.courseMapViewport?.generationId)
+        assertEquals(2400, restored?.courseMapViewport?.widthPx)
     }
 
     @Test
@@ -136,6 +148,59 @@ class RaceEventSnapshotStoreTest {
         assertEquals("Afternoon Race", snapshot.seriesDisplayMetadata.runName)
         assertEquals(3, snapshot.seriesDisplayMetadata.occurrenceNo)
         assertEquals(4, snapshot.seriesDisplayMetadata.plannedRaceCount)
+    }
+
+    @Test
+    fun `parser accepts optional published course map viewport`() {
+        val snapshot = parseRaceEventSnapshot(
+            """
+            {
+              "event_name": "Race 1",
+              "race_status": "planned",
+              "start_time": "2026-09-20T14:00:00Z",
+              "stop_time": "2026-09-20T15:00:00Z",
+              "course_map_viewport": {
+                "projection": "web_mercator",
+                "zoom": 16,
+                "left_px": 17321.0,
+                "top_px": 10542.0,
+                "width_px": 2400,
+                "height_px": 1800,
+                "generation_id": "abc123"
+              }
+            }
+            """.trimIndent()
+        )
+
+        assertEquals("abc123", snapshot.courseMapViewport?.generationId)
+        assertEquals(16, snapshot.courseMapViewport?.zoom)
+        assertEquals(17321.0, snapshot.courseMapViewport?.leftPx ?: 0.0, 0.000001)
+    }
+
+    @Test
+    fun `malformed or unsupported viewport stays optional`() {
+        val snapshot = parseRaceEventSnapshot(
+            """
+            {
+              "event_name": "Race 1",
+              "race_status": "planned",
+              "start_time": "2026-09-20T14:00:00Z",
+              "stop_time": "2026-09-20T15:00:00Z",
+              "course_map_viewport": {
+                "projection": "unknown",
+                "zoom": 16,
+                "left_px": 1,
+                "top_px": 2,
+                "width_px": 2400,
+                "height_px": 1800,
+                "generation_id": "abc123"
+              }
+            }
+            """.trimIndent()
+        )
+
+        assertNull(snapshot.courseMapViewport)
+        assertEquals("Race 1", snapshot.resolvedEventName)
     }
 
     private fun clearRaceSetup() {
