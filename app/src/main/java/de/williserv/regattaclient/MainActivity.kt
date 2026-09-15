@@ -160,7 +160,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private var rawRaceInfo = ""
     private var rawRaceCourseJson = ""
     private var rawRaceCourseShortened = false
-    private var raceDataFetchRunning = false
+    private val raceDataRequestGate = EventRequestGate()
 
     private val raceRegistered = mutableStateOf(false)
     private val statusText = mutableStateOf("")
@@ -2508,9 +2508,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private fun fetchRaceDataForDisplay() {
         val access = currentEventAccessKey() ?: return
-        if (raceDataFetchRunning) return
+        val request = raceDataRequestGate.tryStart(
+            access = access,
+            generation = eventCompatibilityGeneration
+        ) ?: return
         val snapshotGeneration = RaceEventSnapshotStore.generation(this)
-        raceDataFetchRunning = true
 
         thread {
             var serverResponded = false
@@ -2535,7 +2537,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                 val responseCode = connection.responseCode
                 serverResponded = true
-                ServerConnectionStateStore.markReachable(this, access.server)
 
                 val body = if (responseCode in 200..299) {
                     connection.inputStream.bufferedReader().use { it.readText() }
@@ -2546,6 +2547,16 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                 if (responseCode !in 200..299) {
                     runOnUiThread {
+                        if (
+                            !raceDataRequestGate.isCurrent(
+                                request = request,
+                                currentAccess = currentEventAccessKey(),
+                                currentGeneration = eventCompatibilityGeneration
+                            )
+                        ) {
+                            return@runOnUiThread
+                        }
+                        ServerConnectionStateStore.markReachable(this, access.server)
                         updateConnectionUiState()
                         if (shouldInvalidateEventSnapshotForHttpStatus(responseCode)) {
                             raceStatusText.value = getString(R.string.race_error_code, responseCode)
@@ -2563,6 +2574,17 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 val parsedStartFlags = parseRaceStartFlags(json)
 
                 runOnUiThread {
+                    if (
+                        !raceDataRequestGate.isCurrent(
+                            request = request,
+                            currentAccess = currentEventAccessKey(),
+                            currentGeneration = eventCompatibilityGeneration
+                        )
+                    ) {
+                        return@runOnUiThread
+                    }
+
+                    ServerConnectionStateStore.markReachable(this, access.server)
                     val persisted = RaceEventSnapshotStore.saveIfGenerationUnchanged(
                         context = this,
                         server = access.server,
@@ -2591,10 +2613,21 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     updateConnectionUiState()
                 }
             } catch (_: Exception) {
-                if (!serverResponded) {
-                    ServerConnectionStateStore.markNoConnection(this, access.server)
-                }
                 runOnUiThread {
+                    if (
+                        !raceDataRequestGate.isCurrent(
+                            request = request,
+                            currentAccess = currentEventAccessKey(),
+                            currentGeneration = eventCompatibilityGeneration
+                        )
+                    ) {
+                        return@runOnUiThread
+                    }
+                    if (serverResponded) {
+                        ServerConnectionStateStore.markReachable(this, access.server)
+                    } else {
+                        ServerConnectionStateStore.markNoConnection(this, access.server)
+                    }
                     updateConnectionUiState()
                     if (!raceDataReady.value) {
                         raceStatusText.value = if (serverResponded) {
@@ -2605,7 +2638,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     }
                 }
             } finally {
-                raceDataFetchRunning = false
+                runOnUiThread {
+                    raceDataRequestGate.finish(request)
+                }
             }
         }
     }
