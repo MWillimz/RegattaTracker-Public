@@ -183,6 +183,7 @@ fun RaceScreen(
     raceSecret: String,
     raceStatusText: String,
     raceStartText: String,
+    raceStartEpochMillis: Long?,
     raceStopText: String,
     raceRegistered: Boolean,
     raceCourseText: String,
@@ -214,9 +215,7 @@ fun RaceScreen(
         }
     }
     val enterRaceTimeAvailable = isEnterRaceTimeAvailable(
-        raceStartEpochMillis = RaceRegistrationPolicy.startEpochMillis(
-            legacyDisplayPayload(raceStartText)
-        ),
+        raceStartEpochMillis = raceStartEpochMillis,
         nowEpochMillis = raceEntryNowEpochMillis
     )
     val primaryBlue = MaterialTheme.colorScheme.primary
