@@ -26,6 +26,17 @@ class BoatSetupStateTest {
     }
 
     @Test
+    fun validSetupRejectsNonFiniteYardstickValues() {
+        assertFalse(isBoatSetupValid(confirmed.copy(yardstick = "NaN")))
+        assertFalse(isBoatSetupValid(confirmed.copy(yardstick = "Infinity")))
+        assertFalse(isBoatSetupValid(confirmed.copy(yardstick = "-Infinity")))
+        assertFalse(isBoatSetupValid(confirmed.copy(yardstick = "1e309")))
+
+        assertTrue(isBoatSetupValid(confirmed.copy(yardstick = "97.5")))
+        assertTrue(isBoatSetupValid(confirmed.copy(yardstick = "100")))
+    }
+
+    @Test
     fun firstConfirmationDoesNotInvalidateExistingRaceState() {
         val next = confirmed.copy(sailNumber = "GER 9999")
 
