@@ -1,6 +1,7 @@
 package de.williserv.regattaclient
 
 import android.content.Context
+import android.content.SharedPreferences
 import org.json.JSONObject
 
 internal data class RaceEventSnapshot(
@@ -78,10 +79,10 @@ internal fun parseRaceEventSnapshot(body: String): RaceEventSnapshot {
         obj,
         listOf("race_info", "info", "notice", "message")
     ) ?: "--"
-    val course = obj.optJSONObject("course")
-        ?: obj.optJSONObject("kurs")
-        ?: obj.optJSONObject("race_course")
-        ?: obj.optJSONObject("track")
+    val course = jsonObjectAnyStrict(
+        obj,
+        listOf("course", "kurs", "race_course", "track")
+    )
 
     val snapshot = RaceEventSnapshot(
         resolvedEventName = resolvedEventName,
@@ -100,6 +101,8 @@ internal fun parseRaceEventSnapshot(body: String): RaceEventSnapshot {
 
 internal object RaceEventSnapshotStore {
     private const val PREFS_NAME = "race_setup"
+    private const val GENERATION_KEY = "race_snapshot_generation"
+    private val writeLock = Any()
 
     fun loadMatching(
         context: Context,
@@ -143,6 +146,12 @@ internal object RaceEventSnapshotStore {
         return snapshot.takeIf(::isUsableRaceEventSnapshot)
     }
 
+    fun generation(context: Context): Long = synchronized(writeLock) {
+        context.applicationContext
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getLong(GENERATION_KEY, 0L)
+    }
+
     fun save(
         context: Context,
         server: String,
@@ -152,9 +161,59 @@ internal object RaceEventSnapshotStore {
     ) {
         if (!isUsableRaceEventSnapshot(snapshot)) return
 
-        context.applicationContext
-            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
+        synchronized(writeLock) {
+            val prefs = context.applicationContext
+                .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val nextGeneration = prefs.getLong(GENERATION_KEY, 0L) + 1L
+            writeSnapshot(
+                prefs = prefs,
+                server = server,
+                event = event,
+                secret = secret,
+                snapshot = snapshot,
+                generation = nextGeneration
+            )
+        }
+    }
+
+    fun saveIfGenerationUnchanged(
+        context: Context,
+        server: String,
+        event: String,
+        secret: String,
+        snapshot: RaceEventSnapshot,
+        expectedGeneration: Long
+    ): Boolean {
+        if (!isUsableRaceEventSnapshot(snapshot)) return false
+
+        return synchronized(writeLock) {
+            val prefs = context.applicationContext
+                .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            if (prefs.getLong(GENERATION_KEY, 0L) != expectedGeneration) {
+                return@synchronized false
+            }
+
+            writeSnapshot(
+                prefs = prefs,
+                server = server,
+                event = event,
+                secret = secret,
+                snapshot = snapshot,
+                generation = expectedGeneration + 1L
+            )
+            true
+        }
+    }
+
+    private fun writeSnapshot(
+        prefs: SharedPreferences,
+        server: String,
+        event: String,
+        secret: String,
+        snapshot: RaceEventSnapshot,
+        generation: Long
+    ) {
+        prefs.edit()
             .putString("race_server", server)
             .putString("race_event", event)
             .putString("race_secret", secret)
@@ -170,6 +229,7 @@ internal object RaceEventSnapshotStore {
             .putString("race_course_json_raw", snapshot.courseJson)
             .putBoolean("race_course_shortened_raw", snapshot.courseShortened)
             .putBoolean("race_data_ready", true)
+            .putLong(GENERATION_KEY, generation)
             .apply()
     }
 
@@ -184,6 +244,15 @@ private fun jsonStringAny(json: JSONObject, keys: List<String>): String? {
         if (json.has(key) && !json.isNull(key)) {
             return json.optString(key)
         }
+    }
+    return null
+}
+
+private fun jsonObjectAnyStrict(json: JSONObject, keys: List<String>): JSONObject? {
+    for (key in keys) {
+        if (!json.has(key) || json.isNull(key)) continue
+        return json.optJSONObject(key)
+            ?: throw IllegalArgumentException("/event field '$key' must be an object")
     }
     return null
 }
