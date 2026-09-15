@@ -207,16 +207,20 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private var gyroZ = 0f
 
     private val handler = Handler(Looper.getMainLooper())
+    private val asyncLifetime = ActivityAsyncLifetime()
 
 
     private val uiRefreshRunnable = object : Runnable {
         override fun run() {
+            if (!asyncLifetime.isActive()) return
             raceEntryNowEpochMillis.value = System.currentTimeMillis()
             reconcileTrackingState()
             updateStorageText()
             updateLocalRaceStatus()
             updateConnectionUiState()
-            handler.postDelayed(this, 1000L)
+            if (asyncLifetime.isActive()) {
+                handler.postDelayed(this, 1000L)
+            }
         }
     }
 
@@ -258,9 +262,12 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private val raceDataRefreshRunnable = object : Runnable {
         override fun run() {
+            if (!asyncLifetime.isActive()) return
             if (currentEventAccessKey() != null) {
                 fetchRaceDataForDisplay()
-                handler.postDelayed(this, 10_000L)
+                if (asyncLifetime.isActive()) {
+                    handler.postDelayed(this, 10_000L)
+                }
             }
         }
     }
@@ -1428,12 +1435,14 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
     }
 
-    private fun currentEventAccessKey(): EventAccessKey? =
-        eventAccessKey(
+    private fun currentEventAccessKey(): EventAccessKey? {
+        if (!asyncLifetime.isActive()) return null
+        return eventAccessKey(
             server = raceServer.value,
             event = raceEvent.value,
             secret = raceSecret.value
         )
+    }
 
     private fun currentEventCompatibilityContext(access: EventAccessKey): EventCompatibilityContext =
         EventCompatibilityContext(
@@ -1464,6 +1473,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         val generation = enterRaceServerCheckState.begin()
         enterRaceServerCheckInProgress.value = true
         handler.postDelayed({
+            if (!asyncLifetime.isActive()) {
+                return@postDelayed
+            }
             if (!enterRaceServerCheckState.isActive(generation)) {
                 return@postDelayed
             }
@@ -1629,7 +1641,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             }
             val decision = eventCompatibilityDecision(status)
 
+            if (!asyncLifetime.isActive()) return@thread
             runOnUiThread {
+                if (!asyncLifetime.isActive()) return@runOnUiThread
                 if (
                     !shouldApplyEventCompatibilityResult(
                         requestedAccess = access,
@@ -1756,7 +1770,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                 val responseCode = connection.responseCode
                 serverResponded = true
-                ServerConnectionStateStore.markReachable(this, access.server)
+                if (asyncLifetime.isActive()) {
+                    ServerConnectionStateStore.markReachable(this, access.server)
+                }
                 val body = if (responseCode in 200..299) {
                     connection.inputStream.bufferedReader().use { it.readText() }
                 } else {
@@ -1767,6 +1783,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                 if (responseCode !in 200..299) {
                     runOnUiThread {
+                        if (!asyncLifetime.isActive()) return@runOnUiThread
                         if (!isCurrentAllowedLegalContext(compatibilityContext)) {
                             return@runOnUiThread
                         }
@@ -1815,6 +1832,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 }
 
                 runOnUiThread {
+                    if (!asyncLifetime.isActive()) return@runOnUiThread
                     if (!isCurrentAllowedLegalContext(compatibilityContext)) {
                         return@runOnUiThread
                     }
@@ -1913,10 +1931,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     }
                 }
             } catch (e: Exception) {
-                if (!serverResponded) {
+                if (!serverResponded && asyncLifetime.isActive()) {
                     ServerConnectionStateStore.markNoConnection(this, access.server)
                 }
                 runOnUiThread {
+                    if (!asyncLifetime.isActive()) return@runOnUiThread
                     if (!isCurrentAllowedLegalContext(compatibilityContext)) {
                         return@runOnUiThread
                     }
@@ -1959,6 +1978,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 }
             } finally {
                 runOnUiThread {
+                    if (!asyncLifetime.isActive()) return@runOnUiThread
                     if (activeLegalFetchContext == compatibilityContext) {
                         activeLegalFetchContext = null
                         activeLegalFetchEnterRaceGeneration = null
@@ -2017,7 +2037,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                 val responseCode = connection.responseCode
                 serverResponded = true
-                ServerConnectionStateStore.markReachable(this, access.server)
+                if (asyncLifetime.isActive()) {
+                    ServerConnectionStateStore.markReachable(this, access.server)
+                }
                 val body = if (responseCode in 200..299) {
                     connection.inputStream.bufferedReader().use { it.readText() }
                 } else {
@@ -2027,6 +2049,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 connection.disconnect()
 
                 runOnUiThread {
+                    if (!asyncLifetime.isActive()) return@runOnUiThread
                     if (
                         !isCurrentActionableLegalDocument(document) ||
                         !hasSameLegalBoatIdentity(currentBoatSetupValues(), acceptedBoatSetup)
@@ -2069,10 +2092,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     }
                 }
             } catch (e: Exception) {
-                if (!serverResponded) {
+                if (!serverResponded && asyncLifetime.isActive()) {
                     ServerConnectionStateStore.markNoConnection(this, access.server)
                 }
                 runOnUiThread {
+                    if (!asyncLifetime.isActive()) return@runOnUiThread
                     if (
                         !isCurrentActionableLegalDocument(document) ||
                         !hasSameLegalBoatIdentity(currentBoatSetupValues(), acceptedBoatSetup)
@@ -2089,6 +2113,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 }
             } finally {
                 runOnUiThread {
+                    if (!asyncLifetime.isActive()) return@runOnUiThread
                     eventLegalFlowState.finishAccept(document)
                 }
             }
@@ -2247,13 +2272,14 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             return
         }
 
+        val access = currentEventAccessKey() ?: return
         val registrationBoatSetup = currentBoatSetupValues()
         registerRaceStatusText.value = getString(R.string.registering)
 
         thread {
             var serverResponded = false
             try {
-                val url = "${getBaseServerUrl()}/ingest"
+                val url = "${baseServerUrlForAccess(access)}/ingest"
 
                 val json = JSONObject().apply {
                     put("sequence_id", System.currentTimeMillis())
@@ -2288,8 +2314,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                 connection.setRequestProperty("Content-Type", "application/json")
                 connection.setRequestProperty("Accept", "application/json")
-                connection.setRequestProperty("x-event-name", raceEvent.value)
-                connection.setRequestProperty("x-shared-secret", raceSecret.value)
+                connection.setRequestProperty("x-event-name", access.event)
+                connection.setRequestProperty("x-shared-secret", access.secret)
                 connection.setRequestProperty("x-api-version", RegattaTrackingService.API_VERSION)
 
                 connection.outputStream.use { outputStream ->
@@ -2298,7 +2324,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                 val responseCode = connection.responseCode
                 serverResponded = true
-                ServerConnectionStateStore.markReachable(this, raceServer.value)
+                if (asyncLifetime.isActive()) {
+                    ServerConnectionStateStore.markReachable(this, access.server)
+                }
                 val body = if (responseCode in 200..299) {
                     connection.inputStream.bufferedReader().use { it.readText() }
                 } else {
@@ -2308,6 +2336,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 connection.disconnect()
 
                 runOnUiThread {
+                    if (!asyncLifetime.isActive()) return@runOnUiThread
                     if (currentBoatSetupValues() != registrationBoatSetup) {
                         return@runOnUiThread
                     }
@@ -2322,10 +2351,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     }
                 }
             } catch (e: Exception) {
-                if (!serverResponded) {
-                    ServerConnectionStateStore.markNoConnection(this, raceServer.value)
+                if (!serverResponded && asyncLifetime.isActive()) {
+                    ServerConnectionStateStore.markNoConnection(this, access.server)
                 }
                 runOnUiThread {
+                    if (!asyncLifetime.isActive()) return@runOnUiThread
                     if (currentBoatSetupValues() != registrationBoatSetup) {
                         return@runOnUiThread
                     }
@@ -2498,6 +2528,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     }
 
     private fun startRaceDataRefresh() {
+        if (!asyncLifetime.isActive()) return
         handler.removeCallbacks(raceDataRefreshRunnable)
         handler.postDelayed(raceDataRefreshRunnable, 10_000L)
     }
@@ -2682,6 +2713,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private fun fetchEventResults() {
         if (resultsFetchRunning) return
+        val access = currentEventAccessKey() ?: return
         resultsFetchRunning = true
 
         resultsStatusText.value = getString(R.string.loading_results)
@@ -2689,9 +2721,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         thread {
             try {
                 val url = buildNormalApiGetUrl(
-                    baseUrl = getBaseServerUrl(),
+                    baseUrl = baseServerUrlForAccess(access),
                     path = "/event-results",
-                    eventName = raceEvent.value
+                    eventName = access.event
                 )
 
                 val connection = URL(url).openConnection() as HttpURLConnection
@@ -2699,7 +2731,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 connection.connectTimeout = 3000
                 connection.readTimeout = 3000
                 connection.setRequestProperty("Accept", "application/json")
-                connection.setRequestProperty("x-shared-secret", raceSecret.value)
+                connection.setRequestProperty("x-shared-secret", access.secret)
                 connection.setRequestProperty("x-api-version", RegattaTrackingService.API_VERSION)
 
                 val responseCode = connection.responseCode
@@ -2713,6 +2745,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                 if (responseCode !in 200..299) {
                     runOnUiThread {
+                        if (!asyncLifetime.isActive()) return@runOnUiThread
                         resultsStatusText.value = getString(R.string.results_failed_code, responseCode, body.take(160))
                         resultsPublished.value = false
                         resultRows.value = emptyList()
@@ -2749,6 +2782,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 }
 
                 runOnUiThread {
+                    if (!asyncLifetime.isActive()) return@runOnUiThread
                     resultsPublished.value = published
                     resultsPublishedAt.value = publishedAt
                     resultRows.value = rows
@@ -2760,12 +2794,16 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 }
             } catch (e: Exception) {
                 runOnUiThread {
+                    if (!asyncLifetime.isActive()) return@runOnUiThread
                     resultsStatusText.value = getString(R.string.results_failed, e.message ?: "")
                     resultsPublished.value = false
                     resultRows.value = emptyList()
                 }
             } finally {
-                resultsFetchRunning = false
+                runOnUiThread {
+                    if (!asyncLifetime.isActive()) return@runOnUiThread
+                    resultsFetchRunning = false
+                }
             }
         }
     }
@@ -2811,6 +2849,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                 if (responseCode !in 200..299) {
                     runOnUiThread {
+                        if (!asyncLifetime.isActive()) return@runOnUiThread
                         if (
                             !raceDataRequestGate.isCurrent(
                                 request = request,
@@ -2837,6 +2876,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 val parsedStartFlags = parseRaceStartFlags(json)
 
                 runOnUiThread {
+                    if (!asyncLifetime.isActive()) return@runOnUiThread
                     if (
                         !raceDataRequestGate.isCurrent(
                             request = request,
@@ -2883,6 +2923,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 }
             } catch (_: Exception) {
                 runOnUiThread {
+                    if (!asyncLifetime.isActive()) return@runOnUiThread
                     if (
                         !raceDataRequestGate.isCurrent(
                             request = request,
@@ -2908,6 +2949,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 }
             } finally {
                 runOnUiThread {
+                    if (!asyncLifetime.isActive()) return@runOnUiThread
                     raceDataRequestGate.finish(request)
                 }
             }
@@ -3157,6 +3199,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     }
 
     override fun onDestroy() {
+        asyncLifetime.invalidate()
         cancelEnterRaceServerCheck()
         super.onDestroy()
 
