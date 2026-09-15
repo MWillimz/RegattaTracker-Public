@@ -7,6 +7,8 @@ import android.database.sqlite.SQLiteOpenHelper
 import java.util.Locale
 
 data class PendingTrackingSample(
+    val localId: Long,
+    val accessContext: AccessContext,
     val sequenceId: Long,
     val timestamp: String,
     val boatName: String,
@@ -25,45 +27,174 @@ data class PendingTrackingSample(
     val accelZ: Float,
     val gyroX: Float,
     val gyroY: Float,
-    val gyroZ: Float
+    val gyroZ: Float,
+    val batteryPercent: Int? = null,
+    val batteryCharging: Boolean? = null,
+    val trackingProfile: String? = null
 )
 
+data class AccessContext(
+    val id: Long,
+    val serverUrl: String,
+    val accessIdentifier: String,
+    val accessSecret: String,
+    val createdAt: Long,
+    val lastUsedAt: Long
+)
+
+internal data class AccessContextKey(
+    val serverUrl: String,
+    val accessIdentifier: String,
+    val accessSecret: String
+)
+
+internal fun normalizeAccessContextKey(
+    serverUrl: String,
+    accessIdentifier: String,
+    accessSecret: String
+): AccessContextKey? {
+    val trimmedServerUrl = serverUrl.trim().trimEnd('/')
+    val normalizedServerUrl = if (trimmedServerUrl.endsWith("/ingest")) {
+        trimmedServerUrl.removeSuffix("/ingest")
+    } else {
+        trimmedServerUrl
+    }
+    val normalizedIdentifier = accessIdentifier.trim()
+    val normalizedSecret = accessSecret.trim()
+
+    if (
+        normalizedServerUrl.isBlank() ||
+        normalizedIdentifier.isBlank() ||
+        normalizedSecret.isBlank()
+    ) {
+        return null
+    }
+
+    return AccessContextKey(
+        serverUrl = normalizedServerUrl,
+        accessIdentifier = normalizedIdentifier,
+        accessSecret = normalizedSecret
+    )
+}
+
 class TrackingDbHelper(context: Context) :
-    SQLiteOpenHelper(context, "regatta_tracking.db", null, 3) {
+    SQLiteOpenHelper(context, "regatta_tracking.db", null, 5) {
+
+    private val appContext = context.applicationContext
+    private var lastBatteryReadAtMs: Long? = null
+    private var lastEmittedTrackingProfile: String? = null
+    private var lastTrackingProfileAtMs: Long? = null
+
+    fun resetTrackingSessionMetadata() {
+        lastEmittedTrackingProfile = null
+        lastTrackingProfileAtMs = null
+    }
 
     override fun onCreate(db: SQLiteDatabase) {
-        db.execSQL(
-            """
-            CREATE TABLE tracking_samples (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                sequence_id INTEGER NOT NULL,
-                timestamp TEXT NOT NULL,
-                boat_name TEXT NOT NULL,
-                captain_name TEXT NOT NULL,
-                hull_color TEXT NOT NULL,
-                sail_number TEXT NOT NULL,
-                yardstick REAL NOT NULL,
-                boat_type TEXT NOT NULL,
-                lat REAL NOT NULL,
-                lon REAL NOT NULL,
-                accuracy REAL NOT NULL,
-                cog REAL NOT NULL,
-                sog REAL NOT NULL,
-                accel_x REAL NOT NULL,
-                accel_y REAL NOT NULL,
-                accel_z REAL NOT NULL,
-                gyro_x REAL NOT NULL,
-                gyro_y REAL NOT NULL,
-                gyro_z REAL NOT NULL,
-                uploaded INTEGER NOT NULL DEFAULT 0
-            )
-            """.trimIndent()
-        )
+        createAccessContextsTable(db)
+        createTrackingSamplesTable(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        db.execSQL("DROP TABLE IF EXISTS tracking_samples")
-        onCreate(db)
+        if (oldVersion < 4 && newVersion >= 4) {
+            migrateToVersion4(db)
+        }
+        if (oldVersion < 5 && newVersion >= 5) {
+            migrateToVersion5(db)
+        }
+    }
+
+    fun getOrCreateAccessContext(
+        serverUrl: String,
+        accessIdentifier: String,
+        accessSecret: String
+    ): Long? {
+        val key = normalizeAccessContextKey(
+            serverUrl = serverUrl,
+            accessIdentifier = accessIdentifier,
+            accessSecret = accessSecret
+        ) ?: return null
+
+        val db = writableDatabase
+        val now = System.currentTimeMillis()
+
+        db.beginTransaction()
+        try {
+            val existingId = findAccessContextId(db, key)
+            if (existingId != null) {
+                val values = ContentValues().apply {
+                    put("last_used_at", now)
+                }
+                db.update(
+                    "access_contexts",
+                    values,
+                    "id = ?",
+                    arrayOf(existingId.toString())
+                )
+                db.setTransactionSuccessful()
+                return existingId
+            }
+
+            val values = ContentValues().apply {
+                put("server_url", key.serverUrl)
+                put("access_identifier", key.accessIdentifier)
+                put("access_secret", key.accessSecret)
+                put("created_at", now)
+                put("last_used_at", now)
+            }
+
+            val insertedId = db.insertWithOnConflict(
+                "access_contexts",
+                null,
+                values,
+                SQLiteDatabase.CONFLICT_IGNORE
+            )
+
+            val contextId = if (insertedId != -1L) {
+                insertedId
+            } else {
+                findAccessContextId(db, key)
+            }
+
+            if (contextId != null) {
+                db.setTransactionSuccessful()
+            }
+
+            return contextId
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun getAccessContext(accessContextId: Long): AccessContext? {
+        readableDatabase.rawQuery(
+            """
+            SELECT
+                id,
+                server_url,
+                access_identifier,
+                access_secret,
+                created_at,
+                last_used_at
+            FROM access_contexts
+            WHERE id = ?
+            LIMIT 1
+            """.trimIndent(),
+            arrayOf(accessContextId.toString())
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) {
+                return null
+            }
+
+            return AccessContext(
+                id = cursor.getLong(0),
+                serverUrl = cursor.getString(1),
+                accessIdentifier = cursor.getString(2),
+                accessSecret = cursor.getString(3),
+                createdAt = cursor.getLong(4),
+                lastUsedAt = cursor.getLong(5)
+            )
+        }
     }
 
     fun getPendingSamples(limit: Int): List<PendingTrackingSample> {
@@ -71,55 +202,81 @@ class TrackingDbHelper(context: Context) :
 
         readableDatabase.rawQuery(
             """
-            SELECT 
-                sequence_id,
-                timestamp,
-                boat_name,
-                captain_name,
-                hull_color,
-                sail_number,
-                yardstick,
-                boat_type,
-                lat,
-                lon,
-                accuracy,
-                cog,
-                sog,
-                accel_x,
-                accel_y,
-                accel_z,
-                gyro_x,
-                gyro_y,
-                gyro_z
-            FROM tracking_samples
-            WHERE uploaded = 0
-            ORDER BY sequence_id ASC
+            SELECT
+                samples.id,
+                samples.sequence_id,
+                samples.timestamp,
+                samples.boat_name,
+                samples.captain_name,
+                samples.hull_color,
+                samples.sail_number,
+                samples.yardstick,
+                samples.boat_type,
+                samples.lat,
+                samples.lon,
+                samples.accuracy,
+                samples.cog,
+                samples.sog,
+                samples.accel_x,
+                samples.accel_y,
+                samples.accel_z,
+                samples.gyro_x,
+                samples.gyro_y,
+                samples.gyro_z,
+                samples.battery_percent,
+                samples.battery_charging,
+                samples.tracking_profile,
+                contexts.id,
+                contexts.server_url,
+                contexts.access_identifier,
+                contexts.access_secret,
+                contexts.created_at,
+                contexts.last_used_at
+            FROM tracking_samples AS samples
+            INNER JOIN access_contexts AS contexts
+                ON contexts.id = samples.access_context_id
+            WHERE samples.uploaded = 0
+            ORDER BY samples.id ASC
             LIMIT ?
             """.trimIndent(),
             arrayOf(limit.toString())
         ).use { cursor ->
             while (cursor.moveToNext()) {
+                val accessContext = AccessContext(
+                    id = cursor.getLong(23),
+                    serverUrl = cursor.getString(24),
+                    accessIdentifier = cursor.getString(25),
+                    accessSecret = cursor.getString(26),
+                    createdAt = cursor.getLong(27),
+                    lastUsedAt = cursor.getLong(28)
+                )
+
                 result.add(
                     PendingTrackingSample(
-                        sequenceId = cursor.getLong(0),
-                        timestamp = cursor.getString(1),
-                        boatName = cursor.getString(2),
-                        captainName = cursor.getString(3),
-                        hullColor = cursor.getString(4),
-                        sailNumber = cursor.getString(5),
-                        yardstick = cursor.getDouble(6),
-                        boatType = cursor.getString(7),
-                        lat = cursor.getDouble(8),
-                        lon = cursor.getDouble(9),
-                        accuracy = cursor.getFloat(10),
-                        cog = cursor.getFloat(11),
-                        sog = cursor.getFloat(12),
-                        accelX = cursor.getFloat(13),
-                        accelY = cursor.getFloat(14),
-                        accelZ = cursor.getFloat(15),
-                        gyroX = cursor.getFloat(16),
-                        gyroY = cursor.getFloat(17),
-                        gyroZ = cursor.getFloat(18)
+                        localId = cursor.getLong(0),
+                        accessContext = accessContext,
+                        sequenceId = cursor.getLong(1),
+                        timestamp = cursor.getString(2),
+                        boatName = cursor.getString(3),
+                        captainName = cursor.getString(4),
+                        hullColor = cursor.getString(5),
+                        sailNumber = cursor.getString(6),
+                        yardstick = cursor.getDouble(7),
+                        boatType = cursor.getString(8),
+                        lat = cursor.getDouble(9),
+                        lon = cursor.getDouble(10),
+                        accuracy = cursor.getFloat(11),
+                        cog = cursor.getFloat(12),
+                        sog = cursor.getFloat(13),
+                        accelX = cursor.getFloat(14),
+                        accelY = cursor.getFloat(15),
+                        accelZ = cursor.getFloat(16),
+                        gyroX = cursor.getFloat(17),
+                        gyroY = cursor.getFloat(18),
+                        gyroZ = cursor.getFloat(19),
+                        batteryPercent = if (cursor.isNull(20)) null else cursor.getInt(20),
+                        batteryCharging = if (cursor.isNull(21)) null else cursor.getInt(21) != 0,
+                        trackingProfile = if (cursor.isNull(22)) null else cursor.getString(22)
                     )
                 )
             }
@@ -147,8 +304,38 @@ class TrackingDbHelper(context: Context) :
         accelZ: Float,
         gyroX: Float,
         gyroY: Float,
-        gyroZ: Float
+        gyroZ: Float,
+        batteryPercent: Int? = null,
+        batteryCharging: Boolean? = null,
+        trackingProfile: String? = null,
+        accessContextId: Long? = null
     ): Long {
+        val nowMs = System.currentTimeMillis()
+        val shouldReadBattery = batteryPercent == null &&
+            batteryCharging == null &&
+            SampleMetadataPolicy.shouldReadBattery(lastBatteryReadAtMs, nowMs)
+        val automaticBattery = if (shouldReadBattery) {
+            BatteryTelemetry.read(appContext)
+        } else {
+            null
+        }
+
+        val currentProfile = trackingProfile
+            ?: TrackingProfileConfig.read(appContext).persistedValue
+        val automaticProfile = if (
+            trackingProfile != null ||
+            SampleMetadataPolicy.shouldEmitTrackingProfile(
+                lastEmittedProfile = lastEmittedTrackingProfile,
+                lastEmittedAtMs = lastTrackingProfileAtMs,
+                currentProfile = currentProfile,
+                nowMs = nowMs
+            )
+        ) {
+            currentProfile
+        } else {
+            null
+        }
+
         val values = ContentValues().apply {
             put("sequence_id", sequenceId)
             put("timestamp", timestamp)
@@ -169,9 +356,32 @@ class TrackingDbHelper(context: Context) :
             put("gyro_x", gyroX)
             put("gyro_y", gyroY)
             put("gyro_z", gyroZ)
+
+            val effectiveBatteryPercent = batteryPercent ?: automaticBattery?.percent
+            val effectiveBatteryCharging = batteryCharging ?: automaticBattery?.charging
+            if (effectiveBatteryPercent != null) put("battery_percent", effectiveBatteryPercent) else putNull("battery_percent")
+            if (effectiveBatteryCharging != null) put("battery_charging", if (effectiveBatteryCharging) 1 else 0) else putNull("battery_charging")
+            if (automaticProfile != null) put("tracking_profile", automaticProfile) else putNull("tracking_profile")
+
+            if (accessContextId != null) {
+                put("access_context_id", accessContextId)
+            } else {
+                putNull("access_context_id")
+            }
         }
 
-        return writableDatabase.insert("tracking_samples", null, values)
+        val insertedId = writableDatabase.insert("tracking_samples", null, values)
+        if (insertedId != -1L) {
+            if (shouldReadBattery) {
+                lastBatteryReadAtMs = nowMs
+            }
+            if (automaticProfile != null) {
+                lastEmittedTrackingProfile = automaticProfile
+                lastTrackingProfileAtMs = nowMs
+            }
+        }
+
+        return insertedId
     }
 
     fun countSamples(): Long {
@@ -185,10 +395,19 @@ class TrackingDbHelper(context: Context) :
     }
 
     fun deleteAllSamples() {
-        writableDatabase.delete("tracking_samples", null, null)
+        val db = writableDatabase
+
+        db.beginTransaction()
+        try {
+            db.delete("tracking_samples", null, null)
+            deleteOrphanedAccessContexts(db)
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
     }
 
-    fun markUploaded(sequenceId: Long) {
+    fun markUploaded(localId: Long) {
         val values = ContentValues().apply {
             put("uploaded", 1)
         }
@@ -196,14 +415,30 @@ class TrackingDbHelper(context: Context) :
         writableDatabase.update(
             "tracking_samples",
             values,
-            "sequence_id = ?",
-            arrayOf(sequenceId.toString())
+            "id = ?",
+            arrayOf(localId.toString())
         )
     }
 
     fun countPendingSamples(): Long {
         readableDatabase.rawQuery(
             "SELECT COUNT(*) FROM tracking_samples WHERE uploaded = 0",
+            null
+        ).use { cursor ->
+            cursor.moveToFirst()
+            return cursor.getLong(0)
+        }
+    }
+
+    fun countUploadablePendingSamples(): Long {
+        readableDatabase.rawQuery(
+            """
+            SELECT COUNT(*)
+            FROM tracking_samples AS samples
+            INNER JOIN access_contexts AS contexts
+                ON contexts.id = samples.access_context_id
+            WHERE samples.uploaded = 0
+            """.trimIndent(),
             null
         ).use { cursor ->
             cursor.moveToFirst()
@@ -275,6 +510,151 @@ class TrackingDbHelper(context: Context) :
         }
 
         return builder.toString()
+    }
+
+    private fun migrateToVersion4(db: SQLiteDatabase) {
+        createAccessContextsTable(db)
+
+        if (!tableExists(db, "tracking_samples")) {
+            createTrackingSamplesTable(db)
+            return
+        }
+
+        // Legacy rows keep their existing id, uploaded state and payload untouched.
+        // A NULL access_context_id is intentional because their original access cannot be proven.
+        if (!columnExists(db, "tracking_samples", "access_context_id")) {
+            db.execSQL(
+                "ALTER TABLE tracking_samples ADD COLUMN access_context_id INTEGER"
+            )
+        }
+    }
+
+    private fun migrateToVersion5(db: SQLiteDatabase) {
+        if (!tableExists(db, "tracking_samples")) {
+            createTrackingSamplesTable(db)
+            return
+        }
+
+        if (!columnExists(db, "tracking_samples", "battery_percent")) {
+            db.execSQL("ALTER TABLE tracking_samples ADD COLUMN battery_percent INTEGER")
+        }
+        if (!columnExists(db, "tracking_samples", "battery_charging")) {
+            db.execSQL("ALTER TABLE tracking_samples ADD COLUMN battery_charging INTEGER")
+        }
+        if (!columnExists(db, "tracking_samples", "tracking_profile")) {
+            db.execSQL("ALTER TABLE tracking_samples ADD COLUMN tracking_profile TEXT")
+        }
+    }
+
+    private fun createAccessContextsTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS access_contexts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                server_url TEXT NOT NULL,
+                access_identifier TEXT NOT NULL,
+                access_secret TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                last_used_at INTEGER NOT NULL,
+                UNIQUE(server_url, access_identifier, access_secret)
+            )
+            """.trimIndent()
+        )
+    }
+
+    private fun createTrackingSamplesTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS tracking_samples (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sequence_id INTEGER NOT NULL,
+                timestamp TEXT NOT NULL,
+                boat_name TEXT NOT NULL,
+                captain_name TEXT NOT NULL,
+                hull_color TEXT NOT NULL,
+                sail_number TEXT NOT NULL,
+                yardstick REAL NOT NULL,
+                boat_type TEXT NOT NULL,
+                lat REAL NOT NULL,
+                lon REAL NOT NULL,
+                accuracy REAL NOT NULL,
+                cog REAL NOT NULL,
+                sog REAL NOT NULL,
+                accel_x REAL NOT NULL,
+                accel_y REAL NOT NULL,
+                accel_z REAL NOT NULL,
+                gyro_x REAL NOT NULL,
+                gyro_y REAL NOT NULL,
+                gyro_z REAL NOT NULL,
+                uploaded INTEGER NOT NULL DEFAULT 0,
+                access_context_id INTEGER,
+                battery_percent INTEGER,
+                battery_charging INTEGER,
+                tracking_profile TEXT
+            )
+            """.trimIndent()
+        )
+    }
+
+    private fun deleteOrphanedAccessContexts(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            DELETE FROM access_contexts
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM tracking_samples
+                WHERE tracking_samples.access_context_id = access_contexts.id
+            )
+            """.trimIndent()
+        )
+    }
+
+    private fun findAccessContextId(
+        db: SQLiteDatabase,
+        key: AccessContextKey
+    ): Long? {
+        db.rawQuery(
+            """
+            SELECT id
+            FROM access_contexts
+            WHERE server_url = ?
+              AND access_identifier = ?
+              AND access_secret = ?
+            LIMIT 1
+            """.trimIndent(),
+            arrayOf(key.serverUrl, key.accessIdentifier, key.accessSecret)
+        ).use { cursor ->
+            return if (cursor.moveToFirst()) {
+                cursor.getLong(0)
+            } else {
+                null
+            }
+        }
+    }
+
+    private fun tableExists(db: SQLiteDatabase, tableName: String): Boolean {
+        db.rawQuery(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
+            arrayOf(tableName)
+        ).use { cursor ->
+            return cursor.moveToFirst()
+        }
+    }
+
+    private fun columnExists(
+        db: SQLiteDatabase,
+        tableName: String,
+        columnName: String
+    ): Boolean {
+        db.rawQuery("PRAGMA table_info($tableName)", null).use { cursor ->
+            val nameIndex = cursor.getColumnIndex("name")
+            while (cursor.moveToNext()) {
+                if (nameIndex >= 0 && cursor.getString(nameIndex) == columnName) {
+                    return true
+                }
+            }
+        }
+        return false
     }
 
     private fun csvEscape(value: String): String {

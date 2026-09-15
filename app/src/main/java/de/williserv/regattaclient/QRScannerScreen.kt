@@ -26,6 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.BinaryBitmap
@@ -76,7 +77,7 @@ fun QrScannerScreen(
             )
         } else {
             Text(
-                text = "Camera permission missing",
+                text = stringResource(R.string.camera_permission_missing),
                 modifier = Modifier.padding(24.dp)
             )
         }
@@ -87,7 +88,7 @@ fun QrScannerScreen(
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            Text("Back")
+            Text(stringResource(R.string.back))
         }
     }
 }

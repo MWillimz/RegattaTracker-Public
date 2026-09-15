@@ -1,5 +1,6 @@
 package de.williserv.regattaclient
 
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,8 +21,11 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -39,6 +43,8 @@ import de.williserv.regattaclient.ui.theme.RegattaRed
 import androidx.compose.foundation.Image
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
+import kotlinx.coroutines.delay
 
 private val HomeGapSmall = 14.dp
 private val HomeGapMedium = 14.dp
@@ -60,9 +66,12 @@ fun HomeScreen(
     statusText: String,
     rowCountText: String,
     uploadStatusText: String,
+    pendingUploadCount: Long,
+    noConnection: Boolean = false,
     debugErrorText: String,
     serviceStatusText: String,
-    raceStatusText: String,
+    raceStatusCode: String,
+    raceStatusDisplayText: String,
     raceEvent: String,
     raceStartText: String,
     raceStopText: String,
@@ -79,6 +88,8 @@ fun HomeScreen(
     ocsText: String,
     raceInfoText: String,
     raceShortenedText: String,
+    raceShortened: Boolean,
+    hasRaceInfo: Boolean,
     raceStartFlags: RaceStartFlags,
     millisToStart: Long?,
     startPanelText: String,
@@ -103,25 +114,53 @@ fun HomeScreen(
     onClearOldDataClick: () -> Unit,
     onConfirmClearOldData: () -> Unit,
     onCancelClearOldData: () -> Unit,
-    onToggleAdvanced: () -> Unit
+    onToggleAdvanced: () -> Unit,
+    seriesDisplayMetadata: SeriesDisplayMetadata = SeriesDisplayMetadata()
 ) {
+    val context = LocalContext.current
+    val resources = LocalResources.current
+    val workerUploadStatus = produceState(initialValue = "", context) {
+        val prefs = context.getSharedPreferences("regatta_local_status", Context.MODE_PRIVATE)
+        while (true) {
+            value = prefs.getString(TelemetryUploadStatusStore.STATUS_KEY, "").orEmpty()
+            delay(1000L)
+        }
+    }.value
+    val localizedWorkerStatus = when (workerUploadStatus) {
+        TelemetryUploadStatusStore.ACTIVE -> stringResource(R.string.status_active)
+        TelemetryUploadStatusStore.WAITING -> stringResource(R.string.status_waiting)
+        TelemetryUploadStatusStore.TEMPORARY_ERROR -> stringResource(R.string.status_temporary_error)
+        TelemetryUploadStatusStore.ALL_SENT -> stringResource(R.string.status_all_sent)
+        else -> workerUploadStatus
+    }
+    val advancedUploadStatusText = mergeTelemetryUploadStatusText(
+        pendingStatusText = uploadStatusText,
+        pendingCount = pendingUploadCount,
+        workerStatus = localizedWorkerStatus,
+        uploadWorkerPending = { worker, pending ->
+            resources.getString(R.string.upload_worker_pending, worker, pending)
+        },
+        uploadWorker = { worker ->
+            resources.getString(R.string.upload_worker, worker)
+        }
+    )
+
     val uploadColor = uploadStatusColor(
-        uploadStatusText = uploadStatusText,
-        inRace = inRace,
-        disabledColor = MaterialTheme.colorScheme.outlineVariant
+        pendingUploadCount = pendingUploadCount,
+        noConnection = noConnection
     )
 
     val showCourseShortened =
-        raceShortenedText.contains("YES", ignoreCase = true) &&
-                !raceStatusText.contains("finished", ignoreCase = true) &&
-                !raceStatusText.contains("cancelled", ignoreCase = true)
+        raceShortened &&
+                !raceStatusCode.equals("finished", ignoreCase = true) &&
+                !raceStatusCode.equals("cancelled", ignoreCase = true)
 
-    val raceColor = raceStatusColor(raceStatusText, inRace)
-    val gpsStatus = gpsStatusLabel(gpsAccuracyText)
-    val hasRaceInfo = raceInfoText
-        .replace("Info:", "")
-        .trim()
-        .let { it.isNotBlank() && it != "--" }
+    val raceColor = raceStatusColor(raceStatusCode, inRace, raceDataReady)
+    val startPrefix = stringResource(R.string.start_prefix)
+    val infoPrefix = stringResource(R.string.info_prefix)
+    val distancePrefix = stringResource(R.string.distance_prefix)
+    val dtlPrefix = stringResource(R.string.dtl_prefix)
+    val gpsStatus = ""
 
     Column(
         modifier = modifier
@@ -131,7 +170,8 @@ fun HomeScreen(
     ) {
         TopEventName(
             raceEvent = raceEvent,
-            raceDataReady = raceDataReady
+            raceDataReady = raceDataReady,
+            seriesDisplayMetadata = seriesDisplayMetadata
         )
 
         Spacer(modifier = Modifier.height(HomeGapSmall))
@@ -140,7 +180,7 @@ fun HomeScreen(
             startPanelMode = startPanelMode,
             startPanelText = startPanelText,
             onClick = {
-                if (startPanelMode == "ocs") {
+                if (startPanelMode == "ocs" || startPanelMode == "ocs_countdown") {
                     onOcsPanelClick()
                 }
             }
@@ -157,14 +197,17 @@ fun HomeScreen(
             TargetCard(
                 currentTargetText = currentTargetText,
                 progressText = progressText,
-                distanceText = dtlText
+                distanceText = dtlText,
+                distancePrefix = distancePrefix,
+                dtlPrefix = dtlPrefix
             )
 
             if (hasRaceInfo) {
                 Spacer(modifier = Modifier.height(HomeGapMedium))
 
                 RaceInfoCard(
-                    raceInfoText = raceInfoText
+                    raceInfoText = raceInfoText,
+                    infoPrefix = infoPrefix
                 )
             }
 
@@ -173,17 +216,33 @@ fun HomeScreen(
 
         StatusOverviewCard(
             gpsStatus = gpsStatus,
-            gpsColor = gpsStatusColor(gpsAccuracyText),
+            gpsColor = gpsColor,
             raceStatusText = shortRaceStatusText(
-                raceStatusText = raceStatusText,
+                raceStatusCode = raceStatusCode,
+                raceStatusDisplayText = raceStatusDisplayText,
+                raceDataReady = raceDataReady,
                 raceStartText = raceStartText,
-                inRace = inRace
+                inRace = inRace,
+                racePrefix = stringResource(R.string.race_prefix),
+                startPrefix = startPrefix,
+                activeText = stringResource(R.string.status_active),
+                notActiveText = stringResource(R.string.status_not_active),
+                loadedText = stringResource(R.string.status_loaded),
+                plannedText = stringResource(R.string.status_planned),
+                racingText = stringResource(R.string.status_racing),
+                startedText = stringResource(R.string.status_started),
+                finishedText = stringResource(R.string.status_finished),
+                postponedText = stringResource(R.string.status_postponed),
+                cancelledText = stringResource(R.string.status_cancelled)
             ),
             raceColor = raceColor,
             uploadStatusText = shortUploadStatus(
-                uploadStatusText = uploadStatusText,
+                pendingUploadCount = pendingUploadCount,
                 inRace = inRace,
-                raceStatusText = raceStatusText
+                noConnection = noConnection,
+                pendingText = { pending -> resources.getString(R.string.pending_value, pending) },
+                okText = stringResource(R.string.ok),
+                noConnectionText = stringResource(R.string.status_no_connection)
             ),
             uploadColor = uploadColor
         )
@@ -200,7 +259,7 @@ fun HomeScreen(
         Spacer(modifier = Modifier.height(HomeGapMedium))
 
 
-        if (isRaceFinished(raceStatusText)) {
+        if (isRaceFinished(raceStatusCode, raceDataReady)) {
             Button(
                 onClick = onResults,
                 enabled = raceDataReady,
@@ -212,7 +271,7 @@ fun HomeScreen(
                 ),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Results")
+                Text(stringResource(R.string.results))
             }
         } else {
             RacecourseRow(
@@ -225,7 +284,7 @@ fun HomeScreen(
         Spacer(modifier = Modifier.height(HomeGapLarge))
 
         Text(
-            text = "Setup",
+            text = stringResource(R.string.setup),
             fontSize = 22.sp,
             fontWeight = FontWeight.SemiBold
         )
@@ -235,7 +294,7 @@ fun HomeScreen(
         ActionRow(
             setupConfirmed = setupConfirmed,
             inRace = inRace,
-            raceFinished = isRaceFinished(raceStatusText),
+            raceFinished = isRaceFinished(raceStatusCode, raceDataReady),
             onSetup = onBoatData,
             onRace = onRace
         )
@@ -243,8 +302,9 @@ fun HomeScreen(
         if (showAdvanced) {
             AdvancedDebugBlock(
                 manualTracking = manualTracking,
+                inRace = inRace,
                 rowCountText = rowCountText,
-                uploadStatusText = uploadStatusText,
+                uploadStatusText = advancedUploadStatusText,
                 debugErrorText = debugErrorText,
                 cogText = cogText,
                 sogText = sogText,
@@ -268,9 +328,9 @@ fun HomeScreen(
                 modifier = Modifier.weight(0.35f)
             ){
                 if (showAdvanced) {
-                    Text("Hide")
+                    Text(stringResource(R.string.hide))
                 } else {
-                    Text("Advanced")
+                    Text(stringResource(R.string.advanced))
                 }
             }
 
@@ -279,7 +339,7 @@ fun HomeScreen(
                 colors = primaryButtonColors(),
                 modifier = Modifier.weight(0.65f)
             ) {
-                Text("Legal / About")
+                Text(stringResource(R.string.legal_about))
             }
         }
     }
@@ -287,46 +347,77 @@ fun HomeScreen(
         AlertDialog(
             onDismissRequest = onCancelClearOldData,
             title = {
-                Text("Delete old data?")
+                Text(stringResource(R.string.delete_old_data_title))
             },
             text = {
-                Text("All stored tracking data on this device will be deleted. This cannot be undone.")
+                Text(stringResource(R.string.delete_old_data_message))
             },
             confirmButton = {
                 TextButton(onClick = onConfirmClearOldData) {
-                    Text("Delete")
+                    Text(stringResource(R.string.delete))
                 }
             },
             dismissButton = {
                 TextButton(onClick = onCancelClearOldData) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
     }
 }
 
+internal fun mergeTelemetryUploadStatusText(
+    pendingStatusText: String,
+    pendingCount: Long,
+    workerStatus: String,
+    uploadWorkerPending: (String, Long) -> String,
+    uploadWorker: (String) -> String
+): String {
+    if (workerStatus.isBlank()) return pendingStatusText
+
+    return if (pendingCount > 0L) {
+        uploadWorkerPending(workerStatus, pendingCount)
+    } else {
+        uploadWorker(workerStatus)
+    }
+}
+
 @Composable
 fun TopEventName(
+
     raceEvent: String,
-    raceDataReady: Boolean
+    raceDataReady: Boolean,
+    seriesDisplayMetadata: SeriesDisplayMetadata = SeriesDisplayMetadata()
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(28.dp),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        Text(
-            text = if (raceDataReady && raceEvent.isNotBlank()) {
-                raceEvent
-            } else {
-                ""
-            },
-            fontSize = 18.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+    val headerLines = buildEventHeaderLines(
+        raceEvent = raceEvent,
+        raceDataReady = raceDataReady,
+        seriesDisplayMetadata = seriesDisplayMetadata
+    )
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(28.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Text(
+                text = headerLines.firstOrNull().orEmpty(),
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        headerLines.drop(1).forEach { line ->
+            Text(
+                text = line,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 @Composable
@@ -336,7 +427,7 @@ fun HeaderPanel(
     onClick: () -> Unit = {}
 ) {
     val backgroundColor = when (startPanelMode) {
-        "ocs" -> MaterialTheme.colorScheme.error
+        "ocs", "ocs_countdown" -> MaterialTheme.colorScheme.error
         "postponed" -> MaterialTheme.colorScheme.tertiary
         "countdown" -> MaterialTheme.colorScheme.primary
         "started" -> MaterialTheme.colorScheme.secondary
@@ -344,7 +435,7 @@ fun HeaderPanel(
         else -> MaterialTheme.colorScheme.secondary
     }
     val contentColor = when (startPanelMode) {
-        "ocs" -> MaterialTheme.colorScheme.onError
+        "ocs", "ocs_countdown" -> MaterialTheme.colorScheme.onError
         "postponed" -> MaterialTheme.colorScheme.onTertiary
         "countdown" -> MaterialTheme.colorScheme.onPrimary
         "started" -> MaterialTheme.colorScheme.onSecondary
@@ -353,25 +444,20 @@ fun HeaderPanel(
     }
 
     val text = when (startPanelMode) {
-        "ocs" -> {
-            if (startPanelText.startsWith("START IN", ignoreCase = true)) {
-                "OCS: ${startPanelText.removePrefix("START IN").trim()}"
-            } else {
-                "OCS"
-            }
-        }
+        "ocs" -> stringResource(R.string.ocs)
+        "ocs_countdown" -> stringResource(R.string.ocs_countdown, startPanelText)
 
-        "postponed" -> "POSTPONED"
+        "postponed" -> stringResource(R.string.postponed)
         "countdown" -> startPanelText
         "started" -> startPanelText
-        "finished" -> "FINISHED"
-        else -> "Regatta Tracker"
+        "finished" -> stringResource(R.string.finished)
+        else -> stringResource(R.string.app_name)
     }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = startPanelMode == "ocs") {
+            .clickable(enabled = startPanelMode == "ocs" || startPanelMode == "ocs_countdown") {
                 onClick()
             },
         shape = RoundedCornerShape(22.dp),
@@ -409,7 +495,7 @@ fun CourseShortenedPanel() {
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = "COURSE SHORTENED",
+                text = stringResource(R.string.course_shortened_banner),
                 color = MaterialTheme.colorScheme.onTertiary,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold
@@ -422,8 +508,12 @@ fun CourseShortenedPanel() {
 fun TargetCard(
     currentTargetText: String,
     progressText: String,
-    distanceText: String
+    distanceText: String,
+    distancePrefix: String,
+    dtlPrefix: String
 ) {
+    val resources = LocalResources.current
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
@@ -435,7 +525,7 @@ fun TargetCard(
             modifier = Modifier.padding(18.dp)
         ) {
             Text(
-                text = currentTargetText.replace("Nächstes Ziel:", "Next:"),
+                text = currentTargetText,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.SemiBold
             )
@@ -443,7 +533,13 @@ fun TargetCard(
             Spacer(modifier = Modifier.height(HomeGapMedium))
 
             Text(
-                text = displayDistanceText(distanceText),
+                text = displayDistanceText(
+                    distanceText = distanceText,
+                    distancePrefix = distancePrefix,
+                    dtlPrefix = dtlPrefix,
+                    unknownText = stringResource(R.string.distance_display_unknown),
+                    valueText = { value -> resources.getString(R.string.distance_display_value, value) }
+                ),
                 fontSize = 38.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -460,10 +556,11 @@ fun TargetCard(
 
 @Composable
 fun RaceInfoCard(
-    raceInfoText: String
+    raceInfoText: String,
+    infoPrefix: String
 ) {
     val cleaned = raceInfoText
-        .replace("Info:", "")
+        .removePrefix(infoPrefix)
         .trim()
 
     if (cleaned.isBlank() || cleaned == "--") {
@@ -481,7 +578,7 @@ fun RaceInfoCard(
             modifier = Modifier.padding(18.dp)
         ) {
             Text(
-                text = "Info",
+                text = stringResource(R.string.info),
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onTertiaryContainer
@@ -517,7 +614,7 @@ fun StatusOverviewCard(
             modifier = Modifier.padding(18.dp)
         ) {
             StatusRow(
-                label = "GPS",
+                label = stringResource(R.string.gps),
                 value = gpsStatus,
                 color = gpsColor
             )
@@ -525,7 +622,7 @@ fun StatusOverviewCard(
             Spacer(modifier = Modifier.height(HomeGapMedium))
 
             StatusRow(
-                label = "Race",
+                label = stringResource(R.string.race),
                 value = raceStatusText,
                 color = raceColor
             )
@@ -533,7 +630,7 @@ fun StatusOverviewCard(
             Spacer(modifier = Modifier.height(HomeGapSmall))
 
             StatusRow(
-                label = "Upload",
+                label = stringResource(R.string.upload),
                 value = uploadStatusText,
                 color = uploadColor
             )
@@ -619,7 +716,7 @@ fun FlagSlot(
             when (flag) {
                 is VisibleRaceFlag.ClassFlag -> {
                     Text(
-                        text = flag.label.ifBlank { "Class" },
+                        text = flag.label.ifBlank { stringResource(R.string.class_label) },
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -656,7 +753,7 @@ fun ActionRow(
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         SmallActionButton(
-            text = "Boat",
+            text = stringResource(R.string.boat),
             isOk = setupConfirmed,
             enabled = !inRace,
             modifier = Modifier.weight(
@@ -666,8 +763,9 @@ fun ActionRow(
         )
 
         SmallActionButton(
-            text = "Event",
+            text = stringResource(R.string.event),
             isOk = inRace || raceFinished,
+            enabled = setupConfirmed,
             modifier = Modifier.weight(
                 if (setupConfirmed) 0.65f else 0.35f
             ),
@@ -692,7 +790,7 @@ fun RacecourseRow(
             colors = primaryButtonColors(),
             modifier = Modifier.weight(0.5f)
         ) {
-            Text("Course")
+            Text(stringResource(R.string.course))
         }
 
         Button(
@@ -701,7 +799,7 @@ fun RacecourseRow(
             colors = primaryButtonColors(),
             modifier = Modifier.weight(0.5f)
         ) {
-            Text("Map")
+            Text(stringResource(R.string.map))
         }
     }
 }
@@ -738,6 +836,7 @@ fun SmallActionButton(
 @Composable
 fun AdvancedDebugBlock(
     manualTracking: Boolean,
+    inRace: Boolean,
     rowCountText: String,
     uploadStatusText: String,
     debugErrorText: String,
@@ -761,7 +860,7 @@ fun AdvancedDebugBlock(
             modifier = Modifier.padding(18.dp)
         ) {
             Text(
-                text = "Advanced",
+                text = stringResource(R.string.advanced),
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -770,28 +869,29 @@ fun AdvancedDebugBlock(
 
             Button(
                 onClick = onToggleManualTracking,
+                enabled = manualTracking || !inRace,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (manualTracking) {
-                    Text("Stop Manual Tracking")
+                    Text(stringResource(R.string.stop_manual_tracking))
                 } else {
-                    Text("Start Manual Tracking")
+                    Text(stringResource(R.string.start_manual_tracking))
                 }
             }
 
             Spacer(modifier = Modifier.height(HomeGapLarge))
 
-            AdvancedSectionTitle("GPS")
-            DebugLine("COG", cogText.replace("COG:", "").trim())
-            DebugLine("SOG", sogText.replace("SOG:", "").trim())
-            DebugLine("Accuracy", gpsAccuracyText.replace("GPS:", "").trim())
+            AdvancedSectionTitle(stringResource(R.string.gps))
+            DebugLine("COG", cogText.removePrefix(stringResource(R.string.cog_prefix)).trim())
+            DebugLine("SOG", sogText.removePrefix(stringResource(R.string.sog_prefix)).trim())
+            DebugLine(stringResource(R.string.accuracy), gpsAccuracyText.removePrefix(stringResource(R.string.gps_prefix)).trim())
 
             Spacer(modifier = Modifier.height(HomeGapLarge))
 
-            AdvancedSectionTitle("Upload")
-            DebugLine("Pending", uploadStatusText.replace("Upload:", "").trim())
-            DebugLine("Stored rows", rowCountText)
-            DebugLine("Last error", debugErrorText.replace("Letzter Fehler:", "").trim())
+            AdvancedSectionTitle(stringResource(R.string.upload))
+            DebugLine(stringResource(R.string.pending), uploadStatusText.removePrefix(stringResource(R.string.upload_prefix)).trim())
+            DebugLine(stringResource(R.string.stored_rows), rowCountText)
+            DebugLine(stringResource(R.string.last_error), debugErrorText.substringAfter(": ", debugErrorText))
 
             Spacer(modifier = Modifier.height(HomeGapLarge))
 
@@ -804,7 +904,7 @@ fun AdvancedDebugBlock(
                     colors = primaryButtonColors(),
                     modifier = Modifier.weight(0.5f)
                 ) {
-                    Text("Export")
+                    Text(stringResource(R.string.export))
                 }
 
                 Button(
@@ -815,7 +915,7 @@ fun AdvancedDebugBlock(
                     ),
                     modifier = Modifier.weight(0.5f)
                 ) {
-                    Text("Clear")
+                    Text(stringResource(R.string.clear))
                 }
             }
 
@@ -849,149 +949,167 @@ fun DebugLine(
     )
 }
 
-fun gpsStatusLabel(
-    gpsAccuracyText: String
-): String {
-    val value = gpsAccuracyText
-        .replace("GPS:", "")
-        .replace("m", "")
-        .trim()
-        .toDoubleOrNull()
-
-    return when {
-        value == null -> ""
-        value <= 10.0 -> ""
-        value <= 25.0 -> ""
-        else -> ""
-    }
-}
-
-fun gpsStatusColor(
-    gpsAccuracyText: String
-): Color {
-    val value = gpsAccuracyText
-        .replace("GPS:", "")
-        .replace("m", "")
-        .trim()
-        .toDoubleOrNull()
-
-    return when {
-        value == null -> RegattaRed
-        value <= 10.0 -> RegattaGreen
-        value <= 25.0 -> RegattaOrange
-        else -> RegattaRed
-    }
-}
-
 fun isRaceFinished(
-    raceStatusText: String
+    raceStatusCode: String,
+    raceDataReady: Boolean = true
 ): Boolean {
-    return raceStatusText.contains("finished", ignoreCase = true)
+    return raceDataReady && raceStatusCode.equals("finished", ignoreCase = true)
 }
 
 fun uploadStatusColor(
-    uploadStatusText: String,
-    inRace: Boolean,
-    disabledColor: Color
+    pendingUploadCount: Long,
+    noConnection: Boolean = false
 ): Color {
-    if (!inRace) {
-        return disabledColor
-    }
-
-    val pending = uploadStatusText
-        .filter { it.isDigit() }
-        .toIntOrNull() ?: 0
-
+    if (noConnection) return RegattaRed
     return when {
-        uploadStatusText.contains("all sent", ignoreCase = true) -> RegattaGreen
-        pending <= 10 -> RegattaGreen
-        pending <= 50 -> RegattaOrange
+        pendingUploadCount <= 10L -> RegattaGreen
+        pendingUploadCount <= 50L -> RegattaOrange
         else -> RegattaRed
     }
 }
 
 fun shortUploadStatus(
-    uploadStatusText: String,
+    pendingUploadCount: Long,
     inRace: Boolean,
-    raceStatusText: String
+    pendingText: (Long) -> String,
+    okText: String,
+    noConnection: Boolean = false,
+    noConnectionText: String = "No connection"
 ): String {
-    if (!inRace) {
-        return when {
-            raceStatusText.contains("accept race legal", ignoreCase = true) -> "blocked"
-            raceStatusText.contains("not loaded", ignoreCase = true) -> "off"
-            raceStatusText.contains("planned", ignoreCase = true) -> "waiting"
-            raceStatusText.contains("racing", ignoreCase = true) -> "ready"
-            raceStatusText.contains("started", ignoreCase = true) -> "ready"
-            else -> "idle"
+    if (noConnection) {
+        return if (pendingUploadCount > 0L) {
+            "$noConnectionText · ${pendingText(pendingUploadCount)}"
+        } else {
+            noConnectionText
         }
     }
-
-    val pending = uploadStatusText
-        .filter { it.isDigit() }
-        .toIntOrNull() ?: 0
-
-    return when {
-        uploadStatusText.contains("all sent", ignoreCase = true) -> "OK"
-        pending <= 10 -> "OK"
-        else -> "$pending"
-    }
+    if (!inRace && pendingUploadCount > 0L) return pendingText(pendingUploadCount)
+    return if (inRace && pendingUploadCount > 10L) "$pendingUploadCount" else okText
 }
 
 fun raceStatusColor(
-    raceStatusText: String,
-    inRace: Boolean
+    raceStatusCode: String,
+    inRace: Boolean,
+    raceDataReady: Boolean = true
 ): Color {
+    if (!raceDataReady) {
+        return if (inRace) RegattaGreen else RegattaOrange
+    }
+
     return when {
-        raceStatusText.contains("postponed", ignoreCase = true) -> RegattaOrange
-        raceStatusText.contains("cancelled", ignoreCase = true) -> RegattaRed
-        raceStatusText.contains("finished", ignoreCase = true) -> RegattaGreen
+        raceStatusCode.equals("postponed", ignoreCase = true) -> RegattaOrange
+        raceStatusCode.equals("cancelled", ignoreCase = true) -> RegattaRed
+        raceStatusCode.equals("finished", ignoreCase = true) -> RegattaGreen
         inRace -> RegattaGreen
         else -> RegattaOrange
     }
 }
 
-fun shortRaceStatusText(
-    raceStatusText: String,
-    raceStartText: String,
-    inRace: Boolean
+fun localizedRaceStatusValue(
+    raceStatusCode: String,
+    loadedText: String,
+    plannedText: String,
+    racingText: String,
+    startedText: String,
+    finishedText: String,
+    postponedText: String,
+    cancelledText: String
 ): String {
-    val cleaned = raceStatusText
-        .replace("Race:", "")
-        .trim()
-
-    if (cleaned.contains("finished", ignoreCase = true)) {
-        return "finished"
-    }
-
-    if (cleaned.contains("postponed", ignoreCase = true)) {
-        return "postponed"
-    }
-
-    if (cleaned.contains("cancelled", ignoreCase = true)) {
-        return "cancelled"
-    }
-
-    if (inRace) {
-        val startTime = extractStartClockTime(raceStartText)
-
-        return if (startTime.isNotBlank()) {
-            startTime
-        } else {
-            "active"
-        }
-    }
+    val cleaned = raceStatusCode.trim()
 
     return when {
-        cleaned.isNotBlank() && cleaned != "not loaded" -> cleaned
-        else -> "not active"
+        cleaned.equals("loaded", ignoreCase = true) -> loadedText
+        cleaned.equals("planned", ignoreCase = true) -> plannedText
+        cleaned.equals("racing", ignoreCase = true) -> racingText
+        cleaned.equals("started", ignoreCase = true) -> startedText
+        cleaned.equals("finished", ignoreCase = true) -> finishedText
+        cleaned.equals("postponed", ignoreCase = true) -> postponedText
+        cleaned.equals("cancelled", ignoreCase = true) -> cancelledText
+        else -> cleaned
+    }
+}
+
+fun localizedRaceStatusCode(
+    raceStatusText: String,
+    racePrefix: String,
+    loadedText: String,
+    plannedText: String,
+    racingText: String,
+    startedText: String,
+    finishedText: String,
+    postponedText: String,
+    cancelledText: String
+): String {
+    return localizedRaceStatusValue(
+        raceStatusCode = raceStatusText.removePrefix(racePrefix).trim(),
+        loadedText = loadedText,
+        plannedText = plannedText,
+        racingText = racingText,
+        startedText = startedText,
+        finishedText = finishedText,
+        postponedText = postponedText,
+        cancelledText = cancelledText
+    )
+}
+
+fun shortRaceStatusText(
+    raceStatusCode: String,
+    raceStatusDisplayText: String = "",
+    raceDataReady: Boolean = true,
+    raceStartText: String,
+    inRace: Boolean,
+    racePrefix: String,
+    startPrefix: String,
+    activeText: String,
+    notActiveText: String,
+    loadedText: String,
+    plannedText: String,
+    racingText: String,
+    startedText: String,
+    finishedText: String,
+    postponedText: String,
+    cancelledText: String
+): String {
+    val cleaned = raceStatusCode.trim()
+
+    if (!raceDataReady) {
+        return raceStatusDisplayText
+            .removePrefix(racePrefix)
+            .trim()
+            .ifBlank { notActiveText }
+    }
+
+    if (cleaned.equals("finished", ignoreCase = true)) return finishedText
+    if (cleaned.equals("postponed", ignoreCase = true)) return postponedText
+    if (cleaned.equals("cancelled", ignoreCase = true)) return cancelledText
+
+    if (inRace) {
+        val startTime = extractStartClockTime(raceStartText, startPrefix)
+        return if (startTime.isNotBlank()) startTime else activeText
+    }
+
+    return if (cleaned.isBlank()) {
+        notActiveText
+    } else {
+        localizedRaceStatusValue(
+            raceStatusCode = cleaned,
+            loadedText = loadedText,
+            plannedText = plannedText,
+            racingText = racingText,
+            startedText = startedText,
+            finishedText = finishedText,
+            postponedText = postponedText,
+            cancelledText = cancelledText
+        )
     }
 }
 
 fun extractStartClockTime(
-    raceStartText: String
+    raceStartText: String,
+    startPrefix: String
 ): String {
     val cleaned = raceStartText
-        .replace("Start:", "")
+        .removePrefix(startPrefix)
         .trim()
 
     if (cleaned.isBlank() || cleaned == "--") {
@@ -1014,17 +1132,21 @@ fun extractStartClockTime(
 }
 
 fun displayDistanceText(
-    distanceText: String
+    distanceText: String,
+    distancePrefix: String,
+    dtlPrefix: String,
+    unknownText: String,
+    valueText: (String) -> String
 ): String {
     val cleaned = distanceText
-        .replace("Distance:", "")
-        .replace("DTL:", "")
+        .removePrefix(distancePrefix)
+        .removePrefix(dtlPrefix)
         .trim()
 
     return if (cleaned == "--" || cleaned.isBlank()) {
-        "Distance --"
+        unknownText
     } else {
-        "Distance $cleaned"
+        valueText(cleaned)
     }
 }
 

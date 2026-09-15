@@ -48,6 +48,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
     companion object {
         const val ACTION_START = "de.williserv.regattaclient.START_TRACKING_SERVICE"
         const val ACTION_STOP = "de.williserv.regattaclient.STOP_TRACKING_SERVICE"
+        const val ACTION_CONTINUE_AFTER_FINISH =
+            "de.williserv.regattaclient.CONTINUE_AFTER_FINISH"
 
         const val EXTRA_SERVER_URL = "server_url"
         const val EXTRA_EVENT_NAME = "event_name"
@@ -92,6 +94,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
     private var eventName = ""
     private var sharedSecret = ""
     private var resolvedEventName: String? = null
+    private var accessContextId: Long? = null
 
     private var boatName = "Boat name"
     private var captainName = "Max Mustermann"
@@ -117,15 +120,20 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
     private var previousFinishLinePosition: GeoPoint? = null
     private var previousFinishLineTimestampMillis: Long? = null
+    private var lastFinishStableSide: Int? = null
 
     private var isOcs = false
     private var raceStarted = false
     private var raceFinished = false
+    private var finishDetectionSuppressed = false
     private var passedMarks = 0
 
     private var lastDtlM: Double? = null
     private var lastTtlSeconds: Double? = null
     private var currentTargetDistanceM: Double? = null
+
+    private var samplingBand: SamplingDistanceBand? = null
+    private var activeLocationIntervalMs = 1_000L
 
     private var sequenceId = 0L
     private var lastLocation: Location? = null
@@ -139,15 +147,18 @@ class RegattaTrackingService : Service(), SensorEventListener {
     private var gyroZ = 0f
 
     private var autoStopAfterFinishScheduled = false
-
-    private var retryUploadRunning = false
     private var eventPollRunning = false
+    private val eventPollLifecycleLock = Any()
+    private var eventPollGeneration = 0L
 
     private var courseShortened = false
 
     private val locationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
             lastLocation = location
+            if (!manualRecording) {
+                refreshLocationSampling(location)
+            }
         }
     }
 
@@ -161,7 +172,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
                 publishLocalRaceStatus()
             }
 
-            handler.postDelayed(this, 1000L)
+            handler.postDelayed(this, currentSamplingIntervalMs())
         }
     }
 
@@ -175,18 +186,9 @@ class RegattaTrackingService : Service(), SensorEventListener {
         }
     }
 
-    private val uploadRunnable = object : Runnable {
-        override fun run() {
-            if (!serviceRunning) return
-
-            retryPendingUploads()
-            handler.postDelayed(this, 1000L)
-        }
-    }
-
     private val eventPollRunnable = object : Runnable {
         override fun run() {
-            if (!serviceRunning) return
+            if (!serviceRunning || manualRecording) return
 
             pollEvent()
             handler.postDelayed(this, 10_000L)
@@ -204,22 +206,81 @@ class RegattaTrackingService : Service(), SensorEventListener {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
+        if (intent == null) {
+            return handleStickyRestart()
+        }
+
+        when (intent.action) {
             ACTION_START -> {
-                readIntentExtras(intent)
-                startForeground(NOTIFICATION_ID, buildNotification("Tracking active"))
+                val requestedManual = intent.getBooleanExtra(EXTRA_MANUAL_RECORDING, false)
+                val persistedInRace = getSharedPreferences("app_state", Context.MODE_PRIVATE)
+                    .getBoolean("in_race", false)
+
+                if (requestedManual && persistedInRace) {
+                    getSharedPreferences("app_state", Context.MODE_PRIVATE)
+                        .edit()
+                        .putBoolean("manual_tracking", false)
+                        .apply()
+                    if (!serviceRunning) {
+                        stopSelf()
+                        return START_NOT_STICKY
+                    }
+                    return START_STICKY
+                }
+
+                if (serviceRunning && requestedManual != manualRecording) {
+                    return START_STICKY
+                }
+
+                synchronized(eventPollLifecycleLock) {
+                    eventPollGeneration += 1
+                }
+                readStartIntentExtras(intent, requestedManual)
+                getSharedPreferences("app_state", Context.MODE_PRIVATE)
+                    .edit()
+                    .putBoolean("in_race", !manualRecording)
+                    .putBoolean("manual_tracking", manualRecording)
+                    .apply()
+                startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.tracking_active)))
                 startTrackingService()
                 updateNotification()
                 return START_STICKY
             }
 
             ACTION_STOP -> {
-                stopTrackingService()
+                val appPrefs = getSharedPreferences("app_state", Context.MODE_PRIVATE)
+                val explicitRaceLeave = !manualRecording &&
+                    !appPrefs.getBoolean("in_race", false) &&
+                    !appPrefs.getBoolean("manual_tracking", false)
+                stopTrackingService(clearLocalRaceStatus = explicitRaceLeave)
                 return START_NOT_STICKY
             }
 
+            ACTION_CONTINUE_AFTER_FINISH -> {
+                val persistedInRace = getSharedPreferences("app_state", Context.MODE_PRIVATE)
+                    .getBoolean("in_race", false)
+                if (!serviceRunning) {
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+                if (manualRecording || !persistedInRace) {
+                    return START_STICKY
+                }
+
+                continueAfterDetectedFinish()
+                return START_STICKY
+            }
+
             ACTION_SET_COURSE_PROGRESS -> {
-                readIntentExtras(intent)
+                val persistedInRace = getSharedPreferences("app_state", Context.MODE_PRIVATE)
+                    .getBoolean("in_race", false)
+                if (!serviceRunning) {
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+                if (manualRecording || !persistedInRace) {
+                    return START_STICKY
+                }
 
                 val passedMarksFromUser = intent.getIntExtra(EXTRA_PASSED_MARKS, passedMarks)
                 val raceStartedFromUser = intent.getBooleanExtra(EXTRA_RACE_STARTED, true)
@@ -270,15 +331,18 @@ class RegattaTrackingService : Service(), SensorEventListener {
         previousStartLineTimestampMillis = null
         previousFinishLinePosition = null
         previousFinishLineTimestampMillis = null
+        lastFinishStableSide = null
 
         isOcs = false
         raceStarted = false
         raceFinished = false
+        finishDetectionSuppressed = false
         passedMarks = 0
 
         lastDtlM = null
         lastTtlSeconds = null
         currentTargetDistanceM = null
+        samplingBand = null
 
         handler.removeCallbacks(autoStopAfterFinishRunnable)
         autoStopAfterFinishScheduled = false
@@ -306,6 +370,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
         raceStarted = prefs.getBoolean("race_started", false)
         raceFinished = prefs.getBoolean("race_finished", false)
+        finishDetectionSuppressed = prefs.getBoolean("finish_detection_suppressed", false)
         passedMarks = prefs.getInt("passed_marks", 0)
         isOcs = prefs.getBoolean("is_ocs", false)
 
@@ -324,16 +389,97 @@ class RegattaTrackingService : Service(), SensorEventListener {
             .putString("sail_number", sailNumber)
             .putBoolean("race_started", raceStarted)
             .putBoolean("race_finished", raceFinished)
+            .putBoolean("finish_detection_suppressed", finishDetectionSuppressed)
             .putInt("passed_marks", passedMarks)
             .putBoolean("is_ocs", isOcs)
             .putLong("saved_at", System.currentTimeMillis())
             .apply()
     }
 
-    private fun readIntentExtras(intent: Intent) {
-        serverUrl = intent.getStringExtra(EXTRA_SERVER_URL) ?: serverUrl
-        eventName = intent.getStringExtra(EXTRA_EVENT_NAME) ?: eventName
-        sharedSecret = intent.getStringExtra(EXTRA_SHARED_SECRET) ?: sharedSecret
+    private fun handleStickyRestart(): Int {
+        synchronized(eventPollLifecycleLock) {
+            eventPollGeneration += 1
+        }
+
+        if (!restoreStickyStartContext()) {
+            persistTrackingStoppedState()
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.tracking_active)))
+        startTrackingService()
+        updateNotification()
+        return START_STICKY
+    }
+
+    private fun restoreStickyStartContext(): Boolean {
+        val appPrefs = getSharedPreferences("app_state", Context.MODE_PRIVATE)
+        val inRace = appPrefs.getBoolean("in_race", false)
+        val persistedManual = appPrefs.getBoolean("manual_tracking", false)
+        val manual = persistedManual && !inRace
+
+        if (inRace && persistedManual) {
+            appPrefs.edit()
+                .putBoolean("manual_tracking", false)
+                .apply()
+        }
+
+        if (!manual && !inRace) {
+            return false
+        }
+
+        restoreBoatSetupForStickyRestart()
+        manualRecording = manual
+
+        if (manualRecording) {
+            clearRaceContextForManualMode()
+            return true
+        }
+
+        restoreRaceSetupForStickyRestart()
+
+        if (
+            serverUrl.isBlank() ||
+            eventName.isBlank() ||
+            sharedSecret.isBlank()
+        ) {
+            accessContextId = null
+            return false
+        }
+
+        refreshAccessContextId()
+        return accessContextId != null
+    }
+
+    private fun restoreBoatSetupForStickyRestart() {
+        val prefs = getSharedPreferences("boat_setup", Context.MODE_PRIVATE)
+
+        boatName = prefs.getString("boat_name", boatName) ?: boatName
+        captainName = prefs.getString("skipper_name", captainName) ?: captainName
+        hullColor = prefs.getString("hull_color", hullColor) ?: hullColor
+        sailNumber = prefs.getString("sail_number", sailNumber) ?: sailNumber
+        yardstick = prefs.getString("yardstick", yardstick.toString())
+            ?.toDoubleOrNull()
+            ?: yardstick
+        boatType = prefs.getString("boat_type", boatType) ?: boatType
+    }
+
+    private fun restoreRaceSetupForStickyRestart() {
+        val prefs = getSharedPreferences("race_setup", Context.MODE_PRIVATE)
+
+        serverUrl = prefs.getString("race_server", "").orEmpty()
+        eventName = prefs.getString("race_event", "").orEmpty()
+        sharedSecret = prefs.getString("race_secret", "").orEmpty()
+
+        prefs.getString("resolved_event_name", "")
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let(::adoptResolvedEventName)
+    }
+
+    private fun readStartIntentExtras(intent: Intent, manualMode: Boolean) {
+        manualRecording = manualMode
 
         boatName = intent.getStringExtra(EXTRA_BOAT_NAME) ?: boatName
         captainName = intent.getStringExtra(EXTRA_CAPTAIN_NAME) ?: captainName
@@ -342,43 +488,113 @@ class RegattaTrackingService : Service(), SensorEventListener {
         yardstick = intent.getStringExtra(EXTRA_YARDSTICK)?.toDoubleOrNull() ?: yardstick
         boatType = intent.getStringExtra(EXTRA_BOAT_TYPE) ?: boatType
 
+        if (manualRecording) {
+            clearRaceContextForManualMode()
+            return
+        }
+
+        serverUrl = intent.getStringExtra(EXTRA_SERVER_URL) ?: serverUrl
+        eventName = intent.getStringExtra(EXTRA_EVENT_NAME) ?: eventName
+        sharedSecret = intent.getStringExtra(EXTRA_SHARED_SECRET) ?: sharedSecret
+
         intent.getStringExtra(EXTRA_RESOLVED_EVENT_NAME)
             ?.trim()
             ?.takeIf { it.isNotBlank() }
             ?.let(::adoptResolvedEventName)
 
-        manualRecording = intent.getBooleanExtra(EXTRA_MANUAL_RECORDING, false)
+        refreshAccessContextId()
+    }
+
+    private fun clearRaceContextForManualMode() {
+        serverUrl = ""
+        eventName = ""
+        sharedSecret = ""
+        resolvedEventName = null
+        accessContextId = null
+    }
+
+    private fun refreshAccessContextId() {
+        accessContextId = if (manualRecording) {
+            null
+        } else {
+            db.getOrCreateAccessContext(
+                serverUrl = serverUrl,
+                accessIdentifier = eventName,
+                accessSecret = sharedSecret
+            )
+        }
     }
 
     private fun startTrackingService() {
-        if (serviceRunning) return
+        db.resetTrackingSessionMetadata()
 
+        if (serviceRunning) {
+            reconfigureSamplingSchedule()
+            return
+        }
+
+        if (!manualRecording) {
+            restoreCachedEventSnapshot()
+        }
         serviceRunning = true
 
         startLocationUpdates()
         startImuUpdates()
 
-        pollEvent()
+        if (!manualRecording) {
+            pollEvent()
+        }
 
-        handler.postDelayed(sampleRunnable, 1000L)
-        handler.postDelayed(uploadRunnable, 1000L)
-        handler.postDelayed(eventPollRunnable, 10_000L)
+        handler.postDelayed(sampleRunnable, currentSamplingIntervalMs())
+        if (!manualRecording) {
+            handler.postDelayed(eventPollRunnable, 10_000L)
+            publishLocalRaceStatus()
+        }
 
-        publishLocalRaceStatus()
         updateNotification()
     }
 
-    private fun stopTrackingService() {
-        serviceRunning = false
+    private fun reconfigureSamplingSchedule() {
+        handler.removeCallbacks(sampleRunnable)
+
+        val intervalMs = currentSamplingIntervalMs()
+        requestLocationUpdatesForInterval(intervalMs)
+        handler.postDelayed(sampleRunnable, intervalMs)
+    }
+
+    private fun persistTrackingStoppedState() {
+        getSharedPreferences("app_state", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("in_race", false)
+            .putBoolean("manual_tracking", false)
+            .commit()
+    }
+
+    private fun stopTrackingService(clearLocalRaceStatus: Boolean = false) {
+        persistTrackingStoppedState()
+
+        synchronized(eventPollLifecycleLock) {
+            eventPollGeneration += 1
+            serviceRunning = false
+            if (!manualRecording) {
+                RaceRuntimeStateStore.clearFor(serverUrl, eventName, sharedSecret)
+            }
+        }
         manualRecording = false
+        accessContextId = null
 
         handler.removeCallbacks(sampleRunnable)
-        handler.removeCallbacks(uploadRunnable)
         handler.removeCallbacks(eventPollRunnable)
 
         handler.removeCallbacks(autoStopAfterFinishRunnable)
         autoStopAfterFinishScheduled = false
 
+        if (clearLocalRaceStatus) {
+            getSharedPreferences(localStatusPrefsName, Context.MODE_PRIVATE)
+                .edit()
+                .clear()
+                .commit()
+        }
 
         try {
             locationManager.removeUpdates(locationListener)
@@ -406,6 +622,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
     }
 
     private fun startLocationUpdates() {
+        requestLocationUpdatesForInterval(currentSamplingIntervalMs())
+
         val permissionGranted = ContextCompat.checkSelfPermission(
             this,
             Manifest.permission.ACCESS_FINE_LOCATION
@@ -414,18 +632,80 @@ class RegattaTrackingService : Service(), SensorEventListener {
         if (!permissionGranted) return
 
         try {
+            val cachedLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+            if (cachedLocation != null) {
+                lastLocation = cachedLocation
+                if (!manualRecording) {
+                    refreshLocationSampling(cachedLocation)
+                }
+            }
+        } catch (_: SecurityException) {
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun currentSamplingDecision(): SamplingDecision {
+        if (manualRecording) {
+            return SamplingDecision(
+                intervalMs = 1_000L,
+                band = samplingBand,
+                nearestDistanceM = null
+            )
+        }
+
+        val position = lastLocation?.let {
+            GeoPoint(lat = it.latitude, lon = it.longitude)
+        }
+        val decision = SamplingPolicy.decide(
+            position = position,
+            startLine = startLine,
+            finishLine = finishLine,
+            courseMarks = courseMarks,
+            trackingProfile = TrackingProfileConfig.read(this),
+            sailNumber = sailNumber,
+            previousBand = samplingBand
+        )
+        samplingBand = decision.band
+        return decision
+    }
+
+    private fun currentSamplingIntervalMs(): Long {
+        return currentSamplingDecision().intervalMs
+    }
+
+    private fun refreshLocationSampling(location: Location?) {
+        if (!serviceRunning || manualRecording) return
+
+        if (location != null) {
+            lastLocation = location
+        }
+
+        val nextIntervalMs = currentSamplingIntervalMs()
+        if (nextIntervalMs != activeLocationIntervalMs) {
+            handler.removeCallbacks(sampleRunnable)
+            requestLocationUpdatesForInterval(nextIntervalMs)
+            handler.postDelayed(sampleRunnable, nextIntervalMs)
+        }
+    }
+
+    private fun requestLocationUpdatesForInterval(intervalMs: Long) {
+        val permissionGranted = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (!permissionGranted) return
+
+        try {
+            locationManager.removeUpdates(locationListener)
             locationManager.requestLocationUpdates(
                 LocationManager.GPS_PROVIDER,
-                1000L,
+                intervalMs,
                 0f,
                 locationListener,
                 Looper.getMainLooper()
             )
-
-            val cachedLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-            if (cachedLocation != null) {
-                lastLocation = cachedLocation
-            }
+            activeLocationIntervalMs = intervalMs
         } catch (_: SecurityException) {
         } catch (_: Exception) {
         }
@@ -467,11 +747,15 @@ class RegattaTrackingService : Service(), SensorEventListener {
     }
 
     private fun pollEvent() {
-        if (eventPollRunning) return
+        if (!serviceRunning || manualRecording || eventPollRunning) return
 
+        val pollGeneration = synchronized(eventPollLifecycleLock) {
+            eventPollGeneration
+        }
         eventPollRunning = true
 
         thread {
+            var serverResponded = false
             try {
                 val eventUrl = buildEventUrl()
                 val connection = URL(eventUrl).openConnection() as HttpURLConnection
@@ -485,6 +769,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
                 connection.setRequestProperty("x-api-version", API_VERSION)
 
                 val responseCode = connection.responseCode
+                serverResponded = true
+                ServerConnectionStateStore.markReachable(this, serverUrl)
                 val body = if (responseCode in 200..299) {
                     connection.inputStream.bufferedReader().use { it.readText() }
                 } else {
@@ -494,11 +780,26 @@ class RegattaTrackingService : Service(), SensorEventListener {
                 connection.disconnect()
 
                 if (responseCode in 200..299) {
-                    parseEventResponse(body)
-                    publishLocalRaceStatus()
-                    updateNotification()
+                    val applied = synchronized(eventPollLifecycleLock) {
+                        if (!serviceRunning || manualRecording || pollGeneration != eventPollGeneration) {
+                            false
+                        } else {
+                            parseEventResponse(body)
+                            publishLocalRaceStatus()
+                            updateNotification()
+                            true
+                        }
+                    }
+                    if (applied) {
+                        handler.post {
+                            refreshLocationSampling(lastLocation)
+                        }
+                    }
                 }
             } catch (_: Exception) {
+                if (!serverResponded) {
+                    ServerConnectionStateStore.markNoConnection(this, serverUrl)
+                }
             } finally {
                 eventPollRunning = false
             }
@@ -506,11 +807,11 @@ class RegattaTrackingService : Service(), SensorEventListener {
     }
 
     private fun buildEventUrl(): String {
-        val baseUrl = getBaseServerUrl()
-        val encodedEvent = URLEncoder.encode(eventName, "UTF-8")
-        val encodedSecret = URLEncoder.encode(sharedSecret, "UTF-8")
-
-        return "$baseUrl/event?event_name=$encodedEvent&shared_secret=$encodedSecret"
+        return buildNormalApiGetUrl(
+            baseUrl = getBaseServerUrl(),
+            path = "/event",
+            eventName = eventName
+        )
     }
 
     private fun getBaseServerUrl(): String {
@@ -523,43 +824,60 @@ class RegattaTrackingService : Service(), SensorEventListener {
         }
     }
 
+    private fun restoreCachedEventSnapshot() {
+        val snapshot = RaceEventSnapshotStore.loadMatching(
+            context = this,
+            server = serverUrl,
+            event = eventName,
+            secret = sharedSecret,
+            expectedResolvedEventName = resolvedEventName
+        ) ?: return
+
+        applyRaceEventSnapshot(snapshot)
+    }
+
     private fun parseEventResponse(body: String) {
-        val obj = JSONObject(body)
-        val responseResolvedEventName = obj.optString("event_name", "").trim()
+        val snapshot = parseRaceEventSnapshot(body)
+        applyRaceEventSnapshot(snapshot)
+        RaceEventSnapshotStore.save(
+            context = this,
+            server = serverUrl,
+            event = eventName,
+            secret = sharedSecret,
+            snapshot = snapshot
+        )
+    }
 
-        if (responseResolvedEventName.isBlank()) {
-            throw IllegalArgumentException("/event response is missing event_name")
-        }
+    private fun applyRaceEventSnapshot(snapshot: RaceEventSnapshot) {
+        adoptResolvedEventName(snapshot.resolvedEventName)
 
-        adoptResolvedEventName(responseResolvedEventName)
+        raceStatus = snapshot.status.ifBlank { "unknown" }
+        courseShortened = snapshot.courseShortened
+        raceStartInstant = parseServerInstant(snapshot.startRaw)
+        raceStopInstant = parseServerInstant(snapshot.stopRaw)
 
-        raceStatus = if (obj.has("race_status") && !obj.isNull("race_status")) {
-            obj.optString("race_status", raceStatus)
-        } else {
-            obj.optString("status", raceStatus)
-        }
-        courseShortened = obj.optBoolean("course_shortened", false)
+        startLine = null
+        finishLine = null
+        courseMarks = emptyList()
+        firstCourseMark = null
 
-        val startRaw = if (obj.has("start_time") && !obj.isNull("start_time")) {
-            obj.optString("start_time", "")
-        } else {
-            ""
-        }
-
-        val stopRaw = if (obj.has("stop_time") && !obj.isNull("stop_time")) {
-            obj.optString("stop_time", "")
-        } else {
-            ""
-        }
-
-        raceStartInstant = parseServerInstant(startRaw)
-        raceStopInstant = parseServerInstant(stopRaw)
-
-        val course = obj.optJSONObject("course")
+        val course = snapshot.courseJson
+            .takeIf { it.isNotBlank() }
+            ?.let { raw -> runCatching { JSONObject(raw) }.getOrNull() }
 
         parseStartLine(course)
         parseFinishLine(course)
         parseMarks(course)
+
+        RaceRuntimeStateStore.publish(
+            server = serverUrl,
+            event = eventName,
+            secret = sharedSecret,
+            resolvedEventName = snapshot.resolvedEventName,
+            status = raceStatus,
+            startEpochMillis = raceStartInstant?.toEpochMilli(),
+            stopEpochMillis = raceStopInstant?.toEpochMilli()
+        )
     }
 
     private fun parseStartLine(course: JSONObject?) {
@@ -698,51 +1016,36 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
         val timestamp = LocalDateTime.now().format(localTimestampFormatter)
         val location = lastLocation
-
         val lat = location?.latitude ?: 0.0
         val lon = location?.longitude ?: 0.0
         val accuracy = location?.accuracy ?: 9999f
         val cog = location?.bearing ?: 0f
         val sog = location?.speed ?: 0f
 
-        calculateLocalRaceState(
-            lat = lat,
-            lon = lon,
-            accuracy = accuracy
-        )
+        if (!manualRecording) {
+            calculateLocalRaceState(
+                lat = lat,
+                lon = lon,
+                accuracy = accuracy
+            )
+        }
 
-        val insertedId = db.insertSample(
-            sequenceId = sequenceId,
-            timestamp = timestamp,
-            boatName = boatName,
-            captainName = captainName,
-            hullColor = hullColor,
-            sailNumber = sailNumber,
-            yardstick = yardstick,
-            boatType =  boatType,
-            lat = lat,
-            lon = lon,
-            accuracy = accuracy,
-            cog = cog,
-            sog = sog,
-            accelX = accelX,
-            accelY = accelY,
-            accelZ = accelZ,
-            gyroX = gyroX,
-            gyroY = gyroY,
-            gyroZ = gyroZ
-        )
+        val sampleAccessContextId = if (manualRecording) {
+            null
+        } else {
+            accessContextId ?: db.getOrCreateAccessContext(
+                serverUrl = serverUrl,
+                accessIdentifier = eventName,
+                accessSecret = sharedSecret
+            ).also { accessContextId = it }
+        }
 
-        if (insertedId == -1L) return
-
-        if (manualRecording) {
-            db.markUploaded(sequenceId)
-            publishLocalRaceStatus()
-            updateNotification()
+        if (!manualRecording && sampleAccessContextId == null) {
+            publishDebugError(getString(R.string.storage_error_access_context))
             return
         }
 
-        val sample = PendingTrackingSample(
+        val insertedId = db.insertSample(
             sequenceId = sequenceId,
             timestamp = timestamp,
             boatName = boatName,
@@ -761,18 +1064,20 @@ class RegattaTrackingService : Service(), SensorEventListener {
             accelZ = accelZ,
             gyroX = gyroX,
             gyroY = gyroY,
-            gyroZ = gyroZ
+            gyroZ = gyroZ,
+            accessContextId = sampleAccessContextId
         )
 
-        thread {
-            val ok = uploadSampleBlocking(sample)
+        if (insertedId == -1L) return
 
-            if (ok) {
-                db.markUploaded(sample.sequenceId)
-            }
-
+        if (manualRecording) {
+            db.markUploaded(insertedId)
             updateNotification()
+            return
         }
+
+        TelemetryUploadScheduler.enqueue(this)
+        updateNotification()
     }
 
     private fun calculateLocalRaceState(
@@ -843,18 +1148,18 @@ class RegattaTrackingService : Service(), SensorEventListener {
                 )
             }
 
-            val crossedAfterStart = StartLineMath.crossedWithTolerance(
-                previousSignedDistanceM = metrics.previousSignedDistanceM,
-                currentSignedDistanceM = metrics.signedDistanceM,
-                toleranceM = startLineToleranceM
-            )
-
             val isOnCourseSide = isBoatOnCourseSide(
                 line = line,
                 boatSignedDistance = metrics.signedDistanceM
             )
 
-            if (!isOcs && !raceStarted && (crossedAfterStart || isOnCourseSide)) {
+            if (
+                shouldMarkRaceStarted(
+                    isOcs = isOcs,
+                    raceStarted = raceStarted,
+                    isOnCourseSide = isOnCourseSide
+                )
+            ) {
                 raceStarted = true
                 savePersistedRaceState()
             }
@@ -868,7 +1173,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
         line: StartLine,
         boatSignedDistance: Double
     ) {
-        val mark = firstCourseMark ?: return
+        val mark = resolveCourseSideReference(firstCourseMark, finishLine) ?: return
 
         val markSignedDistance = StartLineMath.signedDistanceToStartLineM(
             point = mark,
@@ -899,7 +1204,10 @@ class RegattaTrackingService : Service(), SensorEventListener {
         line: StartLine,
         boatSignedDistance: Double
     ): Boolean {
-        val lastMark = courseMarks.lastOrNull()?.point ?: return false
+        val lastMark = resolveFinishApproachReference(
+            courseMarks.lastOrNull()?.point,
+            startLine
+        ) ?: return false
 
         val lastMarkSignedDistance = StartLineMath.signedDistanceToStartLineM(
             point = lastMark,
@@ -915,11 +1223,32 @@ class RegattaTrackingService : Service(), SensorEventListener {
         return boatSide == -lastMarkSide
     }
 
+    private fun isBoatOnFinishApproachSide(
+        line: StartLine,
+        boatSignedDistance: Double
+    ): Boolean {
+        val approachReference = resolveFinishApproachReference(
+            courseMarks.lastOrNull()?.point,
+            startLine
+        ) ?: return false
+
+        val approachSignedDistance = StartLineMath.signedDistanceToStartLineM(
+            point = approachReference,
+            startLine = line
+        )
+
+        val approachSide = sideWithTolerance(approachSignedDistance)
+        val boatSide = sideWithTolerance(boatSignedDistance)
+
+        if (approachSide == 0 || boatSide == 0) return false
+        return boatSide == approachSide
+    }
+
     private fun isBoatOnCourseSide(
         line: StartLine,
         boatSignedDistance: Double
     ): Boolean {
-        val mark = firstCourseMark ?: return false
+        val mark = resolveCourseSideReference(firstCourseMark, finishLine) ?: return false
 
         val markSignedDistance = StartLineMath.signedDistanceToStartLineM(
             point = mark,
@@ -952,9 +1281,19 @@ class RegattaTrackingService : Service(), SensorEventListener {
             return
         }
 
+        val line = finishLine
+        val currentFinishSignedDistance = line?.let {
+            StartLineMath.signedDistanceToStartLineM(currentGeoPoint, it)
+        }
+        val currentFinishStableSide = currentFinishSignedDistance?.let(::sideWithTolerance) ?: 0
+
         val nextMark = courseMarks.getOrNull(passedMarks)
 
         if (nextMark != null) {
+            if (currentFinishStableSide != 0) {
+                lastFinishStableSide = currentFinishStableSide
+            }
+
             val distanceToMark = StartLineMath.distanceBetweenMeters(
                 currentGeoPoint,
                 nextMark.point
@@ -970,7 +1309,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
             return
         }
 
-        val line = finishLine ?: return
+        if (line == null) return
 
         val metrics = StartLineMath.calculateLineMetrics(
             previousPosition = previousFinishLinePosition,
@@ -982,22 +1321,47 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
         currentTargetDistanceM = abs(metrics.signedDistanceM)
 
-        val crossedFinish = StartLineMath.crossedWithTolerance(
-            previousSignedDistanceM = metrics.previousSignedDistanceM,
-            currentSignedDistanceM = metrics.signedDistanceM,
-            toleranceM = startLineToleranceM
+        val stableSide = sideWithTolerance(metrics.signedDistanceM)
+        val approachReference = resolveFinishApproachReference(
+            courseMarks.lastOrNull()?.point,
+            startLine
         )
+        val approachSide = approachReference?.let {
+            sideWithTolerance(
+                StartLineMath.signedDistanceToStartLineM(
+                    point = it,
+                    startLine = line
+                )
+            )
+        } ?: 0
 
-        val isOnFinishSide = isBoatOnFinishSide(
-            line = line,
-            boatSignedDistance = metrics.signedDistanceM
-        )
+        if (finishDetectionSuppressed) {
+            if (approachSide != 0 && stableSide == approachSide) {
+                finishDetectionSuppressed = false
+                savePersistedRaceState()
+            }
 
-        if (!raceFinished && (crossedFinish || isOnFinishSide)) {
+            if (stableSide != 0) {
+                lastFinishStableSide = stableSide
+            }
+            previousFinishLinePosition = currentGeoPoint
+            previousFinishLineTimestampMillis = nowMillis
+            return
+        }
+
+        val crossedFinishInRaceDirection =
+            approachSide != 0 &&
+                lastFinishStableSide == approachSide &&
+                stableSide == -approachSide
+
+        if (!raceFinished && crossedFinishInRaceDirection) {
             raceFinished = true
             savePersistedRaceState()
         }
 
+        if (stableSide != 0) {
+            lastFinishStableSide = stableSide
+        }
         previousFinishLinePosition = currentGeoPoint
         previousFinishLineTimestampMillis = nowMillis
     }
@@ -1054,42 +1418,51 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
     private fun buildTargetText(): String {
         return when (getCurrentTarget()) {
-            "finished" -> "Next: finished"
-            "ocs_clear" -> "Next: return across start line"
-            "start_line" -> "Next: start line"
-            "finish_line" -> "Next: finish line"
+            "finished" -> getString(R.string.next_finished)
+            "ocs_clear" -> getString(R.string.next_return_start)
+            "start_line" -> getString(R.string.next_start_line)
+            "finish_line" -> getString(R.string.next_finish_line)
             "mark" -> {
                 val mark = courseMarks.getOrNull(passedMarks)
                 if (mark != null) {
-                    "Next: ${mark.order} ${mark.name}"
+                    getString(R.string.next_mark_value, mark.order, mark.name)
                 } else {
-                    "Next: mark"
+                    getString(R.string.next_mark)
                 }
             }
 
-            else -> "Next: --"
+            else -> getString(R.string.next_unknown)
         }
     }
 
     private fun buildProgressText(): String {
-        val totalMarks = courseMarks.size
-        val progressPercent = when {
-            raceFinished -> 100.0
-            totalMarks <= 0 -> 0.0
-            else -> (passedMarks.toDouble() / totalMarks.toDouble()) * 100.0
-        }
+        return buildLocalProgressText(
+            totalMarks = courseMarks.size,
+            passedMarks = passedMarks,
+            raceStarted = raceStarted,
+            raceFinished = raceFinished,
+            markedFormatter = { passed, total, percent ->
+                getString(R.string.progress_value, passed, total, percent)
+            },
+            directFormatter = { percent ->
+                getString(R.string.progress_direct_value, percent)
+            }
+        )
+    }
 
-        return if (totalMarks > 0) {
-            String.format(
-                Locale.US,
-                "Progress: %d/%d marks · %.0f%%",
-                passedMarks,
-                totalMarks,
-                progressPercent
-            )
-        } else {
-            "Progress: --"
-        }
+    private fun continueAfterDetectedFinish() {
+        if (!serviceRunning || manualRecording || !raceFinished) return
+
+        raceFinished = false
+        finishDetectionSuppressed = true
+        currentTargetDistanceM = null
+
+        handler.removeCallbacks(autoStopAfterFinishRunnable)
+        autoStopAfterFinishScheduled = false
+
+        savePersistedRaceState()
+        publishLocalRaceStatus()
+        updateNotification()
     }
 
     private fun setCourseProgressFromUser(
@@ -1105,11 +1478,13 @@ class RegattaTrackingService : Service(), SensorEventListener {
         isOcs = false
         raceStarted = raceStartedFromUser
         raceFinished = false
+        finishDetectionSuppressed = false
         passedMarks = if (raceStartedFromUser) {
             safePassedMarks
         } else {
             0
         }
+        lastFinishStableSide = null
 
         currentTargetDistanceM = null
 
@@ -1122,13 +1497,13 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
     private fun buildBoatStatusText(): String {
         val status = when {
-            raceFinished -> "finished"
-            isOcs -> "OCS"
-            raceStarted -> "racing"
-            else -> "not started"
+            raceFinished -> getString(R.string.boat_status_finished)
+            isOcs -> getString(R.string.boat_status_ocs)
+            raceStarted -> getString(R.string.boat_status_racing)
+            else -> getString(R.string.boat_status_not_started)
         }
 
-        return "Boat: $status"
+        return getString(R.string.boat_status_value, status)
     }
 
     private fun buildTargetDistanceSuffix(): String {
@@ -1143,15 +1518,15 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
     private fun publishLocalRaceStatus() {
         val distanceText = currentTargetDistanceM?.let {
-            String.format(Locale.US, "Distance: %.0f m", it)
-        } ?: "Distance: --"
+            getString(R.string.distance_meters, it)
+        } ?: getString(R.string.distance_unknown)
 
-        val ttlText = "TTL: --"
+        val ttlText = getString(R.string.ttl_unknown)
 
         val ocsText = if (isOcs) {
-            "OCS: yes"
+            getString(R.string.ocs_yes)
         } else {
-            "OCS: no"
+            getString(R.string.ocs_no)
         }
 
         val targetText = buildTargetText()
@@ -1166,110 +1541,13 @@ class RegattaTrackingService : Service(), SensorEventListener {
             .putString("target_text", targetText)
             .putString("progress_text", progressText)
             .putString("boat_status_text", boatStatusText)
+            .putBoolean("is_ocs", isOcs)
+            .putBoolean("race_started", raceStarted)
+            .putBoolean("race_finished", raceFinished)
+            .putInt("passed_marks", passedMarks)
             .apply()
 
         updateAutoStopAfterFinish()
-    }
-
-    private fun retryPendingUploads() {
-        if (retryUploadRunning) return
-
-        retryUploadRunning = true
-
-        thread {
-            try {
-                val pendingSamples = db.getPendingSamples(limit = 200)
-
-                for (sample in pendingSamples) {
-                    val ok = uploadSampleBlocking(sample)
-
-                    if (ok) {
-                        db.markUploaded(sample.sequenceId)
-                    }
-                }
-
-                updateNotification()
-            } finally {
-                retryUploadRunning = false
-            }
-        }
-    }
-
-    private fun uploadSampleBlocking(sample: PendingTrackingSample): Boolean {
-        if (serverUrl.isBlank()) {
-            publishDebugError("Upload error: server URL is empty")
-            return false
-        }
-
-        return try {
-            val json = JSONObject().apply {
-                put("sequence_id", sample.sequenceId)
-                put("timestamp", sample.timestamp)
-                put("boat_name", sample.boatName)
-                put("captain_name", sample.captainName)
-                put("hull_color", sample.hullColor)
-                put("sail_number", sample.sailNumber)
-                put("yardstick", sample.yardstick)
-                put("boat_type", sample.boatType)
-                put("lat", sample.lat)
-                put("lon", sample.lon)
-                put("accuracy", sample.accuracy)
-                put("cog", sample.cog)
-                put("sog", sample.sog)
-                put("accel_x", sample.accelX)
-                put("accel_y", sample.accelY)
-                put("accel_z", sample.accelZ)
-                put("gyro_x", sample.gyroX)
-                put("gyro_y", sample.gyroY)
-                put("gyro_z", sample.gyroZ)
-            }
-
-            val connection = URL(buildIngestUrl()).openConnection() as HttpURLConnection
-
-            connection.requestMethod = "POST"
-            connection.connectTimeout = 3000
-            connection.readTimeout = 3000
-            connection.doOutput = true
-
-            connection.setRequestProperty("Content-Type", "application/json")
-            connection.setRequestProperty("Accept", "application/json")
-            connection.setRequestProperty("x-event-name", eventName)
-            connection.setRequestProperty("x-shared-secret", sharedSecret)
-            connection.setRequestProperty("x-api-version", API_VERSION)
-
-            connection.outputStream.use { outputStream ->
-                outputStream.write(json.toString().toByteArray(Charsets.UTF_8))
-            }
-
-            val responseCode = connection.responseCode
-
-            val ok = responseCode in 200..299
-
-            if (ok) {
-                publishDebugError("")
-            } else {
-                val errorBody = connection.errorStream
-                    ?.bufferedReader()
-                    ?.use { it.readText() }
-                    ?: ""
-
-                publishDebugError(
-                    "Upload error $responseCode: ${errorBody.take(200)}"
-                )
-            }
-
-            connection.disconnect()
-
-            ok
-        } catch (e: Exception) {
-            publishDebugError("Upload exception: ${e.message}")
-            false
-        }
-    }
-
-    private fun buildIngestUrl(): String {
-        val baseUrl = getBaseServerUrl()
-        return "$baseUrl/ingest"
     }
 
     private fun publishDebugError(message: String) {
@@ -1284,7 +1562,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
         val channel = NotificationChannel(
             NOTIFICATION_CHANNEL_ID,
-            "Regatta Tracking",
+            getString(R.string.tracking_notification_channel),
             NotificationManager.IMPORTANCE_LOW
         )
 
@@ -1316,14 +1594,14 @@ class RegattaTrackingService : Service(), SensorEventListener {
         )
 
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setContentTitle("Regatta Tracking active")
+            .setContentTitle(getString(R.string.tracking_notification_title))
             .setContentText(message)
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setOngoing(true)
             .setContentIntent(openAppPendingIntent)
             .addAction(
                 android.R.drawable.ic_menu_close_clear_cancel,
-                "Stop",
+                getString(R.string.stop),
                 stopPendingIntent
             )
             .build()
@@ -1332,24 +1610,26 @@ class RegattaTrackingService : Service(), SensorEventListener {
     private fun updateNotification() {
         val pending = db.countPendingSamples()
 
-        val dtlText = lastDtlM?.let {
-            String.format(Locale.US, "DTL %.1f m", it)
-        } ?: "DTL --"
+        val message = if (manualRecording) {
+            getString(
+                R.string.notification_manual,
+                getString(R.string.next_unknown),
+                getString(R.string.dtl_unknown),
+                getString(R.string.clear_status),
+                pending
+            )
+        } else {
+            val dtlText = lastDtlM?.let {
+                getString(R.string.dtl_meters, it)
+            } ?: getString(R.string.dtl_unknown)
+            val targetText = buildTargetText()
+            val ocsText = if (isOcs) getString(R.string.ocs) else getString(R.string.clear_status)
 
-        val targetText = buildTargetText()
-            .replace("Next: ", "")
-
-        val ocsText = if (isOcs) "OCS" else "clear"
-
-        val message = when {
-            manualRecording ->
-                "Manual · $targetText · $dtlText · $ocsText · pending: $pending"
-
-            isInsideRaceWindow() ->
-                "Race · $targetText · $dtlText · $ocsText · pending: $pending"
-
-            else ->
-                "Waiting · $targetText · $dtlText · $ocsText · pending: $pending"
+            if (isInsideRaceWindow()) {
+                getString(R.string.notification_race, targetText, dtlText, ocsText, pending)
+            } else {
+                getString(R.string.notification_waiting, targetText, dtlText, ocsText, pending)
+            }
         }
 
         val notificationManager =
@@ -1382,8 +1662,14 @@ class RegattaTrackingService : Service(), SensorEventListener {
     }
 
     override fun onDestroy() {
+        synchronized(eventPollLifecycleLock) {
+            eventPollGeneration += 1
+            serviceRunning = false
+            if (!manualRecording) {
+                RaceRuntimeStateStore.clearFor(serverUrl, eventName, sharedSecret)
+            }
+        }
         handler.removeCallbacks(sampleRunnable)
-        handler.removeCallbacks(uploadRunnable)
         handler.removeCallbacks(eventPollRunnable)
 
         try {

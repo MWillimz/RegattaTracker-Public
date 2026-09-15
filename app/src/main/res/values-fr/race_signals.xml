@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="race_acoustic_signals">Signaux sonores de départ/arrivée</string>
+    <string name="race_acoustic_signals_detail">Signaux à 5, 4, 1 et 0 minutes avant le départ, puis à votre arrivée.</string>
+</resources>

@@ -1,8 +1,10 @@
 package de.williserv.regattaclient
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -19,46 +22,68 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
-import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.material3.MaterialTheme
 
 @Composable
 fun MapScreen(
     mapImageUrl: String,
     apiVersion: String,
+    sharedSecret: String,
     modifier: Modifier = Modifier,
+    fallbackMapImageUrl: String? = null,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     val bitmapState = remember { mutableStateOf<Bitmap?>(null) }
     val errorState = remember { mutableStateOf<String?>(null) }
     val loadingState = remember { mutableStateOf(true) }
 
-    LaunchedEffect(mapImageUrl, apiVersion) {
+    val mapCouldNotBeLoaded = stringResource(R.string.map_could_not_be_loaded)
+
+    LaunchedEffect(mapImageUrl, fallbackMapImageUrl, apiVersion, sharedSecret) {
         loadingState.value = true
         errorState.value = null
         bitmapState.value = null
 
-        val result = loadMapBitmap(
+        val primaryResult = loadMapBitmap(
+            context = context,
             mapImageUrl = mapImageUrl,
-            apiVersion = apiVersion
+            apiVersion = apiVersion,
+            sharedSecret = sharedSecret
         )
+
+        val result = if (
+            shouldFallbackToCourseOverview(primaryResult.statusCode) &&
+            !fallbackMapImageUrl.isNullOrBlank() &&
+            fallbackMapImageUrl != mapImageUrl
+        ) {
+            loadMapBitmap(
+                context = context,
+                mapImageUrl = fallbackMapImageUrl,
+                apiVersion = apiVersion,
+                sharedSecret = sharedSecret
+            )
+        } else {
+            primaryResult
+        }
 
         if (result.bitmap != null) {
             bitmapState.value = result.bitmap
         } else {
-            errorState.value = result.error ?: "Map could not be loaded"
+            errorState.value = result.error ?: mapCouldNotBeLoaded
         }
 
         loadingState.value = false
@@ -70,7 +95,7 @@ fun MapScreen(
             .fillMaxSize()
     ) {
         Text(
-            text = "Map",
+            text = stringResource(R.string.map),
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold
         )
@@ -99,7 +124,7 @@ fun MapScreen(
 
                         Image(
                             bitmap = bitmap.asImageBitmap(),
-                            contentDescription = "Course map",
+                            contentDescription = stringResource(R.string.course_map),
                             modifier = Modifier
                                 .fillMaxSize()
                                 .pointerInput(Unit) {
@@ -126,7 +151,7 @@ fun MapScreen(
 
                     loadingState.value -> {
                         Text(
-                            text = "Loading map...",
+                            text = stringResource(R.string.loading_map),
                             fontSize = 18.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -143,7 +168,7 @@ fun MapScreen(
 
                     else -> {
                         Text(
-                            text = "Map unavailable",
+                            text = stringResource(R.string.map_unavailable),
                             fontSize = 18.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -158,19 +183,22 @@ fun MapScreen(
                 .fillMaxWidth()
                 .padding(top = 16.dp)
         ) {
-            Text("Back")
+            Text(stringResource(R.string.back))
         }
     }
 }
 
 private data class MapLoadResult(
     val bitmap: Bitmap?,
-    val error: String?
+    val error: String?,
+    val statusCode: Int? = null
 )
 
 private suspend fun loadMapBitmap(
+    context: Context,
     mapImageUrl: String,
-    apiVersion: String
+    apiVersion: String,
+    sharedSecret: String
 ): MapLoadResult {
     return withContext(Dispatchers.IO) {
         var connection: HttpURLConnection? = null
@@ -181,6 +209,7 @@ private suspend fun loadMapBitmap(
             connection.connectTimeout = 5000
             connection.readTimeout = 5000
             connection.setRequestProperty("Accept", "image/png")
+            connection.setRequestProperty("x-shared-secret", sharedSecret)
             connection.setRequestProperty("x-api-version", apiVersion)
 
             val responseCode = connection.responseCode
@@ -193,7 +222,8 @@ private suspend fun loadMapBitmap(
 
                 return@withContext MapLoadResult(
                     bitmap = null,
-                    error = "Map error $responseCode: ${errorBody.take(160)}"
+                    error = context.getString(R.string.map_error_code, responseCode, errorBody.take(160)),
+                    statusCode = responseCode
                 )
             }
 
@@ -204,18 +234,21 @@ private suspend fun loadMapBitmap(
             if (bitmap == null) {
                 MapLoadResult(
                     bitmap = null,
-                    error = "Map response is not a valid PNG"
+                    error = context.getString(R.string.map_invalid_png),
+                    statusCode = responseCode
                 )
             } else {
                 MapLoadResult(
                     bitmap = bitmap,
-                    error = null
+                    error = null,
+                    statusCode = responseCode
                 )
             }
         } catch (e: Exception) {
             MapLoadResult(
                 bitmap = null,
-                error = "Map load failed: ${e.message}"
+                error = context.getString(R.string.map_load_failed, e.message ?: ""),
+                statusCode = null
             )
         } finally {
             connection?.disconnect()

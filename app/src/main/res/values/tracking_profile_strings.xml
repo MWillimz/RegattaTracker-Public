@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tracking_profile_title">Tracking profile</string>
+    <string name="tracking_profile_normal">Normal</string>
+    <string name="tracking_profile_battery_saver">Battery Saver</string>
+    <string name="tracking_profile_description">Battery Saver reduces tracking resolution away from course elements to extend battery life.</string>
+</resources>

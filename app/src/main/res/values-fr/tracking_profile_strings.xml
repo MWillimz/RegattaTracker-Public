@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tracking_profile_title">Profil de suivi</string>
+    <string name="tracking_profile_normal">Normal</string>
+    <string name="tracking_profile_battery_saver">Économie de batterie</string>
+    <string name="tracking_profile_description">Le mode économie de batterie réduit la résolution du suivi loin des éléments du parcours afin de prolonger l’autonomie.</string>
+</resources>
