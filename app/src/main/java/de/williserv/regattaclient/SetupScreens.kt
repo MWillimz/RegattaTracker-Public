@@ -173,7 +173,6 @@ fun BoatDataScreen(
 fun RaceScreen(
     inRace: Boolean,
     canEnterRace: Boolean,
-    enterRaceTimeAvailable: Boolean,
     canRegisterRace: Boolean,
     raceLegalAccepted: Boolean,
     registerRaceStatusText: String,
@@ -205,6 +204,12 @@ fun RaceScreen(
     seriesDisplayMetadata: SeriesDisplayMetadata = SeriesDisplayMetadata()
 ) {
     val hasRaceSetup = raceEvent.isNotBlank() && raceSecret.isNotBlank() && raceServer.isNotBlank()
+    val enterRaceTimeAvailable = isEnterRaceTimeAvailable(
+        raceStartEpochMillis = RaceRegistrationPolicy.startEpochMillis(
+            legacyDisplayPayload(raceStartText)
+        ),
+        nowEpochMillis = System.currentTimeMillis()
+    )
     val primaryBlue = MaterialTheme.colorScheme.primary
     val successGreen = MaterialTheme.colorScheme.secondary
     val dangerRed = MaterialTheme.colorScheme.error
