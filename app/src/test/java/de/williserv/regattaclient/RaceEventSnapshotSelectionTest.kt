@@ -53,6 +53,7 @@ class RaceEventSnapshotSelectionTest {
 
     @Test
     fun `generation conflict adopts matching persisted service winner`() {
+        val staleGeneration = RaceEventSnapshotStore.generation(context)
         val serviceWinner = snapshot(
             resolvedEventName = "Race B",
             status = "started",
@@ -71,11 +72,21 @@ class RaceEventSnapshotSelectionTest {
             status = "planned",
             runName = "Run A"
         )
+        val incomingPersisted = RaceEventSnapshotStore.saveIfGenerationUnchanged(
+            context = context,
+            server = ACCESS.server,
+            event = ACCESS.event,
+            secret = ACCESS.secret,
+            snapshot = staleActivityResponse,
+            expectedGeneration = staleGeneration
+        )
+        assertFalse(incomingPersisted)
+
         val selection = resolveRaceEventDisplaySnapshot(
             context = context,
             access = ACCESS,
             incomingSnapshot = staleActivityResponse,
-            incomingPersisted = false
+            incomingPersisted = incomingPersisted
         )
 
         assertNotNull(selection)
