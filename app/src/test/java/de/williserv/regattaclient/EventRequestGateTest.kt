@@ -48,6 +48,27 @@ class EventRequestGateTest {
     }
 
     @Test
+    fun `same server event change still invalidates old request`() {
+        val gate = EventRequestGate()
+        val accessA = EventAccessKey(
+            server = "https://race.example.org",
+            event = "Event A",
+            secret = "secret-a"
+        )
+        val accessB = EventAccessKey(
+            server = "https://race.example.org",
+            event = "Event B",
+            secret = "secret-b"
+        )
+
+        val requestA = requireNotNull(gate.tryStart(accessA, generation = 20L))
+        val requestB = requireNotNull(gate.tryStart(accessB, generation = 21L))
+
+        assertFalse(gate.isCurrent(requestA, accessB, currentGeneration = 21L))
+        assertTrue(gate.isCurrent(requestB, accessB, currentGeneration = 21L))
+    }
+
+    @Test
     fun `finishing stale request does not release replacement request ownership`() {
         val gate = EventRequestGate()
         val accessA = access("A")
