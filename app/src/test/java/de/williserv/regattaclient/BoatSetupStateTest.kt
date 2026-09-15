@@ -26,14 +26,18 @@ class BoatSetupStateTest {
     }
 
     @Test
-    fun validSetupRejectsNonFiniteYardstickValues() {
+    fun validSetupRejectsNonFiniteAndImplausibleYardstickValues() {
         assertFalse(isBoatSetupValid(confirmed.copy(yardstick = "NaN")))
         assertFalse(isBoatSetupValid(confirmed.copy(yardstick = "Infinity")))
         assertFalse(isBoatSetupValid(confirmed.copy(yardstick = "-Infinity")))
         assertFalse(isBoatSetupValid(confirmed.copy(yardstick = "1e309")))
+        assertFalse(isBoatSetupValid(confirmed.copy(yardstick = "39.9")))
+        assertFalse(isBoatSetupValid(confirmed.copy(yardstick = "160.1")))
 
+        assertTrue(isBoatSetupValid(confirmed.copy(yardstick = "40")))
         assertTrue(isBoatSetupValid(confirmed.copy(yardstick = "97.5")))
         assertTrue(isBoatSetupValid(confirmed.copy(yardstick = "100")))
+        assertTrue(isBoatSetupValid(confirmed.copy(yardstick = "160")))
     }
 
     @Test
