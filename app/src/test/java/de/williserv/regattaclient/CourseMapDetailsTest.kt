@@ -19,13 +19,33 @@ class CourseMapDetailsTest {
     }
 
     @Test
-    fun detailUrlsUseExpectedServerContract() {
+    fun overviewUrlCanBindExactGeneration() {
+        assertEquals(
+            "https://race.example/course-map?event_name=Series+1&generation_id=generation%2F42",
+            buildCourseMapImageUrl(
+                baseUrl = "https://race.example/",
+                eventName = "Series 1",
+                generationId = "generation/42"
+            )
+        )
+        assertEquals(
+            "https://race.example/course-map?event_name=Series+1&generation_id=generation%2F42",
+            bindCourseMapGeneration(
+                "https://race.example/course-map?event_name=Series+1",
+                "generation/42"
+            )
+        )
+    }
+
+    @Test
+    fun detailUrlsIgnoreGenerationAndUseExpectedServerContract() {
         assertEquals(
             "https://race.example/course-map-detail?event_name=Series+1&view=start",
             buildCourseMapImageUrl(
                 baseUrl = "https://race.example",
                 eventName = "Series 1",
-                view = CourseMapView.Start
+                view = CourseMapView.Start,
+                generationId = "ignored"
             )
         )
         assertEquals(
