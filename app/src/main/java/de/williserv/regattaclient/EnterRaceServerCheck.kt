@@ -11,6 +11,8 @@ internal class EnterRaceServerCheckState {
         return nextGeneration.also { activeGeneration = it }
     }
 
+    fun currentGeneration(): Long? = activeGeneration
+
     fun isActive(generation: Long?): Boolean =
         generation == null || activeGeneration == generation
 
