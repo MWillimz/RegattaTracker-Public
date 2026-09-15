@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="register_with_race_committee">Registrati presso il comitato di regata</string>
+    <string name="registered_with_race_committee">Registrato presso il comitato di regata</string>
+    <string name="remember_enter_race">Ricorda di toccare « Entra in regata » prima di lasciare il molo.</string>
+    <string name="enter_race_available_24h">« Entra in regata » è disponibile 24 ore prima della partenza.</string>
+</resources>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="register_with_race_committee">S’inscrire auprès du comité de course</string>
+    <string name="registered_with_race_committee">Inscrit auprès du comité de course</string>
+    <string name="remember_enter_race">N’oubliez pas d’appuyer sur « Entrer en course » avant de quitter le quai.</string>
+    <string name="enter_race_available_24h">« Entrer en course » est disponible 24 heures avant le départ.</string>
+</resources>
