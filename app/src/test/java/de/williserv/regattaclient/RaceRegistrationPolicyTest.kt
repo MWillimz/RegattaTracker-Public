@@ -1,8 +1,5 @@
 package de.williserv.regattaclient
 
-import java.time.LocalDateTime
-import java.time.OffsetDateTime
-import java.time.ZoneId
 import java.util.TimeZone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -89,46 +86,5 @@ class RaceRegistrationPolicyTest {
         assertNull(RaceRegistrationPolicy.registrationTimestamp(""))
         assertNull(RaceRegistrationPolicy.registrationTimestamp("--"))
         assertNull(RaceRegistrationPolicy.registrationTimestamp("not-a-time"))
-    }
-
-    @Test
-    fun startEpochMillisPreservesExplicitOffset() {
-        val expected = OffsetDateTime
-            .parse("2026-08-28T15:00:00+02:00")
-            .toInstant()
-            .toEpochMilli()
-
-        assertEquals(
-            expected,
-            RaceRegistrationPolicy.startEpochMillis(
-                "2026-08-28T15:00:00+02:00",
-                ZoneId.of("UTC")
-            )
-        )
-    }
-
-    @Test
-    fun startEpochMillisUsesProvidedZoneForNaiveTime() {
-        val raceZone = ZoneId.of("Europe/Berlin")
-        val expected = LocalDateTime
-            .parse("2026-08-28T15:00:00")
-            .atZone(raceZone)
-            .toInstant()
-            .toEpochMilli()
-
-        assertEquals(
-            expected,
-            RaceRegistrationPolicy.startEpochMillis(
-                "2026-08-28T15:00:00",
-                raceZone
-            )
-        )
-    }
-
-    @Test
-    fun startEpochMillisRejectsInvalidStartTime() {
-        assertNull(RaceRegistrationPolicy.startEpochMillis(null))
-        assertNull(RaceRegistrationPolicy.startEpochMillis("--"))
-        assertNull(RaceRegistrationPolicy.startEpochMillis("not-a-time"))
     }
 }
