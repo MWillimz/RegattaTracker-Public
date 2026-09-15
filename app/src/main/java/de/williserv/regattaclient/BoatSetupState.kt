@@ -1,5 +1,8 @@
 package de.williserv.regattaclient
 
+private const val MIN_YARDSTICK = 40.0
+private const val MAX_YARDSTICK = 160.0
+
 data class BoatSetupValues(
     val boatName: String,
     val skipperName: String,
@@ -16,7 +19,8 @@ internal fun isBoatSetupValid(values: BoatSetupValues): Boolean {
             values.skipperName.isNotBlank() &&
             values.sailNumber.isNotBlank() &&
             values.boatType.isNotBlank() &&
-            yardstick.isFinite()
+            yardstick.isFinite() &&
+            yardstick in MIN_YARDSTICK..MAX_YARDSTICK
 }
 
 internal fun shouldInvalidateRaceRegistration(
