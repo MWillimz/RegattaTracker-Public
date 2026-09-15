@@ -2,7 +2,6 @@ package de.williserv.regattaclient
 
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
-import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 internal object RaceRegistrationPolicy {
@@ -31,23 +30,6 @@ internal object RaceRegistrationPolicy {
             return parsed
                 .minusMinutes(SERIES_PRESTART_MINUTES)
                 .format(localOutputFormatter)
-        }
-
-        return null
-    }
-
-    fun startEpochMillis(
-        serverStartTime: String?,
-        localZone: ZoneId = ZoneId.systemDefault()
-    ): Long? {
-        val start = normalizedStartTime(serverStartTime) ?: return null
-
-        parseOffsetDateTime(start)?.let { parsed ->
-            return parsed.toInstant().toEpochMilli()
-        }
-
-        parseLocalDateTime(start)?.let { parsed ->
-            return parsed.atZone(localZone).toInstant().toEpochMilli()
         }
 
         return null
