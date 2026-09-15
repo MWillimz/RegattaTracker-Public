@@ -204,6 +204,12 @@ fun RaceScreen(
     seriesDisplayMetadata: SeriesDisplayMetadata = SeriesDisplayMetadata()
 ) {
     val hasRaceSetup = raceEvent.isNotBlank() && raceSecret.isNotBlank() && raceServer.isNotBlank()
+    val enterRaceTimeAvailable = isEnterRaceTimeAvailable(
+        raceStartEpochMillis = RaceRegistrationPolicy.startEpochMillis(
+            legacyDisplayPayload(raceStartText)
+        ),
+        nowEpochMillis = System.currentTimeMillis()
+    )
     val primaryBlue = MaterialTheme.colorScheme.primary
     val successGreen = MaterialTheme.colorScheme.secondary
     val dangerRed = MaterialTheme.colorScheme.error
@@ -307,38 +313,8 @@ fun RaceScreen(
 
             else -> {
                 Button(
-                    onClick = onRegisterRace,
-                    enabled = canRegisterRace,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (raceRegistered) primaryBlue else warningYellow,
-                        disabledContainerColor = MaterialTheme.colorScheme.outlineVariant,
-                        disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp)
-                ) {
-                    Text(
-                        if (raceRegistered) {
-                            stringResource(R.string.registered)
-                        } else {
-                            stringResource(R.string.register_for_race)
-                        }
-                    )
-                }
-
-                if (registerRaceStatusText.isNotBlank()) {
-                    Text(
-                        text = registerRaceStatusText,
-                        fontSize = 14.sp,
-                        color = Color(0xFF555A66),
-                        modifier = Modifier.padding(top = 6.dp)
-                    )
-                }
-
-                Button(
                     onClick = onEnterRace,
-                    enabled = canEnterRace,
+                    enabled = canEnterRace && enterRaceTimeAvailable,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = successGreen,
                         disabledContainerColor = MaterialTheme.colorScheme.outlineVariant,
@@ -346,19 +322,29 @@ fun RaceScreen(
                     ),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 10.dp)
                         .height(56.dp)
                 ) {
                     Text(stringResource(R.string.enter_race))
                 }
 
-                if (!canEnterRace) {
-                    Text(
-                        text = stringResource(R.string.enter_race_requirements),
-                        fontSize = 14.sp,
-                        color = Color(0xFFB26A00),
-                        modifier = Modifier.padding(top = 6.dp)
-                    )
+                when {
+                    !canEnterRace -> {
+                        Text(
+                            text = stringResource(R.string.enter_race_requirements),
+                            fontSize = 14.sp,
+                            color = Color(0xFFB26A00),
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                    }
+
+                    !enterRaceTimeAvailable -> {
+                        Text(
+                            text = stringResource(R.string.enter_race_available_24h),
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -400,6 +386,44 @@ fun RaceScreen(
                         } else {
                             stringResource(R.string.accept_notice)
                         }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                Button(
+                    onClick = onRegisterRace,
+                    enabled = canRegisterRace,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = primaryBlue,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                        disabledContainerColor = MaterialTheme.colorScheme.outlineVariant,
+                        disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        if (raceRegistered) {
+                            stringResource(R.string.registered_with_race_committee)
+                        } else {
+                            stringResource(R.string.register_with_race_committee)
+                        }
+                    )
+                }
+
+                if (raceRegistered) {
+                    Text(
+                        text = stringResource(R.string.remember_enter_race),
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                } else if (registerRaceStatusText.isNotBlank()) {
+                    Text(
+                        text = registerRaceStatusText,
+                        fontSize = 14.sp,
+                        color = Color(0xFF555A66),
+                        modifier = Modifier.padding(top = 6.dp)
                     )
                 }
             }
