@@ -78,6 +78,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private val raceLegalVersion = mutableStateOf("")
     private val raceLegalAcceptStatusText = mutableStateOf("")
     private val eventLegalFlowState = EventLegalFlowState()
+    private var pendingEnterRaceAfterLegal = false
 
     private val showClearRaceSetupDialog = mutableStateOf(false)
     private lateinit var db: TrackingDbHelper
@@ -336,6 +337,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         setContent {
             RegattaClientTheme {
                 BackHandler(enabled = currentScreen.value != Screen.HOME) {
+                    if (currentScreen.value == Screen.RACE_LEGAL) {
+                        pendingEnterRaceAfterLegal = false
+                    }
                     navigateBack()
                 }
 
@@ -451,7 +455,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             onAccept = {
                                 acceptRaceLegalAndLoadRaceData()
                             },
-                            onBack = ::navigateBack
+                            onBack = {
+                                pendingEnterRaceAfterLegal = false
+                                navigateBack()
+                            }
                         )
                         Screen.RESULTS -> ResultsScreen(
                             raceEvent = raceEvent.value,
@@ -561,19 +568,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                 currentScreen.value = Screen.QR_SCANNER
                             },
                             onEnterRace = {
-                                when {
-                                    !raceDataReady.value -> {
-                                        raceStatusText.value = getString(R.string.race_load_valid_data_first)
-                                    }
-
-                                    !setupConfirmed.value -> {
-                                        statusText.value = getString(R.string.confirm_boat_setup_first)
-                                    }
-
-                                    else -> {
-                                        showBoatConfirmDialog.value = true
-                                    }
-                                }
+                                requestEnterRaceAfterLocalChecks()
                             },
                             onLeaveRace = {
                                 showLeaveRaceWarningDialog.value = true
@@ -726,6 +721,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     EventUpdateRecommendedDialog(
                         onContinue = ::continueAfterRecommendedEventUpdate,
                         onCancel = {
+                            pendingEnterRaceAfterLegal = false
                             showEventUpdateRecommendedDialog.value = false
                         }
                     )
@@ -734,6 +730,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 if (showEventUpdateRequiredDialog.value) {
                     EventUpdateRequiredDialog(
                         onDismiss = {
+                            pendingEnterRaceAfterLegal = false
                             showEventUpdateRequiredDialog.value = false
                         }
                     )
@@ -1017,6 +1014,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     }
 
     private fun resetRunSpecificClientState(clearLegal: Boolean) {
+        pendingEnterRaceAfterLegal = false
         raceDataReady.value = false
         raceStatusText.value = getString(R.string.race_not_loaded)
         raceStartText.value = getString(R.string.start_unknown)
@@ -1066,6 +1064,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     }
 
     private fun resetEventCompatibilityState() {
+        pendingEnterRaceAfterLegal = false
         eventCompatibilityGeneration += 1L
         eventCompatibilityAllowedAccess = null
         eventCompatibilityWarningAccess = null
@@ -1442,6 +1441,48 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 currentLegalHash = raceLegalHash.value
             )
 
+    private fun continuePendingEnterRaceAfterLegal() {
+        if (!pendingEnterRaceAfterLegal) return
+
+        pendingEnterRaceAfterLegal = false
+        currentScreen.value = Screen.RACE
+        showBoatConfirmDialog.value = true
+    }
+
+    private fun blockPendingEnterRaceWithLegalError() {
+        if (!pendingEnterRaceAfterLegal) {
+            currentScreen.value = Screen.RACE
+            return
+        }
+
+        pendingEnterRaceAfterLegal = false
+        raceLegalText.value = ""
+        eventLegalFlowState.clearDisplayedDocument()
+        currentScreen.value = Screen.RACE_LEGAL
+    }
+
+    private fun requestEnterRaceAfterLocalChecks() {
+        when {
+            !raceDataReady.value -> {
+                raceStatusText.value = getString(R.string.race_load_valid_data_first)
+            }
+
+            !setupConfirmed.value -> {
+                statusText.value = getString(R.string.confirm_boat_setup_first)
+            }
+
+            enterRaceLegalStartDecision(raceLegalAccepted.value) ==
+                EnterRaceLegalGateDecision.CONTINUE -> {
+                showBoatConfirmDialog.value = true
+            }
+
+            else -> {
+                pendingEnterRaceAfterLegal = true
+                fetchRaceLegalText()
+            }
+        }
+    }
+
     private fun baseServerUrlForAccess(access: EventAccessKey): String {
         val server = access.server.trim()
         return if (server.endsWith("/ingest")) {
@@ -1482,6 +1523,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             }
 
             eventCompatibilityBlockedAccess == access -> {
+                pendingEnterRaceAfterLegal = false
                 showEventUpdateRequiredDialog.value = true
                 return
             }
@@ -1552,6 +1594,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     }
 
                     EventCompatibilityDecision.BLOCK -> {
+                        pendingEnterRaceAfterLegal = false
                         eventCompatibilityAllowedAccess = null
                         eventCompatibilityWarningAccess = null
                         eventCompatibilityBlockedAccess = access
@@ -1611,7 +1654,20 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         raceLegalStatusText.value =
                             getString(R.string.legal_text_failed_code, responseCode, body.take(160))
                         raceLegalAccepted.value = false
-                        currentScreen.value = Screen.RACE
+                        val decision = enterRaceLegalFetchDecision(
+                            serverResponded = true,
+                            responseSuccessful = false,
+                            documentValid = false,
+                            acceptancePreserved = false
+                        )
+                        if (
+                            pendingEnterRaceAfterLegal &&
+                            decision == EnterRaceLegalGateDecision.BLOCK
+                        ) {
+                            blockPendingEnterRaceWithLegalError()
+                        } else {
+                            currentScreen.value = Screen.RACE
+                        }
                     }
                     return@thread
                 }
@@ -1638,21 +1694,21 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             raceLegalAccepted.value = false
                             raceLegalResolvedEventName = ""
                             eventLegalFlowState.clearDisplayedDocument()
-                            currentScreen.value = Screen.RACE
+                            blockPendingEnterRaceWithLegalError()
                         }
 
                         legalText.isBlank() -> {
                             raceLegalStatusText.value = getString(R.string.race_notice_empty)
                             raceLegalAccepted.value = false
                             eventLegalFlowState.clearDisplayedDocument()
-                            currentScreen.value = Screen.RACE
+                            blockPendingEnterRaceWithLegalError()
                         }
 
                         legalHash.isBlank() -> {
                             raceLegalStatusText.value = getString(R.string.race_notice_hash_missing)
                             raceLegalAccepted.value = false
                             eventLegalFlowState.clearDisplayedDocument()
-                            currentScreen.value = Screen.RACE
+                            blockPendingEnterRaceWithLegalError()
                         }
 
                         else -> {
@@ -1683,7 +1739,33 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                     legalHash = legalHash
                                 )
                             )
-                            currentScreen.value = Screen.RACE_LEGAL
+
+                            when (
+                                enterRaceLegalFetchDecision(
+                                    serverResponded = true,
+                                    responseSuccessful = true,
+                                    documentValid = true,
+                                    acceptancePreserved = preserveAcceptance
+                                )
+                            ) {
+                                EnterRaceLegalGateDecision.CONTINUE -> {
+                                    if (pendingEnterRaceAfterLegal) {
+                                        continuePendingEnterRaceAfterLegal()
+                                    } else {
+                                        currentScreen.value = Screen.RACE_LEGAL
+                                    }
+                                }
+
+                                EnterRaceLegalGateDecision.SHOW_LEGAL -> {
+                                    currentScreen.value = Screen.RACE_LEGAL
+                                }
+
+                                EnterRaceLegalGateDecision.FETCH_LEGAL,
+                                EnterRaceLegalGateDecision.BLOCK -> {
+                                    pendingEnterRaceAfterLegal = false
+                                    currentScreen.value = Screen.RACE
+                                }
+                            }
                         }
                     }
                 }
@@ -1702,7 +1784,23 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         getString(R.string.status_no_connection)
                     }
                     raceLegalAccepted.value = false
-                    currentScreen.value = Screen.RACE
+
+                    val decision = enterRaceLegalFetchDecision(
+                        serverResponded = serverResponded,
+                        responseSuccessful = false,
+                        documentValid = false,
+                        acceptancePreserved = false
+                    )
+                    if (
+                        pendingEnterRaceAfterLegal &&
+                        decision == EnterRaceLegalGateDecision.CONTINUE
+                    ) {
+                        continuePendingEnterRaceAfterLegal()
+                    } else if (pendingEnterRaceAfterLegal) {
+                        blockPendingEnterRaceWithLegalError()
+                    } else {
+                        currentScreen.value = Screen.RACE
+                    }
                 }
             } finally {
                 runOnUiThread {
@@ -1715,6 +1813,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private fun acceptRaceLegalAndLoadRaceData() {
         val document = eventLegalFlowState.displayedDocument ?: return
         if (!isCurrentActionableLegalDocument(document)) {
+            pendingEnterRaceAfterLegal = false
             raceLegalAccepted.value = false
             raceLegalAcceptStatusText.value = getString(R.string.race_notice_changed)
             currentScreen.value = Screen.RACE
@@ -1787,6 +1886,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             acceptedResolvedEventName.isBlank() ||
                             acceptedResolvedEventName != expectedResolvedEventName
                         ) {
+                            pendingEnterRaceAfterLegal = false
                             resetRaceLegalState()
                             raceLegalAcceptStatusText.value =
                                 getString(R.string.race_notice_changed)
@@ -1795,9 +1895,13 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         } else {
                             raceLegalAccepted.value = true
                             raceLegalAcceptStatusText.value = getString(R.string.race_notice_accepted)
-                            currentScreen.value = Screen.RACE
                             fetchRaceDataForDisplay()
                             startRaceDataRefresh()
+                            if (pendingEnterRaceAfterLegal) {
+                                continuePendingEnterRaceAfterLegal()
+                            } else {
+                                currentScreen.value = Screen.RACE
+                            }
                         }
                     } else {
                         raceLegalAccepted.value = false
