@@ -81,6 +81,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private var pendingEnterRaceAfterLegal = false
     private val enterRaceServerCheckInProgress = mutableStateOf(false)
     private val enterRaceServerCheckState = EnterRaceServerCheckState()
+    private var activeLegalFetchContext: EventCompatibilityContext? = null
+    private var activeLegalFetchEnterRaceGeneration: Long? = null
 
     private val showClearRaceSetupDialog = mutableStateOf(false)
     private lateinit var db: TrackingDbHelper
@@ -137,6 +139,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private var eventCompatibilityCheckAccess: EventAccessKey? = null
     private var eventCompatibilityCheckGeneration = -1L
     private var eventCompatibilityGeneration = 0L
+    private var eventCompatibilityEnterRaceGeneration: Long? = null
 
     private val currentTargetText = mutableStateOf("")
     private val progressText = mutableStateOf("")
@@ -154,6 +157,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private val startPanelText = mutableStateOf("")
     private val startPanelMode = mutableStateOf("clear")
+    private val raceEntryNowEpochMillis = mutableStateOf(System.currentTimeMillis())
 
     private var raceStartEpochMillis: Long? = null
     private var currentRaceStatus by mutableStateOf("")
@@ -207,6 +211,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private val uiRefreshRunnable = object : Runnable {
         override fun run() {
+            raceEntryNowEpochMillis.value = System.currentTimeMillis()
             reconcileTrackingState()
             updateStorageText()
             updateLocalRaceStatus()
@@ -536,6 +541,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             raceStatusText = raceStatusText.value,
                             raceStartText = raceStartText.value,
                             raceStartEpochMillis = raceStartEpochMillis,
+                            raceEntryNowEpochMillis = raceEntryNowEpochMillis.value,
                             raceStopText = raceStopText.value,
                             raceCourseText = raceCourseText.value,
                             raceStartLineText = raceStartLineText.value,
@@ -1082,6 +1088,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         eventCompatibilityBlockedAccess = null
         eventCompatibilityCheckAccess = null
         eventCompatibilityCheckGeneration = -1L
+        eventCompatibilityEnterRaceGeneration = null
+        activeLegalFetchContext = null
+        activeLegalFetchEnterRaceGeneration = null
         eventLegalFlowState.invalidate()
         showEventUpdateRecommendedDialog.value = false
         showEventUpdateRequiredDialog.value = false
@@ -1590,11 +1599,21 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             }
 
             eventCompatibilityCheckAccess == access &&
-                eventCompatibilityCheckGeneration == generation -> return
+                eventCompatibilityCheckGeneration == generation -> {
+                if (
+                    enterRaceServerCheckGeneration != null &&
+                    enterRaceServerCheckState.isActive(enterRaceServerCheckGeneration)
+                ) {
+                    eventCompatibilityEnterRaceGeneration = enterRaceServerCheckGeneration
+                }
+                return
+            }
         }
 
         eventCompatibilityCheckAccess = access
         eventCompatibilityCheckGeneration = generation
+        eventCompatibilityEnterRaceGeneration = enterRaceServerCheckGeneration
+            ?.takeIf(enterRaceServerCheckState::isActive)
 
         thread {
             val metadata = fetchServerMetadata(
@@ -1625,15 +1644,23 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     ) {
                         eventCompatibilityCheckAccess = null
                         eventCompatibilityCheckGeneration = -1L
+                        eventCompatibilityEnterRaceGeneration = null
                     }
                     return@runOnUiThread
                 }
 
+                val associatedEnterRaceGeneration = eventCompatibilityEnterRaceGeneration
+                    .takeIf {
+                        eventCompatibilityCheckAccess == access &&
+                            eventCompatibilityCheckGeneration == generation
+                    }
                 eventCompatibilityCheckAccess = null
                 eventCompatibilityCheckGeneration = -1L
+                eventCompatibilityEnterRaceGeneration = null
 
                 val effectiveEnterRaceGeneration =
                     enterRaceServerCheckGeneration
+                        ?: associatedEnterRaceGeneration
                         ?: enterRaceServerCheckState.currentGeneration()
                             .takeIf { pendingEnterRaceAfterLegal }
                 if (
@@ -1677,12 +1704,30 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
     }
 
+    private fun effectiveEnterRaceGenerationForLegalFetch(
+        compatibilityContext: EventCompatibilityContext,
+        requestedGeneration: Long?
+    ): Long? = requestedGeneration ?: activeLegalFetchEnterRaceGeneration
+        .takeIf { activeLegalFetchContext == compatibilityContext }
+
     private fun fetchRaceLegalTextAfterCompatibility(
         compatibilityContext: EventCompatibilityContext,
         enterRaceServerCheckGeneration: Long? = null
     ) {
         if (!isCurrentAllowedLegalContext(compatibilityContext)) return
-        if (!eventLegalFlowState.tryStartFetch(compatibilityContext)) return
+        if (!eventLegalFlowState.tryStartFetch(compatibilityContext)) {
+            if (
+                enterRaceServerCheckGeneration != null &&
+                activeLegalFetchContext == compatibilityContext &&
+                enterRaceServerCheckState.isActive(enterRaceServerCheckGeneration)
+            ) {
+                activeLegalFetchEnterRaceGeneration = enterRaceServerCheckGeneration
+            }
+            return
+        }
+
+        activeLegalFetchContext = compatibilityContext
+        activeLegalFetchEnterRaceGeneration = enterRaceServerCheckGeneration
 
         val previouslyAccepted = raceLegalAccepted.value
         val previousLegalEventIdentity = raceLegalResolvedEventName
@@ -1724,13 +1769,18 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         if (!isCurrentAllowedLegalContext(compatibilityContext)) {
                             return@runOnUiThread
                         }
+                        val effectiveEnterRaceGeneration =
+                            effectiveEnterRaceGenerationForLegalFetch(
+                                compatibilityContext,
+                                enterRaceServerCheckGeneration
+                            )
                         if (
-                            enterRaceServerCheckGeneration != null &&
-                            !enterRaceServerCheckState.isActive(enterRaceServerCheckGeneration)
+                            effectiveEnterRaceGeneration != null &&
+                            !enterRaceServerCheckState.isActive(effectiveEnterRaceGeneration)
                         ) {
                             return@runOnUiThread
                         }
-                        finishEnterRaceServerCheck(enterRaceServerCheckGeneration)
+                        finishEnterRaceServerCheck(effectiveEnterRaceGeneration)
                         raceLegalStatusText.value =
                             getString(R.string.legal_text_failed_code, responseCode, body.take(160))
                         raceLegalAccepted.value = false
@@ -1767,13 +1817,18 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     if (!isCurrentAllowedLegalContext(compatibilityContext)) {
                         return@runOnUiThread
                     }
+                    val effectiveEnterRaceGeneration =
+                        effectiveEnterRaceGenerationForLegalFetch(
+                            compatibilityContext,
+                            enterRaceServerCheckGeneration
+                        )
                     if (
-                        enterRaceServerCheckGeneration != null &&
-                        !enterRaceServerCheckState.isActive(enterRaceServerCheckGeneration)
+                        effectiveEnterRaceGeneration != null &&
+                        !enterRaceServerCheckState.isActive(effectiveEnterRaceGeneration)
                     ) {
                         return@runOnUiThread
                     }
-                    finishEnterRaceServerCheck(enterRaceServerCheckGeneration)
+                    finishEnterRaceServerCheck(effectiveEnterRaceGeneration)
 
                     when {
                         legalResolvedEventName.isBlank() -> {
@@ -1864,13 +1919,18 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     if (!isCurrentAllowedLegalContext(compatibilityContext)) {
                         return@runOnUiThread
                     }
+                    val effectiveEnterRaceGeneration =
+                        effectiveEnterRaceGenerationForLegalFetch(
+                            compatibilityContext,
+                            enterRaceServerCheckGeneration
+                        )
                     if (
-                        enterRaceServerCheckGeneration != null &&
-                        !enterRaceServerCheckState.isActive(enterRaceServerCheckGeneration)
+                        effectiveEnterRaceGeneration != null &&
+                        !enterRaceServerCheckState.isActive(effectiveEnterRaceGeneration)
                     ) {
                         return@runOnUiThread
                     }
-                    finishEnterRaceServerCheck(enterRaceServerCheckGeneration)
+                    finishEnterRaceServerCheck(effectiveEnterRaceGeneration)
                     updateConnectionUiState()
                     raceLegalStatusText.value = if (serverResponded) {
                         getString(R.string.legal_text_failed, e.message ?: "")
@@ -1898,6 +1958,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 }
             } finally {
                 runOnUiThread {
+                    if (activeLegalFetchContext == compatibilityContext) {
+                        activeLegalFetchContext = null
+                        activeLegalFetchEnterRaceGeneration = null
+                    }
                     eventLegalFlowState.finishFetch(compatibilityContext)
                 }
             }
