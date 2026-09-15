@@ -12,7 +12,8 @@ internal data class RaceEventSnapshot(
     val raceInfo: String,
     val courseJson: String,
     val courseShortened: Boolean,
-    val seriesDisplayMetadata: SeriesDisplayMetadata = SeriesDisplayMetadata()
+    val seriesDisplayMetadata: SeriesDisplayMetadata = SeriesDisplayMetadata(),
+    val courseMapViewport: CourseMapViewport? = null
 )
 
 internal fun canEnterRaceWithLocalState(
@@ -92,16 +93,92 @@ internal fun parseRaceEventSnapshot(body: String): RaceEventSnapshot {
         raceInfo = raceInfo,
         courseJson = course?.toString().orEmpty(),
         courseShortened = obj.optBoolean("course_shortened", false),
-        seriesDisplayMetadata = parseSeriesDisplayMetadata(obj)
+        seriesDisplayMetadata = parseSeriesDisplayMetadata(obj),
+        courseMapViewport = parseCourseMapViewport(obj)
     )
 
     require(isUsableRaceEventSnapshot(snapshot)) { "/event response is not usable for local tracking" }
     return snapshot
 }
 
+internal fun parseCourseMapViewport(root: JSONObject): CourseMapViewport? {
+    val obj = root.optJSONObject("course_map_viewport") ?: return null
+    return parseCourseMapViewportObject(obj)
+}
+
+private fun parseCourseMapViewportObject(obj: JSONObject): CourseMapViewport? {
+    return try {
+        if (
+            !obj.has("zoom") ||
+            !obj.has("left_px") ||
+            !obj.has("top_px") ||
+            !obj.has("width_px") ||
+            !obj.has("height_px") ||
+            !obj.has("generation_id")
+        ) {
+            return null
+        }
+
+        val projection = obj.optString("projection", "").trim()
+        val generationId = obj.optString("generation_id", "").trim()
+        val zoom = obj.getInt("zoom")
+        val leftPx = obj.getDouble("left_px")
+        val topPx = obj.getDouble("top_px")
+        val widthPx = obj.getInt("width_px")
+        val heightPx = obj.getInt("height_px")
+
+        if (
+            projection != "web_mercator" ||
+            generationId.isBlank() ||
+            zoom < 0 ||
+            widthPx <= 0 ||
+            heightPx <= 0 ||
+            !leftPx.isFinite() ||
+            !topPx.isFinite()
+        ) {
+            return null
+        }
+
+        CourseMapViewport(
+            projection = projection,
+            zoom = zoom,
+            leftPx = leftPx,
+            topPx = topPx,
+            widthPx = widthPx,
+            heightPx = heightPx,
+            generationId = generationId
+        )
+    } catch (_: Exception) {
+        null
+    }
+}
+
+private fun serializeCourseMapViewport(viewport: CourseMapViewport?): String {
+    if (viewport == null) return ""
+    return JSONObject()
+        .put("projection", viewport.projection)
+        .put("zoom", viewport.zoom)
+        .put("left_px", viewport.leftPx)
+        .put("top_px", viewport.topPx)
+        .put("width_px", viewport.widthPx)
+        .put("height_px", viewport.heightPx)
+        .put("generation_id", viewport.generationId)
+        .toString()
+}
+
+private fun parseStoredCourseMapViewport(value: String?): CourseMapViewport? {
+    if (value.isNullOrBlank()) return null
+    return try {
+        parseCourseMapViewportObject(JSONObject(value))
+    } catch (_: Exception) {
+        null
+    }
+}
+
 internal object RaceEventSnapshotStore {
     private const val PREFS_NAME = "race_setup"
     private const val GENERATION_KEY = "race_snapshot_generation"
+    private const val COURSE_MAP_VIEWPORT_KEY = "race_course_map_viewport_json"
     private val writeLock = Any()
 
     fun loadMatching(
@@ -140,6 +217,9 @@ internal object RaceEventSnapshotStore {
                 runName = prefs.getString("series_run_name", "").orEmpty(),
                 occurrenceNo = prefs.getInt("series_occurrence_no", 0).takeIf { it > 0 },
                 plannedRaceCount = prefs.getInt("series_planned_race_count", 0).takeIf { it > 0 }
+            ),
+            courseMapViewport = parseStoredCourseMapViewport(
+                prefs.getString(COURSE_MAP_VIEWPORT_KEY, "")
             )
         )
 
@@ -235,6 +315,7 @@ internal object RaceEventSnapshotStore {
             .putString("race_info_raw", snapshot.raceInfo)
             .putString("race_course_json_raw", snapshot.courseJson)
             .putBoolean("race_course_shortened_raw", snapshot.courseShortened)
+            .putString(COURSE_MAP_VIEWPORT_KEY, serializeCourseMapViewport(snapshot.courseMapViewport))
             .putBoolean("race_data_ready", true)
             .putLong(GENERATION_KEY, generation)
             .apply()
@@ -259,7 +340,6 @@ private fun jsonObjectAnyStrict(json: JSONObject, keys: List<String>): JSONObjec
     for (key in keys) {
         if (!json.has(key) || json.isNull(key)) continue
         return json.optJSONObject(key)
-            ?: throw IllegalArgumentException("/event field '$key' must be an object")
     }
     return null
 }
