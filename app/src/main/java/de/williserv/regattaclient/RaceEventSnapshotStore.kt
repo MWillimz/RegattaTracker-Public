@@ -147,9 +147,9 @@ internal object RaceEventSnapshotStore {
     }
 
     fun generation(context: Context): Long = synchronized(writeLock) {
-        context.applicationContext
+        val prefs = context.applicationContext
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getLong(GENERATION_KEY, 0L)
+        requestGeneration(prefs)
     }
 
     fun save(
@@ -189,20 +189,27 @@ internal object RaceEventSnapshotStore {
         return synchronized(writeLock) {
             val prefs = context.applicationContext
                 .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            if (prefs.getLong(GENERATION_KEY, 0L) != expectedGeneration) {
+            if (requestGeneration(prefs) != expectedGeneration) {
                 return@synchronized false
             }
 
+            val nextGeneration = prefs.getLong(GENERATION_KEY, 0L) + 1L
             writeSnapshot(
                 prefs = prefs,
                 server = server,
                 event = event,
                 secret = secret,
                 snapshot = snapshot,
-                generation = expectedGeneration + 1L
+                generation = nextGeneration
             )
             true
         }
+    }
+
+    private fun requestGeneration(prefs: SharedPreferences): Long {
+        val snapshotGeneration = prefs.getLong(GENERATION_KEY, 0L)
+        val readyBit = if (prefs.getBoolean("race_data_ready", false)) 1L else 0L
+        return (snapshotGeneration shl 1) or readyBit
     }
 
     private fun writeSnapshot(

@@ -6,6 +6,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
@@ -114,6 +115,74 @@ class ReviewRaceEntryCacheSafetyTest {
     }
 
     @Test
+    fun `clearing ready state invalidates older event response generation`() {
+        val cached = snapshot(
+            status = "planned",
+            courseJson = "{\"marks\":[{\"order\":1,\"name\":\"Cached\"}]}"
+        )
+        RaceEventSnapshotStore.save(
+            context = context,
+            server = SERVER,
+            event = EVENT,
+            secret = SECRET,
+            snapshot = cached
+        )
+        val staleGeneration = RaceEventSnapshotStore.generation(context)
+
+        context.getSharedPreferences("race_setup", Context.MODE_PRIVATE)
+            .edit()
+            .remove("resolved_event_name")
+            .remove("series_run_name")
+            .remove("series_occurrence_no")
+            .remove("series_planned_race_count")
+            .putBoolean("race_data_ready", false)
+            .commit()
+
+        val staleWriteAccepted = RaceEventSnapshotStore.saveIfGenerationUnchanged(
+            context = context,
+            server = SERVER,
+            event = EVENT,
+            secret = SECRET,
+            snapshot = snapshot(
+                status = "started",
+                courseJson = "{\"marks\":[{\"order\":1,\"name\":\"Stale\"}]}"
+            ),
+            expectedGeneration = staleGeneration
+        )
+
+        assertFalse(staleWriteAccepted)
+        val prefs = context.getSharedPreferences("race_setup", Context.MODE_PRIVATE)
+        assertFalse(prefs.getBoolean("race_data_ready", true))
+        assertEquals("", prefs.getString("resolved_event_name", ""))
+
+        val freshGeneration = RaceEventSnapshotStore.generation(context)
+        val replacement = snapshot(
+            status = "started",
+            courseJson = "{\"marks\":[{\"order\":1,\"name\":\"Replacement\"}]}"
+        )
+        val freshWriteAccepted = RaceEventSnapshotStore.saveIfGenerationUnchanged(
+            context = context,
+            server = SECOND_SERVER,
+            event = SECOND_EVENT,
+            secret = SECOND_SECRET,
+            snapshot = replacement.copy(resolvedEventName = SECOND_EVENT),
+            expectedGeneration = freshGeneration
+        )
+
+        assertTrue(freshWriteAccepted)
+        val restored = RaceEventSnapshotStore.loadMatching(
+            context = context,
+            server = SECOND_SERVER,
+            event = SECOND_EVENT,
+            secret = SECOND_SECRET
+        )
+        assertNotNull(restored)
+        assertEquals("started", restored?.status)
+        assertEquals(SECOND_EVENT, restored?.resolvedEventName)
+        assertEquals(replacement.courseJson, restored?.courseJson)
+    }
+
+    @Test
     fun `malformed course response is rejected without replacing valid cache`() {
         val valid = snapshot(
             status = "planned",
@@ -208,5 +277,8 @@ class ReviewRaceEntryCacheSafetyTest {
         const val SERVER = "https://race.example.org"
         const val EVENT = "Test Race"
         const val SECRET = "secret"
+        const val SECOND_SERVER = "https://second.example.org"
+        const val SECOND_EVENT = "Second Race"
+        const val SECOND_SECRET = "second-secret"
     }
 }
