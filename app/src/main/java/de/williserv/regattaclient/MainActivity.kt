@@ -1659,8 +1659,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 eventCompatibilityEnterRaceGeneration = null
 
                 val effectiveEnterRaceGeneration =
-                    enterRaceServerCheckGeneration
-                        ?: associatedEnterRaceGeneration
+                    associatedEnterRaceGeneration
+                        ?: enterRaceServerCheckGeneration
                         ?: enterRaceServerCheckState.currentGeneration()
                             .takeIf { pendingEnterRaceAfterLegal }
                 if (
@@ -1707,8 +1707,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private fun effectiveEnterRaceGenerationForLegalFetch(
         compatibilityContext: EventCompatibilityContext,
         requestedGeneration: Long?
-    ): Long? = requestedGeneration ?: activeLegalFetchEnterRaceGeneration
+    ): Long? = activeLegalFetchEnterRaceGeneration
         .takeIf { activeLegalFetchContext == compatibilityContext }
+        ?: requestedGeneration
 
     private fun fetchRaceLegalTextAfterCompatibility(
         compatibilityContext: EventCompatibilityContext,
