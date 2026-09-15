@@ -340,6 +340,7 @@ private fun jsonObjectAnyStrict(json: JSONObject, keys: List<String>): JSONObjec
     for (key in keys) {
         if (!json.has(key) || json.isNull(key)) continue
         return json.optJSONObject(key)
+            ?: throw IllegalArgumentException("/event field '$key' must be an object")
     }
     return null
 }
