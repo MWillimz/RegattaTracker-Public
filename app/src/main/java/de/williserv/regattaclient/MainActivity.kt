@@ -2103,6 +2103,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             if (remainingSeconds != null && remainingSeconds > 0L) {
                 val minutes = remainingSeconds / 60L
                 val seconds = remainingSeconds % 60L
+
                 startPanelText.value = String.format(Locale.US, "%d:%02d", minutes, seconds)
                 startPanelMode.value = "ocs_countdown"
             } else {
@@ -2570,7 +2571,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                 val snapshot = parseRaceEventSnapshot(body)
                 val json = JSONObject(body)
-                val parsedSeriesDisplayMetadata = parseSeriesDisplayMetadata(json)
                 val parsedStartFlags = parseRaceStartFlags(json)
 
                 runOnUiThread {
@@ -2593,20 +2593,26 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         snapshot = snapshot,
                         expectedGeneration = snapshotGeneration
                     )
-                    if (!persisted) {
-                        return@runOnUiThread
-                    }
+                    val displaySelection = resolveRaceEventDisplaySnapshot(
+                        context = this,
+                        access = access,
+                        incomingSnapshot = snapshot,
+                        incomingPersisted = persisted
+                    ) ?: return@runOnUiThread
+                    val displaySnapshot = displaySelection.snapshot
 
-                    adoptResolvedEventName(snapshot.resolvedEventName)
-                    raceSeriesDisplayMetadata.value = parsedSeriesDisplayMetadata
-                    rawRaceStatus = snapshot.status
-                    rawRaceStart = snapshot.startRaw
-                    rawRaceStop = snapshot.stopRaw
-                    rawRaceInfo = snapshot.raceInfo
-                    rawRaceCourseJson = snapshot.courseJson
-                    rawRaceCourseShortened = snapshot.courseShortened
+                    adoptResolvedEventName(displaySnapshot.resolvedEventName)
+                    raceSeriesDisplayMetadata.value = displaySnapshot.seriesDisplayMetadata
+                    rawRaceStatus = displaySnapshot.status
+                    rawRaceStart = displaySnapshot.startRaw
+                    rawRaceStop = displaySnapshot.stopRaw
+                    rawRaceInfo = displaySnapshot.raceInfo
+                    rawRaceCourseJson = displaySnapshot.courseJson
+                    rawRaceCourseShortened = displaySnapshot.courseShortened
                     raceDataReady.value = true
-                    raceStartFlags.value = parsedStartFlags
+                    if (displaySelection.useIncomingStartFlags) {
+                        raceStartFlags.value = parsedStartFlags
+                    }
                     renderRawRaceSetup()
                     updateStartPanelStatus()
                     updateLocalRaceStatus()
