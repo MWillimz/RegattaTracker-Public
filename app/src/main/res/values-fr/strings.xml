@@ -302,4 +302,9 @@
     <string name="confirm_boat_message">Veuillez confirmer les données du bateau avant d’entrer en course.\n\nNom du bateau : %1$s\nSkipper : %2$s\nNuméro de voile : %3$s\nType de bateau : %4$s\nCouleur de coque : %5$s\nYardstick : %6$s\n\nCes valeurs seront utilisées pour le suivi de course et envoyées au serveur de régate.</string>
     <string name="clear_race_title">Effacer la course ?</string>
     <string name="clear_race_message">Cela supprime la course scannée de cet appareil.\n\nLa configuration du bateau ne sera pas modifiée.\n\nVous devrez scanner à nouveau le QR code avant de vous inscrire ou d’entrer en course.</string>
+
+    <string name="status_no_connection">Pas de connexion</string>
+    <string name="race_first_load_online_required">Données de l’événement indisponibles. Chargez cet événement une fois en ligne avant de l’utiliser sans connexion.</string>
+    <string name="race_response_invalid">Les données de l’événement n’ont pas pu être mises à jour.</string>
+    <string name="race_entry_store_failed">Le point d’entrée en course n’a pas pu être enregistré localement. La course n’a pas été démarrée.</string>
 </resources>

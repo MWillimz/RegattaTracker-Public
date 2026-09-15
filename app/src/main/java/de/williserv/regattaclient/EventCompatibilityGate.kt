@@ -17,6 +17,50 @@ internal data class EventLegalDocumentContext(
     val legalHash: String
 )
 
+internal data class EventRequestContext(
+    val access: EventAccessKey,
+    val generation: Long,
+    val token: Long
+)
+
+internal class EventRequestGate {
+    private var activeRequest: EventRequestContext? = null
+    private var nextToken = 0L
+
+    @Synchronized
+    fun tryStart(access: EventAccessKey, generation: Long): EventRequestContext? {
+        val active = activeRequest
+        if (active != null && active.access == access && active.generation == generation) {
+            return null
+        }
+
+        val request = EventRequestContext(
+            access = access,
+            generation = generation,
+            token = ++nextToken
+        )
+        activeRequest = request
+        return request
+    }
+
+    @Synchronized
+    fun isCurrent(
+        request: EventRequestContext,
+        currentAccess: EventAccessKey?,
+        currentGeneration: Long
+    ): Boolean =
+        activeRequest == request &&
+            request.access == currentAccess &&
+            request.generation == currentGeneration
+
+    @Synchronized
+    fun finish(request: EventRequestContext) {
+        if (activeRequest == request) {
+            activeRequest = null
+        }
+    }
+}
+
 internal class EventLegalFlowState {
     var fetchContext: EventCompatibilityContext? = null
         private set

@@ -67,11 +67,11 @@ fun HomeScreen(
     rowCountText: String,
     uploadStatusText: String,
     pendingUploadCount: Long,
+    noConnection: Boolean = false,
     debugErrorText: String,
     serviceStatusText: String,
     raceStatusCode: String,
     raceStatusDisplayText: String,
-    raceLegalAccepted: Boolean,
     raceEvent: String,
     raceStartText: String,
     raceStopText: String,
@@ -147,8 +147,7 @@ fun HomeScreen(
 
     val uploadColor = uploadStatusColor(
         pendingUploadCount = pendingUploadCount,
-        inRace = inRace,
-        disabledColor = MaterialTheme.colorScheme.outlineVariant
+        noConnection = noConnection
     )
 
     val showCourseShortened =
@@ -240,17 +239,10 @@ fun HomeScreen(
             uploadStatusText = shortUploadStatus(
                 pendingUploadCount = pendingUploadCount,
                 inRace = inRace,
-                raceStatusCode = raceStatusCode,
-                raceDataReady = raceDataReady,
-                raceLegalAccepted = raceLegalAccepted,
-                hasRaceSetup = raceEvent.isNotBlank(),
+                noConnection = noConnection,
                 pendingText = { pending -> resources.getString(R.string.pending_value, pending) },
-                blockedText = stringResource(R.string.status_blocked),
-                offText = stringResource(R.string.status_off),
-                waitingText = stringResource(R.string.status_waiting),
-                readyText = stringResource(R.string.status_ready),
-                idleText = stringResource(R.string.status_idle),
-                okText = stringResource(R.string.ok)
+                okText = stringResource(R.string.ok),
+                noConnectionText = stringResource(R.string.status_no_connection)
             ),
             uploadColor = uploadColor
         )
@@ -310,6 +302,7 @@ fun HomeScreen(
         if (showAdvanced) {
             AdvancedDebugBlock(
                 manualTracking = manualTracking,
+                inRace = inRace,
                 rowCountText = rowCountText,
                 uploadStatusText = advancedUploadStatusText,
                 debugErrorText = debugErrorText,
@@ -772,6 +765,7 @@ fun ActionRow(
         SmallActionButton(
             text = stringResource(R.string.event),
             isOk = inRace || raceFinished,
+            enabled = setupConfirmed,
             modifier = Modifier.weight(
                 if (setupConfirmed) 0.65f else 0.35f
             ),
@@ -842,6 +836,7 @@ fun SmallActionButton(
 @Composable
 fun AdvancedDebugBlock(
     manualTracking: Boolean,
+    inRace: Boolean,
     rowCountText: String,
     uploadStatusText: String,
     debugErrorText: String,
@@ -874,6 +869,7 @@ fun AdvancedDebugBlock(
 
             Button(
                 onClick = onToggleManualTracking,
+                enabled = manualTracking || !inRace,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (manualTracking) {
@@ -962,13 +958,9 @@ fun isRaceFinished(
 
 fun uploadStatusColor(
     pendingUploadCount: Long,
-    inRace: Boolean,
-    disabledColor: Color
+    noConnection: Boolean = false
 ): Color {
-    if (!inRace && pendingUploadCount == 0L) {
-        return disabledColor
-    }
-
+    if (noConnection) return RegattaRed
     return when {
         pendingUploadCount <= 10L -> RegattaGreen
         pendingUploadCount <= 50L -> RegattaOrange
@@ -979,34 +971,20 @@ fun uploadStatusColor(
 fun shortUploadStatus(
     pendingUploadCount: Long,
     inRace: Boolean,
-    raceStatusCode: String,
-    raceDataReady: Boolean,
-    raceLegalAccepted: Boolean,
-    hasRaceSetup: Boolean,
     pendingText: (Long) -> String,
-    blockedText: String,
-    offText: String,
-    waitingText: String,
-    readyText: String,
-    idleText: String,
-    okText: String
+    okText: String,
+    noConnection: Boolean = false,
+    noConnectionText: String = "No connection"
 ): String {
-    if (!inRace) {
-        if (pendingUploadCount > 0L) {
-            return pendingText(pendingUploadCount)
-        }
-
-        return when {
-            hasRaceSetup && !raceLegalAccepted -> blockedText
-            !raceDataReady -> offText
-            raceStatusCode.equals("planned", ignoreCase = true) -> waitingText
-            raceStatusCode.equals("racing", ignoreCase = true) -> readyText
-            raceStatusCode.equals("started", ignoreCase = true) -> readyText
-            else -> idleText
+    if (noConnection) {
+        return if (pendingUploadCount > 0L) {
+            "$noConnectionText · ${pendingText(pendingUploadCount)}"
+        } else {
+            noConnectionText
         }
     }
-
-    return if (pendingUploadCount <= 10L) okText else "$pendingUploadCount"
+    if (!inRace && pendingUploadCount > 0L) return pendingText(pendingUploadCount)
+    return if (inRace && pendingUploadCount > 10L) "$pendingUploadCount" else okText
 }
 
 fun raceStatusColor(
