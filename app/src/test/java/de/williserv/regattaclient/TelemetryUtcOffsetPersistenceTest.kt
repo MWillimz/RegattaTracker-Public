@@ -53,7 +53,7 @@ class TelemetryUtcOffsetPersistenceTest {
         assertEquals(41L, pending.localId)
         assertEquals("Event A", pending.accessContext.accessIdentifier)
         assertNull(pending.utcOffsetMinutes)
-        assertTrue(helper.exportAllAsCsv().contains("41"))
+        assertTrue(helper.exportAllAsCsv().contains("LEGACY-A"))
         assertTrue(helper.exportAllAsCsv().contains("\"2026-08-24T12:00:00\",,"))
     }
 
