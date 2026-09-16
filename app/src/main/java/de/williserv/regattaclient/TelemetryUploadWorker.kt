@@ -112,6 +112,7 @@ internal fun getTelemetryUploadPage(
             samples.battery_percent,
             samples.battery_charging,
             samples.tracking_profile,
+            samples.utc_offset_minutes,
             contexts.id,
             contexts.server_url,
             contexts.access_identifier,
@@ -130,12 +131,12 @@ internal fun getTelemetryUploadPage(
     ).use { cursor ->
         while (cursor.moveToNext()) {
             val accessContext = AccessContext(
-                id = cursor.getLong(23),
-                serverUrl = cursor.getString(24),
-                accessIdentifier = cursor.getString(25),
-                accessSecret = cursor.getString(26),
-                createdAt = cursor.getLong(27),
-                lastUsedAt = cursor.getLong(28)
+                id = cursor.getLong(24),
+                serverUrl = cursor.getString(25),
+                accessIdentifier = cursor.getString(26),
+                accessSecret = cursor.getString(27),
+                createdAt = cursor.getLong(28),
+                lastUsedAt = cursor.getLong(29)
             )
 
             result += PendingTrackingSample(
@@ -162,7 +163,8 @@ internal fun getTelemetryUploadPage(
                 gyroZ = cursor.getFloat(19),
                 batteryPercent = if (cursor.isNull(20)) null else cursor.getInt(20),
                 batteryCharging = if (cursor.isNull(21)) null else cursor.getInt(21) != 0,
-                trackingProfile = if (cursor.isNull(22)) null else cursor.getString(22)
+                trackingProfile = if (cursor.isNull(22)) null else cursor.getString(22),
+                utcOffsetMinutes = if (cursor.isNull(23)) null else cursor.getInt(23)
             )
         }
     }
@@ -210,6 +212,7 @@ internal fun buildTelemetryUploadPayload(
 ): JSONObject = JSONObject().apply {
     put("sequence_id", sample.sequenceId)
     put("timestamp", sample.timestamp)
+    sample.utcOffsetMinutes?.let { put("utc_offset_minutes", it) }
     put("client_version_code", client.versionCode)
     put("client_build_id", client.buildId)
     put("boat_name", sample.boatName)
