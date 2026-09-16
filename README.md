@@ -1,228 +1,89 @@
-# Regatta Tracker
+<p align="center">
+  <img src="app/src/main/ic_launcher-playstore.png" alt="Regatta Tracker" width="120" />
+</p>
 
-Regatta Tracker is an Android app for sailors participating in a tracked regatta. It records GPS-based race progress, detects start-line state including OCS, shows the current course target, and can upload tracking samples to the configured race server.
+<h1 align="center">Regatta Tracker</h1>
 
-## What the app does
+<p align="center">
+  <strong>Open-source Android race companion for tracked sailing regattas.</strong><br />
+  Android 11+ · Kotlin · Jetpack Compose · GPL-3.0-or-later
+</p>
 
-- Stores boat setup locally.
-- Loads race and course data from a race server.
-- Starts race tracking after explicit confirmation.
-- Shows countdown before the start.
-- Shows OCS clearly when detected.
-- Shows the next target and distance on the home screen.
-- Shows the course description and course map.
-- Uploads race tracking samples during a race.
-- Keeps manual training data local.
-- Provides export and local data cleanup tools in Advanced.
+Regatta Tracker is the participant-side Android client for GPS-supported sailing regattas. It connects to a compatible regatta server, keeps the sailor informed before and during a race, records telemetry locally, and uploads race data when a server connection is available.
 
-## First start
+The client is intentionally server-agnostic: the reference server is maintained separately and is not part of this repository.
 
-On first use, Android will ask for location permission. The app also asks for explicit GPS tracking consent before starting race tracking or manual tracking.
+## Highlights
 
-These are separate confirmations:
+- **Event onboarding** via QR code or shared event link, including race data, server information and event-specific legal/race notices.
+- **Boat setup and race registration** with a clear distinction between registering with the race committee and actually entering the race.
+- **Race entry close to the start**: `Enter Race` becomes available 24 hours before the scheduled start.
+- **On-water race awareness** with start countdown, optional acoustic start/finish signals, OCS indication, next target, distance, course progress and finish detection.
+- **Course information and map** supplied by the connected server.
+- **Published results** directly in the app when the event server provides them.
+- **Reliable telemetry handling**: samples are stored locally first and pending uploads are retried when connectivity returns.
+- **Tracking profiles** including a Battery Saver mode that reduces tracking resolution away from relevant course elements.
+- **Manual tracking and CSV export** for local recording outside a race; manual sessions are not uploaded automatically.
+- **Localized UI** in English, German, French, Spanish and Italian.
 
-- Android location permission
-- GPS tracking consent inside the app
+> Regatta Tracker provides participant-side tracking and live feedback. Official race evaluation and scoring remain the responsibility of the event server and race committee.
 
-Both are required for race tracking.
+## Typical race workflow
 
-## Basic workflow
+1. **Set up the boat** with sail number, skipper and boat details.
+2. **Load an event** from a QR code, shared link or compatible server configuration.
+3. **Review the event information** and accept the race notice when required.
+4. **Register with the race committee** when supported. This is a pre-registration only and does not start tracking.
+5. **Enter the race** within 24 hours of the scheduled start. Race tracking then runs as an Android foreground location service.
+6. **Follow the race** using countdown, OCS/start state, course progress, map and current target information while telemetry is queued and uploaded.
+7. **Finish or retire** explicitly. Published results can be viewed in the app when available.
 
-### 1. Boat setup
+## Connectivity and offline behavior
 
-Open:
+Tracking data is written to the device before upload. Temporary loss of connectivity therefore does not discard already recorded samples; pending race telemetry is retried later.
 
-```text
-Setup → Boat
+Local race state is also persisted so the app can recover useful UI state after an app or phone restart. This cannot reconstruct movement that happened while the phone was switched off, and a mark passed while no position was recorded cannot be detected retroactively.
+
+## Compatible servers
+
+Regatta Tracker is designed to work with compatible HTTPS regatta servers rather than one hard-coded backend. A server supplies the event/course data and may additionally provide race notices, operator/legal information, course maps, results and client compatibility metadata.
+
+The current protocol and endpoint details are documented in [DOCUMENTATION.md](DOCUMENTATION.md).
+
+## Privacy and data handling
+
+The app processes location, boat and technical telemetry required for tracking. Race telemetry may be sent to the server configured for the active event; the operator of that server is responsible for its server-side processing and retention.
+
+Manual training sessions remain local unless the user exports them. QR camera frames are processed locally for scanning and are not intentionally stored or uploaded. App-local credentials and tracking data are excluded from Android backup/device-transfer mechanisms.
+
+See the [privacy policy](docs/privacy/) for the full user-facing information.
+
+## Building from source
+
+The project is a standard Gradle Android application using Kotlin and Jetpack Compose.
+
+```bash
+./gradlew test
+./gradlew assembleDebug
 ```
 
-Enter and confirm:
+The current build targets Android API 36 and supports Android 11 (API 30) and newer. Release signing is configured separately and is not required for a debug build.
 
-- Boat name
-- Skipper
-- Hull color
-- Sail number
-- Boat type
-- Yardstick
+For implementation details, API behavior, persistence and race-state logic, see [DOCUMENTATION.md](DOCUMENTATION.md).
 
-After pressing **Confirm Setup**, the Boat button on the home screen turns blue.
-
-Boat setup is locked while a race is running, so the server does not receive changing boat data during a race.
-
-### 2. Race setup
-
-Open:
+## Repository layout
 
 ```text
-Setup → Race
+app/                    Android application
+app/src/main/           App source and resources
+app/src/test/           Unit and regression tests
+docs/                   Privacy and supporting documentation
+DOCUMENTATION.md        Technical/API documentation
+THIRD_PARTY_NOTICES.md  Third-party notices
 ```
-
-Use **Scan QR Code** or enter manually:
-
-- Server URL
-- Event
-- Secret
-
-Then press **Load race data**.
-
-When valid race data has been loaded, **Enter Race** becomes available. If boat setup is not confirmed or race data is invalid, Enter Race stays disabled.
-
-### 3. Enter race
-
-When pressing **Enter Race**, the app shows a confirmation dialog with the current boat data.
-
-Confirm only if the displayed boat data is correct.
-
-After entering the race:
-
-- tracking starts,
-- race data is refreshed regularly,
-- upload starts,
-- boat setup and race setup are locked.
-
-### 4. During the race
-
-The home screen shows:
-
-- GPS status
-- Race status / start time
-- Upload state
-- Next target
-- Distance to the next target
-- Race information, if available
-- Course shortened warning, if applicable
-
-The app detects:
-
-- pre-start OCS
-- start-line crossing
-- passed marks
-- finish-line crossing
-
-### 5. Retire / Finish
-
-In the Race screen, **Retire / Finish** stops race tracking.
-
-Use this only if:
-
-- you have finished, or
-- you are retiring from the race.
-
-The app shows a warning before stopping tracking.
-
-## Home screen states
-
-### Setup buttons
-
-- **Boat** is yellow until boat setup is confirmed.
-- **Boat** is locked during a race.
-- **Race** is yellow until the app has entered the race.
-- **Race** turns blue when the race is active.
-
-### Upload
-
-- `off`: not in race, no upload expected.
-- `OK`: in race, no relevant upload backlog.
-- number: pending upload samples.
-
-### Map and Course
-
-After valid race data is loaded, the event section shows:
-
-```text
-Event: <event name>
-[Course] [Map]
-```
-
-- **Course** shows the course description.
-- **Map** shows the static race map image from the server.
-
-## Advanced
-
-Advanced contains technical tools:
-
-- Start/Stop Manual Tracking
-- Upload pending status
-- Stored rows
-- Last error
-- Export Session
-- Clear Old Data
-
-Manual tracking data is stored locally and is not automatically uploaded.
-
-## Legal / About
-
-The app includes:
-
-- Legal Notice
-- Privacy Policy
-- License Notices
-- Version
-- Build date
-
-Map/geodata attribution is shown there and should also be visible in generated map images.
-
-## Data persistence
-
-The app stores locally:
-
-- confirmed boat setup
-- race setup
-- last valid race data
-- local race UI state, such as passed marks and OCS state
-- tracking samples until exported or deleted
-
-This allows recovery after app or phone restart.
-
-Limit: if the phone is off while a mark is passed, the app cannot detect that passage retroactively. It can only restore the last known local race state.
-
-## Troubleshooting
-
-### Enter Race is disabled
-
-Check:
-
-- Boat setup is confirmed.
-- Race data was loaded successfully.
-- Event name, server URL, and secret are correct.
-
-### Upload is not working
-
-Open Advanced and check:
-
-- Pending
-- Last error
-
-Common causes:
-
-- wrong server URL
-- wrong endpoint
-- wrong event name
-- wrong shared secret
-- server not reachable
-- API version mismatch
-
-### Map does not load
-
-Check:
-
-- Race data is loaded.
-- Server supports `/course-map`.
-- Secret and event name are correct.
-- Server returns `image/png`.
-
-### GPS is bad
-
-Go outside or improve phone sky visibility. Poor GPS accuracy can delay start-line, mark, and finish detection. Do not leave your phone inside, GPS signal will be degraded!
-
-## Notes
-
-This app is intended as a race participant client. It is not a race committee scoring system by itself.
 
 ## License
 
-The Android app in this repository is licensed under the GNU General Public License v3.0 or later.
+Regatta Tracker is licensed under the [GNU General Public License v3.0 or later](LICENSE).
 
-The app can be configured to use any compatible server. The reference/private server is not part of this repository.
-
-See [LICENSE](LICENSE).
+Third-party components keep their respective licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the notices bundled with the app.
