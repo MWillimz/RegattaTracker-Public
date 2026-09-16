@@ -120,8 +120,7 @@ fun MapScreen(
         } else {
             val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
             val permissionGranted =
-                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
-                    ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
             if (!permissionGranted) {
                 onDispose { }
@@ -132,21 +131,13 @@ fun MapScreen(
                     }
                 }
 
-                val providers = listOf(
-                    LocationManager.GPS_PROVIDER,
-                    LocationManager.NETWORK_PROVIDER
-                ).filter { provider ->
-                    try {
-                        locationManager.isProviderEnabled(provider)
-                    } catch (_: Exception) {
-                        false
-                    }
-                }
-
                 try {
-                    providers.forEach { provider ->
-                        locationManager.requestLocationUpdates(provider, 1_000L, 0f, listener)
-                    }
+                    locationManager.requestLocationUpdates(
+                        LocationManager.GPS_PROVIDER,
+                        1_000L,
+                        0f,
+                        listener
+                    )
                 } catch (_: SecurityException) {
                     // Permission may have been revoked between the check and registration.
                 }
