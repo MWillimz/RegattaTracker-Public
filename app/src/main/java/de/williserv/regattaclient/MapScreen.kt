@@ -1,13 +1,8 @@
 package de.williserv.regattaclient
 
-import android.Manifest
 import android.content.Context
-import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.location.Location
-import android.location.LocationListener
-import android.location.LocationManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -23,7 +18,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,7 +39,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -85,7 +78,7 @@ fun MapScreen(
     val errorState = remember { mutableStateOf<String?>(null) }
     val loadingState = remember { mutableStateOf(true) }
     val overlayEnabledState = remember { mutableStateOf(false) }
-    val latestLocation = remember { mutableStateOf<Location?>(null) }
+    val latestLocation = remember { mutableStateOf<android.location.Location?>(null) }
     val containerSize = remember { mutableStateOf(IntSize.Zero) }
     val scale = remember { mutableStateOf(1f) }
     val offset = remember { mutableStateOf(Offset.Zero) }
@@ -114,27 +107,33 @@ fun MapScreen(
 
     val mapCouldNotBeLoaded = stringResource(R.string.map_could_not_be_loaded)
 
-    DisposableEffect(context, snapshotContext) {
+    androidx.compose.runtime.DisposableEffect(context, snapshotContext) {
         if (snapshotContext == null) {
             onDispose { }
         } else {
-            val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+            val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
             val permissionGranted =
-                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
-                    ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context,
+                    android.Manifest.permission.ACCESS_FINE_LOCATION
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
+                    androidx.core.content.ContextCompat.checkSelfPermission(
+                        context,
+                        android.Manifest.permission.ACCESS_COARSE_LOCATION
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
             if (!permissionGranted) {
                 onDispose { }
             } else {
-                val listener = object : LocationListener {
-                    override fun onLocationChanged(location: Location) {
+                val listener = object : android.location.LocationListener {
+                    override fun onLocationChanged(location: android.location.Location) {
                         latestLocation.value = location
                     }
                 }
 
                 val providers = listOf(
-                    LocationManager.GPS_PROVIDER,
-                    LocationManager.NETWORK_PROVIDER
+                    android.location.LocationManager.GPS_PROVIDER,
+                    android.location.LocationManager.NETWORK_PROVIDER
                 ).filter { provider ->
                     try {
                         locationManager.isProviderEnabled(provider)
@@ -144,14 +143,6 @@ fun MapScreen(
                 }
 
                 try {
-                    providers.mapNotNull { provider ->
-                        try {
-                            locationManager.getLastKnownLocation(provider)
-                        } catch (_: SecurityException) {
-                            null
-                        }
-                    }.maxByOrNull { it.time }?.let { latestLocation.value = it }
-
                     providers.forEach { provider ->
                         locationManager.requestLocationUpdates(provider, 1_000L, 0f, listener)
                     }
