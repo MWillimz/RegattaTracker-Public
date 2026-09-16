@@ -31,7 +31,8 @@ class TelemetryMetadataPayloadTest {
             sample = sample(
                 batteryPercent = 73,
                 batteryCharging = false,
-                trackingProfile = "battery_saver"
+                trackingProfile = "battery_saver",
+                utcOffsetMinutes = null
             ),
             client = client
         )
@@ -47,7 +48,8 @@ class TelemetryMetadataPayloadTest {
             sample = sample(
                 batteryPercent = null,
                 batteryCharging = null,
-                trackingProfile = null
+                trackingProfile = null,
+                utcOffsetMinutes = null
             ),
             client = client
         )
@@ -55,12 +57,45 @@ class TelemetryMetadataPayloadTest {
         assertFalse(payload.has("battery_percent"))
         assertFalse(payload.has("battery_charging"))
         assertFalse(payload.has("tracking_profile"))
+        assertFalse(payload.has("utc_offset_minutes"))
+    }
+
+    @Test
+    fun `persisted utc offset is uploaded unchanged`() {
+        val payload = buildTelemetryUploadPayload(
+            sample = sample(
+                batteryPercent = null,
+                batteryCharging = null,
+                trackingProfile = null,
+                utcOffsetMinutes = 120
+            ),
+            client = client
+        )
+
+        assertEquals(120, payload.getInt("utc_offset_minutes"))
+        assertEquals("2026-09-05T00:00:00", payload.getString("timestamp"))
+    }
+
+    @Test
+    fun `negative utc offset is uploaded unchanged`() {
+        val payload = buildTelemetryUploadPayload(
+            sample = sample(
+                batteryPercent = null,
+                batteryCharging = null,
+                trackingProfile = null,
+                utcOffsetMinutes = -300
+            ),
+            client = client
+        )
+
+        assertEquals(-300, payload.getInt("utc_offset_minutes"))
     }
 
     private fun sample(
         batteryPercent: Int?,
         batteryCharging: Boolean?,
-        trackingProfile: String?
+        trackingProfile: String?,
+        utcOffsetMinutes: Int?
     ) = PendingTrackingSample(
         localId = 1L,
         accessContext = accessContext,
@@ -85,6 +120,7 @@ class TelemetryMetadataPayloadTest {
         gyroZ = 0f,
         batteryPercent = batteryPercent,
         batteryCharging = batteryCharging,
-        trackingProfile = trackingProfile
+        trackingProfile = trackingProfile,
+        utcOffsetMinutes = utcOffsetMinutes
     )
 }
