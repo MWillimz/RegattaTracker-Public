@@ -20,11 +20,16 @@ data class CourseMapMark(
 internal fun buildCourseMapImageUrl(
     baseUrl: String,
     eventName: String,
-    view: CourseMapView? = null
+    view: CourseMapView? = null,
+    generationId: String? = null
 ): String {
     val normalizedBaseUrl = baseUrl.trimEnd('/')
     val encodedEvent = URLEncoder.encode(eventName, "UTF-8")
-    val base = "$normalizedBaseUrl/${if (view == null) "course-map" else "course-map-detail"}?event_name=$encodedEvent"
+    var base = "$normalizedBaseUrl/${if (view == null) "course-map" else "course-map-detail"}?event_name=$encodedEvent"
+
+    if (view == null && !generationId.isNullOrBlank()) {
+        base += "&generation_id=${URLEncoder.encode(generationId, "UTF-8")}"
+    }
 
     return when (view) {
         null -> base
@@ -32,6 +37,16 @@ internal fun buildCourseMapImageUrl(
         is CourseMapView.Mark -> "$base&view=mark&order=${view.order}"
         CourseMapView.Finish -> "$base&view=finish"
     }
+}
+
+internal fun bindCourseMapGeneration(
+    mapImageUrl: String,
+    generationId: String?
+): String {
+    if (generationId.isNullOrBlank()) return mapImageUrl
+    val separator = if ('?' in mapImageUrl) '&' else '?'
+    return "$mapImageUrl$separator" +
+        "generation_id=${URLEncoder.encode(generationId, "UTF-8")}"
 }
 
 internal fun shouldFallbackToCourseOverview(statusCode: Int?): Boolean {

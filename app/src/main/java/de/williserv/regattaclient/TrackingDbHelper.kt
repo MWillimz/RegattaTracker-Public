@@ -30,7 +30,8 @@ data class PendingTrackingSample(
     val gyroZ: Float,
     val batteryPercent: Int? = null,
     val batteryCharging: Boolean? = null,
-    val trackingProfile: String? = null
+    val trackingProfile: String? = null,
+    val utcOffsetMinutes: Int? = null
 )
 
 data class AccessContext(
@@ -78,7 +79,7 @@ internal fun normalizeAccessContextKey(
 }
 
 class TrackingDbHelper(context: Context) :
-    SQLiteOpenHelper(context, "regatta_tracking.db", null, 5) {
+    SQLiteOpenHelper(context, "regatta_tracking.db", null, 6) {
 
     private val appContext = context.applicationContext
     private var lastBatteryReadAtMs: Long? = null
@@ -101,6 +102,9 @@ class TrackingDbHelper(context: Context) :
         }
         if (oldVersion < 5 && newVersion >= 5) {
             migrateToVersion5(db)
+        }
+        if (oldVersion < 6 && newVersion >= 6) {
+            migrateToVersion6(db)
         }
     }
 
@@ -226,6 +230,7 @@ class TrackingDbHelper(context: Context) :
                 samples.battery_percent,
                 samples.battery_charging,
                 samples.tracking_profile,
+                samples.utc_offset_minutes,
                 contexts.id,
                 contexts.server_url,
                 contexts.access_identifier,
@@ -243,12 +248,12 @@ class TrackingDbHelper(context: Context) :
         ).use { cursor ->
             while (cursor.moveToNext()) {
                 val accessContext = AccessContext(
-                    id = cursor.getLong(23),
-                    serverUrl = cursor.getString(24),
-                    accessIdentifier = cursor.getString(25),
-                    accessSecret = cursor.getString(26),
-                    createdAt = cursor.getLong(27),
-                    lastUsedAt = cursor.getLong(28)
+                    id = cursor.getLong(24),
+                    serverUrl = cursor.getString(25),
+                    accessIdentifier = cursor.getString(26),
+                    accessSecret = cursor.getString(27),
+                    createdAt = cursor.getLong(28),
+                    lastUsedAt = cursor.getLong(29)
                 )
 
                 result.add(
@@ -276,7 +281,8 @@ class TrackingDbHelper(context: Context) :
                         gyroZ = cursor.getFloat(19),
                         batteryPercent = if (cursor.isNull(20)) null else cursor.getInt(20),
                         batteryCharging = if (cursor.isNull(21)) null else cursor.getInt(21) != 0,
-                        trackingProfile = if (cursor.isNull(22)) null else cursor.getString(22)
+                        trackingProfile = if (cursor.isNull(22)) null else cursor.getString(22),
+                        utcOffsetMinutes = if (cursor.isNull(23)) null else cursor.getInt(23)
                     )
                 )
             }
@@ -308,7 +314,8 @@ class TrackingDbHelper(context: Context) :
         batteryPercent: Int? = null,
         batteryCharging: Boolean? = null,
         trackingProfile: String? = null,
-        accessContextId: Long? = null
+        accessContextId: Long? = null,
+        utcOffsetMinutes: Int? = null
     ): Long {
         val nowMs = System.currentTimeMillis()
         val shouldReadBattery = batteryPercent == null &&
@@ -362,6 +369,7 @@ class TrackingDbHelper(context: Context) :
             if (effectiveBatteryPercent != null) put("battery_percent", effectiveBatteryPercent) else putNull("battery_percent")
             if (effectiveBatteryCharging != null) put("battery_charging", if (effectiveBatteryCharging) 1 else 0) else putNull("battery_charging")
             if (automaticProfile != null) put("tracking_profile", automaticProfile) else putNull("tracking_profile")
+            if (utcOffsetMinutes != null) put("utc_offset_minutes", utcOffsetMinutes) else putNull("utc_offset_minutes")
 
             if (accessContextId != null) {
                 put("access_context_id", accessContextId)
@@ -448,16 +456,17 @@ class TrackingDbHelper(context: Context) :
 
     fun exportAllAsCsv(): String {
         val header =
-            "sequence_id,timestamp,boat_name,captain_name,hull_color,sail_number,yardstick,boat_type,lat,lon,accuracy,cog,sog,accel_x,accel_y,accel_z,gyro_x,gyro_y,gyro_z\n"
+            "sequence_id,timestamp,utc_offset_minutes,boat_name,captain_name,hull_color,sail_number,yardstick,boat_type,lat,lon,accuracy,cog,sog,accel_x,accel_y,accel_z,gyro_x,gyro_y,gyro_z\n"
 
         val builder = StringBuilder()
         builder.append(header)
 
         readableDatabase.rawQuery(
             """
-            SELECT 
+            SELECT
                 sequence_id,
                 timestamp,
+                utc_offset_minutes,
                 boat_name,
                 captain_name,
                 hull_color,
@@ -481,19 +490,20 @@ class TrackingDbHelper(context: Context) :
             null
         ).use { cursor ->
             while (cursor.moveToNext()) {
+                val utcOffset = if (cursor.isNull(2)) "" else cursor.getInt(2).toString()
                 builder.append(
                     String.format(
                         Locale.US,
-                        "%d,%s,%s,%s,%s,%s,%.2f,%s,%.7f,%.7f,%.2f,%.2f,%.2f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\n",
+                        "%d,%s,%s,%s,%s,%s,%s,%.2f,%s,%.7f,%.7f,%.2f,%.2f,%.2f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\n",
                         cursor.getLong(0),
                         csvEscape(cursor.getString(1)),
-                        csvEscape(cursor.getString(2)),
+                        utcOffset,
                         csvEscape(cursor.getString(3)),
                         csvEscape(cursor.getString(4)),
                         csvEscape(cursor.getString(5)),
-                        cursor.getDouble(6),
-                        csvEscape(cursor.getString(7)),
-                        cursor.getDouble(8),
+                        csvEscape(cursor.getString(6)),
+                        cursor.getDouble(7),
+                        csvEscape(cursor.getString(8)),
                         cursor.getDouble(9),
                         cursor.getDouble(10),
                         cursor.getDouble(11),
@@ -503,7 +513,8 @@ class TrackingDbHelper(context: Context) :
                         cursor.getDouble(15),
                         cursor.getDouble(16),
                         cursor.getDouble(17),
-                        cursor.getDouble(18)
+                        cursor.getDouble(18),
+                        cursor.getDouble(19)
                     )
                 )
             }
@@ -543,6 +554,17 @@ class TrackingDbHelper(context: Context) :
         }
         if (!columnExists(db, "tracking_samples", "tracking_profile")) {
             db.execSQL("ALTER TABLE tracking_samples ADD COLUMN tracking_profile TEXT")
+        }
+    }
+
+    private fun migrateToVersion6(db: SQLiteDatabase) {
+        if (!tableExists(db, "tracking_samples")) {
+            createTrackingSamplesTable(db)
+            return
+        }
+
+        if (!columnExists(db, "tracking_samples", "utc_offset_minutes")) {
+            db.execSQL("ALTER TABLE tracking_samples ADD COLUMN utc_offset_minutes INTEGER")
         }
     }
 
@@ -590,7 +612,8 @@ class TrackingDbHelper(context: Context) :
                 access_context_id INTEGER,
                 battery_percent INTEGER,
                 battery_charging INTEGER,
-                tracking_profile TEXT
+                tracking_profile TEXT,
+                utc_offset_minutes INTEGER
             )
             """.trimIndent()
         )

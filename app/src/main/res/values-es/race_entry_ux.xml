@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="register_with_race_committee">Registrarse con el comité de regata</string>
+    <string name="registered_with_race_committee">Registrado con el comité de regata</string>
+    <string name="remember_enter_race">Recuerda pulsar « Entrar en regata » antes de salir del muelle.</string>
+    <string name="enter_race_available_24h">« Entrar en regata » estará disponible 24 horas antes de la salida.</string>
+</resources>

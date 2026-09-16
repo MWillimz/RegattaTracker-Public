@@ -18,10 +18,7 @@ internal object RaceRegistrationPolicy {
     )
 
     fun registrationTimestamp(serverStartTime: String?): String? {
-        val start = serverStartTime
-            ?.trim()
-            ?.takeIf { it.isNotBlank() && it != "--" }
-            ?: return null
+        val start = normalizedStartTime(serverStartTime) ?: return null
 
         parseOffsetDateTime(start)?.let { parsed ->
             return parsed
@@ -37,6 +34,11 @@ internal object RaceRegistrationPolicy {
 
         return null
     }
+
+    private fun normalizedStartTime(serverStartTime: String?): String? =
+        serverStartTime
+            ?.trim()
+            ?.takeIf { it.isNotBlank() && it != "--" }
 
     private fun parseOffsetDateTime(value: String): OffsetDateTime? {
         return try {
