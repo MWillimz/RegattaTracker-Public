@@ -144,14 +144,6 @@ fun MapScreen(
                 }
 
                 try {
-                    providers.mapNotNull { provider ->
-                        try {
-                            locationManager.getLastKnownLocation(provider)
-                        } catch (_: SecurityException) {
-                            null
-                        }
-                    }.maxByOrNull { it.time }?.let { latestLocation.value = it }
-
                     providers.forEach { provider ->
                         locationManager.requestLocationUpdates(provider, 1_000L, 0f, listener)
                     }
