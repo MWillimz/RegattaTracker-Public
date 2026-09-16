@@ -1014,7 +1014,11 @@ class RegattaTrackingService : Service(), SensorEventListener {
     private fun generateAndStoreSample() {
         sequenceId += 1
 
-        val timestamp = LocalDateTime.now().format(localTimestampFormatter)
+        val sampleTime = telemetrySampleTime(
+            now = OffsetDateTime.now(),
+            formatter = localTimestampFormatter
+        )
+        val timestamp = sampleTime.timestamp
         val location = lastLocation
         val lat = location?.latitude ?: 0.0
         val lon = location?.longitude ?: 0.0
@@ -1065,7 +1069,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
             gyroX = gyroX,
             gyroY = gyroY,
             gyroZ = gyroZ,
-            accessContextId = sampleAccessContextId
+            accessContextId = sampleAccessContextId,
+            utcOffsetMinutes = sampleTime.utcOffsetMinutes
         )
 
         if (insertedId == -1L) return
