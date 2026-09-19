@@ -160,6 +160,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation("androidx.fragment:fragment:1.8.9")
     implementation("androidx.work:work-runtime:2.11.2")
     testImplementation(libs.junit)
     testImplementation("org.robolectric:robolectric:4.16.1")
