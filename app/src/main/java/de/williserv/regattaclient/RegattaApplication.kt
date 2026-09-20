@@ -8,6 +8,6 @@ class RegattaApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         raceSignalController = RaceSignalController(this).also { it.start() }
-        TelemetryUploadScheduler.enqueueIfNeeded(this)
+        TelemetryUploadScheduler.enqueueRecoveryIfNeeded(this)
     }
 }
