@@ -82,6 +82,8 @@ fun HomeScreen(
     currentTargetText: String,
     progressText: String,
     boatRaceStatusText: String,
+    retirementReported: Boolean,
+    retirementStatusText: String,
     raceDataReady: Boolean,
     dtlText: String,
     ttlText: String,
@@ -194,6 +196,18 @@ fun HomeScreen(
         }
 
         if (inRace) {
+            if (retirementReported) {
+                RetirementTrackingNotice()
+                Spacer(modifier = Modifier.height(HomeGapMedium))
+            }
+            if (retirementStatusText.isNotBlank()) {
+                Text(
+                    text = retirementStatusText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(HomeGapMedium))
+            }
+
             TargetCard(
                 currentTargetText = currentTargetText,
                 progressText = progressText,

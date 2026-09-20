@@ -23,6 +23,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
@@ -186,7 +187,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private val showClearConfirmDialog = mutableStateOf(false)
     private val showOcsDecisionDialog = mutableStateOf(false)
-    private val showLeaveRaceWarningDialog = mutableStateOf(false)
+    private val showLeaveRaceOptionsDialog = mutableStateOf(false)
+    private val showRetireConfirmDialog = mutableStateOf(false)
+    private val retirementReported = mutableStateOf(false)
+    private val retirementStatusText = mutableStateOf("")
+    private val retirementRequestInFlight = mutableStateOf(false)
     private val showAdvanced = mutableStateOf(false)
 
     private val cogText = mutableStateOf("")
@@ -342,6 +347,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         loadBoatSetup()
         loadRaceSetup()
         loadAppState()
+        refreshRetirementReportedState()
 
         updateStorageText()
         updateLocalRaceStatus()
@@ -386,6 +392,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             currentTargetText = currentTargetText.value,
                             progressText = progressText.value,
                             boatRaceStatusText = boatRaceStatusText.value,
+                            retirementReported = retirementReported.value,
+                            retirementStatusText = retirementStatusText.value,
                             raceDataReady = raceDataReady.value,
                             dtlText = dtlText.value,
                             ttlText = ttlText.value,
@@ -519,6 +527,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                     boatType.value = values.boatType
                                     setupConfirmed.value = true
                                     saveBoatSetup()
+                                    refreshRetirementReportedState()
 
                                     if (manualTracking.value) {
                                         startRegattaForegroundService(manualMode = true)
@@ -555,6 +564,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             raceFinishLineText = raceFinishLineText.value,
                             raceMarksText = raceMarksText.value,
                             raceRegistered = raceRegistered.value,
+                            retirementReported = retirementReported.value,
+                            retirementStatusText = retirementStatusText.value,
                             currentTargetText = currentTargetText.value,
                             progressText = progressText.value,
                             raceInfoText = raceInfoText.value,
@@ -587,7 +598,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                 requestEnterRaceAfterLocalChecks()
                             },
                             onLeaveRace = {
-                                showLeaveRaceWarningDialog.value = true
+                                showLeaveRaceOptionsDialog.value = true
                             },
                             onRegisterRace = {
                                 registerForRace()
@@ -679,14 +690,31 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     )
                 }
 
-                if (showLeaveRaceWarningDialog.value) {
-                    LeaveRaceWarningDialog(
-                        onConfirm = {
-                            showLeaveRaceWarningDialog.value = false
+                if (showLeaveRaceOptionsDialog.value) {
+                    LeaveRaceOptionsDialog(
+                        retireEnabled = !retirementRequestInFlight.value,
+                        onRetire = {
+                            showLeaveRaceOptionsDialog.value = false
+                            showRetireConfirmDialog.value = true
+                        },
+                        onLeaveRace = {
+                            showLeaveRaceOptionsDialog.value = false
                             leaveRace()
                         },
                         onCancel = {
-                            showLeaveRaceWarningDialog.value = false
+                            showLeaveRaceOptionsDialog.value = false
+                        }
+                    )
+                }
+
+                if (showRetireConfirmDialog.value) {
+                    RetireConfirmDialog(
+                        onConfirm = {
+                            showRetireConfirmDialog.value = false
+                            reportRetirement()
+                        },
+                        onCancel = {
+                            showRetireConfirmDialog.value = false
                         }
                     )
                 }
@@ -1106,6 +1134,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private fun clearResolvedEventContextForAccessChange() {
         resetEventCompatibilityState()
         resolvedEventName.value = ""
+        retirementReported.value = false
+        retirementStatusText.value = ""
         resetRunSpecificClientState(clearLegal = true)
 
         getSharedPreferences(racePrefsName, Context.MODE_PRIVATE)
@@ -1135,6 +1165,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
 
         resolvedEventName.value = normalized
+        refreshRetirementReportedState()
     }
 
     private fun clearRaceSetup() {
@@ -1148,6 +1179,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         raceEvent.value = ""
         raceSecret.value = ""
         resolvedEventName.value = ""
+        retirementReported.value = false
+        retirementStatusText.value = ""
         raceLegalResolvedEventName = ""
         raceRegistered.value = false
         registerRaceStatusText.value = ""
@@ -2641,6 +2674,122 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         currentScreen.value = Screen.HOME
     }
 
+    private fun currentRetirementIdentity(): ParticipantRetirementIdentity =
+        ParticipantRetirementIdentity(
+            sailNumber = sailNumber.value,
+            boatName = boatName.value,
+            captainName = skipperName.value
+        )
+
+    private fun refreshRetirementReportedState() {
+        val resolved = resolvedEventName.value.trim()
+        retirementReported.value =
+            resolved.isNotBlank() &&
+                ParticipantRetirementStore.matches(
+                    context = this,
+                    resolvedEventName = resolved,
+                    identity = currentRetirementIdentity()
+                )
+    }
+
+    private fun isCurrentRetirementRequest(
+        access: EventAccessKey,
+        identity: ParticipantRetirementIdentity
+    ): Boolean =
+        currentEventAccessKey() == access && currentRetirementIdentity() == identity
+
+    private fun reportRetirement() {
+        if (retirementRequestInFlight.value) return
+
+        val access = currentEventAccessKey() ?: return
+        val identity = currentRetirementIdentity()
+        if (!identity.isComplete()) {
+            retirementStatusText.value = getString(R.string.confirm_boat_setup_first_period)
+            return
+        }
+
+        retirementRequestInFlight.value = true
+        retirementStatusText.value = getString(R.string.retire_reporting)
+
+        thread {
+            var serverResponded = false
+            try {
+                val url = "${baseServerUrlForAccess(access)}/event/participant/retire"
+                val payload = buildParticipantRetirementPayload(access.event, identity)
+
+                val connection = URL(url).openConnection() as HttpURLConnection
+                connection.requestMethod = "POST"
+                connection.connectTimeout = 3000
+                connection.readTimeout = 3000
+                connection.doOutput = true
+                connection.setRequestProperty("Content-Type", "application/json")
+                connection.setRequestProperty("Accept", "application/json")
+                connection.setRequestProperty("x-shared-secret", access.secret)
+                connection.setRequestProperty("x-api-version", RegattaTrackingService.API_VERSION)
+
+                connection.outputStream.use {
+                    it.write(payload.toString().toByteArray(Charsets.UTF_8))
+                }
+
+                val responseCode = connection.responseCode
+                serverResponded = true
+                if (asyncLifetime.isActive()) {
+                    ServerConnectionStateStore.markReachable(this, access.server)
+                }
+                val body = if (responseCode in 200..299) {
+                    connection.inputStream.bufferedReader().use { it.readText() }
+                } else {
+                    connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                }
+                connection.disconnect()
+
+                if (responseCode in 200..299) {
+                    val receipt = parseParticipantRetirementReceipt(body, identity)
+                    if (receipt != null) {
+                        ParticipantRetirementStore.save(applicationContext, receipt)
+                    }
+                    runOnUiThread {
+                        if (!asyncLifetime.isActive()) return@runOnUiThread
+                        if (!isCurrentRetirementRequest(access, identity)) return@runOnUiThread
+                        if (receipt == null) {
+                            retirementStatusText.value = getString(R.string.retire_response_invalid)
+                        } else {
+                            refreshRetirementReportedState()
+                            retirementStatusText.value = ""
+                        }
+                    }
+                } else {
+                    runOnUiThread {
+                        if (!asyncLifetime.isActive()) return@runOnUiThread
+                        if (!isCurrentRetirementRequest(access, identity)) return@runOnUiThread
+                        retirementStatusText.value =
+                            getString(R.string.retire_failed_code, responseCode, body.take(120))
+                    }
+                }
+            } catch (e: Exception) {
+                if (!serverResponded && asyncLifetime.isActive()) {
+                    ServerConnectionStateStore.markNoConnection(this, access.server)
+                }
+                runOnUiThread {
+                    if (!asyncLifetime.isActive()) return@runOnUiThread
+                    if (!isCurrentRetirementRequest(access, identity)) return@runOnUiThread
+                    updateConnectionUiState()
+                    retirementStatusText.value = if (serverResponded) {
+                        getString(R.string.retire_failed, e.message ?: "")
+                    } else {
+                        getString(R.string.status_no_connection)
+                    }
+                }
+            } finally {
+                runOnUiThread {
+                    if (asyncLifetime.isActive()) {
+                        retirementRequestInFlight.value = false
+                    }
+                }
+            }
+        }
+    }
+
     private fun leaveRace() {
 
 
@@ -3300,21 +3449,46 @@ fun TrackingConsentDialog(
 }
 
 @Composable
-fun LeaveRaceWarningDialog(
+fun LeaveRaceOptionsDialog(
+    retireEnabled: Boolean,
+    onRetire: () -> Unit,
+    onLeaveRace: () -> Unit,
+    onCancel: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text(stringResource(R.string.leave_race)) },
+        text = { Text(stringResource(R.string.leave_race_choice_message)) },
+        confirmButton = {
+            TextButton(onClick = onRetire, enabled = retireEnabled) {
+                Text(stringResource(R.string.retire))
+            }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = onLeaveRace) {
+                    Text(stringResource(R.string.leave_race))
+                }
+                TextButton(onClick = onCancel) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        }
+    )
+}
+
+@Composable
+fun RetireConfirmDialog(
     onConfirm: () -> Unit,
     onCancel: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onCancel,
-        title = {
-            Text(stringResource(R.string.retire_finish_title))
-        },
-        text = {
-            Text(stringResource(R.string.retire_finish_message))
-        },
+        title = { Text(stringResource(R.string.retire_confirm_title)) },
+        text = { Text(stringResource(R.string.retire_confirm_message)) },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text(stringResource(R.string.retire_finish))
+                Text(stringResource(R.string.retire_confirm_action))
             }
         },
         dismissButton = {
