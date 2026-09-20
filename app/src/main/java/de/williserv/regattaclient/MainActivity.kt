@@ -2663,6 +2663,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         if (!storeRaceEntrySample()) return
 
         inRace.value = true
+        refreshRetirementReportedState()
         statusText.value = getString(R.string.in_race)
         serviceStatusText.value = getString(R.string.service_starting)
         saveAppState()
@@ -2696,7 +2697,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         access: EventAccessKey,
         identity: ParticipantRetirementIdentity
     ): Boolean =
-        currentEventAccessKey() == access && currentRetirementIdentity() == identity
+        inRace.value &&
+            currentEventAccessKey() == access &&
+            currentRetirementIdentity() == identity
 
     private fun reportRetirement() {
         if (retirementRequestInFlight.value) return
@@ -2793,6 +2796,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private fun leaveRace() {
 
 
+        retirementStatusText.value = ""
         inRace.value = false
         manualTracking.value = false
         saveAppState()
