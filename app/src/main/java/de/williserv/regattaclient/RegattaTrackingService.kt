@@ -122,6 +122,9 @@ class RegattaTrackingService : Service(), SensorEventListener {
     private var previousFinishLineTimestampMillis: Long? = null
     private var lastFinishStableSide: Int? = null
 
+    private var previousMarkDetectionPosition: GeoPoint? = null
+    private var markDetectionProgress: MarkDetectionProgress? = null
+
     private var isOcs = false
     private var raceStarted = false
     private var raceFinished = false
@@ -332,6 +335,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
         previousFinishLinePosition = null
         previousFinishLineTimestampMillis = null
         lastFinishStableSide = null
+        previousMarkDetectionPosition = null
+        markDetectionProgress = null
 
         isOcs = false
         raceStarted = false
@@ -532,6 +537,9 @@ class RegattaTrackingService : Service(), SensorEventListener {
             reconfigureSamplingSchedule()
             return
         }
+
+        previousMarkDetectionPosition = null
+        markDetectionProgress = null
 
         if (!manualRecording) {
             restoreCachedEventSnapshot()
@@ -1282,6 +1290,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
         nowMillis: Long
     ) {
         if (!raceStarted || raceFinished || isOcs) {
+            previousMarkDetectionPosition = null
+            markDetectionProgress = null
             updateCurrentTargetDistance(currentGeoPoint)
             return
         }
@@ -1292,27 +1302,59 @@ class RegattaTrackingService : Service(), SensorEventListener {
         }
         val currentFinishStableSide = currentFinishSignedDistance?.let(::sideWithTolerance) ?: 0
 
-        val nextMark = courseMarks.getOrNull(passedMarks)
+        val nextMarkIndex = passedMarks
+        val nextMark = courseMarks.getOrNull(nextMarkIndex)
 
         if (nextMark != null) {
             if (currentFinishStableSide != 0) {
                 lastFinishStableSide = currentFinishStableSide
             }
 
-            val distanceToMark = StartLineMath.distanceBetweenMeters(
+            currentTargetDistanceM = StartLineMath.distanceBetweenMeters(
                 currentGeoPoint,
                 nextMark.point
             )
 
-            currentTargetDistanceM = distanceToMark
-
-            if (distanceToMark <= nextMark.radiusM) {
-                passedMarks += 1
-                savePersistedRaceState()
+            val anchors = resolveMarkDetectionAnchors(
+                previousCoursePosition = courseMarks.getOrNull(nextMarkIndex - 1)?.point,
+                nextCoursePosition = courseMarks.getOrNull(nextMarkIndex + 1)?.point,
+                startLine = startLine,
+                finishLine = finishLine
+            )
+            val geometry = anchors?.let {
+                buildMarkDetectionGeometry(
+                    previousAnchor = it.previous,
+                    mark = nextMark.point,
+                    nextAnchor = it.next,
+                    radiusM = nextMark.radiusM
+                )
             }
 
+            val previousPosition = previousMarkDetectionPosition
+            if (geometry == null) {
+                markDetectionProgress = null
+            } else if (previousPosition != null) {
+                val progress = updateMarkDetectionProgress(
+                    previousPosition = previousPosition,
+                    currentPosition = currentGeoPoint,
+                    geometry = geometry,
+                    previousProgress = markDetectionProgress
+                )
+                markDetectionProgress = progress
+
+                if (progress.completed) {
+                    passedMarks += 1
+                    markDetectionProgress = null
+                    savePersistedRaceState()
+                }
+            }
+
+            previousMarkDetectionPosition = currentGeoPoint
             return
         }
+
+        previousMarkDetectionPosition = null
+        markDetectionProgress = null
 
         if (line == null) return
 
@@ -1490,6 +1532,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
             0
         }
         lastFinishStableSide = null
+        previousMarkDetectionPosition = null
+        markDetectionProgress = null
 
         currentTargetDistanceM = null
 
