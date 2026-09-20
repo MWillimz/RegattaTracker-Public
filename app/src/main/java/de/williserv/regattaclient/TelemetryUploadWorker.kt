@@ -63,6 +63,51 @@ internal fun telemetryBatchCapabilityFromMetadata(
     }
 }
 
+internal fun classifyTelemetryBatchHttpFailure(
+    responseCode: Int,
+    errorBody: String,
+    client: ClientBuildIdentity
+): TelemetryBatchAttemptKind {
+    return when {
+        responseCode == 404 ||
+            responseCode == 405 ||
+            responseCode == 501 -> {
+            TelemetryBatchAttemptKind.UNSUPPORTED
+        }
+
+        responseCode == 413 -> {
+            TelemetryBatchAttemptKind.PAYLOAD_TOO_LARGE
+        }
+
+        shouldTreatAsClientUpdateRequired(
+            responseCode,
+            errorBody,
+            client
+        ) -> {
+            TelemetryBatchAttemptKind.CLIENT_UPDATE_REQUIRED
+        }
+
+        responseCode == 408 ||
+            responseCode == 429 ||
+            responseCode in 500..599 -> {
+            TelemetryBatchAttemptKind.TEMPORARY_FAILURE
+        }
+
+        else -> TelemetryBatchAttemptKind.OTHER_FAILURE
+    }
+}
+
+internal fun reducedTelemetryBatchLimitAfter413(
+    attemptedSize: Int,
+    refreshedCapability: TelemetryBatchCapability
+): Int? {
+    if (attemptedSize <= 1) return null
+
+    return refreshedCapability.maxSamples
+        ?.takeIf { it < attemptedSize }
+        ?: (attemptedSize / 2).coerceAtLeast(1)
+}
+
 internal fun classifyTelemetryUploadResponseCode(responseCode: Int): TelemetryUploadAttemptResult {
     return when {
         responseCode in 200..299 -> TelemetryUploadAttemptResult.SUCCESS
@@ -513,10 +558,10 @@ class TelemetryUploadWorker(
                                 return temporaryFailure()
                             }
 
-                            val refreshedLimit = refreshed.maxSamples
-                                ?.takeIf { it < batch.size }
-                            val reducedLimit = refreshedLimit
-                                ?: (batch.size / 2).coerceAtLeast(1)
+                            val reducedLimit = reducedTelemetryBatchLimitAfter413(
+                                attemptedSize = batch.size,
+                                refreshedCapability = refreshed
+                            ) ?: return temporaryFailure()
 
                             batchCapabilities[accessContext.id] =
                                 TelemetryBatchCapability(
@@ -755,33 +800,11 @@ class TelemetryUploadWorker(
                     ?.use { it.readText() }
                     ?: ""
 
-                val kind = when {
-                    responseCode == 404 ||
-                        responseCode == 405 ||
-                        responseCode == 501 -> {
-                        TelemetryBatchAttemptKind.UNSUPPORTED
-                    }
-
-                    responseCode == 413 -> {
-                        TelemetryBatchAttemptKind.PAYLOAD_TOO_LARGE
-                    }
-
-                    shouldTreatAsClientUpdateRequired(
-                        responseCode,
-                        errorBody,
-                        client
-                    ) -> {
-                        TelemetryBatchAttemptKind.CLIENT_UPDATE_REQUIRED
-                    }
-
-                    responseCode == 408 ||
-                        responseCode == 429 ||
-                        responseCode in 500..599 -> {
-                        TelemetryBatchAttemptKind.TEMPORARY_FAILURE
-                    }
-
-                    else -> TelemetryBatchAttemptKind.OTHER_FAILURE
-                }
+                val kind = classifyTelemetryBatchHttpFailure(
+                    responseCode = responseCode,
+                    errorBody = errorBody,
+                    client = client
+                )
 
                 if (
                     kind != TelemetryBatchAttemptKind.UNSUPPORTED &&
