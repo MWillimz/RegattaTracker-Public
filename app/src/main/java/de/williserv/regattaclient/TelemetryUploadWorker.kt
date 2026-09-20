@@ -139,6 +139,22 @@ internal fun classifyTelemetryUploadResponse(
     return classifyTelemetryUploadResponseCode(responseCode)
 }
 
+internal enum class TelemetryUploadScheduleKind {
+    LIVE_WAKEUP,
+    RECOVERY,
+    CONTINUATION
+}
+
+internal fun telemetryUploadExistingWorkPolicy(
+    kind: TelemetryUploadScheduleKind
+): ExistingWorkPolicy {
+    return when (kind) {
+        TelemetryUploadScheduleKind.LIVE_WAKEUP -> ExistingWorkPolicy.KEEP
+        TelemetryUploadScheduleKind.RECOVERY,
+        TelemetryUploadScheduleKind.CONTINUATION -> ExistingWorkPolicy.APPEND_OR_REPLACE
+    }
+}
+
 internal fun shouldEnqueueTelemetryUpload(uploadablePendingCount: Long): Boolean {
     return uploadablePendingCount > 0L
 }
@@ -437,7 +453,9 @@ object TelemetryUploadScheduler {
         WorkManager.getInstance(context.applicationContext)
             .enqueueUniqueWork(
                 UNIQUE_WORK_NAME,
-                ExistingWorkPolicy.KEEP,
+                telemetryUploadExistingWorkPolicy(
+                    TelemetryUploadScheduleKind.LIVE_WAKEUP
+                ),
                 buildRequest()
             )
     }
@@ -458,7 +476,9 @@ object TelemetryUploadScheduler {
         return WorkManager.getInstance(context.applicationContext)
             .enqueueUniqueWork(
                 UNIQUE_WORK_NAME,
-                ExistingWorkPolicy.APPEND_OR_REPLACE,
+                telemetryUploadExistingWorkPolicy(
+                    TelemetryUploadScheduleKind.CONTINUATION
+                ),
                 buildRequest(
                     afterLocalId = afterLocalId,
                     expedited = true
@@ -490,7 +510,9 @@ object TelemetryUploadScheduler {
         return WorkManager.getInstance(appContext)
             .enqueueUniqueWork(
                 UNIQUE_WORK_NAME,
-                ExistingWorkPolicy.APPEND_OR_REPLACE,
+                telemetryUploadExistingWorkPolicy(
+                    TelemetryUploadScheduleKind.RECOVERY
+                ),
                 buildRequest(
                     expedited = shouldExpediteTelemetryUpload(
                         uploadablePendingCount
