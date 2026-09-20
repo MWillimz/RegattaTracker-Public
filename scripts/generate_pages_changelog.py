@@ -162,17 +162,25 @@ def promotion_identity(timestamp: datetime) -> tuple[str, str]:
 
 
 def extract_ticket_candidates(title: str, body: str | None) -> list[int]:
-    numbers: list[int] = []
-
-    for match in REFERENCE_RE.finditer(title or ""):
-        numbers.append(int(match.group(1)))
+    explicit_numbers: list[int] = []
 
     for line in (body or "").splitlines():
         if EXPLICIT_TICKET_LINE_RE.search(line):
-            numbers.extend(int(value) for value in REFERENCE_RE.findall(line))
+            explicit_numbers.extend(
+                int(value) for value in REFERENCE_RE.findall(line)
+            )
+
+    numbers = explicit_numbers or [
+        int(match.group(1))
+        for match in REFERENCE_RE.finditer(title or "")
+    ]
 
     seen: set[int] = set()
-    return [number for number in numbers if not (number in seen or seen.add(number))]
+    return [
+        number
+        for number in numbers
+        if not (number in seen or seen.add(number))
+    ]
 
 
 def is_ticket_issue(issue: dict | None) -> bool:
