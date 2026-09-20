@@ -296,6 +296,17 @@
     <string name="gps_tracking_consent">Consenso al tracciamento GPS</string>
     <string name="gps_tracking_consent_message">Questa applicazione tratta i dati di posizione per il tracciamento della regata, il controllo della linea di partenza, il rilevamento OCS, l’avanzamento del percorso e il rilevamento dell’arrivo.\n\nDurante una regata, i dati di posizione possono essere trasmessi al server di regata configurato.\n\nDurante l’allenamento manuale, i dati vengono memorizzati localmente e non inviati automaticamente al server.\n\nÈ richiesta anche l’autorizzazione alla posizione di Android.</string>
     <string name="i_agree">Accetto</string>
+    <string name="leave_race">Lascia la regata</string>
+    <string name="leave_race_choice_message">Cosa vuoi fare?</string>
+    <string name="retire">Ritirati</string>
+    <string name="retire_confirm_title">Confermare RET?</string>
+    <string name="retire_confirm_message">Segnalare al comitato di regata che ti sei ritirato da questa prova? Il tracciamento continuerà dopo la segnalazione RET.</string>
+    <string name="retire_confirm_action">Segnala RET</string>
+    <string name="retire_reported_tracking_active">RET segnalato · Tracciamento attivo</string>
+    <string name="retire_reporting">Segnalazione RET…</string>
+    <string name="retire_failed">Segnalazione RET non riuscita: %1$s</string>
+    <string name="retire_failed_code">Segnalazione RET non riuscita %1$d: %2$s</string>
+    <string name="retire_response_invalid">Segnalazione RET non riuscita: risposta server non valida</string>
     <string name="retire_finish_title">Ritiro / Arrivo?</string>
     <string name="retire_finish_message">Usa questa funzione solo se ti ritiri dalla regata o hai terminato.\n\nIl tracciamento della regata per questa barca verrà fermato. In caso di ritiro potresti essere escluso dalla classifica.</string>
     <string name="is_this_your_boat">Questa è la tua barca?</string>
