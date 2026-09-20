@@ -164,6 +164,7 @@ dependencies {
     implementation("androidx.work:work-runtime:2.11.2")
     testImplementation(libs.junit)
     testImplementation("org.robolectric:robolectric:4.16.1")
+    testImplementation("androidx.work:work-testing:2.11.2")
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
