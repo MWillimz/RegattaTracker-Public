@@ -60,6 +60,13 @@ class RegattaTrackingService : Service(), SensorEventListener {
         const val ACTION_CONTINUE_AFTER_FINISH =
             "de.williserv.regattaclient.CONTINUE_AFTER_FINISH"
 
+        internal fun shouldIgnoreCommandDuringStopHandoff(
+            stopHandoffInProgress: Boolean,
+            action: String?
+        ): Boolean {
+            return stopHandoffInProgress && action != ACTION_START
+        }
+
         const val EXTRA_SERVER_URL = "server_url"
         const val EXTRA_EVENT_NAME = "event_name"
         const val EXTRA_SHARED_SECRET = "shared_secret"
@@ -221,6 +228,15 @@ class RegattaTrackingService : Service(), SensorEventListener {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (
+            shouldIgnoreCommandDuringStopHandoff(
+                stopHandoffInProgress = stopHandoffInProgress,
+                action = intent?.action
+            )
+        ) {
+            return START_NOT_STICKY
+        }
+
         if (intent == null) {
             return handleStickyRestart()
         }
