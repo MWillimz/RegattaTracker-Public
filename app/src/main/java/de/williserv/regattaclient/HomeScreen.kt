@@ -208,6 +208,14 @@ fun HomeScreen(
                 Spacer(modifier = Modifier.height(HomeGapMedium))
             }
 
+            if (boatRaceStatusText.isNotBlank()) {
+                Text(
+                    text = boatRaceStatusText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(HomeGapMedium))
+            }
+
             TargetCard(
                 currentTargetText = currentTargetText,
                 progressText = progressText,
