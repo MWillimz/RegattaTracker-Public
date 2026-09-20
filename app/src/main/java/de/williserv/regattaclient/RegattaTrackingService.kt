@@ -44,6 +44,14 @@ data class CourseMark(
     val radiusM: Double
 )
 
+internal fun shouldFinishTrackingServiceStop(
+    handoffGeneration: Long,
+    currentGeneration: Long,
+    serviceRunning: Boolean
+): Boolean {
+    return handoffGeneration == currentGeneration && !serviceRunning
+}
+
 class RegattaTrackingService : Service(), SensorEventListener {
 
     companion object {
@@ -669,8 +677,11 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
     private fun finishTrackingServiceStop(handoffGeneration: Long) {
         if (
-            handoffGeneration != stopHandoffGeneration ||
-            serviceRunning
+            !shouldFinishTrackingServiceStop(
+                handoffGeneration = handoffGeneration,
+                currentGeneration = stopHandoffGeneration,
+                serviceRunning = serviceRunning
+            )
         ) {
             return
         }
