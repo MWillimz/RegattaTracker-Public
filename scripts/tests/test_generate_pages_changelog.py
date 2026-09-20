@@ -24,12 +24,21 @@ class PromotionIdentityTests(unittest.TestCase):
 
 
 class TicketExtractionTests(unittest.TestCase):
-    def test_title_and_explicit_body_references_are_candidates(self):
+    def test_explicit_body_references_take_priority_over_title(self):
         self.assertEqual(
-            [147, 154, 155],
+            [154, 155],
+            extract_ticket_candidates(
+                "Parent #147 cleanup",
+                "Related: #88\nCloses #154 and #155",
+            ),
+        )
+
+    def test_title_reference_is_fallback_without_explicit_body_mapping(self):
+        self.assertEqual(
+            [147],
             extract_ticket_candidates(
                 "Implement #147 participant RET",
-                "Related: #88\nCloses #154 and #155",
+                "Related: #88",
             ),
         )
 
