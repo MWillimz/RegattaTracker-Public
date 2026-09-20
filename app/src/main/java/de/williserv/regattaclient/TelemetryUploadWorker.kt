@@ -401,7 +401,7 @@ internal object TelemetryUploadStatusStore {
 }
 
 object TelemetryUploadScheduler {
-    private const val UNIQUE_WORK_NAME = "regatta-telemetry-upload"
+    internal const val UNIQUE_WORK_NAME = "regatta-telemetry-upload"
     private const val RACE_SETUP_PREFS_NAME = "race_setup"
     private const val RACE_SERVER_KEY = "race_server"
     internal const val AFTER_LOCAL_ID_KEY = "after_local_id"
