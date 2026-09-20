@@ -1,6 +1,7 @@
 package de.williserv.regattaclient
 
 import android.content.Context
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -102,6 +103,35 @@ class TelemetryUploadPolicyTest {
         assertEquals(0.4, payload.getDouble("gyro_x"), 0.000001)
         assertEquals(0.5, payload.getDouble("gyro_y"), 0.000001)
         assertEquals(0.6, payload.getDouble("gyro_z"), 0.000001)
+    }
+
+    @Test
+    fun schedulingPolicies_neverCancelExistingTelemetryWork() {
+        assertEquals(
+            ExistingWorkPolicy.KEEP,
+            telemetryUploadExistingWorkPolicy(
+                TelemetryUploadScheduleKind.LIVE_WAKEUP
+            )
+        )
+        assertEquals(
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+            telemetryUploadExistingWorkPolicy(
+                TelemetryUploadScheduleKind.RECOVERY
+            )
+        )
+        assertEquals(
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+            telemetryUploadExistingWorkPolicy(
+                TelemetryUploadScheduleKind.CONTINUATION
+            )
+        )
+
+        TelemetryUploadScheduleKind.entries.forEach { kind ->
+            assertTrue(
+                telemetryUploadExistingWorkPolicy(kind) !=
+                    ExistingWorkPolicy.REPLACE
+            )
+        }
     }
 
     @Test
