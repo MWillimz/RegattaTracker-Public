@@ -161,6 +161,84 @@ class TelemetryBatchUploadTest {
     }
 
     @Test
+    fun batchHttpFallbackPolicy_matchesTicketContract() {
+        assertEquals(
+            TelemetryBatchAttemptKind.UNSUPPORTED,
+            classifyTelemetryBatchHttpFailure(404, "", client)
+        )
+        assertEquals(
+            TelemetryBatchAttemptKind.UNSUPPORTED,
+            classifyTelemetryBatchHttpFailure(405, "", client)
+        )
+        assertEquals(
+            TelemetryBatchAttemptKind.UNSUPPORTED,
+            classifyTelemetryBatchHttpFailure(501, "", client)
+        )
+        assertEquals(
+            TelemetryBatchAttemptKind.PAYLOAD_TOO_LARGE,
+            classifyTelemetryBatchHttpFailure(413, "", client)
+        )
+        assertEquals(
+            TelemetryBatchAttemptKind.TEMPORARY_FAILURE,
+            classifyTelemetryBatchHttpFailure(408, "", client)
+        )
+        assertEquals(
+            TelemetryBatchAttemptKind.TEMPORARY_FAILURE,
+            classifyTelemetryBatchHttpFailure(429, "", client)
+        )
+        assertEquals(
+            TelemetryBatchAttemptKind.TEMPORARY_FAILURE,
+            classifyTelemetryBatchHttpFailure(503, "", client)
+        )
+        assertEquals(
+            TelemetryBatchAttemptKind.OTHER_FAILURE,
+            classifyTelemetryBatchHttpFailure(400, "", client)
+        )
+    }
+
+    @Test
+    fun payloadTooLarge_reloadsLowerServerLimitOrHalvesWithoutSequentialFallback() {
+        assertEquals(
+            250,
+            reducedTelemetryBatchLimitAfter413(
+                attemptedSize = 500,
+                refreshedCapability = TelemetryBatchCapability(
+                    kind = TelemetryBatchCapabilityKind.SUPPORTED,
+                    maxSamples = 250
+                )
+            )
+        )
+        assertEquals(
+            250,
+            reducedTelemetryBatchLimitAfter413(
+                attemptedSize = 500,
+                refreshedCapability = TelemetryBatchCapability(
+                    kind = TelemetryBatchCapabilityKind.SUPPORTED,
+                    maxSamples = 500
+                )
+            )
+        )
+        assertEquals(
+            250,
+            reducedTelemetryBatchLimitAfter413(
+                attemptedSize = 500,
+                refreshedCapability = TelemetryBatchCapability(
+                    kind = TelemetryBatchCapabilityKind.UNSUPPORTED
+                )
+            )
+        )
+        assertNull(
+            reducedTelemetryBatchLimitAfter413(
+                attemptedSize = 1,
+                refreshedCapability = TelemetryBatchCapability(
+                    kind = TelemetryBatchCapabilityKind.SUPPORTED,
+                    maxSamples = 1
+                )
+            )
+        )
+    }
+
+    @Test
     fun metadataCapability_usesPublishedServerLimitWithoutClientCap() {
         for (limit in listOf(1, 100, 250, 500, 1000)) {
             val capability = telemetryBatchCapabilityFromMetadata(
