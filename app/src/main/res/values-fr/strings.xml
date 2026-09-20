@@ -296,6 +296,17 @@
     <string name="gps_tracking_consent">Consentement au suivi GPS</string>
     <string name="gps_tracking_consent_message">Cette application traite les données de localisation pour le suivi de régate, le contrôle de la ligne de départ, la détection OCS, la progression du parcours et la détection d’arrivée.\n\nPendant une course, les données de localisation peuvent être transmises au serveur de régate configuré.\n\nPendant un entraînement manuel, les données sont stockées localement et ne sont pas envoyées automatiquement au serveur.\n\nL’autorisation de localisation Android est également requise.</string>
     <string name="i_agree">J’accepte</string>
+    <string name="leave_race">Quitter la course</string>
+    <string name="leave_race_choice_message">Que voulez-vous faire ?</string>
+    <string name="retire">Abandonner</string>
+    <string name="retire_confirm_title">Confirmer RET ?</string>
+    <string name="retire_confirm_message">Signaler au comité de course que vous avez abandonné cette course ? Le suivi continuera après le signalement RET.</string>
+    <string name="retire_confirm_action">Signaler RET</string>
+    <string name="retire_reported_tracking_active">RET signalé · Suivi actif</string>
+    <string name="retire_reporting">Signalement RET…</string>
+    <string name="retire_failed">Échec du signalement RET : %1$s</string>
+    <string name="retire_failed_code">Échec du signalement RET %1$d : %2$s</string>
+    <string name="retire_response_invalid">Échec du signalement RET : réponse serveur invalide</string>
     <string name="retire_finish_title">Abandon / Arrivée ?</string>
     <string name="retire_finish_message">Utilisez ceci uniquement si vous abandonnez la course ou si vous avez terminé.\n\nCela arrête le suivi de course pour ce bateau. En cas d’abandon, vous pouvez sortir du classement.</string>
     <string name="is_this_your_boat">Est-ce votre bateau ?</string>

@@ -1,0 +1,72 @@
+name: Deploy production changelog to GitHub Pages
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+  pages: read
+
+concurrency:
+  group: pages-production
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Pages site
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout production source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build static Pages site
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          rm -rf site
+          mkdir -p site
+          cp -a docs/. site/
+
+          python3 scripts/generate_pages_changelog.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --master-ref HEAD \
+            --output site/changelog
+
+          test -f site/index.html
+          test -f site/privacy/index.html
+          test -f site/changelog/index.html
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+  deploy:
+    name: Deploy GitHub Pages
+    needs:
+      - build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

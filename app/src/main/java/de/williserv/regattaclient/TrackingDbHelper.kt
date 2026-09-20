@@ -79,7 +79,7 @@ internal fun normalizeAccessContextKey(
 }
 
 class TrackingDbHelper(context: Context) :
-    SQLiteOpenHelper(context, "regatta_tracking.db", null, 6) {
+    SQLiteOpenHelper(context, "regatta_tracking.db", null, 7) {
 
     private val appContext = context.applicationContext
     private var lastBatteryReadAtMs: Long? = null
@@ -94,6 +94,7 @@ class TrackingDbHelper(context: Context) :
     override fun onCreate(db: SQLiteDatabase) {
         createAccessContextsTable(db)
         createTrackingSamplesTable(db)
+        createTrackingSampleIndexes(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -105,6 +106,9 @@ class TrackingDbHelper(context: Context) :
         }
         if (oldVersion < 6 && newVersion >= 6) {
             migrateToVersion6(db)
+        }
+        if (oldVersion < 7 && newVersion >= 7) {
+            migrateToVersion7(db)
         }
     }
 
@@ -428,6 +432,30 @@ class TrackingDbHelper(context: Context) :
         )
     }
 
+    fun markUploaded(localIds: Collection<Long>) {
+        if (localIds.isEmpty()) return
+
+        val db = writableDatabase
+        val values = ContentValues().apply {
+            put("uploaded", 1)
+        }
+
+        db.beginTransaction()
+        try {
+            localIds.forEach { localId ->
+                db.update(
+                    "tracking_samples",
+                    values,
+                    "id = ?",
+                    arrayOf(localId.toString())
+                )
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
     fun countPendingSamples(): Long {
         readableDatabase.rawQuery(
             "SELECT COUNT(*) FROM tracking_samples WHERE uploaded = 0",
@@ -451,6 +479,22 @@ class TrackingDbHelper(context: Context) :
         ).use { cursor ->
             cursor.moveToFirst()
             return cursor.getLong(0)
+        }
+    }
+
+    fun hasUploadablePendingSamples(): Boolean {
+        readableDatabase.rawQuery(
+            """
+            SELECT 1
+            FROM tracking_samples AS samples
+            INNER JOIN access_contexts AS contexts
+                ON contexts.id = samples.access_context_id
+            WHERE samples.uploaded = 0
+            LIMIT 1
+            """.trimIndent(),
+            null
+        ).use { cursor ->
+            return cursor.moveToFirst()
         }
     }
 
@@ -568,6 +612,13 @@ class TrackingDbHelper(context: Context) :
         }
     }
 
+    private fun migrateToVersion7(db: SQLiteDatabase) {
+        if (!tableExists(db, "tracking_samples")) {
+            createTrackingSamplesTable(db)
+        }
+        createTrackingSampleIndexes(db)
+    }
+
     private fun createAccessContextsTable(db: SQLiteDatabase) {
         db.execSQL(
             """
@@ -615,6 +666,15 @@ class TrackingDbHelper(context: Context) :
                 tracking_profile TEXT,
                 utc_offset_minutes INTEGER
             )
+            """.trimIndent()
+        )
+    }
+
+    private fun createTrackingSampleIndexes(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE INDEX IF NOT EXISTS idx_tracking_samples_pending_id
+            ON tracking_samples(uploaded, id)
             """.trimIndent()
         )
     }
