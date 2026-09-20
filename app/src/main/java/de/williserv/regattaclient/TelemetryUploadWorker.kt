@@ -13,6 +13,7 @@ import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequest
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
@@ -138,6 +139,10 @@ internal fun classifyTelemetryUploadResponse(
 
 internal fun shouldEnqueueTelemetryUpload(uploadablePendingCount: Long): Boolean {
     return uploadablePendingCount > 0L
+}
+
+internal fun shouldExpediteTelemetryUpload(uploadablePendingCount: Long): Boolean {
+    return uploadablePendingCount >= TELEMETRY_LONG_RUNNING_LEGACY_SAMPLE_THRESHOLD
 }
 
 internal const val TELEMETRY_LONG_RUNNING_BATCH_REQUEST_THRESHOLD = 20L
@@ -365,12 +370,15 @@ object TelemetryUploadScheduler {
     private const val RACE_SERVER_KEY = "race_server"
     internal const val AFTER_LOCAL_ID_KEY = "after_local_id"
 
-    internal fun buildRequest(afterLocalId: Long = 0L): OneTimeWorkRequest {
+    internal fun buildRequest(
+        afterLocalId: Long = 0L,
+        expedited: Boolean = false
+    ): OneTimeWorkRequest {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-        return OneTimeWorkRequest.Builder(TelemetryUploadWorker::class.java)
+        val builder = OneTimeWorkRequest.Builder(TelemetryUploadWorker::class.java)
             .setConstraints(constraints)
             .setInputData(workDataOf(AFTER_LOCAL_ID_KEY to afterLocalId))
             .setBackoffCriteria(
@@ -378,10 +386,18 @@ object TelemetryUploadScheduler {
                 30,
                 TimeUnit.SECONDS
             )
-            .build()
+
+        if (expedited) {
+            builder.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+        }
+
+        return builder.build()
     }
 
-    fun enqueue(context: Context) {
+    fun enqueue(
+        context: Context,
+        expedited: Boolean = false
+    ) {
         TelemetryUploadStatusStore.write(context, TelemetryUploadStatusStore.WAITING)
 
         if (context is RegattaTrackingService) {
@@ -404,8 +420,12 @@ object TelemetryUploadScheduler {
         WorkManager.getInstance(context.applicationContext)
             .enqueueUniqueWork(
                 UNIQUE_WORK_NAME,
-                ExistingWorkPolicy.KEEP,
-                buildRequest()
+                if (expedited) {
+                    ExistingWorkPolicy.REPLACE
+                } else {
+                    ExistingWorkPolicy.KEEP
+                },
+                buildRequest(expedited = expedited)
             )
     }
 
@@ -418,7 +438,10 @@ object TelemetryUploadScheduler {
         }
 
         if (shouldEnqueueTelemetryUpload(uploadablePendingCount)) {
-            enqueue(context)
+            enqueue(
+                context = context,
+                expedited = shouldExpediteTelemetryUpload(uploadablePendingCount)
+            )
         } else {
             TelemetryUploadStatusStore.write(context, TelemetryUploadStatusStore.ALL_SENT)
         }
@@ -435,11 +458,22 @@ class TelemetryUploadWorker(
     private val localStatusPrefsName = "regatta_local_status"
 
     private var foregroundActive = false
+    private var foregroundPromotionUnavailable = false
     private var uploadedDuringRun = 0L
+    private var remainingPendingEstimate = 0L
     private var uploadStartedAtElapsedMs = 0L
+
+    override fun getForegroundInfo(): ForegroundInfo {
+        createTelemetryUploadNotificationChannel()
+        val remainingPendingCount = db.countUploadablePendingSamples()
+        return buildTelemetryUploadForegroundInfo(
+            remainingPendingCount = remainingPendingCount
+        )
+    }
 
     override fun doWork(): Result {
         uploadStartedAtElapsedMs = SystemClock.elapsedRealtime()
+        remainingPendingEstimate = db.countUploadablePendingSamples()
 
         val client = currentClientBuildIdentity()
         var afterLocalId = inputData.getLong(
@@ -468,13 +502,9 @@ class TelemetryUploadWorker(
             val firstSample = pendingSamples.first()
             val accessContext = firstSample.accessContext
 
-            if (
-                !updateLongRunningForegroundIfNeeded(
-                    capability = batchCapabilities[accessContext.id]
-                )
-            ) {
-                return temporaryFailure()
-            }
+            updateLongRunningForegroundIfNeeded(
+                capability = batchCapabilities[accessContext.id]
+            )
 
             if (
                 ClientCompatibilityBlockStore.isBlocked(
@@ -508,7 +538,7 @@ class TelemetryUploadWorker(
                 when (uploadSampleBlocking(firstSample, client)) {
                     TelemetryUploadAttemptResult.SUCCESS -> {
                         db.markUploaded(firstSample.localId)
-                        uploadedDuringRun += 1L
+                        recordUploaded(1L)
                     }
 
                     TelemetryUploadAttemptResult.TEMPORARY_FAILURE -> {
@@ -534,9 +564,7 @@ class TelemetryUploadWorker(
                     }
                 }
 
-            if (!updateLongRunningForegroundIfNeeded(capability)) {
-                return temporaryFailure()
-            }
+            updateLongRunningForegroundIfNeeded(capability)
 
             when (capability.kind) {
                 TelemetryBatchCapabilityKind.TEMPORARY_FAILURE -> {
@@ -559,7 +587,7 @@ class TelemetryUploadWorker(
                         samples = sameAccessPrefix,
                         client = client
                     )
-                    uploadedDuringRun += sequentialOutcome.uploadedCount.toLong()
+                    recordUploaded(sequentialOutcome.uploadedCount.toLong())
 
                     if (
                         sequentialOutcome.result ==
@@ -595,7 +623,7 @@ class TelemetryUploadWorker(
                         TelemetryBatchAttemptKind.PROCESSED -> {
                             val response = requireNotNull(attempt.response)
                             db.markUploaded(response.acceptedLocalIds)
-                            uploadedDuringRun += response.acceptedLocalIds.size.toLong()
+                            recordUploaded(response.acceptedLocalIds.size.toLong())
 
                             if (response.clientUpdateRequired) {
                                 markClientUpdateRequired(
@@ -687,10 +715,6 @@ class TelemetryUploadWorker(
             }
         }
 
-        if (foregroundActive) {
-            updateLongRunningForegroundIfNeeded(capability = null)
-        }
-
         TelemetryUploadStatusStore.write(
             applicationContext,
             if (db.hasUploadablePendingSamples()) {
@@ -753,10 +777,20 @@ class TelemetryUploadWorker(
         )
     }
 
+    private fun recordUploaded(count: Long) {
+        if (count <= 0L) return
+
+        uploadedDuringRun += count
+        remainingPendingEstimate =
+            (remainingPendingEstimate - count).coerceAtLeast(0L)
+    }
+
     private fun updateLongRunningForegroundIfNeeded(
         capability: TelemetryBatchCapability?
-    ): Boolean {
-        val remainingPendingCount = db.countUploadablePendingSamples()
+    ) {
+        if (foregroundPromotionUnavailable) return
+
+        val remainingPendingCount = remainingPendingEstimate
         val elapsedMs =
             (SystemClock.elapsedRealtime() - uploadStartedAtElapsedMs)
                 .coerceAtLeast(0L)
@@ -769,10 +803,10 @@ class TelemetryUploadWorker(
                 capability = capability
             )
         ) {
-            return true
+            return
         }
 
-        return try {
+        try {
             createTelemetryUploadNotificationChannel()
             setForegroundAsync(
                 buildTelemetryUploadForegroundInfo(
@@ -780,15 +814,14 @@ class TelemetryUploadWorker(
                 )
             ).get()
             foregroundActive = true
-            true
         } catch (e: Exception) {
+            foregroundPromotionUnavailable = true
             publishDebugError(
                 applicationContext.getString(
                     R.string.upload_exception,
                     e.message ?: "foreground upload notification failed"
                 )
             )
-            false
         }
     }
 
