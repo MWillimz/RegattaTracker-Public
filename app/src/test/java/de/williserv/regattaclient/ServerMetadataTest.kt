@@ -74,6 +74,7 @@ class ServerMetadataTest {
               "server_build_type": "release",
               "recommended_client_version_code": 2450,
               "min_client_version_code": 2400,
+              "telemetry_batch_max_samples": 500,
               "production_release": {
                 "version_code": 2450,
                 "version_name": "26.09.03-2110",
@@ -97,6 +98,7 @@ class ServerMetadataTest {
         assertEquals("26.09.04-0712-abcdef1", metadata.serverBuildId)
         assertEquals(2450, metadata.recommendedClientVersionCode)
         assertEquals(2400, metadata.minClientVersionCode)
+        assertEquals(500, metadata.telemetryBatchMaxSamples)
         assertTrue(metadata.hasAnyValue())
     }
 
@@ -123,7 +125,29 @@ class ServerMetadataTest {
         assertEquals("26.09.04-0712-abcdef1", metadata.serverBuildId)
         assertNull(metadata.recommendedClientVersionCode)
         assertNull(metadata.minClientVersionCode)
+        assertNull(metadata.telemetryBatchMaxSamples)
         assertTrue(metadata.hasAnyValue())
+    }
+
+    @Test
+    fun parseServerMetadata_treatsInvalidBatchLimitsAsUnsupported() {
+        assertNull(
+            parseServerMetadata("""{"telemetry_batch_max_samples": 0}""")
+                .telemetryBatchMaxSamples
+        )
+        assertNull(
+            parseServerMetadata("""{"telemetry_batch_max_samples": -1}""")
+                .telemetryBatchMaxSamples
+        )
+        assertNull(
+            parseServerMetadata("""{"telemetry_batch_max_samples": "500"}""")
+                .telemetryBatchMaxSamples
+        )
+        assertEquals(
+            1000,
+            parseServerMetadata("""{"telemetry_batch_max_samples": 1000}""")
+                .telemetryBatchMaxSamples
+        )
     }
 
     @Test
@@ -143,6 +167,7 @@ class ServerMetadataTest {
         assertNull(metadata.serverBuildId)
         assertNull(metadata.recommendedClientVersionCode)
         assertNull(metadata.minClientVersionCode)
+        assertNull(metadata.telemetryBatchMaxSamples)
         assertFalse(metadata.hasAnyValue())
     }
 

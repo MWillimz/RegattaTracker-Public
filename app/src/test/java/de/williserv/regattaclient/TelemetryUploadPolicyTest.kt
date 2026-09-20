@@ -111,39 +111,6 @@ class TelemetryUploadPolicyTest {
     }
 
     @Test
-    fun workerDecision_retriesTemporaryFailures() {
-        assertEquals(
-            TelemetryWorkerDecision.RETRY,
-            decideTelemetryWorkerCompletion(
-                retryNeeded = true,
-                hasLaterPendingSamples = true
-            )
-        )
-    }
-
-    @Test
-    fun workerDecision_continuesWhenLaterRowsExistEvenWithoutProgress() {
-        assertEquals(
-            TelemetryWorkerDecision.CONTINUE,
-            decideTelemetryWorkerCompletion(
-                retryNeeded = false,
-                hasLaterPendingSamples = true
-            )
-        )
-    }
-
-    @Test
-    fun workerDecision_stopsImmediateLoopWhenNoLaterRowsExist() {
-        assertEquals(
-            TelemetryWorkerDecision.SUCCESS,
-            decideTelemetryWorkerCompletion(
-                retryNeeded = false,
-                hasLaterPendingSamples = false
-            )
-        )
-    }
-
-    @Test
     fun workerRequest_requiresConnectedNetworkAndCarriesContinuationCursor() {
         val request = TelemetryUploadScheduler.buildRequest(afterLocalId = 123L)
         assertEquals(NetworkType.CONNECTED, request.workSpec.constraints.requiredNetworkType)

@@ -22,10 +22,45 @@ internal enum class TelemetryUploadAttemptResult {
     OTHER_FAILURE
 }
 
-internal enum class TelemetryWorkerDecision {
-    SUCCESS,
-    RETRY,
-    CONTINUE
+internal enum class TelemetryBatchCapabilityKind {
+    SUPPORTED,
+    UNSUPPORTED,
+    TEMPORARY_FAILURE
+}
+
+internal data class TelemetryBatchCapability(
+    val kind: TelemetryBatchCapabilityKind,
+    val maxSamples: Int? = null
+)
+
+internal enum class TelemetryBatchAttemptKind {
+    PROCESSED,
+    TEMPORARY_FAILURE,
+    UNSUPPORTED,
+    PAYLOAD_TOO_LARGE,
+    CLIENT_UPDATE_REQUIRED,
+    OTHER_FAILURE
+}
+
+internal data class TelemetryBatchAttempt(
+    val kind: TelemetryBatchAttemptKind,
+    val response: ParsedTelemetryBatchResponse? = null
+)
+
+internal fun telemetryBatchCapabilityFromMetadata(
+    metadata: ServerMetadata?
+): TelemetryBatchCapability {
+    val maxSamples = metadata?.telemetryBatchMaxSamples
+    return if (maxSamples != null && maxSamples > 0) {
+        TelemetryBatchCapability(
+            kind = TelemetryBatchCapabilityKind.SUPPORTED,
+            maxSamples = maxSamples
+        )
+    } else {
+        TelemetryBatchCapability(
+            kind = TelemetryBatchCapabilityKind.UNSUPPORTED
+        )
+    }
 }
 
 internal fun classifyTelemetryUploadResponseCode(responseCode: Int): TelemetryUploadAttemptResult {
@@ -64,17 +99,6 @@ internal fun shouldSuppressTelemetryUploadEnqueue(
         serverUrl = serverUrl,
         versionCode = client.versionCode
     )
-}
-
-internal fun decideTelemetryWorkerCompletion(
-    retryNeeded: Boolean,
-    hasLaterPendingSamples: Boolean
-): TelemetryWorkerDecision {
-    return when {
-        retryNeeded -> TelemetryWorkerDecision.RETRY
-        hasLaterPendingSamples -> TelemetryWorkerDecision.CONTINUE
-        else -> TelemetryWorkerDecision.SUCCESS
-    }
 }
 
 internal fun getTelemetryUploadPage(
@@ -170,40 +194,6 @@ internal fun getTelemetryUploadPage(
     }
 
     return result
-}
-
-internal fun hasUnblockedUploadablePendingServerAfter(
-    db: TrackingDbHelper,
-    context: Context,
-    afterLocalId: Long,
-    client: ClientBuildIdentity
-): Boolean {
-    db.readableDatabase.rawQuery(
-        """
-        SELECT DISTINCT contexts.server_url
-        FROM tracking_samples AS samples
-        INNER JOIN access_contexts AS contexts
-            ON contexts.id = samples.access_context_id
-        WHERE samples.uploaded = 0
-          AND samples.id > ?
-        """.trimIndent(),
-        arrayOf(afterLocalId.toString())
-    ).use { cursor ->
-        while (cursor.moveToNext()) {
-            val serverUrl = cursor.getString(0)
-            if (
-                !ClientCompatibilityBlockStore.isBlocked(
-                    context = context,
-                    serverUrl = serverUrl,
-                    versionCode = client.versionCode
-                )
-            ) {
-                return true
-            }
-        }
-    }
-
-    return false
 }
 
 internal fun buildTelemetryUploadPayload(
@@ -320,15 +310,6 @@ object TelemetryUploadScheduler {
         }
     }
 
-    fun enqueueContinuation(context: Context, afterLocalId: Long) {
-        TelemetryUploadStatusStore.write(context, TelemetryUploadStatusStore.WAITING)
-        WorkManager.getInstance(context.applicationContext)
-            .enqueueUniqueWork(
-                UNIQUE_WORK_NAME,
-                ExistingWorkPolicy.APPEND_OR_REPLACE,
-                buildRequest(afterLocalId = afterLocalId)
-            )
-    }
 }
 
 class TelemetryUploadWorker(
@@ -341,30 +322,249 @@ class TelemetryUploadWorker(
 
     override fun doWork(): Result {
         val client = currentClientBuildIdentity()
-        val afterLocalId = inputData.getLong(TelemetryUploadScheduler.AFTER_LOCAL_ID_KEY, 0L)
-        val pendingSamples = getTelemetryUploadPage(
-            db = db,
-            afterLocalId = afterLocalId,
-            limit = BATCH_SIZE
+        var afterLocalId = inputData.getLong(
+            TelemetryUploadScheduler.AFTER_LOCAL_ID_KEY,
+            0L
         )
+        var nextPageLimit = DISCOVERY_PAGE_SIZE
+        val batchCapabilities = mutableMapOf<Long, TelemetryBatchCapability>()
 
-        if (pendingSamples.isEmpty()) {
+        while (true) {
+            var pendingSamples = getTelemetryUploadPage(
+                db = db,
+                afterLocalId = afterLocalId,
+                limit = nextPageLimit
+            )
+
+            if (pendingSamples.isEmpty()) {
+                break
+            }
+
             TelemetryUploadStatusStore.write(
                 applicationContext,
-                if (db.countUploadablePendingSamples() == 0L) {
-                    TelemetryUploadStatusStore.ALL_SENT
-                } else {
-                    TelemetryUploadStatusStore.WAITING
-                }
+                TelemetryUploadStatusStore.ACTIVE
             )
-            return Result.success()
+
+            val firstSample = pendingSamples.first()
+            val accessContext = firstSample.accessContext
+
+            if (
+                ClientCompatibilityBlockStore.isBlocked(
+                    context = applicationContext,
+                    serverUrl = accessContext.serverUrl,
+                    versionCode = client.versionCode
+                )
+            ) {
+                if (nextPageLimit < LOCAL_SCAN_PAGE_SIZE) {
+                    pendingSamples = getTelemetryUploadPage(
+                        db = db,
+                        afterLocalId = afterLocalId,
+                        limit = LOCAL_SCAN_PAGE_SIZE
+                    )
+                }
+
+                val blockedPrefix = pendingSamples.takeWhile {
+                    it.accessContext.serverUrl == accessContext.serverUrl
+                }
+                afterLocalId = blockedPrefix.last().localId
+                nextPageLimit = LOCAL_SCAN_PAGE_SIZE
+                continue
+            }
+
+            var sameAccessPrefix = pendingSamples.takeWhile {
+                it.accessContext.id == accessContext.id
+            }
+            val cachedCapability = batchCapabilities[accessContext.id]
+
+            if (cachedCapability == null && sameAccessPrefix.size < 2) {
+                when (uploadSampleBlocking(firstSample, client)) {
+                    TelemetryUploadAttemptResult.SUCCESS -> {
+                        db.markUploaded(firstSample.localId)
+                    }
+
+                    TelemetryUploadAttemptResult.TEMPORARY_FAILURE -> {
+                        return temporaryFailure()
+                    }
+
+                    TelemetryUploadAttemptResult.CLIENT_UPDATE_REQUIRED,
+                    TelemetryUploadAttemptResult.OTHER_FAILURE -> {
+                        // Keep the row pending. CLIENT_UPDATE_REQUIRED also blocks
+                        // later requests to this server/version.
+                    }
+                }
+
+                afterLocalId = firstSample.localId
+                nextPageLimit = DISCOVERY_PAGE_SIZE
+                continue
+            }
+
+            val capability = cachedCapability
+                ?: fetchTelemetryBatchCapabilityBlocking(accessContext).also { discovered ->
+                    if (discovered.kind != TelemetryBatchCapabilityKind.TEMPORARY_FAILURE) {
+                        batchCapabilities[accessContext.id] = discovered
+                    }
+                }
+
+            when (capability.kind) {
+                TelemetryBatchCapabilityKind.TEMPORARY_FAILURE -> {
+                    return temporaryFailure()
+                }
+
+                TelemetryBatchCapabilityKind.UNSUPPORTED -> {
+                    if (nextPageLimit != LEGACY_PAGE_SIZE) {
+                        pendingSamples = getTelemetryUploadPage(
+                            db = db,
+                            afterLocalId = afterLocalId,
+                            limit = LEGACY_PAGE_SIZE
+                        )
+                        sameAccessPrefix = pendingSamples.takeWhile {
+                            it.accessContext.id == accessContext.id
+                        }
+                    }
+
+                    if (
+                        uploadSequentialPrefix(
+                            samples = sameAccessPrefix,
+                            client = client
+                        ) == TelemetryUploadAttemptResult.TEMPORARY_FAILURE
+                    ) {
+                        return temporaryFailure()
+                    }
+
+                    afterLocalId = sameAccessPrefix.last().localId
+                    nextPageLimit = LEGACY_PAGE_SIZE
+                }
+
+                TelemetryBatchCapabilityKind.SUPPORTED -> {
+                    val maxSamples = requireNotNull(capability.maxSamples)
+                    if (nextPageLimit != maxSamples) {
+                        pendingSamples = getTelemetryUploadPage(
+                            db = db,
+                            afterLocalId = afterLocalId,
+                            limit = maxSamples
+                        )
+                        sameAccessPrefix = pendingSamples.takeWhile {
+                            it.accessContext.id == accessContext.id
+                        }
+                    }
+
+                    val batch = sameAccessPrefix.take(maxSamples)
+                    val attempt = uploadBatchBlocking(
+                        samples = batch,
+                        client = client
+                    )
+
+                    when (attempt.kind) {
+                        TelemetryBatchAttemptKind.PROCESSED -> {
+                            val response = requireNotNull(attempt.response)
+                            db.markUploaded(response.acceptedLocalIds)
+
+                            if (response.clientUpdateRequired) {
+                                markClientUpdateRequired(
+                                    accessContext = accessContext,
+                                    client = client,
+                                    responseCode = 426
+                                )
+                            } else if (response.acceptedLocalIds.isNotEmpty()) {
+                                clearClientCompatibilityBlock(
+                                    accessContext = accessContext,
+                                    client = client
+                                )
+                            }
+
+                            response.firstOtherRejectionCode?.let { code ->
+                                publishDebugError(
+                                    applicationContext.getString(
+                                        R.string.upload_error_code,
+                                        200,
+                                        code
+                                    )
+                                )
+                            }
+
+                            afterLocalId = batch.last().localId
+                            nextPageLimit = maxSamples
+
+                            if (response.hasTemporaryRejection) {
+                                return temporaryFailure()
+                            }
+                        }
+
+                        TelemetryBatchAttemptKind.UNSUPPORTED -> {
+                            batchCapabilities[accessContext.id] =
+                                TelemetryBatchCapability(
+                                    kind = TelemetryBatchCapabilityKind.UNSUPPORTED
+                                )
+                            nextPageLimit = LEGACY_PAGE_SIZE
+                        }
+
+                        TelemetryBatchAttemptKind.PAYLOAD_TOO_LARGE -> {
+                            if (batch.size <= 1) {
+                                return temporaryFailure()
+                            }
+
+                            val refreshed = fetchTelemetryBatchCapabilityBlocking(
+                                accessContext
+                            )
+                            if (
+                                refreshed.kind ==
+                                TelemetryBatchCapabilityKind.TEMPORARY_FAILURE
+                            ) {
+                                return temporaryFailure()
+                            }
+
+                            val refreshedLimit = refreshed.maxSamples
+                                ?.takeIf { it < batch.size }
+                            val reducedLimit = refreshedLimit
+                                ?: (batch.size / 2).coerceAtLeast(1)
+
+                            batchCapabilities[accessContext.id] =
+                                TelemetryBatchCapability(
+                                    kind = TelemetryBatchCapabilityKind.SUPPORTED,
+                                    maxSamples = reducedLimit
+                                )
+                            nextPageLimit = reducedLimit
+                        }
+
+                        TelemetryBatchAttemptKind.CLIENT_UPDATE_REQUIRED -> {
+                            markClientUpdateRequired(
+                                accessContext = accessContext,
+                                client = client,
+                                responseCode = 426
+                            )
+                            afterLocalId = batch.last().localId
+                            nextPageLimit = LOCAL_SCAN_PAGE_SIZE
+                        }
+
+                        TelemetryBatchAttemptKind.TEMPORARY_FAILURE -> {
+                            return temporaryFailure()
+                        }
+
+                        TelemetryBatchAttemptKind.OTHER_FAILURE -> {
+                            afterLocalId = batch.last().localId
+                            nextPageLimit = maxSamples
+                        }
+                    }
+                }
+            }
         }
 
-        TelemetryUploadStatusStore.write(applicationContext, TelemetryUploadStatusStore.ACTIVE)
+        TelemetryUploadStatusStore.write(
+            applicationContext,
+            if (db.hasUploadablePendingSamples()) {
+                TelemetryUploadStatusStore.WAITING
+            } else {
+                TelemetryUploadStatusStore.ALL_SENT
+            }
+        )
+        return Result.success()
+    }
 
-        var retryNeeded = false
-
-        for (sample in pendingSamples) {
+    private fun uploadSequentialPrefix(
+        samples: List<PendingTrackingSample>,
+        client: ClientBuildIdentity
+    ): TelemetryUploadAttemptResult {
+        for (sample in samples) {
             if (
                 ClientCompatibilityBlockStore.isBlocked(
                     context = applicationContext,
@@ -372,68 +572,296 @@ class TelemetryUploadWorker(
                     versionCode = client.versionCode
                 )
             ) {
-                continue
+                break
             }
 
-            when (uploadSampleBlocking(sample, client)) {
+            when (val result = uploadSampleBlocking(sample, client)) {
                 TelemetryUploadAttemptResult.SUCCESS -> {
                     db.markUploaded(sample.localId)
                 }
 
                 TelemetryUploadAttemptResult.TEMPORARY_FAILURE -> {
-                    retryNeeded = true
+                    return result
                 }
 
-                TelemetryUploadAttemptResult.CLIENT_UPDATE_REQUIRED,
+                TelemetryUploadAttemptResult.CLIENT_UPDATE_REQUIRED -> {
+                    break
+                }
+
                 TelemetryUploadAttemptResult.OTHER_FAILURE -> {
-                    // Keep this row pending. A known 426 also blocks later requests to this server/version.
+                    // Keep this row pending and continue with later rows.
                 }
             }
         }
 
-        val remaining = db.countUploadablePendingSamples()
-        val lastLocalId = pendingSamples.last().localId
-        val hasLaterPendingSamples = remaining > 0L &&
-            hasUnblockedUploadablePendingServerAfter(
-                db = db,
-                context = applicationContext,
-                afterLocalId = lastLocalId,
+        return TelemetryUploadAttemptResult.SUCCESS
+    }
+
+    private fun fetchTelemetryBatchCapabilityBlocking(
+        accessContext: AccessContext
+    ): TelemetryBatchCapability {
+        val endpoint = buildServerMetadataUrl(accessContext.serverUrl)
+            ?: return TelemetryBatchCapability(
+                kind = TelemetryBatchCapabilityKind.UNSUPPORTED
+            )
+        val headers = buildServerMetadataHeaders(
+            eventName = accessContext.accessIdentifier,
+            sharedSecret = accessContext.accessSecret
+        ) ?: return TelemetryBatchCapability(
+            kind = TelemetryBatchCapabilityKind.UNSUPPORTED
+        )
+
+        var connection: HttpURLConnection? = null
+        var serverResponded = false
+
+        return try {
+            connection = URL(endpoint).openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 3000
+            connection.readTimeout = 3000
+            headers.forEach { (name, value) ->
+                connection.setRequestProperty(name, value)
+            }
+
+            val responseCode = connection.responseCode
+            serverResponded = true
+            ServerConnectionStateStore.markReachable(
+                applicationContext,
+                accessContext.serverUrl
+            )
+
+            when {
+                responseCode in 200..299 -> {
+                    val body = connection.inputStream
+                        .bufferedReader()
+                        .use { it.readText() }
+                    val metadata = runCatching {
+                        parseServerMetadata(body)
+                    }.getOrNull()
+
+                    telemetryBatchCapabilityFromMetadata(metadata)
+                }
+
+                responseCode == 408 ||
+                    responseCode == 429 ||
+                    responseCode in 500..599 -> {
+                    TelemetryBatchCapability(
+                        kind = TelemetryBatchCapabilityKind.TEMPORARY_FAILURE
+                    )
+                }
+
+                else -> {
+                    TelemetryBatchCapability(
+                        kind = TelemetryBatchCapabilityKind.UNSUPPORTED
+                    )
+                }
+            }
+        } catch (_: Exception) {
+            if (!serverResponded) {
+                ServerConnectionStateStore.markNoConnection(
+                    applicationContext,
+                    accessContext.serverUrl
+                )
+            }
+            TelemetryBatchCapability(
+                kind = TelemetryBatchCapabilityKind.TEMPORARY_FAILURE
+            )
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
+    private fun uploadBatchBlocking(
+        samples: List<PendingTrackingSample>,
+        client: ClientBuildIdentity
+    ): TelemetryBatchAttempt {
+        require(samples.isNotEmpty())
+
+        val accessContext = samples.first().accessContext
+        require(samples.all { it.accessContext.id == accessContext.id })
+
+        var connection: HttpURLConnection? = null
+        var serverResponded = false
+
+        return try {
+            val json = buildTelemetryBatchUploadPayload(
+                samples = samples,
                 client = client
             )
 
-        return when (
-            decideTelemetryWorkerCompletion(
-                retryNeeded = retryNeeded,
-                hasLaterPendingSamples = hasLaterPendingSamples
+            connection = URL(buildBatchIngestUrl(accessContext))
+                .openConnection() as HttpURLConnection
+            connection.requestMethod = "POST"
+            connection.connectTimeout = 3000
+            connection.readTimeout = 3000
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.setRequestProperty("Accept", "application/json")
+            connection.setRequestProperty(
+                "x-event-name",
+                accessContext.accessIdentifier
+            )
+            connection.setRequestProperty(
+                "x-shared-secret",
+                accessContext.accessSecret
+            )
+            connection.setRequestProperty(
+                "x-api-version",
+                RegattaTrackingService.API_VERSION
+            )
+
+            connection.outputStream.use { outputStream ->
+                outputStream.write(
+                    json.toString().toByteArray(Charsets.UTF_8)
+                )
+            }
+
+            val responseCode = connection.responseCode
+            serverResponded = true
+            ServerConnectionStateStore.markReachable(
+                applicationContext,
+                accessContext.serverUrl
+            )
+
+            if (responseCode in 200..299) {
+                val responseBody = connection.inputStream
+                    .bufferedReader()
+                    .use { it.readText() }
+                val parsed = parseTelemetryBatchUploadResponse(
+                    body = responseBody,
+                    samples = samples
+                )
+
+                if (parsed == null) {
+                    publishDebugError(
+                        applicationContext.getString(
+                            R.string.upload_error_code,
+                            responseCode,
+                            "invalid batch response"
+                        )
+                    )
+                    TelemetryBatchAttempt(
+                        kind = TelemetryBatchAttemptKind.TEMPORARY_FAILURE
+                    )
+                } else {
+                    TelemetryBatchAttempt(
+                        kind = TelemetryBatchAttemptKind.PROCESSED,
+                        response = parsed
+                    )
+                }
+            } else {
+                val errorBody = connection.errorStream
+                    ?.bufferedReader()
+                    ?.use { it.readText() }
+                    ?: ""
+
+                val kind = when {
+                    responseCode == 404 ||
+                        responseCode == 405 ||
+                        responseCode == 501 -> {
+                        TelemetryBatchAttemptKind.UNSUPPORTED
+                    }
+
+                    responseCode == 413 -> {
+                        TelemetryBatchAttemptKind.PAYLOAD_TOO_LARGE
+                    }
+
+                    shouldTreatAsClientUpdateRequired(
+                        responseCode,
+                        errorBody,
+                        client
+                    ) -> {
+                        TelemetryBatchAttemptKind.CLIENT_UPDATE_REQUIRED
+                    }
+
+                    responseCode == 408 ||
+                        responseCode == 429 ||
+                        responseCode in 500..599 -> {
+                        TelemetryBatchAttemptKind.TEMPORARY_FAILURE
+                    }
+
+                    else -> TelemetryBatchAttemptKind.OTHER_FAILURE
+                }
+
+                if (
+                    kind != TelemetryBatchAttemptKind.UNSUPPORTED &&
+                    kind != TelemetryBatchAttemptKind.PAYLOAD_TOO_LARGE
+                ) {
+                    publishDebugError(
+                        applicationContext.getString(
+                            R.string.upload_error_code,
+                            responseCode,
+                            errorBody.take(200)
+                        )
+                    )
+                }
+
+                TelemetryBatchAttempt(kind = kind)
+            }
+        } catch (e: Exception) {
+            if (!serverResponded) {
+                ServerConnectionStateStore.markNoConnection(
+                    applicationContext,
+                    accessContext.serverUrl
+                )
+            }
+            publishDebugError(
+                applicationContext.getString(
+                    R.string.upload_exception,
+                    e.message ?: ""
+                )
+            )
+            TelemetryBatchAttempt(
+                kind = TelemetryBatchAttemptKind.TEMPORARY_FAILURE
+            )
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
+    private fun temporaryFailure(): Result {
+        TelemetryUploadStatusStore.write(
+            applicationContext,
+            TelemetryUploadStatusStore.TEMPORARY_ERROR
+        )
+        return Result.retry()
+    }
+
+    private fun markClientUpdateRequired(
+        accessContext: AccessContext,
+        client: ClientBuildIdentity,
+        responseCode: Int
+    ) {
+        ClientCompatibilityBlockStore.markBlocked(
+            context = applicationContext,
+            serverUrl = accessContext.serverUrl,
+            versionCode = client.versionCode
+        )
+        publishDebugError(
+            applicationContext.getString(
+                R.string.upload_error_code,
+                responseCode,
+                applicationContext.getString(R.string.client_update_required)
+            )
+        )
+    }
+
+    private fun clearClientCompatibilityBlock(
+        accessContext: AccessContext,
+        client: ClientBuildIdentity
+    ) {
+        ClientCompatibilityBlockStore.clearBlocked(
+            context = applicationContext,
+            serverUrl = accessContext.serverUrl,
+            versionCode = client.versionCode
+        )
+        if (
+            !ClientCompatibilityBlockStore.hasAnyBlockForVersion(
+                context = applicationContext,
+                versionCode = client.versionCode
             )
         ) {
-            TelemetryWorkerDecision.RETRY -> {
-                TelemetryUploadStatusStore.write(
-                    applicationContext,
-                    TelemetryUploadStatusStore.TEMPORARY_ERROR
-                )
-                Result.retry()
-            }
-
-            TelemetryWorkerDecision.CONTINUE -> {
-                TelemetryUploadScheduler.enqueueContinuation(
-                    applicationContext,
-                    afterLocalId = lastLocalId
-                )
-                Result.success()
-            }
-
-            TelemetryWorkerDecision.SUCCESS -> {
-                TelemetryUploadStatusStore.write(
-                    applicationContext,
-                    if (remaining == 0L) {
-                        TelemetryUploadStatusStore.ALL_SENT
-                    } else {
-                        TelemetryUploadStatusStore.WAITING
-                    }
-                )
-                Result.success()
-            }
+            publishDebugError("")
         }
     }
 
@@ -542,6 +970,10 @@ class TelemetryUploadWorker(
         return "${accessContext.serverUrl.trimEnd('/')}/ingest"
     }
 
+    private fun buildBatchIngestUrl(accessContext: AccessContext): String {
+        return "${accessContext.serverUrl.trimEnd('/')}/ingest/batch"
+    }
+
     private fun publishDebugError(message: String) {
         applicationContext
             .getSharedPreferences(localStatusPrefsName, Context.MODE_PRIVATE)
@@ -551,6 +983,8 @@ class TelemetryUploadWorker(
     }
 
     private companion object {
-        const val BATCH_SIZE = 50
+        const val DISCOVERY_PAGE_SIZE = 2
+        const val LEGACY_PAGE_SIZE = 50
+        const val LOCAL_SCAN_PAGE_SIZE = 1000
     }
 }
