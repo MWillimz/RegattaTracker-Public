@@ -321,7 +321,7 @@
 
     <string name="telemetry_upload_notification_channel">Regattadaten-Übertragung</string>
     <string name="telemetry_upload_notification_title">Gespeicherte Regattadaten werden übertragen</string>
-    <string name="telemetry_upload_notification_progress">%1$s von %2$s Positionen gesendet · Tracking läuft weiter</string>
+    <string name="telemetry_upload_notification_progress">%1$s von %2$s Positionen gesendet · Upload läuft im Hintergrund</string>
     <string name="telemetry_upload_notification_keep_running">Bitte Regatta Tracker bis zum Abschluss nicht beenden.</string>
 
 </resources>
