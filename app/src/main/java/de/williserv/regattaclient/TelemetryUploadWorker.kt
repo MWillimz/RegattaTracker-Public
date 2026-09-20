@@ -420,7 +420,11 @@ object TelemetryUploadScheduler {
         WorkManager.getInstance(context.applicationContext)
             .enqueueUniqueWork(
                 UNIQUE_WORK_NAME,
-                ExistingWorkPolicy.KEEP,
+                if (expedited) {
+                    ExistingWorkPolicy.REPLACE
+                } else {
+                    ExistingWorkPolicy.KEEP
+                },
                 buildRequest(expedited = expedited)
             )
     }
