@@ -95,27 +95,27 @@ class TelemetryUploadForegroundTest {
         val expected = mapOf(
             "en" to ExpectedText(
                 title = "Uploading stored race data",
-                progress = "12 of 20 positions sent · Tracking continues",
+                progress = "12 of 20 positions sent · Upload continues in the background",
                 keepRunning = "Please do not close Regatta Tracker until the upload is complete."
             ),
             "de" to ExpectedText(
                 title = "Gespeicherte Regattadaten werden übertragen",
-                progress = "12 von 20 Positionen gesendet · Tracking läuft weiter",
+                progress = "12 von 20 Positionen gesendet · Upload läuft im Hintergrund",
                 keepRunning = "Bitte Regatta Tracker bis zum Abschluss nicht beenden."
             ),
             "es" to ExpectedText(
                 title = "Enviando datos de regata guardados",
-                progress = "12 de 20 posiciones enviadas · El seguimiento continúa",
+                progress = "12 de 20 posiciones enviadas · El envío continúa en segundo plano",
                 keepRunning = "No cierres Regatta Tracker hasta que finalice el envío."
             ),
             "fr" to ExpectedText(
                 title = "Envoi des données de régate enregistrées",
-                progress = "12 positions sur 20 envoyées · Le suivi continue",
+                progress = "12 positions sur 20 envoyées · L’envoi continue en arrière-plan",
                 keepRunning = "Ne fermez pas Regatta Tracker avant la fin de l’envoi."
             ),
             "it" to ExpectedText(
                 title = "Invio dei dati di regata salvati",
-                progress = "12 di 20 posizioni inviate · Il tracciamento continua",
+                progress = "12 di 20 posizioni inviate · L’invio continua in secondo piano",
                 keepRunning = "Non chiudere Regatta Tracker fino al completamento dell’invio."
             )
         )
