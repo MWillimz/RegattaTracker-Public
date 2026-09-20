@@ -73,6 +73,30 @@ class TelemetryUploadForegroundTest {
     }
 
     @Test
+    fun pendingEstimateRefresh_tracksSamplesAddedDuringWorkerRun() {
+        assertTrue(
+            shouldRefreshTelemetryPendingEstimate(
+                remainingPendingEstimate = 0L,
+                elapsedSinceRefreshMs = 0L
+            )
+        )
+        assertFalse(
+            shouldRefreshTelemetryPendingEstimate(
+                remainingPendingEstimate = 25L,
+                elapsedSinceRefreshMs =
+                    TELEMETRY_PENDING_ESTIMATE_REFRESH_INTERVAL_MS - 1L
+            )
+        )
+        assertTrue(
+            shouldRefreshTelemetryPendingEstimate(
+                remainingPendingEstimate = 25L,
+                elapsedSinceRefreshMs =
+                    TELEMETRY_PENDING_ESTIMATE_REFRESH_INTERVAL_MS
+            )
+        )
+    }
+
+    @Test
     fun notificationProgress_tracksSentAndRemainingSamples() {
         val progress = telemetryUploadNotificationProgress(
             sent = 12_500L,

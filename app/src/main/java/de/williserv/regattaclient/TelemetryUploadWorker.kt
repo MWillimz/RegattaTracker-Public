@@ -148,6 +148,15 @@ internal fun shouldExpediteTelemetryUpload(uploadablePendingCount: Long): Boolea
 internal const val TELEMETRY_LONG_RUNNING_BATCH_REQUEST_THRESHOLD = 20L
 internal const val TELEMETRY_LONG_RUNNING_LEGACY_SAMPLE_THRESHOLD = 100L
 internal const val TELEMETRY_LONG_RUNNING_ELAPSED_THRESHOLD_MS = 120_000L
+internal const val TELEMETRY_PENDING_ESTIMATE_REFRESH_INTERVAL_MS = 10_000L
+
+internal fun shouldRefreshTelemetryPendingEstimate(
+    remainingPendingEstimate: Long,
+    elapsedSinceRefreshMs: Long
+): Boolean {
+    return remainingPendingEstimate <= 0L ||
+        elapsedSinceRefreshMs >= TELEMETRY_PENDING_ESTIMATE_REFRESH_INTERVAL_MS
+}
 
 internal data class TelemetryUploadNotificationProgress(
     val sent: Long,
@@ -462,6 +471,7 @@ class TelemetryUploadWorker(
     private var uploadedDuringRun = 0L
     private var remainingPendingEstimate = 0L
     private var uploadStartedAtElapsedMs = 0L
+    private var pendingEstimateRefreshedAtElapsedMs = 0L
 
     override fun getForegroundInfo(): ForegroundInfo {
         createTelemetryUploadNotificationChannel()
@@ -474,6 +484,7 @@ class TelemetryUploadWorker(
     override fun doWork(): Result {
         uploadStartedAtElapsedMs = SystemClock.elapsedRealtime()
         remainingPendingEstimate = db.countUploadablePendingSamples()
+        pendingEstimateRefreshedAtElapsedMs = uploadStartedAtElapsedMs
 
         val client = currentClientBuildIdentity()
         var afterLocalId = inputData.getLong(
@@ -790,9 +801,24 @@ class TelemetryUploadWorker(
     ) {
         if (foregroundPromotionUnavailable) return
 
+        val nowElapsedMs = SystemClock.elapsedRealtime()
+        val elapsedSinceEstimateRefreshMs =
+            (nowElapsedMs - pendingEstimateRefreshedAtElapsedMs)
+                .coerceAtLeast(0L)
+
+        if (
+            shouldRefreshTelemetryPendingEstimate(
+                remainingPendingEstimate = remainingPendingEstimate,
+                elapsedSinceRefreshMs = elapsedSinceEstimateRefreshMs
+            )
+        ) {
+            remainingPendingEstimate = db.countUploadablePendingSamples()
+            pendingEstimateRefreshedAtElapsedMs = nowElapsedMs
+        }
+
         val remainingPendingCount = remainingPendingEstimate
         val elapsedMs =
-            (SystemClock.elapsedRealtime() - uploadStartedAtElapsedMs)
+            (nowElapsedMs - uploadStartedAtElapsedMs)
                 .coerceAtLeast(0L)
 
         if (
