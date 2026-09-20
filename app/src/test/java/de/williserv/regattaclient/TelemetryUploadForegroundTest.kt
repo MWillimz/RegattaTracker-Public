@@ -73,6 +73,34 @@ class TelemetryUploadForegroundTest {
     }
 
     @Test
+    fun nonForegroundSlice_yieldsOnlyAfterBoundedRuntime() {
+        assertFalse(
+            shouldYieldTelemetryUpload(
+                foregroundActive = false,
+                elapsedMs = TELEMETRY_NON_FOREGROUND_SLICE_MS - 1L
+            )
+        )
+        assertTrue(
+            shouldYieldTelemetryUpload(
+                foregroundActive = false,
+                elapsedMs = TELEMETRY_NON_FOREGROUND_SLICE_MS
+            )
+        )
+        assertFalse(
+            shouldYieldTelemetryUpload(
+                foregroundActive = true,
+                elapsedMs = TELEMETRY_NON_FOREGROUND_SLICE_MS
+            )
+        )
+        assertFalse(
+            shouldYieldTelemetryUpload(
+                foregroundActive = true,
+                elapsedMs = TELEMETRY_NON_FOREGROUND_SLICE_MS * 2L
+            )
+        )
+    }
+
+    @Test
     fun pendingEstimateRefresh_tracksSamplesAddedDuringWorkerRun() {
         assertTrue(
             shouldRefreshTelemetryPendingEstimate(
