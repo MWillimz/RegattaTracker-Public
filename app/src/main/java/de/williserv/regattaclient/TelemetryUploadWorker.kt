@@ -1,7 +1,14 @@
 package de.williserv.regattaclient
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.pm.ServiceInfo
+import android.os.SystemClock
+import androidx.core.app.NotificationCompat
 import androidx.work.BackoffPolicy
+import androidx.work.ForegroundInfo
 import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
@@ -131,6 +138,68 @@ internal fun classifyTelemetryUploadResponse(
 
 internal fun shouldEnqueueTelemetryUpload(uploadablePendingCount: Long): Boolean {
     return uploadablePendingCount > 0L
+}
+
+internal const val TELEMETRY_LONG_RUNNING_BATCH_REQUEST_THRESHOLD = 20L
+internal const val TELEMETRY_LONG_RUNNING_LEGACY_SAMPLE_THRESHOLD = 100L
+internal const val TELEMETRY_LONG_RUNNING_ELAPSED_THRESHOLD_MS = 120_000L
+
+internal data class TelemetryUploadNotificationProgress(
+    val sent: Long,
+    val total: Long,
+    val percent: Int
+)
+
+internal fun shouldPromoteTelemetryUploadToForeground(
+    remainingPendingCount: Long,
+    elapsedMs: Long,
+    capability: TelemetryBatchCapability?
+): Boolean {
+    if (remainingPendingCount <= 0L) return false
+
+    if (elapsedMs >= TELEMETRY_LONG_RUNNING_ELAPSED_THRESHOLD_MS) {
+        return true
+    }
+
+    return when (capability?.kind) {
+        TelemetryBatchCapabilityKind.SUPPORTED -> {
+            val maxSamples = capability.maxSamples ?: return false
+            if (maxSamples <= 0) return false
+
+            val requestCount =
+                ((remainingPendingCount - 1L) / maxSamples.toLong()) + 1L
+            requestCount >= TELEMETRY_LONG_RUNNING_BATCH_REQUEST_THRESHOLD
+        }
+
+        TelemetryBatchCapabilityKind.UNSUPPORTED -> {
+            remainingPendingCount >= TELEMETRY_LONG_RUNNING_LEGACY_SAMPLE_THRESHOLD
+        }
+
+        TelemetryBatchCapabilityKind.TEMPORARY_FAILURE,
+        null -> false
+    }
+}
+
+internal fun telemetryUploadNotificationProgress(
+    sent: Long,
+    remainingPendingCount: Long
+): TelemetryUploadNotificationProgress {
+    val safeSent = sent.coerceAtLeast(0L)
+    val safeRemaining = remainingPendingCount.coerceAtLeast(0L)
+    val total = safeSent + safeRemaining
+    val percent = if (total == 0L) {
+        100
+    } else {
+        ((safeSent.toDouble() / total.toDouble()) * 100.0)
+            .toInt()
+            .coerceIn(0, 100)
+    }
+
+    return TelemetryUploadNotificationProgress(
+        sent = safeSent,
+        total = total,
+        percent = percent
+    )
 }
 
 internal fun shouldSuppressTelemetryUploadEnqueue(
@@ -365,7 +434,13 @@ class TelemetryUploadWorker(
     private val db = TrackingDbHelper(appContext)
     private val localStatusPrefsName = "regatta_local_status"
 
+    private var foregroundActive = false
+    private var uploadedDuringRun = 0L
+    private var uploadStartedAtElapsedMs = 0L
+
     override fun doWork(): Result {
+        uploadStartedAtElapsedMs = SystemClock.elapsedRealtime()
+
         val client = currentClientBuildIdentity()
         var afterLocalId = inputData.getLong(
             TelemetryUploadScheduler.AFTER_LOCAL_ID_KEY,
@@ -392,6 +467,14 @@ class TelemetryUploadWorker(
 
             val firstSample = pendingSamples.first()
             val accessContext = firstSample.accessContext
+
+            if (
+                !updateLongRunningForegroundIfNeeded(
+                    capability = batchCapabilities[accessContext.id]
+                )
+            ) {
+                return temporaryFailure()
+            }
 
             if (
                 ClientCompatibilityBlockStore.isBlocked(
@@ -425,6 +508,7 @@ class TelemetryUploadWorker(
                 when (uploadSampleBlocking(firstSample, client)) {
                     TelemetryUploadAttemptResult.SUCCESS -> {
                         db.markUploaded(firstSample.localId)
+                        uploadedDuringRun += 1L
                     }
 
                     TelemetryUploadAttemptResult.TEMPORARY_FAILURE -> {
@@ -450,6 +534,10 @@ class TelemetryUploadWorker(
                     }
                 }
 
+            if (!updateLongRunningForegroundIfNeeded(capability)) {
+                return temporaryFailure()
+            }
+
             when (capability.kind) {
                 TelemetryBatchCapabilityKind.TEMPORARY_FAILURE -> {
                     return temporaryFailure()
@@ -467,11 +555,15 @@ class TelemetryUploadWorker(
                         }
                     }
 
+                    val sequentialOutcome = uploadSequentialPrefix(
+                        samples = sameAccessPrefix,
+                        client = client
+                    )
+                    uploadedDuringRun += sequentialOutcome.uploadedCount.toLong()
+
                     if (
-                        uploadSequentialPrefix(
-                            samples = sameAccessPrefix,
-                            client = client
-                        ) == TelemetryUploadAttemptResult.TEMPORARY_FAILURE
+                        sequentialOutcome.result ==
+                        TelemetryUploadAttemptResult.TEMPORARY_FAILURE
                     ) {
                         return temporaryFailure()
                     }
@@ -503,6 +595,7 @@ class TelemetryUploadWorker(
                         TelemetryBatchAttemptKind.PROCESSED -> {
                             val response = requireNotNull(attempt.response)
                             db.markUploaded(response.acceptedLocalIds)
+                            uploadedDuringRun += response.acceptedLocalIds.size.toLong()
 
                             if (response.clientUpdateRequired) {
                                 markClientUpdateRequired(
@@ -594,6 +687,10 @@ class TelemetryUploadWorker(
             }
         }
 
+        if (foregroundActive) {
+            updateLongRunningForegroundIfNeeded(capability = null)
+        }
+
         TelemetryUploadStatusStore.write(
             applicationContext,
             if (db.hasUploadablePendingSamples()) {
@@ -605,10 +702,17 @@ class TelemetryUploadWorker(
         return Result.success()
     }
 
+    private data class SequentialUploadOutcome(
+        val result: TelemetryUploadAttemptResult,
+        val uploadedCount: Int
+    )
+
     private fun uploadSequentialPrefix(
         samples: List<PendingTrackingSample>,
         client: ClientBuildIdentity
-    ): TelemetryUploadAttemptResult {
+    ): SequentialUploadOutcome {
+        var uploadedCount = 0
+
         for (sample in samples) {
             if (
                 ClientCompatibilityBlockStore.isBlocked(
@@ -623,10 +727,14 @@ class TelemetryUploadWorker(
             when (val result = uploadSampleBlocking(sample, client)) {
                 TelemetryUploadAttemptResult.SUCCESS -> {
                     db.markUploaded(sample.localId)
+                    uploadedCount += 1
                 }
 
                 TelemetryUploadAttemptResult.TEMPORARY_FAILURE -> {
-                    return result
+                    return SequentialUploadOutcome(
+                        result = result,
+                        uploadedCount = uploadedCount
+                    )
                 }
 
                 TelemetryUploadAttemptResult.CLIENT_UPDATE_REQUIRED -> {
@@ -639,7 +747,126 @@ class TelemetryUploadWorker(
             }
         }
 
-        return TelemetryUploadAttemptResult.SUCCESS
+        return SequentialUploadOutcome(
+            result = TelemetryUploadAttemptResult.SUCCESS,
+            uploadedCount = uploadedCount
+        )
+    }
+
+    private fun updateLongRunningForegroundIfNeeded(
+        capability: TelemetryBatchCapability?
+    ): Boolean {
+        val remainingPendingCount = db.countUploadablePendingSamples()
+        val elapsedMs =
+            (SystemClock.elapsedRealtime() - uploadStartedAtElapsedMs)
+                .coerceAtLeast(0L)
+
+        if (
+            !foregroundActive &&
+            !shouldPromoteTelemetryUploadToForeground(
+                remainingPendingCount = remainingPendingCount,
+                elapsedMs = elapsedMs,
+                capability = capability
+            )
+        ) {
+            return true
+        }
+
+        return try {
+            createTelemetryUploadNotificationChannel()
+            setForegroundAsync(
+                buildTelemetryUploadForegroundInfo(
+                    remainingPendingCount = remainingPendingCount
+                )
+            ).get()
+            foregroundActive = true
+            true
+        } catch (e: Exception) {
+            publishDebugError(
+                applicationContext.getString(
+                    R.string.upload_exception,
+                    e.message ?: "foreground upload notification failed"
+                )
+            )
+            false
+        }
+    }
+
+    private fun createTelemetryUploadNotificationChannel() {
+        val notificationManager =
+            applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as
+                NotificationManager
+
+        notificationManager.createNotificationChannel(
+            NotificationChannel(
+                TELEMETRY_UPLOAD_NOTIFICATION_CHANNEL_ID,
+                applicationContext.getString(
+                    R.string.telemetry_upload_notification_channel
+                ),
+                NotificationManager.IMPORTANCE_LOW
+            )
+        )
+    }
+
+    private fun buildTelemetryUploadForegroundInfo(
+        remainingPendingCount: Long
+    ): ForegroundInfo {
+        val progress = telemetryUploadNotificationProgress(
+            sent = uploadedDuringRun,
+            remainingPendingCount = remainingPendingCount
+        )
+        val locale = applicationContext.resources.configuration.locales[0]
+        val numberFormat = java.text.NumberFormat.getIntegerInstance(locale)
+
+        val progressText = applicationContext.getString(
+            R.string.telemetry_upload_notification_progress,
+            numberFormat.format(progress.sent),
+            numberFormat.format(progress.total)
+        )
+        val keepRunningText = applicationContext.getString(
+            R.string.telemetry_upload_notification_keep_running
+        )
+
+        val launchIntent = applicationContext.packageManager
+            .getLaunchIntentForPackage(applicationContext.packageName)
+        val contentIntent = launchIntent?.let {
+            PendingIntent.getActivity(
+                applicationContext,
+                TELEMETRY_UPLOAD_NOTIFICATION_ID,
+                it,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        }
+
+        val notification = NotificationCompat.Builder(
+            applicationContext,
+            TELEMETRY_UPLOAD_NOTIFICATION_CHANNEL_ID
+        )
+            .setContentTitle(
+                applicationContext.getString(
+                    R.string.telemetry_upload_notification_title
+                )
+            )
+            .setContentText(progressText)
+            .setStyle(
+                NotificationCompat.BigTextStyle().bigText(
+                    "$progressText\n$keepRunningText"
+                )
+            )
+            .setSmallIcon(android.R.drawable.stat_sys_upload)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setProgress(100, progress.percent, false)
+            .apply {
+                contentIntent?.let { setContentIntent(it) }
+            }
+            .build()
+
+        return ForegroundInfo(
+            TELEMETRY_UPLOAD_NOTIFICATION_ID,
+            notification,
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+        )
     }
 
     private fun fetchTelemetryBatchCapabilityBlocking(
@@ -1009,5 +1236,8 @@ class TelemetryUploadWorker(
         const val DISCOVERY_PAGE_SIZE = 2
         const val LEGACY_PAGE_SIZE = 50
         const val LOCAL_SCAN_PAGE_SIZE = 1000
+        const val TELEMETRY_UPLOAD_NOTIFICATION_CHANNEL_ID =
+            "regatta_telemetry_upload_channel"
+        const val TELEMETRY_UPLOAD_NOTIFICATION_ID = 1002
     }
 }
