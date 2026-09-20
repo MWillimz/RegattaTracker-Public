@@ -54,7 +54,7 @@ class TelemetryUploadSchedulerChainTest {
         insertSample(helper, sequenceId = 1L, accessContextId = contextId)
 
         TelemetryUploadScheduler.enqueueWakeup(context)
-        var infos = workManager.getWorkInfosForUniqueWork(UNIQUE_WORK_NAME).get()
+        var infos = workManager.getWorkInfosForUniqueWork(TelemetryUploadScheduler.UNIQUE_WORK_NAME).get()
         assertEquals(1, infos.size)
         val firstId = infos.single().id
         assertEquals(WorkInfo.State.ENQUEUED, infos.single().state)
@@ -64,7 +64,7 @@ class TelemetryUploadSchedulerChainTest {
         // This is the #168 edge: KEEP may legitimately ignore the wake-up
         // because the first unique request is still unfinished.
         TelemetryUploadScheduler.enqueueWakeup(context)
-        infos = workManager.getWorkInfosForUniqueWork(UNIQUE_WORK_NAME).get()
+        infos = workManager.getWorkInfosForUniqueWork(TelemetryUploadScheduler.UNIQUE_WORK_NAME).get()
         assertEquals(1, infos.size)
         assertEquals(firstId, infos.single().id)
         assertEquals(WorkInfo.State.ENQUEUED, infos.single().state)
@@ -74,7 +74,7 @@ class TelemetryUploadSchedulerChainTest {
         assertNotNull(handoff)
         handoff!!.result.get()
 
-        infos = workManager.getWorkInfosForUniqueWork(UNIQUE_WORK_NAME).get()
+        infos = workManager.getWorkInfosForUniqueWork(TelemetryUploadScheduler.UNIQUE_WORK_NAME).get()
         assertEquals(2, infos.size)
 
         val first = infos.single { it.id == firstId }
@@ -119,6 +119,5 @@ class TelemetryUploadSchedulerChainTest {
 
     private companion object {
         const val DB_NAME = "regatta_tracking.db"
-        const val UNIQUE_WORK_NAME = "regatta-telemetry-upload"
     }
 }
