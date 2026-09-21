@@ -463,6 +463,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
             startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.tracking_active)))
 
             if (!ensureActiveTrackingSession()) {
+                finishActiveTrackingSession()
                 TrackingServiceRuntimeState.markStopped()
                 persistTrackingStoppedState()
                 stopForegroundCompat()
