@@ -20,7 +20,6 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(
     sdk = [35],
-    manifest = Config.NONE,
     application = Application::class
 )
 class TelemetryUploadWorkerHandoffTest {
