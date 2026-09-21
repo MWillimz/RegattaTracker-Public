@@ -1021,6 +1021,9 @@ class TelemetryUploadWorker(
             .setSmallIcon(android.R.drawable.stat_sys_upload)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
+            .setForegroundServiceBehavior(
+                NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE
+            )
             .setProgress(100, progress.percent, false)
             .apply {
                 contentIntent?.let { setContentIntent(it) }
