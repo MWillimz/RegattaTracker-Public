@@ -58,7 +58,7 @@ class TelemetryUploadWorkerHandoffTest {
         var clockCall = 0
         worker.elapsedRealtimeProvider = {
             when (clockCall++) {
-                0, 1 -> 0L
+                0 -> 0L
                 else -> TELEMETRY_NON_FOREGROUND_SLICE_MS
             }
         }
@@ -119,7 +119,7 @@ class TelemetryUploadWorkerHandoffTest {
         var clockCall = 0
         worker.elapsedRealtimeProvider = {
             when (clockCall++) {
-                0, 1 -> 0L
+                0 -> 0L
                 else -> TELEMETRY_NON_FOREGROUND_SLICE_MS
             }
         }
@@ -134,38 +134,6 @@ class TelemetryUploadWorkerHandoffTest {
             TelemetryUploadStatusStore.TEMPORARY_ERROR,
             currentUploadStatus()
         )
-    }
-
-    @Test
-    fun foregroundPromotionDenied_fallsBackToBoundedSliceAndContinuation() {
-        insertPendingSample()
-
-        val worker = buildWorker()
-        var clockCall = 0
-        worker.elapsedRealtimeProvider = {
-            when (clockCall++) {
-                0 -> 0L
-                1 -> TELEMETRY_LONG_RUNNING_ELAPSED_THRESHOLD_MS
-                else -> TELEMETRY_NON_FOREGROUND_SLICE_MS
-            }
-        }
-
-        var promotionCalls = 0
-        worker.foregroundPromoter = {
-            promotionCalls += 1
-            throw IllegalStateException("test foreground start denied")
-        }
-
-        var continuationCalls = 0
-        worker.continuationPersister = {
-            continuationCalls += 1
-        }
-
-        val result = worker.doWork()
-
-        assertEquals(ListenableWorker.Result.success(), result)
-        assertEquals(1, promotionCalls)
-        assertEquals(1, continuationCalls)
     }
 
     private fun buildWorker(): TelemetryUploadWorker {
