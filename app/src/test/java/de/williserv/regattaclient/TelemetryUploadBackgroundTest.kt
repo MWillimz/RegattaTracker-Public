@@ -161,7 +161,6 @@ class TelemetryUploadBackgroundTest {
     fun failedRecoveryPersistence_doesNotPostStaleNotification() {
         handleTelemetryRecoveryPersistenceResult(
             context = context,
-            pendingCount = 500L,
             persistenceError = IllegalStateException("test enqueue failure")
         )
 
@@ -170,9 +169,38 @@ class TelemetryUploadBackgroundTest {
 
     @Test
     fun successfulRecoveryPersistence_postsNormalNonFgsNotification() {
+        val helper = TrackingDbHelper(context)
+        val accessContextId = helper.getOrCreateAccessContext(
+            serverUrl = "https://raceoffice.example.org",
+            accessIdentifier = "Event A",
+            accessSecret = "secret-a"
+        ) ?: error("context id missing")
+        helper.insertSample(
+            sequenceId = 1L,
+            timestamp = "2026-09-21T05:00:00",
+            boatName = "Test Boat",
+            captainName = "Tester",
+            hullColor = "white",
+            sailNumber = "GER 185",
+            yardstick = 100.0,
+            boatType = "Test",
+            lat = 53.5,
+            lon = 10.0,
+            accuracy = 5f,
+            cog = 0f,
+            sog = 0f,
+            accelX = 0f,
+            accelY = 0f,
+            accelZ = 0f,
+            gyroX = 0f,
+            gyroY = 0f,
+            gyroZ = 0f,
+            accessContextId = accessContextId
+        )
+        helper.close()
+
         handleTelemetryRecoveryPersistenceResult(
             context = context,
-            pendingCount = 1_234L,
             persistenceError = null
         )
 
