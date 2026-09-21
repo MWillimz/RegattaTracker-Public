@@ -20,6 +20,7 @@ import androidx.work.workDataOf
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
 
 internal enum class TelemetryUploadAttemptResult {
@@ -157,9 +158,29 @@ internal fun shouldEnqueueTelemetryUpload(uploadablePendingCount: Long): Boolean
 }
 
 internal const val TELEMETRY_BACKGROUND_SLICE_MS = 5 * 60_000L
+internal const val TELEMETRY_RECOVERY_NOTIFICATION_UPDATE_INTERVAL_MS = 1_000L
 
 internal fun shouldYieldTelemetryUpload(elapsedMs: Long): Boolean {
     return elapsedMs >= TELEMETRY_BACKGROUND_SLICE_MS
+}
+
+internal fun shouldPublishTelemetryRecoveryNotification(
+    lastPublishedElapsedMs: Long?,
+    nowElapsedMs: Long,
+    force: Boolean
+): Boolean {
+    if (force || lastPublishedElapsedMs == null) return true
+
+    return (nowElapsedMs - lastPublishedElapsedMs).coerceAtLeast(0L) >=
+        TELEMETRY_RECOVERY_NOTIFICATION_UPDATE_INTERVAL_MS
+}
+
+internal fun reduceTelemetryRecoveryRemainingEstimate(
+    remainingEstimate: Long,
+    acknowledgedCount: Long
+): Long {
+    return (remainingEstimate - acknowledgedCount.coerceAtLeast(0L))
+        .coerceAtLeast(0L)
 }
 
 internal fun shouldSuppressTelemetryUploadEnqueue(
@@ -382,11 +403,17 @@ object TelemetryUploadScheduler {
     }
 
     fun enqueueRecoveryIfNeeded(context: Context): Operation? {
-        return enqueueSerialRecoveryIfNeeded(context)
+        return enqueueSerialRecoveryIfNeeded(
+            context = context,
+            notifyAfterPersistence = true
+        )
     }
 
     fun enqueueShutdownHandoffIfNeeded(context: Context): Operation? {
-        return enqueueSerialRecoveryIfNeeded(context)
+        return enqueueSerialRecoveryIfNeeded(
+            context = context,
+            notifyAfterPersistence = false
+        )
     }
 
     internal fun appendContinuation(
@@ -408,7 +435,10 @@ object TelemetryUploadScheduler {
             )
     }
 
-    private fun enqueueSerialRecoveryIfNeeded(context: Context): Operation? {
+    private fun enqueueSerialRecoveryIfNeeded(
+        context: Context,
+        notifyAfterPersistence: Boolean
+    ): Operation? {
         val appContext = context.applicationContext
         val db = TrackingDbHelper(appContext)
         val uploadablePendingCount = try {
@@ -430,11 +460,8 @@ object TelemetryUploadScheduler {
             appContext,
             TelemetryUploadStatusStore.WAITING
         )
-        showTelemetryRecoveryNotification(
-            context = appContext,
-            remaining = uploadablePendingCount
-        )
-        return WorkManager.getInstance(appContext)
+
+        val operation = WorkManager.getInstance(appContext)
             .enqueueUniqueWork(
                 UNIQUE_WORK_NAME,
                 telemetryUploadExistingWorkPolicy(
@@ -442,18 +469,89 @@ object TelemetryUploadScheduler {
                 ),
                 buildRequest(showRecoveryNotification = true)
             )
+
+        if (notifyAfterPersistence) {
+            operation.result.addListener(
+                {
+                    runCatching { operation.result.get() }
+                        .onSuccess {
+                            showTelemetryRecoveryNotification(
+                                context = appContext,
+                                remaining = uploadablePendingCount
+                            )
+                        }
+                        .onFailure { error ->
+                            Log.e(
+                                TELEMETRY_UPLOAD_LOG_TAG,
+                                "Telemetry recovery work was not persisted",
+                                error
+                            )
+                        }
+                },
+                TELEMETRY_RECOVERY_NOTIFICATION_EXECUTOR
+            )
+        }
+
+        return operation
     }
 }
 
 private const val TELEMETRY_RECOVERY_NOTIFICATION_CHANNEL_ID =
     "regatta_telemetry_upload_channel"
 private const val TELEMETRY_RECOVERY_NOTIFICATION_ID = 1002
+private const val TELEMETRY_APP_STATE_PREFS_NAME = "app_state"
+private const val TELEMETRY_APP_STATE_IN_RACE_KEY = "in_race"
+private const val TELEMETRY_APP_STATE_MANUAL_TRACKING_KEY = "manual_tracking"
+private const val TELEMETRY_UPLOAD_LOG_TAG = "TelemetryUploadWorker"
+private val TELEMETRY_RECOVERY_NOTIFICATION_EXECUTOR =
+    Executor { command -> command.run() }
+
+internal fun isTelemetryTrackingActive(context: Context): Boolean {
+    val prefs = context.applicationContext.getSharedPreferences(
+        TELEMETRY_APP_STATE_PREFS_NAME,
+        Context.MODE_PRIVATE
+    )
+    return prefs.getBoolean(TELEMETRY_APP_STATE_IN_RACE_KEY, false) ||
+        prefs.getBoolean(TELEMETRY_APP_STATE_MANUAL_TRACKING_KEY, false)
+}
+
+internal fun onTelemetryTrackingBecameActive(context: Context) {
+    cancelTelemetryRecoveryNotification(context)
+}
+
+internal fun showTelemetryRecoveryNotificationIfPending(context: Context) {
+    val appContext = context.applicationContext
+    if (isTelemetryTrackingActive(appContext)) {
+        cancelTelemetryRecoveryNotification(appContext)
+        return
+    }
+
+    val db = TrackingDbHelper(appContext)
+    val remaining = try {
+        db.countUploadablePendingSamples()
+    } finally {
+        db.close()
+    }
+
+    if (remaining > 0L) {
+        showTelemetryRecoveryNotification(
+            context = appContext,
+            remaining = remaining
+        )
+    } else {
+        cancelTelemetryRecoveryNotification(appContext)
+    }
+}
 
 internal fun showTelemetryRecoveryNotification(
     context: Context,
     remaining: Long
 ) {
     val appContext = context.applicationContext
+    if (isTelemetryTrackingActive(appContext)) {
+        cancelTelemetryRecoveryNotification(appContext)
+        return
+    }
     val notificationManager =
         appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -506,7 +604,7 @@ internal fun showTelemetryRecoveryNotification(
         )
     } catch (e: SecurityException) {
         Log.w(
-            "TelemetryUploadWorker",
+            TELEMETRY_UPLOAD_LOG_TAG,
             "Recovery notification permission unavailable",
             e
         )
@@ -534,9 +632,23 @@ class TelemetryUploadWorker(
             TelemetryUploadScheduler.SHOW_RECOVERY_NOTIFICATION_KEY,
             false
         )
+    private var recoveryRemainingEstimate = 0L
+    private var recoveryNotificationLastPublishedElapsedMs: Long? = null
 
     internal var elapsedRealtimeProvider: () -> Long = {
         SystemClock.elapsedRealtime()
+    }
+    internal var notificationElapsedRealtimeProvider: () -> Long = {
+        SystemClock.elapsedRealtime()
+    }
+    internal var recoveryNotificationPublisher: (Long) -> Unit = { remaining ->
+        showTelemetryRecoveryNotification(
+            context = applicationContext,
+            remaining = remaining
+        )
+    }
+    internal var recoveryNotificationCanceller: () -> Unit = {
+        cancelTelemetryRecoveryNotification(applicationContext)
     }
     internal var continuationPersister: (Long) -> Unit = { afterLocalId ->
         TelemetryUploadScheduler.appendContinuation(
@@ -549,7 +661,8 @@ class TelemetryUploadWorker(
         uploadStartedAtElapsedMs = elapsedRealtimeProvider()
 
         if (showRecoveryNotification) {
-            updateRecoveryNotification()
+            recoveryRemainingEstimate = db.countUploadablePendingSamples()
+            publishRecoveryNotification(force = true)
         }
 
         val client = currentClientBuildIdentity()
@@ -620,7 +733,7 @@ class TelemetryUploadWorker(
                 when (uploadSampleBlocking(firstSample, client)) {
                     TelemetryUploadAttemptResult.SUCCESS -> {
                         db.markUploaded(firstSample.localId)
-                        updateRecoveryNotification()
+                        recordRecoveryAcknowledgement(1L)
                     }
 
                     TelemetryUploadAttemptResult.TEMPORARY_FAILURE -> {
@@ -667,9 +780,9 @@ class TelemetryUploadWorker(
                         samples = sameAccessPrefix,
                         client = client
                     )
-                    if (sequentialOutcome.uploadedCount > 0) {
-                        updateRecoveryNotification()
-                    }
+                    recordRecoveryAcknowledgement(
+                        sequentialOutcome.uploadedCount.toLong()
+                    )
 
                     if (
                         sequentialOutcome.result ==
@@ -705,9 +818,9 @@ class TelemetryUploadWorker(
                         TelemetryBatchAttemptKind.PROCESSED -> {
                             val response = requireNotNull(attempt.response)
                             db.markUploaded(response.acceptedLocalIds)
-                            if (response.acceptedLocalIds.isNotEmpty()) {
-                                updateRecoveryNotification()
-                            }
+                            recordRecoveryAcknowledgement(
+                                response.acceptedLocalIds.size.toLong()
+                            )
 
                             if (response.clientUpdateRequired) {
                                 markClientUpdateRequired(
@@ -799,32 +912,69 @@ class TelemetryUploadWorker(
             }
         }
 
+        val remainingUploadable = if (showRecoveryNotification) {
+            refreshRecoveryNotificationFromDb()
+        } else {
+            if (db.hasUploadablePendingSamples()) 1L else 0L
+        }
+
         TelemetryUploadStatusStore.write(
             applicationContext,
-            if (db.hasUploadablePendingSamples()) {
+            if (remainingUploadable > 0L) {
                 TelemetryUploadStatusStore.WAITING
             } else {
                 TelemetryUploadStatusStore.ALL_SENT
             }
         )
-        if (showRecoveryNotification) {
-            cancelTelemetryRecoveryNotification(applicationContext)
-        }
         return Result.success()
     }
 
-    private fun updateRecoveryNotification() {
+    private fun recordRecoveryAcknowledgement(count: Long) {
+        if (!showRecoveryNotification || count <= 0L) return
+
+        recoveryRemainingEstimate = reduceTelemetryRecoveryRemainingEstimate(
+            remainingEstimate = recoveryRemainingEstimate,
+            acknowledgedCount = count
+        )
+        publishRecoveryNotification(force = false)
+    }
+
+    private fun publishRecoveryNotification(force: Boolean) {
         if (!showRecoveryNotification) return
 
-        showTelemetryRecoveryNotification(
-            context = applicationContext,
-            remaining = db.countUploadablePendingSamples()
-        )
+        val nowElapsedMs = notificationElapsedRealtimeProvider()
+        if (
+            !shouldPublishTelemetryRecoveryNotification(
+                lastPublishedElapsedMs = recoveryNotificationLastPublishedElapsedMs,
+                nowElapsedMs = nowElapsedMs,
+                force = force
+            )
+        ) {
+            return
+        }
+
+        if (recoveryRemainingEstimate > 0L) {
+            recoveryNotificationPublisher(recoveryRemainingEstimate)
+        } else {
+            recoveryNotificationCanceller()
+        }
+        recoveryNotificationLastPublishedElapsedMs = nowElapsedMs
+    }
+
+    private fun refreshRecoveryNotificationFromDb(): Long {
+        if (!showRecoveryNotification) {
+            return if (db.hasUploadablePendingSamples()) 1L else 0L
+        }
+
+        recoveryRemainingEstimate = db.countUploadablePendingSamples()
+        publishRecoveryNotification(force = true)
+        return recoveryRemainingEstimate
     }
 
     private fun handOffToContinuation(afterLocalId: Long): Result {
         return try {
             continuationPersister(afterLocalId)
+            refreshRecoveryNotificationFromDb()
             TelemetryUploadStatusStore.write(
                 applicationContext,
                 TelemetryUploadStatusStore.WAITING
@@ -1092,6 +1242,7 @@ class TelemetryUploadWorker(
     }
 
     private fun temporaryFailure(): Result {
+        refreshRecoveryNotificationFromDb()
         TelemetryUploadStatusStore.write(
             applicationContext,
             TelemetryUploadStatusStore.TEMPORARY_ERROR
@@ -1255,7 +1406,6 @@ class TelemetryUploadWorker(
     }
 
     private companion object {
-        const val TELEMETRY_UPLOAD_LOG_TAG = "TelemetryUploadWorker"
         const val DISCOVERY_PAGE_SIZE = 2
         const val LEGACY_PAGE_SIZE = 50
         const val LOCAL_SCAN_PAGE_SIZE = 1000
