@@ -73,6 +73,77 @@ class TrackingDbHelperTest {
     }
 
     @Test
+    fun currentSchema_containsTrackingSessionsAndSampleSessionIndex() {
+        val helper = TrackingDbHelper(context)
+        val db = helper.writableDatabase
+
+        assertTrue(tableExists(db, "tracking_sessions"))
+        assertTrue(columnExists(db, "tracking_samples", "session_id"))
+        assertTrue(indexExists(db, "idx_tracking_samples_session_id"))
+    }
+
+    @Test
+    fun trackingSession_canOwnSamplesFinishIdempotentlyAndBeCleared() {
+        val helper = TrackingDbHelper(context)
+        val accessContextId = createAccessContext(helper, "Event A", "secret-a")
+        val sessionId = requireNotNull(
+            helper.createTrackingSession(
+                startedAt = 1_700_000_000_000L,
+                mode = "race",
+                accessContextId = accessContextId,
+                displayName = "Session 14.11.23 22:13"
+            )
+        )
+
+        val sampleId = insertSample(
+            helper = helper,
+            sequenceId = 1L,
+            accessContextId = accessContextId,
+            sessionId = sessionId
+        )
+
+        assertEquals(sessionId, sampleSessionId(helper, sampleId))
+        assertEquals(1L, helper.countTrackingSessions())
+        assertNull(requireNotNull(helper.getTrackingSession(sessionId)).endedAt)
+
+        assertTrue(helper.finishTrackingSession(sessionId, 1_700_000_060_000L))
+        assertFalse(helper.finishTrackingSession(sessionId, 1_700_000_120_000L))
+        assertEquals(
+            1_700_000_060_000L,
+            requireNotNull(helper.getTrackingSession(sessionId)).endedAt
+        )
+
+        helper.deleteAllSamples()
+
+        assertEquals(0L, helper.countSamples())
+        assertEquals(0L, helper.countTrackingSessions())
+        assertNull(helper.getTrackingSession(sessionId))
+    }
+
+    @Test
+    fun version7Upgrade_preservesSamplesAndLeavesSessionIdNull() {
+        createLegacyVersion7Database()
+
+        val helper = TrackingDbHelper(context)
+        val db = helper.writableDatabase
+
+        assertTrue(tableExists(db, "tracking_sessions"))
+        assertTrue(columnExists(db, "tracking_samples", "session_id"))
+        assertTrue(indexExists(db, "idx_tracking_samples_session_id"))
+
+        db.rawQuery(
+            "SELECT id, sail_number, session_id FROM tracking_samples",
+            null
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(71L, cursor.getLong(0))
+            assertEquals("V7-LEGACY", cursor.getString(1))
+            assertTrue(cursor.isNull(2))
+            assertFalse(cursor.moveToNext())
+        }
+    }
+
+    @Test
     fun pendingBacklog_keepsOriginalAccessContextAfterAnotherAccessIsCreated() {
         val helper = TrackingDbHelper(context)
         val contextA = createAccessContext(helper, "Series A", "secret-a")
@@ -217,7 +288,8 @@ class TrackingDbHelperTest {
         helper: TrackingDbHelper,
         sequenceId: Long,
         accessContextId: Long?,
-        sailNumber: String = "GER 1234"
+        sailNumber: String = "GER 1234",
+        sessionId: Long? = null
     ): Long {
         return helper.insertSample(
             sequenceId = sequenceId,
@@ -239,8 +311,19 @@ class TrackingDbHelperTest {
             gyroX = 0.01f,
             gyroY = 0.02f,
             gyroZ = 0.03f,
-            accessContextId = accessContextId
+            accessContextId = accessContextId,
+            sessionId = sessionId
         )
+    }
+
+    private fun sampleSessionId(helper: TrackingDbHelper, localId: Long): Long? {
+        helper.readableDatabase.rawQuery(
+            "SELECT session_id FROM tracking_samples WHERE id = ?",
+            arrayOf(localId.toString())
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            return if (cursor.isNull(0)) null else cursor.getLong(0)
+        }
     }
 
     private fun uploadedValue(helper: TrackingDbHelper, localId: Long): Int {
@@ -324,6 +407,91 @@ class TrackingDbHelperTest {
             }
 
             db.version = 3
+        }
+    }
+
+    private fun createLegacyVersion7Database() {
+        val dbFile = context.getDatabasePath(DB_NAME)
+        dbFile.parentFile?.mkdirs()
+
+        SQLiteDatabase.openOrCreateDatabase(dbFile, null).use { db ->
+            db.execSQL(
+                """
+                CREATE TABLE access_contexts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    server_url TEXT NOT NULL,
+                    access_identifier TEXT NOT NULL,
+                    access_secret TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    last_used_at INTEGER NOT NULL,
+                    UNIQUE(server_url, access_identifier, access_secret)
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE TABLE tracking_samples (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    sequence_id INTEGER NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    boat_name TEXT NOT NULL,
+                    captain_name TEXT NOT NULL,
+                    hull_color TEXT NOT NULL,
+                    sail_number TEXT NOT NULL,
+                    yardstick REAL NOT NULL,
+                    boat_type TEXT NOT NULL,
+                    lat REAL NOT NULL,
+                    lon REAL NOT NULL,
+                    accuracy REAL NOT NULL,
+                    cog REAL NOT NULL,
+                    sog REAL NOT NULL,
+                    accel_x REAL NOT NULL,
+                    accel_y REAL NOT NULL,
+                    accel_z REAL NOT NULL,
+                    gyro_x REAL NOT NULL,
+                    gyro_y REAL NOT NULL,
+                    gyro_z REAL NOT NULL,
+                    uploaded INTEGER NOT NULL DEFAULT 0,
+                    access_context_id INTEGER,
+                    battery_percent INTEGER,
+                    battery_charging INTEGER,
+                    tracking_profile TEXT,
+                    utc_offset_minutes INTEGER
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                INSERT INTO tracking_samples (
+                    id, sequence_id, timestamp, boat_name, captain_name, hull_color,
+                    sail_number, yardstick, boat_type, lat, lon, accuracy, cog, sog,
+                    accel_x, accel_y, accel_z, gyro_x, gyro_y, gyro_z, uploaded
+                ) VALUES (
+                    71, 7, '2026-09-01T12:00:00', 'Legacy Boat', 'Legacy Skipper', 'white',
+                    'V7-LEGACY', 100.0, 'Legacy', 54.0, 10.0, 5.0, 90.0, 3.0,
+                    0.1, 0.2, 9.8, 0.01, 0.02, 0.03, 1
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE INDEX idx_tracking_samples_pending_id
+                ON tracking_samples(uploaded, id)
+                """.trimIndent()
+            )
+            db.version = 7
+        }
+    }
+
+    private fun tableExists(
+        db: SQLiteDatabase,
+        tableName: String
+    ): Boolean {
+        db.rawQuery(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
+            arrayOf(tableName)
+        ).use { cursor ->
+            return cursor.moveToFirst()
         }
     }
 
