@@ -3,9 +3,11 @@ package de.williserv.regattaclient
 import android.app.Notification
 import android.app.NotificationManager
 import android.content.Context
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -15,6 +17,30 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class TelemetryUploadBackgroundTest {
+
+    private lateinit var context: Context
+    private lateinit var notificationManager: NotificationManager
+
+    @Before
+    fun setUp() {
+        context = RuntimeEnvironment.getApplication()
+        notificationManager =
+            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        context.getSharedPreferences(APP_STATE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .commit()
+        cancelTelemetryRecoveryNotification(context)
+    }
+
+    @After
+    fun tearDown() {
+        cancelTelemetryRecoveryNotification(context)
+        context.getSharedPreferences(APP_STATE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .commit()
+    }
 
     @Test
     fun backgroundSlice_yieldsOnlyAfterBoundedRuntime() {
@@ -36,15 +62,118 @@ class TelemetryUploadBackgroundTest {
     }
 
     @Test
-    fun recoveryStatus_usesNormalNotificationNotForegroundServiceNotification() {
-        val context: Context = RuntimeEnvironment.getApplication()
-        val notificationManager =
-            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    fun recoveryNotificationUpdate_isThrottledToOneSecondUnlessForced() {
+        assertTrue(
+            shouldPublishTelemetryRecoveryNotification(
+                lastPublishedElapsedMs = null,
+                nowElapsedMs = 100L,
+                force = false
+            )
+        )
+        assertFalse(
+            shouldPublishTelemetryRecoveryNotification(
+                lastPublishedElapsedMs = 1_000L,
+                nowElapsedMs = 1_999L,
+                force = false
+            )
+        )
+        assertTrue(
+            shouldPublishTelemetryRecoveryNotification(
+                lastPublishedElapsedMs = 1_000L,
+                nowElapsedMs = 2_000L,
+                force = false
+            )
+        )
+        assertTrue(
+            shouldPublishTelemetryRecoveryNotification(
+                lastPublishedElapsedMs = 2_000L,
+                nowElapsedMs = 2_001L,
+                force = true
+            )
+        )
+    }
 
-        cancelTelemetryRecoveryNotification(context)
+    @Test
+    fun recoveryRemainingEstimate_decrementsOnlyAcknowledgedSamples() {
+        assertEquals(
+            950L,
+            reduceTelemetryRecoveryRemainingEstimate(
+                remainingEstimate = 1_000L,
+                acknowledgedCount = 50L
+            )
+        )
+        assertEquals(
+            0L,
+            reduceTelemetryRecoveryRemainingEstimate(
+                remainingEstimate = 20L,
+                acknowledgedCount = 50L
+            )
+        )
+        assertEquals(
+            20L,
+            reduceTelemetryRecoveryRemainingEstimate(
+                remainingEstimate = 20L,
+                acknowledgedCount = -1L
+            )
+        )
+    }
+
+    @Test
+    fun trackingActive_cancelsAndSuppressesStandaloneRecoveryNotification() {
         showTelemetryRecoveryNotification(
             context = context,
             remaining = 1_234L
+        )
+        assertEquals(1, notificationManager.activeNotifications.size)
+
+        context.getSharedPreferences(APP_STATE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("in_race", true)
+            .commit()
+
+        onTelemetryTrackingBecameActive(context)
+        assertTrue(notificationManager.activeNotifications.isEmpty())
+        assertTrue(isTelemetryTrackingActive(context))
+
+        showTelemetryRecoveryNotification(
+            context = context,
+            remaining = 1_000L
+        )
+        assertTrue(notificationManager.activeNotifications.isEmpty())
+    }
+
+    @Test
+    fun manualTracking_alsoSuppressesStandaloneRecoveryNotification() {
+        context.getSharedPreferences(APP_STATE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("manual_tracking", true)
+            .commit()
+
+        assertTrue(isTelemetryTrackingActive(context))
+        showTelemetryRecoveryNotification(
+            context = context,
+            remaining = 100L
+        )
+        assertTrue(notificationManager.activeNotifications.isEmpty())
+    }
+
+    @Test
+    fun failedRecoveryPersistence_doesNotPostStaleNotification() {
+        handleTelemetryRecoveryPersistenceResult(
+            context = context,
+            pendingCount = 500L,
+            persistenceError = IllegalStateException("test enqueue failure")
+        )
+
+        assertTrue(notificationManager.activeNotifications.isEmpty())
+    }
+
+    @Test
+    fun successfulRecoveryPersistence_postsNormalNonFgsNotification() {
+        handleTelemetryRecoveryPersistenceResult(
+            context = context,
+            pendingCount = 1_234L,
+            persistenceError = null
         )
 
         val active = notificationManager.activeNotifications
@@ -60,8 +189,9 @@ class TelemetryUploadBackgroundTest {
                 Notification.EXTRA_TITLE
             )
         )
+    }
 
-        cancelTelemetryRecoveryNotification(context)
-        assertTrue(notificationManager.activeNotifications.isEmpty())
+    private companion object {
+        const val APP_STATE_PREFS = "app_state"
     }
 }
