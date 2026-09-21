@@ -492,9 +492,6 @@ object TelemetryUploadScheduler {
 private const val TELEMETRY_RECOVERY_NOTIFICATION_CHANNEL_ID =
     "regatta_telemetry_upload_channel"
 private const val TELEMETRY_RECOVERY_NOTIFICATION_ID = 1002
-private const val TELEMETRY_APP_STATE_PREFS_NAME = "app_state"
-private const val TELEMETRY_APP_STATE_IN_RACE_KEY = "in_race"
-private const val TELEMETRY_APP_STATE_MANUAL_TRACKING_KEY = "manual_tracking"
 private const val TELEMETRY_UPLOAD_LOG_TAG = "TelemetryUploadWorker"
 private val TELEMETRY_RECOVERY_NOTIFICATION_EXECUTOR =
     Executor { command -> command.run() }
@@ -515,14 +512,9 @@ internal fun handleTelemetryRecoveryPersistenceResult(
     showTelemetryRecoveryNotificationIfPending(context)
 }
 
-internal fun isTelemetryTrackingActive(context: Context): Boolean {
-    val prefs = context.applicationContext.getSharedPreferences(
-        TELEMETRY_APP_STATE_PREFS_NAME,
-        Context.MODE_PRIVATE
-    )
-    return prefs.getBoolean(TELEMETRY_APP_STATE_IN_RACE_KEY, false) ||
-        prefs.getBoolean(TELEMETRY_APP_STATE_MANUAL_TRACKING_KEY, false)
-}
+internal fun isTelemetryTrackingActive(
+    @Suppress("UNUSED_PARAMETER") context: Context
+): Boolean = TrackingServiceRuntimeState.isActive()
 
 internal fun onTelemetryTrackingBecameActive(context: Context) {
     cancelTelemetryRecoveryNotification(context)
