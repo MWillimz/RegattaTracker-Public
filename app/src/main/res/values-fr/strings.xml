@@ -67,6 +67,10 @@
     <string name="loading_map">Chargement de la carte…</string>
     <string name="map_unavailable">Carte indisponible</string>
     <string name="map_could_not_be_loaded">Impossible de charger la carte</string>
+    <string name="map_sog_value_kn">SOG : %1$.1f kn</string>
+    <string name="map_sog_unknown">SOG : --</string>
+    <string name="map_cog_value_degrees">COG : %1$d°</string>
+    <string name="map_cog_unknown">COG : --</string>
     <string name="settings_about_legal">Paramètres / À propos / Mentions légales</string>
     <string name="legal_notice">Mentions légales</string>
     <string name="privacy_policy">Politique de confidentialité</string>
