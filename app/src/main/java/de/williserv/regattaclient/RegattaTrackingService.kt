@@ -561,6 +561,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
     private fun startTrackingService() {
         db.resetTrackingSessionMetadata()
+        onTelemetryTrackingBecameActive(this)
 
         if (serviceRunning) {
             reconfigureSamplingSchedule()
@@ -668,15 +669,18 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
             operation.result.addListener(
                 {
-                    runCatching { operation.result.get() }
-                        .exceptionOrNull()
-                        ?.let { error ->
-                            Log.e(
-                                TRACKING_SERVICE_LOG_TAG,
-                                "Telemetry shutdown handoff was not persisted",
-                                error
-                            )
-                        }
+                    val persistenceError =
+                        runCatching { operation.result.get() }
+                            .exceptionOrNull()
+                    if (persistenceError != null) {
+                        Log.e(
+                            TRACKING_SERVICE_LOG_TAG,
+                            "Telemetry shutdown handoff was not persisted",
+                            persistenceError
+                        )
+                    } else {
+                        showTelemetryRecoveryNotificationIfPending(this)
+                    }
                     finishTrackingServiceStop(handoffGeneration)
                 },
                 ContextCompat.getMainExecutor(this)
