@@ -494,7 +494,6 @@ internal fun showTelemetryRecoveryNotification(
         .setSmallIcon(android.R.drawable.stat_sys_upload)
         .setOngoing(true)
         .setOnlyAlertOnce(true)
-        .setProgress(0, 0, true)
         .apply {
             contentIntent?.let { setContentIntent(it) }
         }
