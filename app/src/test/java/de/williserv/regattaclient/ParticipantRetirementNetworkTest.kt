@@ -53,7 +53,7 @@ class ParticipantRetirementNetworkTest {
             assertTrue(server.awaitRequest())
             server.releaseResponse()
             assertTrue(server.awaitResponseSent())
-            settleAsyncWork()
+            settleAsyncWork(activity)
 
             assertEquals("/event/participant/retire", server.path)
             assertEquals("test-secret", server.headers["x-shared-secret"])
@@ -90,7 +90,7 @@ class ParticipantRetirementNetworkTest {
             assertTrue(server.awaitRequest())
             server.releaseResponse()
             assertTrue(server.awaitResponseSent())
-            settleAsyncWork()
+            settleAsyncWork(activity)
 
             assertTrue(getState<Boolean>(activity, "inRace").value)
             assertFalse(getState<Boolean>(activity, "retirementReported").value)
@@ -126,9 +126,23 @@ class ParticipantRetirementNetworkTest {
             field.get(target) as MutableState<T>
         }
 
-    private fun settleAsyncWork(delayMillis: Long = 200L) {
-        Thread.sleep(delayMillis)
+    private fun settleAsyncWork(
+        activity: MainActivity,
+        timeoutMillis: Long = 3_000L
+    ) {
+        val deadlineNanos =
+            System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
+
+        while (System.nanoTime() < deadlineNanos) {
+            shadowOf(android.os.Looper.getMainLooper()).idle()
+            if (!getState<Boolean>(activity, "retirementRequestInFlight").value) {
+                return
+            }
+            Thread.sleep(10L)
+        }
+
         shadowOf(android.os.Looper.getMainLooper()).idle()
+        assertFalse(getState<Boolean>(activity, "retirementRequestInFlight").value)
     }
 
     private fun clearPrefs() {

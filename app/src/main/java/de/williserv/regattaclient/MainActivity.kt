@@ -2636,7 +2636,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             return false
         }
 
-        runCatching { TelemetryUploadScheduler.enqueue(this) }
+        runCatching { TelemetryUploadScheduler.enqueueWakeup(this) }
         return true
     }
 

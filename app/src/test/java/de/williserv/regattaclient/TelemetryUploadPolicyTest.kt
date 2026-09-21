@@ -1,6 +1,7 @@
 package de.williserv.regattaclient
 
 import android.content.Context
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -105,9 +106,40 @@ class TelemetryUploadPolicyTest {
     }
 
     @Test
+    fun schedulingPolicies_neverCancelExistingTelemetryWork() {
+        assertEquals(
+            ExistingWorkPolicy.KEEP,
+            telemetryUploadExistingWorkPolicy(
+                TelemetryUploadScheduleKind.LIVE_WAKEUP
+            )
+        )
+        assertEquals(
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+            telemetryUploadExistingWorkPolicy(
+                TelemetryUploadScheduleKind.RECOVERY
+            )
+        )
+        assertEquals(
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+            telemetryUploadExistingWorkPolicy(
+                TelemetryUploadScheduleKind.CONTINUATION
+            )
+        )
+
+        TelemetryUploadScheduleKind.entries.forEach { kind ->
+            assertTrue(
+                telemetryUploadExistingWorkPolicy(kind) !=
+                    ExistingWorkPolicy.REPLACE
+            )
+        }
+    }
+
+    @Test
     fun schedulingDecision_onlyEnqueuesForUploadableBacklog() {
         assertFalse(shouldEnqueueTelemetryUpload(0L))
         assertTrue(shouldEnqueueTelemetryUpload(1L))
+        assertFalse(shouldExpediteTelemetryUpload(99L))
+        assertTrue(shouldExpediteTelemetryUpload(100L))
     }
 
     @Test
@@ -118,6 +150,13 @@ class TelemetryUploadPolicyTest {
             123L,
             request.workSpec.input.getLong(TelemetryUploadScheduler.AFTER_LOCAL_ID_KEY, 0L)
         )
+        assertFalse(request.workSpec.expedited)
+
+        val expeditedRequest = TelemetryUploadScheduler.buildRequest(
+            afterLocalId = 456L,
+            expedited = true
+        )
+        assertTrue(expeditedRequest.workSpec.expedited)
     }
 
     @Test

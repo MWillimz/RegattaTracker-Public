@@ -318,4 +318,10 @@
     <string name="race_first_load_online_required">Los datos del evento no están disponibles. Carga este evento en línea una vez antes de usarlo sin conexión.</string>
     <string name="race_response_invalid">No se pudieron actualizar los datos del evento.</string>
     <string name="race_entry_store_failed">No se pudo guardar localmente el punto de entrada en regata. La regata no se inició.</string>
+
+    <string name="telemetry_upload_notification_channel">Envío de datos de regata</string>
+    <string name="telemetry_upload_notification_title">Enviando datos de regata guardados</string>
+    <string name="telemetry_upload_notification_progress">%1$s de %2$s posiciones enviadas · El envío continúa en segundo plano</string>
+    <string name="telemetry_upload_notification_keep_running">No cierres Regatta Tracker hasta que finalice el envío.</string>
+
 </resources>
