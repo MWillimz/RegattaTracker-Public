@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Paint
+import android.graphics.Typeface
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -32,8 +34,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -52,6 +57,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLDecoder
+import kotlin.math.roundToInt
 
 private enum class CourseOverlayKind {
     START,
@@ -249,11 +255,39 @@ fun MapScreen(
                         val anchorRadius = with(density) { 5.dp.toPx() }
                         val ownRadius = with(density) { 7.dp.toPx() }
                         val strokeWidth = with(density) { 2.dp.toPx() }
+                        val ownLabelTextSize = with(density) { 12.sp.toPx() }
+                        val ownLabelStrokeWidth = with(density) { 1.5.dp.toPx() }
                         val startColor = MaterialTheme.colorScheme.tertiary
                         val finishColor = MaterialTheme.colorScheme.error
                         val markColor = MaterialTheme.colorScheme.secondary
                         val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant
                         val ownColor = MaterialTheme.colorScheme.primary
+
+                        val ownLocation = latestLocation.value
+                        val ownSpeedMps = ownLocation
+                            ?.takeIf { it.hasSpeed() }
+                            ?.speed
+                            ?.toDouble()
+                            ?.takeIf { it.isFinite() && it >= 0.0 }
+                        val ownSogKn = ownSpeedMps?.let(::metersPerSecondToKnots)
+                        val ownCogDegrees = ownLocation
+                            ?.takeIf { it.hasBearing() }
+                            ?.bearing
+                            ?.toDouble()
+                            ?.let(::normalizeBearingDegrees)
+                        val ownCogRounded = ownCogDegrees
+                            ?.roundToInt()
+                            ?.mod(360)
+                        val ownSogLabel = if (ownSogKn != null) {
+                            stringResource(R.string.map_sog_value_kn, ownSogKn)
+                        } else {
+                            stringResource(R.string.map_sog_unknown)
+                        }
+                        val ownCogLabel = if (ownCogRounded != null) {
+                            stringResource(R.string.map_cog_value_degrees, ownCogRounded)
+                        } else {
+                            stringResource(R.string.map_cog_unknown)
+                        }
 
                         Box(
                             modifier = Modifier
@@ -325,7 +359,7 @@ fun MapScreen(
                                         )
                                     }
 
-                                    latestLocation.value?.let { location ->
+                                    ownLocation?.let { location ->
                                         val imagePoint = projectToCourseMap(
                                             lat = location.latitude,
                                             lon = location.longitude,
@@ -345,20 +379,129 @@ fun MapScreen(
                                         ) ?: return@let
 
                                         val center = Offset(fitted.x.toFloat(), fitted.y.toFloat())
-                                        drawCircle(
-                                            color = Color.White.copy(alpha = 0.95f),
-                                            radius = ownRadius + strokeWidth,
-                                            center = center
+
+                                        ownShipCourseVectorEndpoint(
+                                            lat = location.latitude,
+                                            lon = location.longitude,
+                                            speedMps = ownSpeedMps,
+                                            bearingDegrees = ownCogDegrees
+                                        )?.let { destination ->
+                                            val destinationImagePoint = projectToCourseMap(
+                                                lat = destination.lat,
+                                                lon = destination.lon,
+                                                viewport = activeViewport
+                                            )
+                                            val destinationFitted = destinationImagePoint?.let {
+                                                fitCourseMapPoint(
+                                                    point = it,
+                                                    imageWidth = bitmap.width,
+                                                    imageHeight = bitmap.height,
+                                                    containerWidth = containerSize.value.width,
+                                                    containerHeight = containerSize.value.height
+                                                )
+                                            }
+
+                                            if (destinationFitted != null) {
+                                                drawLine(
+                                                    color = ownColor.copy(alpha = 0.75f),
+                                                    start = center,
+                                                    end = Offset(
+                                                        destinationFitted.x.toFloat(),
+                                                        destinationFitted.y.toFloat()
+                                                    ),
+                                                    strokeWidth = strokeWidth
+                                                )
+                                            }
+                                        }
+
+                                        if (ownCogDegrees != null) {
+                                            val boatPath = Path().apply {
+                                                moveTo(center.x, center.y - ownRadius * 1.7f)
+                                                lineTo(center.x + ownRadius, center.y + ownRadius)
+                                                lineTo(center.x, center.y + ownRadius * 0.55f)
+                                                lineTo(center.x - ownRadius, center.y + ownRadius)
+                                                close()
+                                            }
+
+                                            rotate(
+                                                degrees = ownCogDegrees.toFloat(),
+                                                pivot = center
+                                            ) {
+                                                drawPath(
+                                                    path = boatPath,
+                                                    color = Color.White.copy(alpha = 0.95f),
+                                                    style = Stroke(width = strokeWidth * 1.6f)
+                                                )
+                                                drawPath(
+                                                    path = boatPath,
+                                                    color = ownColor
+                                                )
+                                            }
+                                        } else {
+                                            drawCircle(
+                                                color = Color.White.copy(alpha = 0.95f),
+                                                radius = ownRadius + strokeWidth,
+                                                center = center
+                                            )
+                                            drawCircle(
+                                                color = ownColor,
+                                                radius = ownRadius,
+                                                center = center
+                                            )
+                                            drawCircle(
+                                                color = Color.White,
+                                                radius = ownRadius * 0.32f,
+                                                center = center
+                                            )
+                                        }
+
+                                        val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                                            color = android.graphics.Color.WHITE
+                                            textSize = ownLabelTextSize
+                                            typeface = Typeface.DEFAULT_BOLD
+                                            style = Paint.Style.FILL
+                                        }
+                                        val outlinePaint = Paint(fillPaint).apply {
+                                            color = android.graphics.Color.BLACK
+                                            style = Paint.Style.STROKE
+                                            strokeWidth = ownLabelStrokeWidth
+                                        }
+                                        val labelWidth = maxOf(
+                                            fillPaint.measureText(ownSogLabel),
+                                            fillPaint.measureText(ownCogLabel)
                                         )
-                                        drawCircle(
-                                            color = ownColor,
-                                            radius = ownRadius,
-                                            center = center
+                                        val labelX = if (center.x + ownRadius * 2f + labelWidth <= size.width) {
+                                            center.x + ownRadius * 2f
+                                        } else {
+                                            center.x - ownRadius * 2f - labelWidth
+                                        }
+                                        val firstBaseline = center.y - ownLabelTextSize * 0.15f
+                                        val secondBaseline = firstBaseline + ownLabelTextSize * 1.15f
+                                        val nativeCanvas = drawContext.canvas.nativeCanvas
+
+                                        nativeCanvas.drawText(
+                                            ownSogLabel,
+                                            labelX,
+                                            firstBaseline,
+                                            outlinePaint
                                         )
-                                        drawCircle(
-                                            color = Color.White,
-                                            radius = ownRadius * 0.32f,
-                                            center = center
+                                        nativeCanvas.drawText(
+                                            ownSogLabel,
+                                            labelX,
+                                            firstBaseline,
+                                            fillPaint
+                                        )
+                                        nativeCanvas.drawText(
+                                            ownCogLabel,
+                                            labelX,
+                                            secondBaseline,
+                                            outlinePaint
+                                        )
+                                        nativeCanvas.drawText(
+                                            ownCogLabel,
+                                            labelX,
+                                            secondBaseline,
+                                            fillPaint
                                         )
                                     }
                                 }
