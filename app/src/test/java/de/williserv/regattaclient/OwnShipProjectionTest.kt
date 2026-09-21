@@ -28,6 +28,14 @@ class OwnShipProjectionTest {
     }
 
     @Test
+    fun mapDisplayRoundingIsStable() {
+        assertEquals(1.9, sogKnotsForDisplay(1.0)!!, 0.0)
+        assertEquals(127, cogDegreesForDisplay(126.6))
+        assertEquals(0, cogDegreesForDisplay(359.6))
+        assertEquals(270, cogDegreesForDisplay(-90.0))
+    }
+
+    @Test
     fun fiveMinuteDistanceUsesExactlyThreeHundredSeconds() {
         assertEquals(1800.0, ownShipCourseVectorDistanceMeters(6.0)!!, 0.0)
     }
