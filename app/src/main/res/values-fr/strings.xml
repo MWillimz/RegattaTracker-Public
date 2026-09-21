@@ -322,6 +322,7 @@
     <string name="telemetry_upload_notification_channel">Envoi des données de régate</string>
     <string name="telemetry_upload_notification_title">Envoi des données de régate enregistrées</string>
     <string name="telemetry_upload_notification_progress">%1$s positions sur %2$s envoyées · L’envoi continue en arrière-plan</string>
+    <string name="telemetry_upload_notification_remaining">%1$s positions en attente</string>
     <string name="telemetry_upload_notification_keep_running">Ne fermez pas Regatta Tracker avant la fin de l’envoi.</string>
 
 </resources>

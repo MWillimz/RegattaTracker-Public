@@ -273,6 +273,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
                     .putBoolean("in_race", !manualRecording)
                     .putBoolean("manual_tracking", manualRecording)
                     .apply()
+                onTelemetryTrackingBecameActive(this)
                 startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.tracking_active)))
                 startTrackingService()
                 updateNotification()
@@ -440,6 +441,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
             stopSelf()
             return START_NOT_STICKY
         }
+
+        onTelemetryTrackingBecameActive(this)
 
         startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.tracking_active)))
         startTrackingService()
@@ -666,21 +669,22 @@ class RegattaTrackingService : Service(), SensorEventListener {
                 return@thread
             }
 
-            operation.result.addListener(
-                {
-                    runCatching { operation.result.get() }
-                        .exceptionOrNull()
-                        ?.let { error ->
-                            Log.e(
-                                TRACKING_SERVICE_LOG_TAG,
-                                "Telemetry shutdown handoff was not persisted",
-                                error
-                            )
-                        }
-                    finishTrackingServiceStop(handoffGeneration)
-                },
-                ContextCompat.getMainExecutor(this)
-            )
+            val persistenceError =
+                runCatching { operation.result.get() }
+                    .exceptionOrNull()
+            if (persistenceError != null) {
+                Log.e(
+                    TRACKING_SERVICE_LOG_TAG,
+                    "Telemetry shutdown handoff was not persisted",
+                    persistenceError
+                )
+            } else {
+                showTelemetryRecoveryNotificationIfPending(this)
+            }
+
+            handler.post {
+                finishTrackingServiceStop(handoffGeneration)
+            }
         }
     }
 
@@ -911,15 +915,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
         )
     }
 
-    private fun getBaseServerUrl(): String {
-        val trimmed = serverUrl.trim()
-
-        return if (trimmed.endsWith("/ingest")) {
-            trimmed.removeSuffix("/ingest")
-        } else {
-            trimmed.trimEnd('/')
-        }
-    }
+    private fun getBaseServerUrl(): String =
+        normalizeServerBaseUrl(serverUrl)
 
     private fun restoreCachedEventSnapshot() {
         val snapshot = RaceEventSnapshotStore.loadMatching(
