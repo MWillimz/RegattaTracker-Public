@@ -222,6 +222,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             reconcileTrackingState()
             updateStorageText()
             updateLocalRaceStatus()
+            refreshRetirementReportedState()
             updateConnectionUiState()
             if (asyncLifetime.isActive()) {
                 handler.postDelayed(this, 1000L)
@@ -2683,11 +2684,14 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         )
 
     private fun refreshRetirementReportedState() {
+        val access = currentEventAccessKey()
         val resolved = resolvedEventName.value.trim()
         retirementReported.value =
-            resolved.isNotBlank() &&
+            access != null &&
+                resolved.isNotBlank() &&
                 ParticipantRetirementStore.matches(
                     context = this,
+                    serverUrl = access.server,
                     resolvedEventName = resolved,
                     identity = currentRetirementIdentity()
                 )
@@ -2749,7 +2753,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 if (responseCode in 200..299) {
                     val receipt = parseParticipantRetirementReceipt(body, identity)
                     if (receipt != null) {
-                        ParticipantRetirementStore.save(applicationContext, receipt)
+                        ParticipantRetirementStore.save(
+                            context = applicationContext,
+                            serverUrl = access.server,
+                            receipt = receipt
+                        )
                     }
                     runOnUiThread {
                         if (!asyncLifetime.isActive()) return@runOnUiThread
