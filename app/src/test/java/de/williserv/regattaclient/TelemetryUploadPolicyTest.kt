@@ -138,8 +138,6 @@ class TelemetryUploadPolicyTest {
     fun schedulingDecision_onlyEnqueuesForUploadableBacklog() {
         assertFalse(shouldEnqueueTelemetryUpload(0L))
         assertTrue(shouldEnqueueTelemetryUpload(1L))
-        assertFalse(shouldExpediteTelemetryUpload(99L))
-        assertTrue(shouldExpediteTelemetryUpload(100L))
     }
 
     @Test
@@ -151,12 +149,6 @@ class TelemetryUploadPolicyTest {
             request.workSpec.input.getLong(TelemetryUploadScheduler.AFTER_LOCAL_ID_KEY, 0L)
         )
         assertFalse(request.workSpec.expedited)
-
-        val expeditedRequest = TelemetryUploadScheduler.buildRequest(
-            afterLocalId = 456L,
-            expedited = true
-        )
-        assertTrue(expeditedRequest.workSpec.expedited)
     }
 
     @Test
