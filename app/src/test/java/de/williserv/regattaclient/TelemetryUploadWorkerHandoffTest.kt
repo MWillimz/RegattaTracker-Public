@@ -70,7 +70,8 @@ class TelemetryUploadWorkerHandoffTest {
             continuationCursor = afterLocalId
             TelemetryUploadScheduler.appendContinuation(
                 context = context,
-                afterLocalId = afterLocalId
+                afterLocalId = afterLocalId,
+                showRecoveryNotification = false
             ).result.get()
         }
 
