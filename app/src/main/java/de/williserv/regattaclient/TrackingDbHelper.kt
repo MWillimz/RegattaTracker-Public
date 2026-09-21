@@ -796,12 +796,14 @@ class TrackingDbHelper(context: Context) :
             ON tracking_samples(uploaded, id)
             """.trimIndent()
         )
-        db.execSQL(
-            """
-            CREATE INDEX IF NOT EXISTS idx_tracking_samples_session_id
-            ON tracking_samples(session_id, id)
-            """.trimIndent()
-        )
+        if (columnExists(db, "tracking_samples", "session_id")) {
+            db.execSQL(
+                """
+                CREATE INDEX IF NOT EXISTS idx_tracking_samples_session_id
+                ON tracking_samples(session_id, id)
+                """.trimIndent()
+            )
+        }
     }
 
     private fun deleteOrphanedAccessContexts(db: SQLiteDatabase) {
