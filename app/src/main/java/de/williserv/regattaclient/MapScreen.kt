@@ -466,7 +466,7 @@ fun MapScreen(
                                         val outlinePaint = Paint(fillPaint).apply {
                                             color = android.graphics.Color.BLACK
                                             style = Paint.Style.STROKE
-                                            strokeWidth = labelStrokeWidth
+                                            this.strokeWidth = labelStrokeWidth
                                         }
                                         val labelWidth = maxOf(
                                             fillPaint.measureText(ownSogLabel),
