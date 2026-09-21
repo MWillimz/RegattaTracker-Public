@@ -70,23 +70,47 @@ class ParticipantRetirementTest {
     }
 
     @Test
-    fun `stored self report is bound to concrete run and full identity`() {
+    fun `stored self report is bound to server concrete run and full identity`() {
         ParticipantRetirementStore.save(
-            context,
-            ParticipantRetirementReceipt(
+            context = context,
+            serverUrl = "https://raceoffice.example.org/ingest/",
+            receipt = ParticipantRetirementReceipt(
                 "Series Race 3",
                 identity,
                 "2026-09-20T11:30:00+00:00"
             )
         )
 
-        assertTrue(ParticipantRetirementStore.matches(context, "Series Race 3", identity))
-        assertFalse(ParticipantRetirementStore.matches(context, "Series Race 4", identity))
+        assertTrue(
+            ParticipantRetirementStore.matches(
+                context = context,
+                serverUrl = "https://raceoffice.example.org",
+                resolvedEventName = "Series Race 3",
+                identity = identity
+            )
+        )
         assertFalse(
             ParticipantRetirementStore.matches(
-                context,
-                "Series Race 3",
-                identity.copy(boatName = "Other Boat")
+                context = context,
+                serverUrl = "https://other.example.org",
+                resolvedEventName = "Series Race 3",
+                identity = identity
+            )
+        )
+        assertFalse(
+            ParticipantRetirementStore.matches(
+                context = context,
+                serverUrl = "https://raceoffice.example.org",
+                resolvedEventName = "Series Race 4",
+                identity = identity
+            )
+        )
+        assertFalse(
+            ParticipantRetirementStore.matches(
+                context = context,
+                serverUrl = "https://raceoffice.example.org",
+                resolvedEventName = "Series Race 3",
+                identity = identity.copy(boatName = "Other Boat")
             )
         )
     }
