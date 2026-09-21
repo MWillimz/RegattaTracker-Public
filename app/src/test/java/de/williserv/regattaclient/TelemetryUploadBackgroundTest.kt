@@ -31,6 +31,7 @@ class TelemetryUploadBackgroundTest {
             .edit()
             .clear()
             .commit()
+        TrackingServiceRuntimeState.markStopped()
         cancelTelemetryRecoveryNotification(context)
     }
 
@@ -42,6 +43,7 @@ class TelemetryUploadBackgroundTest {
             .edit()
             .clear()
             .commit()
+        TrackingServiceRuntimeState.markStopped()
     }
 
     @Test
@@ -132,6 +134,7 @@ class TelemetryUploadBackgroundTest {
             .edit()
             .putBoolean("in_race", true)
             .commit()
+        TrackingServiceRuntimeState.markActive()
 
         onTelemetryTrackingBecameActive(context)
         assertTrue(notificationManager.activeNotifications.isEmpty())
@@ -150,6 +153,7 @@ class TelemetryUploadBackgroundTest {
             .edit()
             .putBoolean("manual_tracking", true)
             .commit()
+        TrackingServiceRuntimeState.markActive()
 
         assertTrue(isTelemetryTrackingActive(context))
         showTelemetryRecoveryNotification(

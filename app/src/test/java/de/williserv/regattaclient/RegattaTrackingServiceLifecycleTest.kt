@@ -34,6 +34,7 @@ class RegattaTrackingServiceLifecycleTest {
         clearTrackingPrefs()
         clearLocalStatusPrefs()
         clearStickyRestartPrefs()
+        TrackingServiceRuntimeState.markStopped()
         shadowOf(Looper.getMainLooper()).idle()
     }
 
@@ -44,6 +45,7 @@ class RegattaTrackingServiceLifecycleTest {
         clearTrackingPrefs()
         clearLocalStatusPrefs()
         clearStickyRestartPrefs()
+        TrackingServiceRuntimeState.markStopped()
     }
 
     @Test
@@ -124,12 +126,14 @@ class RegattaTrackingServiceLifecycleTest {
             putExtra(RegattaTrackingService.EXTRA_MANUAL_RECORDING, true)
         }
         assertEquals(Service.START_STICKY, service.onStartCommand(startIntent, 0, 1))
+        assertTrue(TrackingServiceRuntimeState.isActive())
 
         val stopIntent = Intent(context, RegattaTrackingService::class.java).apply {
             action = RegattaTrackingService.ACTION_STOP
         }
         assertEquals(Service.START_NOT_STICKY, service.onStartCommand(stopIntent, 0, 2))
         assertFalse(getField<Boolean>(service, "serviceRunning"))
+        assertFalse(TrackingServiceRuntimeState.isActive())
 
         controller.destroy()
     }
@@ -217,6 +221,7 @@ class RegattaTrackingServiceLifecycleTest {
 
         assertEquals(Service.START_STICKY, service.onStartCommand(null, 0, 1))
         assertTrue(getField<Boolean>(service, "serviceRunning"))
+        assertTrue(TrackingServiceRuntimeState.isActive())
         assertTrue(getField<Boolean>(service, "manualRecording"))
         assertEquals("Test Boat", getField<String>(service, "boatName"))
         assertEquals("Test Skipper", getField<String>(service, "captainName"))

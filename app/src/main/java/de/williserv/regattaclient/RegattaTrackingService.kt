@@ -247,12 +247,17 @@ class RegattaTrackingService : Service(), SensorEventListener {
                 val persistedInRace = getSharedPreferences("app_state", Context.MODE_PRIVATE)
                     .getBoolean("in_race", false)
 
+                if (!serviceRunning) {
+                    TrackingServiceRuntimeState.markStarting()
+                }
+
                 if (requestedManual && persistedInRace) {
                     getSharedPreferences("app_state", Context.MODE_PRIVATE)
                         .edit()
                         .putBoolean("manual_tracking", false)
                         .apply()
                     if (!serviceRunning) {
+                        TrackingServiceRuntimeState.markStopped()
                         stopSelf()
                         return START_NOT_STICKY
                     }
@@ -273,10 +278,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
                     .putBoolean("in_race", !manualRecording)
                     .putBoolean("manual_tracking", manualRecording)
                     .apply()
-                onTelemetryTrackingBecameActive(this)
-                startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.tracking_active)))
-                startTrackingService()
-                updateNotification()
+                startConfirmedTrackingService()
                 return START_STICKY
             }
 
@@ -432,6 +434,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
     }
 
     private fun handleStickyRestart(): Int {
+        TrackingServiceRuntimeState.markStarting()
+
         synchronized(eventPollLifecycleLock) {
             eventPollGeneration += 1
         }
@@ -442,12 +446,21 @@ class RegattaTrackingService : Service(), SensorEventListener {
             return START_NOT_STICKY
         }
 
-        onTelemetryTrackingBecameActive(this)
-
-        startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.tracking_active)))
-        startTrackingService()
-        updateNotification()
+        startConfirmedTrackingService()
         return START_STICKY
+    }
+
+    private fun startConfirmedTrackingService() {
+        try {
+            startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.tracking_active)))
+            startTrackingService()
+            TrackingServiceRuntimeState.markActive()
+            onTelemetryTrackingBecameActive(this)
+            updateNotification()
+        } catch (e: RuntimeException) {
+            TrackingServiceRuntimeState.markStopped()
+            throw e
+        }
     }
 
     private fun restoreStickyStartContext(): Boolean {
@@ -603,6 +616,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
     }
 
     private fun persistTrackingStoppedState() {
+        TrackingServiceRuntimeState.markStopped()
         getSharedPreferences("app_state", Context.MODE_PRIVATE)
             .edit()
             .putBoolean("in_race", false)
@@ -1797,6 +1811,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
     }
 
     override fun onDestroy() {
+        TrackingServiceRuntimeState.markStopped()
+
         synchronized(eventPollLifecycleLock) {
             eventPollGeneration += 1
             serviceRunning = false
