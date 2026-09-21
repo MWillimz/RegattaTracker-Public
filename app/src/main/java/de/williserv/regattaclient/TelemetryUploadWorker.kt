@@ -151,10 +151,10 @@ internal fun shouldEnqueueTelemetryUpload(uploadablePendingCount: Long): Boolean
     return uploadablePendingCount > 0L
 }
 
-internal const val TELEMETRY_NON_FOREGROUND_SLICE_MS = 5 * 60_000L
+internal const val TELEMETRY_BACKGROUND_SLICE_MS = 5 * 60_000L
 
 internal fun shouldYieldTelemetryUpload(elapsedMs: Long): Boolean {
-    return elapsedMs >= TELEMETRY_NON_FOREGROUND_SLICE_MS
+    return elapsedMs >= TELEMETRY_BACKGROUND_SLICE_MS
 }
 
 internal fun shouldSuppressTelemetryUploadEnqueue(
