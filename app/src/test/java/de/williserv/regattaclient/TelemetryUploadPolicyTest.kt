@@ -149,6 +149,23 @@ class TelemetryUploadPolicyTest {
             request.workSpec.input.getLong(TelemetryUploadScheduler.AFTER_LOCAL_ID_KEY, 0L)
         )
         assertFalse(request.workSpec.expedited)
+        assertFalse(
+            request.workSpec.input.getBoolean(
+                TelemetryUploadScheduler.SHOW_RECOVERY_NOTIFICATION_KEY,
+                false
+            )
+        )
+
+        val recoveryRequest = TelemetryUploadScheduler.buildRequest(
+            showRecoveryNotification = true
+        )
+        assertFalse(recoveryRequest.workSpec.expedited)
+        assertTrue(
+            recoveryRequest.workSpec.input.getBoolean(
+                TelemetryUploadScheduler.SHOW_RECOVERY_NOTIFICATION_KEY,
+                false
+            )
+        )
     }
 
     @Test
