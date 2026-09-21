@@ -67,6 +67,10 @@
     <string name="loading_map">Cargando mapa…</string>
     <string name="map_unavailable">Mapa no disponible</string>
     <string name="map_could_not_be_loaded">No se pudo cargar el mapa</string>
+    <string name="map_sog_value_kn">SOG: %1$.1f kn</string>
+    <string name="map_sog_unknown">SOG: --</string>
+    <string name="map_cog_value_degrees">COG: %1$d°</string>
+    <string name="map_cog_unknown">COG: --</string>
     <string name="settings_about_legal">Ajustes / Acerca de / Legal</string>
     <string name="legal_notice">Aviso legal</string>
     <string name="privacy_policy">Política de privacidad</string>
