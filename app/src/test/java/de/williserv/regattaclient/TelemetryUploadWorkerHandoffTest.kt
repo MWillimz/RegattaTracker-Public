@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.work.ListenableWorker
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import androidx.work.workDataOf
 import androidx.work.testing.TestListenableWorkerBuilder
 import androidx.work.testing.WorkManagerTestInitHelper
 import org.junit.After
@@ -48,6 +49,11 @@ class TelemetryUploadWorkerHandoffTest {
             .edit()
             .clear()
             .commit()
+        ClientCompatibilityBlockStore.clearBlocked(
+            context = context,
+            serverUrl = SERVER_URL,
+            versionCode = currentClientBuildIdentity().versionCode
+        )
     }
 
     @Test
@@ -137,21 +143,113 @@ class TelemetryUploadWorkerHandoffTest {
         )
     }
 
-    private fun buildWorker(): TelemetryUploadWorker {
-        return TestListenableWorkerBuilder<TelemetryUploadWorker>(context).build()
+    @Test
+    fun recoveryWorker_emptyQueueCancelsRecoveryNotification() {
+        val worker = buildWorker(showRecoveryNotification = true)
+        val published = mutableListOf<Long>()
+        var cancelCalls = 0
+        worker.recoveryNotificationPublisher = { remaining ->
+            published += remaining
+        }
+        worker.recoveryNotificationCanceller = {
+            cancelCalls += 1
+        }
+
+        val result = worker.doWork()
+
+        assertEquals(ListenableWorker.Result.success(), result)
+        assertTrue(published.isEmpty())
+        assertTrue(cancelCalls > 0)
+        assertEquals(
+            TelemetryUploadStatusStore.ALL_SENT,
+            currentUploadStatus()
+        )
     }
 
-    private fun insertPendingSample() {
+    @Test
+    fun recoveryWorker_remainingBlockedRowsKeepRecoveryNotification() {
+        insertPendingSample()
+        val client = currentClientBuildIdentity()
+        ClientCompatibilityBlockStore.markBlocked(
+            context = context,
+            serverUrl = SERVER_URL,
+            versionCode = client.versionCode
+        )
+
+        val worker = buildWorker(showRecoveryNotification = true)
+        val published = mutableListOf<Long>()
+        var cancelCalls = 0
+        worker.recoveryNotificationPublisher = { remaining ->
+            published += remaining
+        }
+        worker.recoveryNotificationCanceller = {
+            cancelCalls += 1
+        }
+
+        val result = worker.doWork()
+
+        assertEquals(ListenableWorker.Result.success(), result)
+        assertEquals(0, cancelCalls)
+        assertTrue(published.isNotEmpty())
+        assertEquals(1L, published.last())
+        assertEquals(
+            TelemetryUploadStatusStore.WAITING,
+            currentUploadStatus()
+        )
+    }
+
+    @Test
+    fun eachRecoveryWorkerStartsFromFreshPendingCount() {
+        insertPendingSample()
+        val client = currentClientBuildIdentity()
+        ClientCompatibilityBlockStore.markBlocked(
+            context = context,
+            serverUrl = SERVER_URL,
+            versionCode = client.versionCode
+        )
+
+        val firstPublished = mutableListOf<Long>()
+        buildWorker(showRecoveryNotification = true).apply {
+            recoveryNotificationPublisher = { firstPublished += it }
+            recoveryNotificationCanceller = {}
+        }.doWork()
+        assertEquals(1L, firstPublished.first())
+
+        insertPendingSample(sequenceId = 2L)
+
+        val secondPublished = mutableListOf<Long>()
+        buildWorker(showRecoveryNotification = true).apply {
+            recoveryNotificationPublisher = { secondPublished += it }
+            recoveryNotificationCanceller = {}
+        }.doWork()
+
+        assertEquals(2L, secondPublished.first())
+    }
+
+    private fun buildWorker(
+        showRecoveryNotification: Boolean = false
+    ): TelemetryUploadWorker {
+        return TestListenableWorkerBuilder<TelemetryUploadWorker>(context)
+            .setInputData(
+                workDataOf(
+                    TelemetryUploadScheduler.SHOW_RECOVERY_NOTIFICATION_KEY to
+                        showRecoveryNotification
+                )
+            )
+            .build()
+    }
+
+    private fun insertPendingSample(sequenceId: Long = 1L) {
         val helper = TrackingDbHelper(context)
         try {
             val accessContextId = helper.getOrCreateAccessContext(
-                serverUrl = "https://raceoffice.example.org",
+                serverUrl = SERVER_URL,
                 accessIdentifier = "Event A",
                 accessSecret = "secret-a"
             ) ?: error("context id missing")
 
             val insertedId = helper.insertSample(
-                sequenceId = 1L,
+                sequenceId = sequenceId,
                 timestamp = "2026-09-21T05:00:00",
                 boatName = "Test Boat",
                 captainName = "Tester",
@@ -187,5 +285,6 @@ class TelemetryUploadWorkerHandoffTest {
     private companion object {
         const val DB_NAME = "regatta_tracking.db"
         const val STATUS_PREFS_NAME = "regatta_local_status"
+        const val SERVER_URL = "https://raceoffice.example.org"
     }
 }
