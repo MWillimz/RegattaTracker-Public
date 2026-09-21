@@ -2,6 +2,8 @@ package de.williserv.regattaclient
 
 import android.content.Context
 import android.content.res.Configuration
+import androidx.core.app.NotificationCompat
+import androidx.work.testing.TestListenableWorkerBuilder
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -140,6 +142,20 @@ class TelemetryUploadForegroundTest {
             remainingPendingCount = 0L
         )
         assertEquals(100, complete.percent)
+    }
+
+    @Test
+    fun foregroundNotification_isNeverDeferred() {
+        val context: Context = RuntimeEnvironment.getApplication()
+        val worker =
+            TestListenableWorkerBuilder<TelemetryUploadWorker>(context).build()
+
+        val foregroundInfo = worker.getForegroundInfo()
+
+        assertEquals(
+            NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE,
+            foregroundInfo.notification.foregroundServiceBehavior
+        )
     }
 
     @Test
