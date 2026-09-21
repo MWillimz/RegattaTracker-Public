@@ -49,11 +49,6 @@ class TelemetryUploadWorkerHandoffTest {
             .edit()
             .clear()
             .commit()
-        ClientCompatibilityBlockStore.clearBlocked(
-            context = context,
-            serverUrl = SERVER_URL,
-            versionCode = currentClientBuildIdentity().versionCode
-        )
     }
 
     @Test
@@ -167,16 +162,13 @@ class TelemetryUploadWorkerHandoffTest {
     }
 
     @Test
-    fun recoveryWorker_remainingBlockedRowsKeepRecoveryNotification() {
+    fun recoveryWorker_remainingRowsBeforeCursorKeepRecoveryNotification() {
         insertPendingSample()
-        val client = currentClientBuildIdentity()
-        ClientCompatibilityBlockStore.markBlocked(
-            context = context,
-            serverUrl = SERVER_URL,
-            versionCode = client.versionCode
-        )
 
-        val worker = buildWorker(showRecoveryNotification = true)
+        val worker = buildWorker(
+            showRecoveryNotification = true,
+            afterLocalId = Long.MAX_VALUE
+        )
         val published = mutableListOf<Long>()
         var cancelCalls = 0
         worker.recoveryNotificationPublisher = { remaining ->
@@ -201,15 +193,12 @@ class TelemetryUploadWorkerHandoffTest {
     @Test
     fun eachRecoveryWorkerStartsFromFreshPendingCount() {
         insertPendingSample()
-        val client = currentClientBuildIdentity()
-        ClientCompatibilityBlockStore.markBlocked(
-            context = context,
-            serverUrl = SERVER_URL,
-            versionCode = client.versionCode
-        )
 
         val firstPublished = mutableListOf<Long>()
-        buildWorker(showRecoveryNotification = true).apply {
+        buildWorker(
+            showRecoveryNotification = true,
+            afterLocalId = Long.MAX_VALUE
+        ).apply {
             recoveryNotificationPublisher = { firstPublished += it }
             recoveryNotificationCanceller = {}
         }.doWork()
@@ -218,7 +207,10 @@ class TelemetryUploadWorkerHandoffTest {
         insertPendingSample(sequenceId = 2L)
 
         val secondPublished = mutableListOf<Long>()
-        buildWorker(showRecoveryNotification = true).apply {
+        buildWorker(
+            showRecoveryNotification = true,
+            afterLocalId = Long.MAX_VALUE
+        ).apply {
             recoveryNotificationPublisher = { secondPublished += it }
             recoveryNotificationCanceller = {}
         }.doWork()
@@ -227,13 +219,15 @@ class TelemetryUploadWorkerHandoffTest {
     }
 
     private fun buildWorker(
-        showRecoveryNotification: Boolean = false
+        showRecoveryNotification: Boolean = false,
+        afterLocalId: Long = 0L
     ): TelemetryUploadWorker {
         return TestListenableWorkerBuilder<TelemetryUploadWorker>(context)
             .setInputData(
                 workDataOf(
                     TelemetryUploadScheduler.SHOW_RECOVERY_NOTIFICATION_KEY to
-                        showRecoveryNotification
+                        showRecoveryNotification,
+                    TelemetryUploadScheduler.AFTER_LOCAL_ID_KEY to afterLocalId
                 )
             )
             .build()
