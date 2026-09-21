@@ -1,3 +1,8 @@
+import com.android.build.api.artifact.SingleArtifact
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.TaskAction
 import java.io.FileInputStream
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -8,6 +13,42 @@ import java.util.Properties
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+}
+
+abstract class VerifyMergedManifestForegroundServicesTask : DefaultTask() {
+    @get:InputFile
+    abstract val mergedManifest: RegularFileProperty
+
+    @TaskAction
+    fun verifyManifest() {
+        val manifest = mergedManifest.get().asFile.readText()
+
+        check(!manifest.contains("android.permission.FOREGROUND_SERVICE_DATA_SYNC")) {
+            "Release merged manifest must not declare FOREGROUND_SERVICE_DATA_SYNC"
+        }
+
+        val foregroundServiceTypes = Regex(
+            """foregroundServiceType\s*=\s*"([^"]*)""""
+        ).findAll(manifest)
+            .flatMap { match ->
+                match.groupValues[1]
+                    .split('|')
+                    .asSequence()
+                    .map(String::trim)
+            }
+            .filter(String::isNotEmpty)
+            .toSet()
+
+        check("dataSync" !in foregroundServiceTypes) {
+            "Release merged manifest must not declare dataSync foreground service type"
+        }
+        check(manifest.contains("android.permission.FOREGROUND_SERVICE_LOCATION")) {
+            "Release merged manifest must retain FOREGROUND_SERVICE_LOCATION"
+        }
+        check("location" in foregroundServiceTypes) {
+            "Release merged manifest must retain the location foreground service type"
+        }
+    }
 }
 
 val buildZone = ZoneId.of("Europe/Berlin")
@@ -148,6 +189,26 @@ tasks.register("verifyBuildIdentifier") {
             resolveBuildChannel("   ")
         }.exceptionOrNull()
         check(blankChannelFailure is org.gradle.api.GradleException)
+    }
+}
+
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        val verifyReleaseForegroundServiceManifest =
+            tasks.register<VerifyMergedManifestForegroundServicesTask>(
+                "verifyReleaseForegroundServiceManifest"
+            ) {
+                group = "verification"
+                description =
+                    "Verifies the final release manifest contains location FGS only, not dataSync."
+                mergedManifest.set(
+                    variant.artifacts.get(SingleArtifact.MERGED_MANIFEST)
+                )
+            }
+
+        tasks.named("verifyBuildIdentifier").configure {
+            dependsOn(verifyReleaseForegroundServiceManifest)
+        }
     }
 }
 
