@@ -473,20 +473,14 @@ object TelemetryUploadScheduler {
         if (notifyAfterPersistence) {
             operation.result.addListener(
                 {
-                    runCatching { operation.result.get() }
-                        .onSuccess {
-                            showTelemetryRecoveryNotification(
-                                context = appContext,
-                                remaining = uploadablePendingCount
-                            )
-                        }
-                        .onFailure { error ->
-                            Log.e(
-                                TELEMETRY_UPLOAD_LOG_TAG,
-                                "Telemetry recovery work was not persisted",
-                                error
-                            )
-                        }
+                    val persistenceError =
+                        runCatching { operation.result.get() }
+                            .exceptionOrNull()
+                    handleTelemetryRecoveryPersistenceResult(
+                        context = appContext,
+                        pendingCount = uploadablePendingCount,
+                        persistenceError = persistenceError
+                    )
                 },
                 TELEMETRY_RECOVERY_NOTIFICATION_EXECUTOR
             )
@@ -505,6 +499,28 @@ private const val TELEMETRY_APP_STATE_MANUAL_TRACKING_KEY = "manual_tracking"
 private const val TELEMETRY_UPLOAD_LOG_TAG = "TelemetryUploadWorker"
 private val TELEMETRY_RECOVERY_NOTIFICATION_EXECUTOR =
     Executor { command -> command.run() }
+
+internal fun handleTelemetryRecoveryPersistenceResult(
+    context: Context,
+    pendingCount: Long,
+    persistenceError: Throwable?
+) {
+    if (persistenceError != null) {
+        Log.e(
+            TELEMETRY_UPLOAD_LOG_TAG,
+            "Telemetry recovery work was not persisted",
+            persistenceError
+        )
+        return
+    }
+
+    if (pendingCount > 0L) {
+        showTelemetryRecoveryNotification(
+            context = context,
+            remaining = pendingCount
+        )
+    }
+}
 
 internal fun isTelemetryTrackingActive(context: Context): Boolean {
     val prefs = context.applicationContext.getSharedPreferences(
