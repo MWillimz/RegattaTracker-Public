@@ -85,6 +85,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
         private const val NOTIFICATION_CHANNEL_ID = "regatta_tracking_channel"
         private const val NOTIFICATION_ID = 1001
         private const val TRACKING_SERVICE_LOG_TAG = "RegattaTrackingService"
+        private const val ACTIVE_TRACKING_SESSION_ID = "active_tracking_session_id"
 
         const val ACTION_SET_COURSE_PROGRESS = "de.williserv.regattaclient.SET_COURSE_PROGRESS"
 
@@ -103,6 +104,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
     private val raceStatePrefsName = "regatta_race_state"
     private val localTimestampFormatter =
         DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")
+    private val sessionDisplayNameFormatter =
+        DateTimeFormatter.ofPattern("'Session' dd.MM.yy HH:mm", Locale.ROOT)
 
     private var serviceRunning = false
     private var manualRecording = false
@@ -112,6 +115,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
     private var sharedSecret = ""
     private var resolvedEventName: String? = null
     private var accessContextId: Long? = null
+    private var activeSessionId: Long? = null
 
     private var boatName = "Boat name"
     private var captainName = "Max Mustermann"
@@ -278,7 +282,9 @@ class RegattaTrackingService : Service(), SensorEventListener {
                     .putBoolean("in_race", !manualRecording)
                     .putBoolean("manual_tracking", manualRecording)
                     .apply()
-                startConfirmedTrackingService()
+                if (!startConfirmedTrackingService()) {
+                    return START_NOT_STICKY
+                }
                 return START_STICKY
             }
 
@@ -446,18 +452,31 @@ class RegattaTrackingService : Service(), SensorEventListener {
             return START_NOT_STICKY
         }
 
-        startConfirmedTrackingService()
+        if (!startConfirmedTrackingService()) {
+            return START_NOT_STICKY
+        }
         return START_STICKY
     }
 
-    private fun startConfirmedTrackingService() {
+    private fun startConfirmedTrackingService(): Boolean {
         try {
             startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.tracking_active)))
+
+            if (!ensureActiveTrackingSession()) {
+                TrackingServiceRuntimeState.markStopped()
+                persistTrackingStoppedState()
+                stopForegroundCompat()
+                stopSelf()
+                return false
+            }
+
             startTrackingService()
             TrackingServiceRuntimeState.markActive()
             onTelemetryTrackingBecameActive(this)
             updateNotification()
+            return true
         } catch (e: RuntimeException) {
+            finishActiveTrackingSession()
             TrackingServiceRuntimeState.markStopped()
             throw e
         }
@@ -575,6 +594,115 @@ class RegattaTrackingService : Service(), SensorEventListener {
         }
     }
 
+    private fun ensureActiveTrackingSession(): Boolean {
+        val expectedMode = if (manualRecording) "manual" else "race"
+        val expectedAccessContextId = if (manualRecording) null else accessContextId
+        if (!manualRecording && expectedAccessContextId == null) return false
+
+        activeSessionId?.let { currentId ->
+            val current = db.getTrackingSession(currentId)
+            if (
+                current != null &&
+                isCompatibleOpenSession(
+                    session = current,
+                    expectedMode = expectedMode,
+                    expectedAccessContextId = expectedAccessContextId
+                )
+            ) {
+                persistActiveSessionId(currentId)
+                return true
+            }
+            if (current?.endedAt == null) {
+                db.finishTrackingSession(currentId, System.currentTimeMillis())
+            }
+            activeSessionId = null
+        }
+
+        val appPrefs = getSharedPreferences("app_state", Context.MODE_PRIVATE)
+        val persistedId = if (appPrefs.contains(ACTIVE_TRACKING_SESSION_ID)) {
+            appPrefs.getLong(ACTIVE_TRACKING_SESSION_ID, -1L).takeIf { it > 0L }
+        } else {
+            null
+        }
+
+        if (persistedId != null) {
+            val persisted = db.getTrackingSession(persistedId)
+            if (
+                persisted != null &&
+                isCompatibleOpenSession(
+                    session = persisted,
+                    expectedMode = expectedMode,
+                    expectedAccessContextId = expectedAccessContextId
+                )
+            ) {
+                activeSessionId = persistedId
+                return true
+            }
+            if (persisted?.endedAt == null) {
+                db.finishTrackingSession(persistedId, System.currentTimeMillis())
+            }
+            appPrefs.edit().remove(ACTIVE_TRACKING_SESSION_ID).commit()
+        }
+
+        val startedAt = System.currentTimeMillis()
+        val displayName = Instant.ofEpochMilli(startedAt)
+            .atZone(ZoneId.systemDefault())
+            .format(sessionDisplayNameFormatter)
+        val newSessionId = db.createTrackingSession(
+            startedAt = startedAt,
+            mode = expectedMode,
+            accessContextId = expectedAccessContextId,
+            displayName = displayName
+        ) ?: return false
+
+        activeSessionId = newSessionId
+        persistActiveSessionId(newSessionId)
+        return true
+    }
+
+    private fun isCompatibleOpenSession(
+        session: TrackingSession,
+        expectedMode: String,
+        expectedAccessContextId: Long?
+    ): Boolean {
+        return session.endedAt == null &&
+            session.mode == expectedMode &&
+            session.accessContextId == expectedAccessContextId
+    }
+
+    private fun persistActiveSessionId(sessionId: Long) {
+        getSharedPreferences("app_state", Context.MODE_PRIVATE)
+            .edit()
+            .putLong(ACTIVE_TRACKING_SESSION_ID, sessionId)
+            .commit()
+    }
+
+    private fun finishActiveTrackingSession() {
+        val appPrefs = getSharedPreferences("app_state", Context.MODE_PRIVATE)
+        val persistedId = if (appPrefs.contains(ACTIVE_TRACKING_SESSION_ID)) {
+            appPrefs.getLong(ACTIVE_TRACKING_SESSION_ID, -1L).takeIf { it > 0L }
+        } else {
+            null
+        }
+        val sessionId = activeSessionId ?: persistedId
+
+        if (sessionId != null) {
+            db.finishTrackingSession(sessionId, System.currentTimeMillis())
+        }
+
+        activeSessionId = null
+        appPrefs.edit().remove(ACTIVE_TRACKING_SESSION_ID).commit()
+    }
+
+    private fun stopForegroundCompat() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
+    }
+
     private fun startTrackingService() {
         db.resetTrackingSessionMetadata()
 
@@ -630,6 +758,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
         stopHandoffInProgress = true
         val handoffGeneration = ++stopHandoffGeneration
 
+        finishActiveTrackingSession()
         persistTrackingStoppedState()
 
         synchronized(eventPollLifecycleLock) {
@@ -722,12 +851,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
         stopHandoffInProgress = false
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-        } else {
-            @Suppress("DEPRECATION")
-            stopForeground(true)
-        }
+        stopForegroundCompat()
 
         val notificationManager =
             getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -1178,6 +1302,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
             gyroY = gyroY,
             gyroZ = gyroZ,
             accessContextId = sampleAccessContextId,
+            sessionId = activeSessionId,
             utcOffsetMinutes = sampleTime.utcOffsetMinutes
         )
 
