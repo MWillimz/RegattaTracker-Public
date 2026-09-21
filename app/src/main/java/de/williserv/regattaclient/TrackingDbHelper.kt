@@ -43,6 +43,15 @@ data class AccessContext(
     val lastUsedAt: Long
 )
 
+data class TrackingSession(
+    val id: Long,
+    val startedAt: Long,
+    val endedAt: Long?,
+    val mode: String,
+    val accessContextId: Long?,
+    val displayName: String
+)
+
 internal data class AccessContextKey(
     val serverUrl: String,
     val accessIdentifier: String,
@@ -79,7 +88,7 @@ internal fun normalizeAccessContextKey(
 }
 
 class TrackingDbHelper(context: Context) :
-    SQLiteOpenHelper(context, "regatta_tracking.db", null, 7) {
+    SQLiteOpenHelper(context, "regatta_tracking.db", null, 8) {
 
     private val appContext = context.applicationContext
     private var lastBatteryReadAtMs: Long? = null
@@ -93,6 +102,7 @@ class TrackingDbHelper(context: Context) :
 
     override fun onCreate(db: SQLiteDatabase) {
         createAccessContextsTable(db)
+        createTrackingSessionsTable(db)
         createTrackingSamplesTable(db)
         createTrackingSampleIndexes(db)
     }
@@ -109,6 +119,9 @@ class TrackingDbHelper(context: Context) :
         }
         if (oldVersion < 7 && newVersion >= 7) {
             migrateToVersion7(db)
+        }
+        if (oldVersion < 8 && newVersion >= 8) {
+            migrateToVersion8(db)
         }
     }
 
@@ -202,6 +215,76 @@ class TrackingDbHelper(context: Context) :
                 createdAt = cursor.getLong(4),
                 lastUsedAt = cursor.getLong(5)
             )
+        }
+    }
+
+    fun createTrackingSession(
+        startedAt: Long,
+        mode: String,
+        accessContextId: Long?,
+        displayName: String
+    ): Long? {
+        require(mode == "race" || mode == "manual")
+        if (mode == "race" && accessContextId == null) return null
+        if (mode == "manual" && accessContextId != null) return null
+
+        val values = ContentValues().apply {
+            put("started_at", startedAt)
+            putNull("ended_at")
+            put("mode", mode)
+            if (accessContextId != null) {
+                put("access_context_id", accessContextId)
+            } else {
+                putNull("access_context_id")
+            }
+            put("display_name", displayName)
+        }
+
+        val insertedId = writableDatabase.insert("tracking_sessions", null, values)
+        return insertedId.takeIf { it != -1L }
+    }
+
+    fun getTrackingSession(sessionId: Long): TrackingSession? {
+        readableDatabase.rawQuery(
+            """
+            SELECT id, started_at, ended_at, mode, access_context_id, display_name
+            FROM tracking_sessions
+            WHERE id = ?
+            LIMIT 1
+            """.trimIndent(),
+            arrayOf(sessionId.toString())
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) return null
+            return TrackingSession(
+                id = cursor.getLong(0),
+                startedAt = cursor.getLong(1),
+                endedAt = if (cursor.isNull(2)) null else cursor.getLong(2),
+                mode = cursor.getString(3),
+                accessContextId = if (cursor.isNull(4)) null else cursor.getLong(4),
+                displayName = cursor.getString(5)
+            )
+        }
+    }
+
+    fun finishTrackingSession(sessionId: Long, endedAt: Long): Boolean {
+        val values = ContentValues().apply {
+            put("ended_at", endedAt)
+        }
+        return writableDatabase.update(
+            "tracking_sessions",
+            values,
+            "id = ? AND ended_at IS NULL",
+            arrayOf(sessionId.toString())
+        ) > 0
+    }
+
+    fun countTrackingSessions(): Long {
+        readableDatabase.rawQuery(
+            "SELECT COUNT(*) FROM tracking_sessions",
+            null
+        ).use { cursor ->
+            cursor.moveToFirst()
+            return cursor.getLong(0)
         }
     }
 
@@ -319,6 +402,7 @@ class TrackingDbHelper(context: Context) :
         batteryCharging: Boolean? = null,
         trackingProfile: String? = null,
         accessContextId: Long? = null,
+        sessionId: Long? = null,
         utcOffsetMinutes: Int? = null
     ): Long {
         val nowMs = System.currentTimeMillis()
@@ -380,6 +464,12 @@ class TrackingDbHelper(context: Context) :
             } else {
                 putNull("access_context_id")
             }
+
+            if (sessionId != null) {
+                put("session_id", sessionId)
+            } else {
+                putNull("session_id")
+            }
         }
 
         val insertedId = writableDatabase.insert("tracking_samples", null, values)
@@ -412,6 +502,7 @@ class TrackingDbHelper(context: Context) :
         db.beginTransaction()
         try {
             db.delete("tracking_samples", null, null)
+            db.delete("tracking_sessions", null, null)
             deleteOrphanedAccessContexts(db)
             db.setTransactionSuccessful()
         } finally {
@@ -619,6 +710,18 @@ class TrackingDbHelper(context: Context) :
         createTrackingSampleIndexes(db)
     }
 
+    private fun migrateToVersion8(db: SQLiteDatabase) {
+        createTrackingSessionsTable(db)
+
+        if (!tableExists(db, "tracking_samples")) {
+            createTrackingSamplesTable(db)
+        } else if (!columnExists(db, "tracking_samples", "session_id")) {
+            db.execSQL("ALTER TABLE tracking_samples ADD COLUMN session_id INTEGER")
+        }
+
+        createTrackingSampleIndexes(db)
+    }
+
     private fun createAccessContextsTable(db: SQLiteDatabase) {
         db.execSQL(
             """
@@ -630,6 +733,21 @@ class TrackingDbHelper(context: Context) :
                 created_at INTEGER NOT NULL,
                 last_used_at INTEGER NOT NULL,
                 UNIQUE(server_url, access_identifier, access_secret)
+            )
+            """.trimIndent()
+        )
+    }
+
+    private fun createTrackingSessionsTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS tracking_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                started_at INTEGER NOT NULL,
+                ended_at INTEGER,
+                mode TEXT NOT NULL,
+                access_context_id INTEGER,
+                display_name TEXT NOT NULL
             )
             """.trimIndent()
         )
@@ -664,7 +782,8 @@ class TrackingDbHelper(context: Context) :
                 battery_percent INTEGER,
                 battery_charging INTEGER,
                 tracking_profile TEXT,
-                utc_offset_minutes INTEGER
+                utc_offset_minutes INTEGER,
+                session_id INTEGER
             )
             """.trimIndent()
         )
@@ -675,6 +794,12 @@ class TrackingDbHelper(context: Context) :
             """
             CREATE INDEX IF NOT EXISTS idx_tracking_samples_pending_id
             ON tracking_samples(uploaded, id)
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            CREATE INDEX IF NOT EXISTS idx_tracking_samples_session_id
+            ON tracking_samples(session_id, id)
             """.trimIndent()
         )
     }
