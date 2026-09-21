@@ -3,6 +3,8 @@ package de.williserv.regattaclient
 import kotlin.math.asin
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.round
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 internal const val OWN_SHIP_COURSE_VECTOR_SECONDS = 300.0
@@ -24,6 +26,14 @@ internal fun normalizeBearingDegrees(bearingDegrees: Double): Double? {
     val normalized = bearingDegrees % 360.0
     return if (normalized < 0.0) normalized + 360.0 else normalized
 }
+
+internal fun sogKnotsForDisplay(speedMps: Double): Double? =
+    metersPerSecondToKnots(speedMps)?.let { round(it * 10.0) / 10.0 }
+
+internal fun cogDegreesForDisplay(bearingDegrees: Double): Int? =
+    normalizeBearingDegrees(bearingDegrees)
+        ?.roundToInt()
+        ?.let { it % 360 }
 
 internal fun ownShipCourseVectorDistanceMeters(speedMps: Double): Double? {
     if (!speedMps.isFinite() || speedMps < 0.0) return null
