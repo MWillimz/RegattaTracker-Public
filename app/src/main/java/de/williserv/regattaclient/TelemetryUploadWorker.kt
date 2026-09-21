@@ -2,6 +2,7 @@ package de.williserv.regattaclient
 
 import android.content.Context
 import android.os.SystemClock
+import android.util.Log
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
@@ -1129,6 +1130,7 @@ class TelemetryUploadWorker(
     }
 
     private companion object {
+        const val TELEMETRY_UPLOAD_LOG_TAG = "TelemetryUploadWorker"
         const val DISCOVERY_PAGE_SIZE = 2
         const val LEGACY_PAGE_SIZE = 50
         const val LOCAL_SCAN_PAGE_SIZE = 1000
