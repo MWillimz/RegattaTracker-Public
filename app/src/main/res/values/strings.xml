@@ -79,6 +79,10 @@
     <string name="loading_map">Loading map…</string>
     <string name="map_unavailable">Map unavailable</string>
     <string name="map_could_not_be_loaded">Map could not be loaded</string>
+    <string name="map_sog_value_kn">SOG: %1$.1f kn</string>
+    <string name="map_sog_unknown">SOG: --</string>
+    <string name="map_cog_value_degrees">COG: %1$d°</string>
+    <string name="map_cog_unknown">COG: --</string>
 
     <!-- Legal / server information -->
     <string name="settings_about_legal">Settings / About / Legal</string>
