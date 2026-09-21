@@ -24,6 +24,7 @@ class TelemetryUploadBackgroundTest {
     @Before
     fun setUp() {
         context = RuntimeEnvironment.getApplication()
+        context.deleteDatabase(DB_NAME)
         notificationManager =
             context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         context.getSharedPreferences(APP_STATE_PREFS, Context.MODE_PRIVATE)
@@ -36,6 +37,7 @@ class TelemetryUploadBackgroundTest {
     @After
     fun tearDown() {
         cancelTelemetryRecoveryNotification(context)
+        context.deleteDatabase(DB_NAME)
         context.getSharedPreferences(APP_STATE_PREFS, Context.MODE_PRIVATE)
             .edit()
             .clear()
@@ -221,5 +223,6 @@ class TelemetryUploadBackgroundTest {
 
     private companion object {
         const val APP_STATE_PREFS = "app_state"
+        const val DB_NAME = "regatta_tracking.db"
     }
 }
