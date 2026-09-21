@@ -26,3 +26,20 @@ internal object TrackingServiceRuntimeState {
 
     fun isActive(): Boolean = status == TrackingServiceRuntimeStatus.ACTIVE
 }
+
+internal data class EffectiveTrackingRuntimeState(
+    val inRace: Boolean,
+    val manualTracking: Boolean
+)
+
+internal fun effectiveTrackingRuntimeState(
+    persistedInRace: Boolean,
+    persistedManual: Boolean,
+    runtimeStatus: TrackingServiceRuntimeStatus
+): EffectiveTrackingRuntimeState {
+    val serviceOwnsTrackingState = runtimeStatus != TrackingServiceRuntimeStatus.STOPPED
+    return EffectiveTrackingRuntimeState(
+        inRace = serviceOwnsTrackingState && persistedInRace,
+        manualTracking = serviceOwnsTrackingState && persistedManual
+    )
+}
