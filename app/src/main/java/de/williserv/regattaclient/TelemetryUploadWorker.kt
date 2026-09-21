@@ -537,6 +537,19 @@ class TelemetryUploadWorker(
     private var uploadStartedAtElapsedMs = 0L
     private var pendingEstimateRefreshedAtElapsedMs = 0L
 
+    internal var elapsedRealtimeProvider: () -> Long = {
+        SystemClock.elapsedRealtime()
+    }
+    internal var continuationPersister: (Long) -> Unit = { afterLocalId ->
+        TelemetryUploadScheduler.appendContinuation(
+            context = applicationContext,
+            afterLocalId = afterLocalId
+        ).result.get()
+    }
+    internal var foregroundPromoter: (ForegroundInfo) -> Unit = { foregroundInfo ->
+        setForegroundAsync(foregroundInfo).get()
+    }
+
     override fun getForegroundInfo(): ForegroundInfo {
         createTelemetryUploadNotificationChannel()
         val remainingPendingCount = db.countUploadablePendingSamples()
@@ -546,7 +559,7 @@ class TelemetryUploadWorker(
     }
 
     override fun doWork(): Result {
-        uploadStartedAtElapsedMs = SystemClock.elapsedRealtime()
+        uploadStartedAtElapsedMs = elapsedRealtimeProvider()
         remainingPendingEstimate = db.countUploadablePendingSamples()
         pendingEstimateRefreshedAtElapsedMs = uploadStartedAtElapsedMs
 
@@ -582,7 +595,7 @@ class TelemetryUploadWorker(
             )
 
             val elapsedMs =
-                (SystemClock.elapsedRealtime() - uploadStartedAtElapsedMs)
+                (elapsedRealtimeProvider() - uploadStartedAtElapsedMs)
                     .coerceAtLeast(0L)
             if (
                 shouldYieldTelemetryUpload(
@@ -815,10 +828,7 @@ class TelemetryUploadWorker(
 
     private fun handOffToContinuation(afterLocalId: Long): Result {
         return try {
-            TelemetryUploadScheduler.appendContinuation(
-                context = applicationContext,
-                afterLocalId = afterLocalId
-            ).result.get()
+            continuationPersister(afterLocalId)
             TelemetryUploadStatusStore.write(
                 applicationContext,
                 TelemetryUploadStatusStore.WAITING
@@ -898,7 +908,7 @@ class TelemetryUploadWorker(
     ) {
         if (foregroundPromotionUnavailable) return
 
-        val nowElapsedMs = SystemClock.elapsedRealtime()
+        val nowElapsedMs = elapsedRealtimeProvider()
         val elapsedSinceEstimateRefreshMs =
             (nowElapsedMs - pendingEstimateRefreshedAtElapsedMs)
                 .coerceAtLeast(0L)
@@ -931,11 +941,11 @@ class TelemetryUploadWorker(
 
         try {
             createTelemetryUploadNotificationChannel()
-            setForegroundAsync(
+            foregroundPromoter(
                 buildTelemetryUploadForegroundInfo(
                     remainingPendingCount = remainingPendingCount
                 )
-            ).get()
+            )
             foregroundActive = true
         } catch (e: Exception) {
             foregroundPromotionUnavailable = true
