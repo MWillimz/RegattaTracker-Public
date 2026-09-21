@@ -1,8 +1,12 @@
 package de.williserv.regattaclient
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
@@ -150,6 +154,33 @@ internal fun telemetryUploadExistingWorkPolicy(
 
 internal fun shouldEnqueueTelemetryUpload(uploadablePendingCount: Long): Boolean {
     return uploadablePendingCount > 0L
+}
+
+internal data class TelemetryUploadNotificationProgress(
+    val sent: Long,
+    val total: Long,
+    val percent: Int
+)
+
+internal fun telemetryUploadNotificationProgress(
+    sent: Long,
+    total: Long
+): TelemetryUploadNotificationProgress {
+    val safeTotal = total.coerceAtLeast(0L)
+    val safeSent = sent.coerceIn(0L, safeTotal)
+    val percent = if (safeTotal == 0L) {
+        100
+    } else {
+        ((safeSent.toDouble() / safeTotal.toDouble()) * 100.0)
+            .toInt()
+            .coerceIn(0, 100)
+    }
+
+    return TelemetryUploadNotificationProgress(
+        sent = safeSent,
+        total = safeTotal,
+        percent = percent
+    )
 }
 
 internal const val TELEMETRY_BACKGROUND_SLICE_MS = 5 * 60_000L
@@ -320,9 +351,12 @@ object TelemetryUploadScheduler {
     private const val RACE_SETUP_PREFS_NAME = "race_setup"
     private const val RACE_SERVER_KEY = "race_server"
     internal const val AFTER_LOCAL_ID_KEY = "after_local_id"
+    internal const val SHOW_RECOVERY_NOTIFICATION_KEY =
+        "show_recovery_notification"
 
     internal fun buildRequest(
-        afterLocalId: Long = 0L
+        afterLocalId: Long = 0L,
+        showRecoveryNotification: Boolean = false
     ): OneTimeWorkRequest {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -330,7 +364,12 @@ object TelemetryUploadScheduler {
 
         return OneTimeWorkRequest.Builder(TelemetryUploadWorker::class.java)
             .setConstraints(constraints)
-            .setInputData(workDataOf(AFTER_LOCAL_ID_KEY to afterLocalId))
+            .setInputData(
+                workDataOf(
+                    AFTER_LOCAL_ID_KEY to afterLocalId,
+                    SHOW_RECOVERY_NOTIFICATION_KEY to showRecoveryNotification
+                )
+            )
             .setBackoffCriteria(
                 BackoffPolicy.EXPONENTIAL,
                 30,
@@ -379,7 +418,8 @@ object TelemetryUploadScheduler {
 
     internal fun appendContinuation(
         context: Context,
-        afterLocalId: Long
+        afterLocalId: Long,
+        showRecoveryNotification: Boolean
     ): Operation {
         TelemetryUploadStatusStore.write(context, TelemetryUploadStatusStore.WAITING)
         return WorkManager.getInstance(context.applicationContext)
@@ -388,7 +428,10 @@ object TelemetryUploadScheduler {
                 telemetryUploadExistingWorkPolicy(
                     TelemetryUploadScheduleKind.CONTINUATION
                 ),
-                buildRequest(afterLocalId = afterLocalId)
+                buildRequest(
+                    afterLocalId = afterLocalId,
+                    showRecoveryNotification = showRecoveryNotification
+                )
             )
     }
 
@@ -406,6 +449,7 @@ object TelemetryUploadScheduler {
                 appContext,
                 TelemetryUploadStatusStore.ALL_SENT
             )
+            cancelTelemetryRecoveryNotification(appContext)
             return null
         }
 
@@ -413,15 +457,102 @@ object TelemetryUploadScheduler {
             appContext,
             TelemetryUploadStatusStore.WAITING
         )
+        showTelemetryRecoveryNotification(
+            context = appContext,
+            sent = 0L,
+            total = uploadablePendingCount
+        )
         return WorkManager.getInstance(appContext)
             .enqueueUniqueWork(
                 UNIQUE_WORK_NAME,
                 telemetryUploadExistingWorkPolicy(
                     TelemetryUploadScheduleKind.RECOVERY
                 ),
-                buildRequest()
+                buildRequest(showRecoveryNotification = true)
             )
     }
+}
+
+private const val TELEMETRY_RECOVERY_NOTIFICATION_CHANNEL_ID =
+    "regatta_telemetry_upload_channel"
+private const val TELEMETRY_RECOVERY_NOTIFICATION_ID = 1002
+
+internal fun showTelemetryRecoveryNotification(
+    context: Context,
+    sent: Long,
+    total: Long
+) {
+    val appContext = context.applicationContext
+    val notificationManager =
+        appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+    notificationManager.createNotificationChannel(
+        NotificationChannel(
+            TELEMETRY_RECOVERY_NOTIFICATION_CHANNEL_ID,
+            appContext.getString(R.string.telemetry_upload_notification_channel),
+            NotificationManager.IMPORTANCE_LOW
+        )
+    )
+
+    val progress = telemetryUploadNotificationProgress(
+        sent = sent,
+        total = total
+    )
+    val locale = appContext.resources.configuration.locales[0]
+    val numberFormat = java.text.NumberFormat.getIntegerInstance(locale)
+    val progressText = appContext.getString(
+        R.string.telemetry_upload_notification_progress,
+        numberFormat.format(progress.sent),
+        numberFormat.format(progress.total)
+    )
+
+    val launchIntent = appContext.packageManager
+        .getLaunchIntentForPackage(appContext.packageName)
+    val contentIntent = launchIntent?.let {
+        PendingIntent.getActivity(
+            appContext,
+            TELEMETRY_RECOVERY_NOTIFICATION_ID,
+            it,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    val notification = NotificationCompat.Builder(
+        appContext,
+        TELEMETRY_RECOVERY_NOTIFICATION_CHANNEL_ID
+    )
+        .setContentTitle(
+            appContext.getString(R.string.telemetry_upload_notification_title)
+        )
+        .setContentText(progressText)
+        .setSmallIcon(android.R.drawable.stat_sys_upload)
+        .setOngoing(true)
+        .setOnlyAlertOnce(true)
+        .setProgress(100, progress.percent, false)
+        .apply {
+            contentIntent?.let { setContentIntent(it) }
+        }
+        .build()
+
+    try {
+        notificationManager.notify(
+            TELEMETRY_RECOVERY_NOTIFICATION_ID,
+            notification
+        )
+    } catch (e: SecurityException) {
+        Log.w(
+            "TelemetryUploadWorker",
+            "Recovery notification permission unavailable",
+            e
+        )
+    }
+}
+
+internal fun cancelTelemetryRecoveryNotification(context: Context) {
+    val notificationManager =
+        context.applicationContext
+            .getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    notificationManager.cancel(TELEMETRY_RECOVERY_NOTIFICATION_ID)
 }
 
 class TelemetryUploadWorker(
@@ -433,6 +564,13 @@ class TelemetryUploadWorker(
     private val localStatusPrefsName = "regatta_local_status"
 
     private var uploadStartedAtElapsedMs = 0L
+    private val showRecoveryNotification =
+        inputData.getBoolean(
+            TelemetryUploadScheduler.SHOW_RECOVERY_NOTIFICATION_KEY,
+            false
+        )
+    private var recoveryNotificationTotal = 0L
+    private var recoveryNotificationSent = 0L
 
     internal var elapsedRealtimeProvider: () -> Long = {
         SystemClock.elapsedRealtime()
@@ -440,11 +578,21 @@ class TelemetryUploadWorker(
     internal var continuationPersister: (Long) -> Unit = { afterLocalId ->
         TelemetryUploadScheduler.appendContinuation(
             context = applicationContext,
-            afterLocalId = afterLocalId
+            afterLocalId = afterLocalId,
+            showRecoveryNotification = showRecoveryNotification
         ).result.get()
     }
     override fun doWork(): Result {
         uploadStartedAtElapsedMs = elapsedRealtimeProvider()
+
+        if (showRecoveryNotification) {
+            recoveryNotificationTotal = db.countUploadablePendingSamples()
+            showTelemetryRecoveryNotification(
+                context = applicationContext,
+                sent = 0L,
+                total = recoveryNotificationTotal
+            )
+        }
 
         val client = currentClientBuildIdentity()
         var afterLocalId = inputData.getLong(
@@ -514,6 +662,7 @@ class TelemetryUploadWorker(
                 when (uploadSampleBlocking(firstSample, client)) {
                     TelemetryUploadAttemptResult.SUCCESS -> {
                         db.markUploaded(firstSample.localId)
+                        recordRecoveryNotificationProgress(1L)
                     }
 
                     TelemetryUploadAttemptResult.TEMPORARY_FAILURE -> {
@@ -560,6 +709,9 @@ class TelemetryUploadWorker(
                         samples = sameAccessPrefix,
                         client = client
                     )
+                    recordRecoveryNotificationProgress(
+                        sequentialOutcome.uploadedCount.toLong()
+                    )
 
                     if (
                         sequentialOutcome.result ==
@@ -595,6 +747,9 @@ class TelemetryUploadWorker(
                         TelemetryBatchAttemptKind.PROCESSED -> {
                             val response = requireNotNull(attempt.response)
                             db.markUploaded(response.acceptedLocalIds)
+                            recordRecoveryNotificationProgress(
+                                response.acceptedLocalIds.size.toLong()
+                            )
 
                             if (response.clientUpdateRequired) {
                                 markClientUpdateRequired(
@@ -694,7 +849,23 @@ class TelemetryUploadWorker(
                 TelemetryUploadStatusStore.ALL_SENT
             }
         )
+        if (showRecoveryNotification) {
+            cancelTelemetryRecoveryNotification(applicationContext)
+        }
         return Result.success()
+    }
+
+    private fun recordRecoveryNotificationProgress(count: Long) {
+        if (!showRecoveryNotification || count <= 0L) return
+
+        recoveryNotificationSent =
+            (recoveryNotificationSent + count)
+                .coerceAtMost(recoveryNotificationTotal)
+        showTelemetryRecoveryNotification(
+            context = applicationContext,
+            sent = recoveryNotificationSent,
+            total = recoveryNotificationTotal
+        )
     }
 
     private fun handOffToContinuation(afterLocalId: Long): Result {
