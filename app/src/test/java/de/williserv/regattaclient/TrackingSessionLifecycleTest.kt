@@ -98,9 +98,9 @@ class TrackingSessionLifecycleTest {
         firstController.destroy()
         firstHelper.close()
 
-        TrackingDbHelper(context).use { helper ->
-            assertNull(requireNotNull(helper.getTrackingSession(sessionId)).endedAt)
-        }
+        val persistedHelper = TrackingDbHelper(context)
+        assertNull(requireNotNull(persistedHelper.getTrackingSession(sessionId)).endedAt)
+        persistedHelper.close()
         assertEquals(
             sessionId,
             context.getSharedPreferences(APP_STATE_PREFS, Context.MODE_PRIVATE)
