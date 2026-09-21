@@ -1359,27 +1359,20 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private fun loadAppState() {
         val prefs = getSharedPreferences(appStatePrefsName, Context.MODE_PRIVATE)
+        val persistedInRace = prefs.getBoolean("in_race", false)
+        var persistedManual = prefs.getBoolean("manual_tracking", false)
 
-        inRace.value = prefs.getBoolean("in_race", false)
-        manualTracking.value = prefs.getBoolean("manual_tracking", false)
-        if (inRace.value && manualTracking.value) {
-            manualTracking.value = false
+        if (persistedInRace && persistedManual) {
+            persistedManual = false
             prefs.edit()
                 .putBoolean("manual_tracking", false)
                 .apply()
         }
 
-        serviceStatusText.value = when {
-            inRace.value -> getString(R.string.service_race_running)
-            manualTracking.value -> getString(R.string.service_manual_running)
-            else -> getString(R.string.service_stopped)
-        }
-
-        statusText.value = when {
-            inRace.value -> getString(R.string.in_race)
-            manualTracking.value -> getString(R.string.manual_tracking_running)
-            else -> getString(R.string.tracking_stopped)
-        }
+        applyTrackingRuntimeState(
+            persistedInRace = persistedInRace,
+            persistedManual = persistedManual
+        )
     }
 
     private fun reconcileTrackingState() {
@@ -1394,24 +1387,36 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 .apply()
         }
 
-        if (
-            inRace.value == persistedInRace &&
-            manualTracking.value == persistedManual
-        ) {
-            return
-        }
+        applyTrackingRuntimeState(
+            persistedInRace = persistedInRace,
+            persistedManual = persistedManual
+        )
+    }
 
-        inRace.value = persistedInRace
-        manualTracking.value = persistedManual
+    private fun applyTrackingRuntimeState(
+        persistedInRace: Boolean,
+        persistedManual: Boolean
+    ) {
+        val runtimeStatus = TrackingServiceRuntimeState.currentStatus()
+        val serviceOwnsTrackingState = runtimeStatus != TrackingServiceRuntimeStatus.STOPPED
+        val effectiveInRace = serviceOwnsTrackingState && persistedInRace
+        val effectiveManual = serviceOwnsTrackingState && persistedManual
+
+        inRace.value = effectiveInRace
+        manualTracking.value = effectiveManual
 
         serviceStatusText.value = when {
-            persistedInRace -> getString(R.string.service_race_running)
-            persistedManual -> getString(R.string.service_manual_running)
+            runtimeStatus == TrackingServiceRuntimeStatus.STARTING &&
+                (effectiveInRace || effectiveManual) -> getString(R.string.service_starting)
+            effectiveInRace -> getString(R.string.service_race_running)
+            effectiveManual -> getString(R.string.service_manual_running)
             else -> getString(R.string.service_stopped)
         }
 
-        if (!persistedInRace && !persistedManual) {
-            statusText.value = getString(R.string.tracking_stopped)
+        statusText.value = when {
+            effectiveInRace -> getString(R.string.in_race)
+            effectiveManual -> getString(R.string.manual_tracking_running)
+            else -> getString(R.string.tracking_stopped)
         }
     }
 
@@ -2848,12 +2853,13 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             putExtra(RegattaTrackingService.EXTRA_MANUAL_RECORDING, manualMode)
         }
 
-        ContextCompat.startForegroundService(this, intent)
-
-        serviceStatusText.value = if (manualMode) {
-            getString(R.string.service_manual_running)
-        } else {
-            getString(R.string.service_race_running)
+        TrackingServiceRuntimeState.markStarting()
+        try {
+            ContextCompat.startForegroundService(this, intent)
+            serviceStatusText.value = getString(R.string.service_starting)
+        } catch (e: RuntimeException) {
+            TrackingServiceRuntimeState.markStopped()
+            throw e
         }
     }
 
