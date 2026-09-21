@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -55,6 +56,7 @@ private val HomeGapSmall = 14.dp
 private val HomeGapMedium = 14.dp
 private val HomeGapLarge = 14.dp
 private val HomeBottomGap = 60.dp
+private val CompactButtonContentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
 
 @Composable
 fun primaryButtonColors() = ButtonDefaults.buttonColors(
@@ -376,6 +378,7 @@ fun HomeScreen(
             Button(
                 onClick = onToggleAdvanced,
                 colors = primaryButtonColors(),
+                contentPadding = CompactButtonContentPadding,
                 modifier = Modifier.weight(0.35f)
             ){
                 AutoSizedSingleLineText(
@@ -392,6 +395,7 @@ fun HomeScreen(
             Button(
                 onClick = onLegal,
                 colors = primaryButtonColors(),
+                contentPadding = CompactButtonContentPadding,
                 modifier = Modifier.weight(0.65f)
             ) {
                 AutoSizedSingleLineText(
@@ -730,7 +734,7 @@ fun StatusRow(
             maxLines = 1,
             softWrap = false,
             autoSize = TextAutoSize.StepBased(
-                minFontSize = 12.sp,
+                minFontSize = 10.sp,
                 maxFontSize = 18.sp,
                 stepSize = 0.5.sp
             )
@@ -858,6 +862,7 @@ fun RacecourseRow(
             onClick = onCourse,
             enabled = raceDataReady,
             colors = primaryButtonColors(),
+            contentPadding = CompactButtonContentPadding,
             modifier = Modifier.weight(0.5f)
         ) {
             AutoSizedSingleLineText(
@@ -871,6 +876,7 @@ fun RacecourseRow(
             onClick = onMap,
             enabled = raceDataReady,
             colors = primaryButtonColors(),
+            contentPadding = CompactButtonContentPadding,
             modifier = Modifier.weight(0.5f)
         ) {
             AutoSizedSingleLineText(
@@ -900,6 +906,7 @@ fun SmallActionButton(
         onClick = onClick,
         modifier = modifier,
         enabled = enabled,
+        contentPadding = CompactButtonContentPadding,
         colors = ButtonDefaults.buttonColors(
             containerColor = color,
             contentColor = MaterialTheme.colorScheme.onPrimary,
