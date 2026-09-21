@@ -296,6 +296,17 @@
     <string name="gps_tracking_consent">Zustimmung zur GPS-Ortung</string>
     <string name="gps_tracking_consent_message">Diese App verarbeitet Standortdaten für die Regatta-Aufzeichnung, Startlinienprüfung, OCS-Erkennung, Kursfortschritt und Zieleinlauferkennung.\n\nWährend einer Regatta können Standortdaten an den konfigurierten Regatta-Server übertragen werden.\n\nBeim manuellen Training werden Daten lokal gespeichert und nicht automatisch an den Server übertragen.\n\nDie Android-Standortberechtigung ist ebenfalls erforderlich.</string>
     <string name="i_agree">Ich stimme zu</string>
+    <string name="leave_race">Wettfahrt verlassen</string>
+    <string name="leave_race_choice_message">Was möchtest du tun?</string>
+    <string name="retire">Retire</string>
+    <string name="retire_confirm_title">RET wirklich melden?</string>
+    <string name="retire_confirm_message">Dem Race Committee melden, dass du diese Wettfahrt aufgegeben hast? Das Tracking läuft nach der RET-Meldung weiter.</string>
+    <string name="retire_confirm_action">RET melden</string>
+    <string name="retire_reported_tracking_active">RET gemeldet · Tracking aktiv</string>
+    <string name="retire_reporting">RET wird gemeldet…</string>
+    <string name="retire_failed">RET-Meldung fehlgeschlagen: %1$s</string>
+    <string name="retire_failed_code">RET-Meldung fehlgeschlagen %1$d: %2$s</string>
+    <string name="retire_response_invalid">RET-Meldung fehlgeschlagen: ungültige Serverantwort</string>
     <string name="retire_finish_title">Aufgeben / Ziel?</string>
     <string name="retire_finish_message">Nur verwenden, wenn du die Regatta aufgibst oder im Ziel bist.\n\nDadurch wird die Regatta-Aufzeichnung für dieses Boot beendet. Bei Aufgabe kann das Boot aus der Wertung fallen.</string>
     <string name="is_this_your_boat">Ist das dein Boot?</string>
@@ -307,4 +318,10 @@
     <string name="race_first_load_online_required">Eventdaten nicht verfügbar. Lade dieses Event einmal online, bevor du es ohne Verbindung verwendest.</string>
     <string name="race_response_invalid">Eventdaten konnten nicht aktualisiert werden.</string>
     <string name="race_entry_store_failed">Der Startpunkt konnte nicht lokal gespeichert werden. Die Regatta wurde nicht gestartet.</string>
+
+    <string name="telemetry_upload_notification_channel">Regattadaten-Übertragung</string>
+    <string name="telemetry_upload_notification_title">Gespeicherte Regattadaten werden übertragen</string>
+    <string name="telemetry_upload_notification_progress">%1$s von %2$s Positionen gesendet · Upload läuft im Hintergrund</string>
+    <string name="telemetry_upload_notification_keep_running">Bitte Regatta Tracker bis zum Abschluss nicht beenden.</string>
+
 </resources>

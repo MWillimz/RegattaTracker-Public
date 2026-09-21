@@ -12,7 +12,8 @@ data class ServerMetadata(
     val contactEmail: String?,
     val serverBuildId: String? = null,
     val recommendedClientVersionCode: Int? = null,
-    val minClientVersionCode: Int? = null
+    val minClientVersionCode: Int? = null,
+    val telemetryBatchMaxSamples: Int? = null
 ) {
     fun hasAnyValue(): Boolean =
         operator != null ||
@@ -20,7 +21,8 @@ data class ServerMetadata(
             contactEmail != null ||
             serverBuildId != null ||
             recommendedClientVersionCode != null ||
-            minClientVersionCode != null
+            minClientVersionCode != null ||
+            telemetryBatchMaxSamples != null
 }
 
 internal fun hasServerOperatorMetadata(metadata: ServerMetadata?): Boolean =
@@ -88,6 +90,20 @@ private fun optionalInt(json: JSONObject, key: String): Int? {
     }
 }
 
+private fun optionalPositiveIntOrNull(json: JSONObject, key: String): Int? {
+    if (!json.has(key) || json.isNull(key)) return null
+
+    val value = when (val raw = json.get(key)) {
+        is Int -> raw
+        is Long -> raw
+            .takeIf { it in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong() }
+            ?.toInt()
+        else -> null
+    } ?: return null
+
+    return value.takeIf { it > 0 }
+}
+
 internal fun parseServerMetadata(body: String): ServerMetadata {
     val json = JSONObject(body)
 
@@ -97,7 +113,11 @@ internal fun parseServerMetadata(body: String): ServerMetadata {
         contactEmail = optionalString(json, "contact_email"),
         serverBuildId = optionalString(json, "server_build_id"),
         recommendedClientVersionCode = optionalInt(json, "recommended_client_version_code"),
-        minClientVersionCode = optionalInt(json, "min_client_version_code")
+        minClientVersionCode = optionalInt(json, "min_client_version_code"),
+        telemetryBatchMaxSamples = optionalPositiveIntOrNull(
+            json,
+            "telemetry_batch_max_samples"
+        )
     )
 }
 

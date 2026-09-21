@@ -170,6 +170,23 @@ fun BoatDataScreen(
 }
 
 @Composable
+fun RetirementTrackingNotice(modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Text(
+            text = stringResource(R.string.retire_reported_tracking_active),
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(14.dp)
+        )
+    }
+}
+
+@Composable
 fun RaceScreen(
     inRace: Boolean,
     canEnterRace: Boolean,
@@ -185,6 +202,8 @@ fun RaceScreen(
     raceEntryNowEpochMillis: Long,
     raceStopText: String,
     raceRegistered: Boolean,
+    retirementReported: Boolean,
+    retirementStatusText: String,
     raceCourseText: String,
     raceStartLineText: String,
     raceFinishLineText: String,
@@ -280,6 +299,18 @@ fun RaceScreen(
             }
 
             inRace -> {
+                if (retirementReported) {
+                    RetirementTrackingNotice()
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+                if (retirementStatusText.isNotBlank()) {
+                    Text(
+                        text = retirementStatusText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 10.dp)
+                    )
+                }
+
                 Button(
                     onClick = onLeaveRace,
                     colors = ButtonDefaults.buttonColors(
@@ -289,7 +320,7 @@ fun RaceScreen(
                         .fillMaxWidth()
                         .height(58.dp)
                 ) {
-                    Text(stringResource(R.string.retire_finish))
+                    Text(stringResource(R.string.leave_race))
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))

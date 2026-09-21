@@ -48,6 +48,31 @@ class TrackingDbHelperTest {
     }
 
     @Test
+    fun batchAcknowledgement_marksOnlyAcceptedLocalRowsUploaded() {
+        val helper = TrackingDbHelper(context)
+        val contextId = createAccessContext(helper, "Event A", "secret-a")
+
+        val firstId = insertSample(helper, sequenceId = 1L, accessContextId = contextId)
+        val secondId = insertSample(helper, sequenceId = 2L, accessContextId = contextId)
+        val thirdId = insertSample(helper, sequenceId = 3L, accessContextId = contextId)
+
+        helper.markUploaded(listOf(firstId, thirdId))
+
+        assertEquals(1, uploadedValue(helper, firstId))
+        assertEquals(0, uploadedValue(helper, secondId))
+        assertEquals(1, uploadedValue(helper, thirdId))
+        assertEquals(listOf(secondId), helper.getPendingSamples(10).map { it.localId })
+    }
+
+    @Test
+    fun pendingQueueIndex_existsOnCurrentSchema() {
+        val helper = TrackingDbHelper(context)
+        val db = helper.writableDatabase
+
+        assertTrue(indexExists(db, "idx_tracking_samples_pending_id"))
+    }
+
+    @Test
     fun pendingBacklog_keepsOriginalAccessContextAfterAnotherAccessIsCreated() {
         val helper = TrackingDbHelper(context)
         val contextA = createAccessContext(helper, "Series A", "secret-a")
@@ -299,6 +324,18 @@ class TrackingDbHelperTest {
             }
 
             db.version = 3
+        }
+    }
+
+    private fun indexExists(
+        db: SQLiteDatabase,
+        indexName: String
+    ): Boolean {
+        db.rawQuery(
+            "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ? LIMIT 1",
+            arrayOf(indexName)
+        ).use { cursor ->
+            return cursor.moveToFirst()
         }
     }
 

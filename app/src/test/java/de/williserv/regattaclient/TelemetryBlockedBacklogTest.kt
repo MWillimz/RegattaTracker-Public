@@ -3,7 +3,6 @@ package de.williserv.regattaclient
 import android.content.Context
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -32,7 +31,7 @@ class TelemetryBlockedBacklogTest {
     }
 
     @Test
-    fun fullyBlockedBacklog_doesNotRequestContinuationPastFirstBatch() {
+    fun fullyBlockedBacklog_canBeSkippedInOneLargeLocalScanPage() {
         val db = TrackingDbHelper(context)
         try {
             val blockedContextId = requireNotNull(
@@ -61,17 +60,18 @@ class TelemetryBlockedBacklogTest {
             val firstPage = getTelemetryUploadPage(
                 db = db,
                 afterLocalId = 0L,
-                limit = 50
+                limit = 1000
             )
 
-            assertEquals(50, firstPage.size)
-            assertFalse(
-                hasUnblockedUploadablePendingServerAfter(
-                    db = db,
-                    context = context,
-                    afterLocalId = firstPage.last().localId,
-                    client = client
-                )
+            assertEquals(75, firstPage.size)
+            assertTrue(
+                firstPage.all {
+                    ClientCompatibilityBlockStore.isBlocked(
+                        context = context,
+                        serverUrl = it.accessContext.serverUrl,
+                        versionCode = client.versionCode
+                    )
+                }
             )
         } finally {
             db.close()
@@ -79,7 +79,7 @@ class TelemetryBlockedBacklogTest {
     }
 
     @Test
-    fun laterUnblockedServer_keepsContinuationAndKeysetPagingIntact() {
+    fun laterUnblockedServer_keepsKeysetPagingIntact() {
         val db = TrackingDbHelper(context)
         try {
             val blockedContextId = requireNotNull(
@@ -124,14 +124,6 @@ class TelemetryBlockedBacklogTest {
             )
 
             assertEquals(50, firstPage.size)
-            assertTrue(
-                hasUnblockedUploadablePendingServerAfter(
-                    db = db,
-                    context = context,
-                    afterLocalId = firstPage.last().localId,
-                    client = client
-                )
-            )
 
             val secondPage = getTelemetryUploadPage(
                 db = db,

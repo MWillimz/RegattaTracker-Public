@@ -50,6 +50,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Run Pages changelog tests
+        env:
+          PYTHONPATH: scripts
+        run: python3 -m unittest discover -s scripts/tests -p 'test_generate_pages_changelog.py'
+
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:

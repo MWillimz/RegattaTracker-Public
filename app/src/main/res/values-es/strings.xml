@@ -296,6 +296,17 @@
     <string name="gps_tracking_consent">Consentimiento de seguimiento GPS</string>
     <string name="gps_tracking_consent_message">Esta aplicación procesa datos de ubicación para el seguimiento de regata, comprobaciones de la línea de salida, detección OCS, progreso del recorrido y detección de llegada.\n\nDurante una regata, los datos de ubicación pueden transmitirse al servidor de regata configurado.\n\nDurante el entrenamiento manual, los datos se guardan localmente y no se transmiten automáticamente al servidor.\n\nTambién se requiere el permiso de ubicación de Android.</string>
     <string name="i_agree">Acepto</string>
+    <string name="leave_race">Salir de la regata</string>
+    <string name="leave_race_choice_message">¿Qué quieres hacer?</string>
+    <string name="retire">Retirarse</string>
+    <string name="retire_confirm_title">¿Confirmar RET?</string>
+    <string name="retire_confirm_message">¿Informar al comité de regatas de que te has retirado de esta prueba? El seguimiento continuará después de comunicar RET.</string>
+    <string name="retire_confirm_action">Comunicar RET</string>
+    <string name="retire_reported_tracking_active">RET comunicado · Seguimiento activo</string>
+    <string name="retire_reporting">Comunicando RET…</string>
+    <string name="retire_failed">Error al comunicar RET: %1$s</string>
+    <string name="retire_failed_code">Error al comunicar RET %1$d: %2$s</string>
+    <string name="retire_response_invalid">Error al comunicar RET: respuesta del servidor no válida</string>
     <string name="retire_finish_title">¿Retirada / Llegada?</string>
     <string name="retire_finish_message">Úsalo solo si te retiras de la regata o has finalizado.\n\nEsto detiene el seguimiento de regata para este barco. Si te retiras, puedes quedar fuera de la clasificación.</string>
     <string name="is_this_your_boat">¿Este es tu barco?</string>
@@ -307,4 +318,10 @@
     <string name="race_first_load_online_required">Los datos del evento no están disponibles. Carga este evento en línea una vez antes de usarlo sin conexión.</string>
     <string name="race_response_invalid">No se pudieron actualizar los datos del evento.</string>
     <string name="race_entry_store_failed">No se pudo guardar localmente el punto de entrada en regata. La regata no se inició.</string>
+
+    <string name="telemetry_upload_notification_channel">Envío de datos de regata</string>
+    <string name="telemetry_upload_notification_title">Enviando datos de regata guardados</string>
+    <string name="telemetry_upload_notification_progress">%1$s de %2$s posiciones enviadas · El envío continúa en segundo plano</string>
+    <string name="telemetry_upload_notification_keep_running">No cierres Regatta Tracker hasta que finalice el envío.</string>
+
 </resources>

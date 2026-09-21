@@ -338,6 +338,17 @@
     <string name="gps_tracking_consent">GPS Tracking Consent</string>
     <string name="gps_tracking_consent_message">This app processes location data to enable regatta tracking, start line checks, OCS detection, course progress, and finish detection.\n\nDuring a race session, location data may be transmitted to the configured regatta server.\n\nDuring manual training, data is stored locally and is not automatically transmitted to the server.\n\nThe Android location permission is also required.</string>
     <string name="i_agree">I agree</string>
+    <string name="leave_race">Leave race</string>
+    <string name="leave_race_choice_message">What do you want to do?</string>
+    <string name="retire">Retire</string>
+    <string name="retire_confirm_title">Report RET?</string>
+    <string name="retire_confirm_message">Report to the Race Committee that you have retired from this race? Tracking will continue after the RET report.</string>
+    <string name="retire_confirm_action">Report RET</string>
+    <string name="retire_reported_tracking_active">RET reported · Tracking active</string>
+    <string name="retire_reporting">Reporting RET…</string>
+    <string name="retire_failed">RET report failed: %1$s</string>
+    <string name="retire_failed_code">RET report failed %1$d: %2$s</string>
+    <string name="retire_response_invalid">RET report failed: invalid server response</string>
     <string name="retire_finish_title">Retire / Finish?</string>
     <string name="retire_finish_message">Use this only if you are retiring from the race or have finished.\n\nThis stops race tracking for this boat. If you retire, you may be out of scoring.</string>
     <string name="is_this_your_boat">Is this your boat?</string>
@@ -349,4 +360,10 @@
     <string name="race_first_load_online_required">Event data unavailable. Load this event online once before using it without a connection.</string>
     <string name="race_response_invalid">Event data could not be updated.</string>
     <string name="race_entry_store_failed">Could not store the race entry sample. Race was not started.</string>
+
+    <string name="telemetry_upload_notification_channel">Stored race data upload</string>
+    <string name="telemetry_upload_notification_title">Uploading stored race data</string>
+    <string name="telemetry_upload_notification_progress">%1$s of %2$s positions sent · Upload continues in the background</string>
+    <string name="telemetry_upload_notification_keep_running">Please do not close Regatta Tracker until the upload is complete.</string>
+
 </resources>
