@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -26,7 +28,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Arrangement
@@ -50,6 +56,7 @@ private val HomeGapSmall = 14.dp
 private val HomeGapMedium = 14.dp
 private val HomeGapLarge = 14.dp
 private val HomeBottomGap = 60.dp
+private val CompactButtonContentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
 
 @Composable
 fun primaryButtonColors() = ButtonDefaults.buttonColors(
@@ -58,6 +65,30 @@ fun primaryButtonColors() = ButtonDefaults.buttonColors(
     disabledContainerColor = MaterialTheme.colorScheme.outlineVariant,
     disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
 )
+
+@Composable
+private fun AutoSizedSingleLineText(
+    text: String,
+    minFontSize: TextUnit,
+    maxFontSize: TextUnit,
+    modifier: Modifier = Modifier,
+    fontWeight: FontWeight? = null,
+    color: Color = Color.Unspecified
+) {
+    Text(
+        text = text,
+        modifier = modifier,
+        color = color,
+        fontWeight = fontWeight,
+        maxLines = 1,
+        softWrap = false,
+        autoSize = TextAutoSize.StepBased(
+            minFontSize = minFontSize,
+            maxFontSize = maxFontSize,
+            stepSize = 0.5.sp
+        )
+    )
+}
 @Composable
 fun HomeScreen(
     inRace: Boolean,
@@ -347,21 +378,31 @@ fun HomeScreen(
             Button(
                 onClick = onToggleAdvanced,
                 colors = primaryButtonColors(),
+                contentPadding = CompactButtonContentPadding,
                 modifier = Modifier.weight(0.35f)
             ){
-                if (showAdvanced) {
-                    Text(stringResource(R.string.hide))
-                } else {
-                    Text(stringResource(R.string.advanced))
-                }
+                AutoSizedSingleLineText(
+                    text = if (showAdvanced) {
+                        stringResource(R.string.hide)
+                    } else {
+                        stringResource(R.string.advanced)
+                    },
+                    minFontSize = 10.sp,
+                    maxFontSize = 14.sp
+                )
             }
 
             Button(
                 onClick = onLegal,
                 colors = primaryButtonColors(),
+                contentPadding = CompactButtonContentPadding,
                 modifier = Modifier.weight(0.65f)
             ) {
-                Text(stringResource(R.string.legal_about))
+                AutoSizedSingleLineText(
+                    text = stringResource(R.string.legal_about),
+                    minFontSize = 10.sp,
+                    maxFontSize = 14.sp
+                )
             }
         }
     }
@@ -418,26 +459,21 @@ fun TopEventName(
     )
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(28.dp),
-            contentAlignment = Alignment.CenterStart
-        ) {
-            Text(
-                text = headerLines.firstOrNull().orEmpty(),
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
+        Text(
+            text = headerLines.firstOrNull().orEmpty(),
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth()
+        )
 
         headerLines.drop(1).forEach { line ->
             Text(
                 text = line,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth()
             )
         }
     }
@@ -491,11 +527,12 @@ fun HeaderPanel(
                 .padding(vertical = 30.dp, horizontal = 18.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text(
+            AutoSizedSingleLineText(
                 text = text,
-                color = contentColor,
-                fontSize = 34.sp,
-                fontWeight = FontWeight.Bold
+                minFontSize = 20.sp,
+                maxFontSize = 34.sp,
+                fontWeight = FontWeight.Bold,
+                color = contentColor
             )
         }
     }
@@ -516,11 +553,12 @@ fun CourseShortenedPanel() {
                 .padding(vertical = 18.dp, horizontal = 16.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text(
+            AutoSizedSingleLineText(
                 text = stringResource(R.string.course_shortened_banner),
-                color = MaterialTheme.colorScheme.onTertiary,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold
+                minFontSize = 16.sp,
+                maxFontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onTertiary
             )
         }
     }
@@ -554,7 +592,7 @@ fun TargetCard(
 
             Spacer(modifier = Modifier.height(HomeGapMedium))
 
-            Text(
+            AutoSizedSingleLineText(
                 text = displayDistanceText(
                     distanceText = distanceText,
                     distancePrefix = distancePrefix,
@@ -562,8 +600,10 @@ fun TargetCard(
                     unknownText = stringResource(R.string.distance_display_unknown),
                     valueText = { value -> resources.getString(R.string.distance_display_value, value) }
                 ),
-                fontSize = 38.sp,
-                fontWeight = FontWeight.Bold
+                minFontSize = 22.sp,
+                maxFontSize = 38.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.fillMaxWidth()
             )
 
             Text(
@@ -666,7 +706,18 @@ fun StatusRow(
     value: String,
     color: Color
 ) {
+    val statusText = buildAnnotatedString {
+        withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) {
+            append(label)
+        }
+        if (value.isNotBlank()) {
+            append("  ")
+            append(value)
+        }
+    }
+
     Row(
+        modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
@@ -676,16 +727,17 @@ fun StatusRow(
         )
 
         Text(
-            text = label,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(start = 12.dp)
-        )
-
-        Text(
-            text = value,
-            fontSize = 18.sp,
-            modifier = Modifier.padding(start = 10.dp)
+            text = statusText,
+            modifier = Modifier
+                .padding(start = 12.dp)
+                .weight(1f),
+            maxLines = 1,
+            softWrap = false,
+            autoSize = TextAutoSize.StepBased(
+                minFontSize = 10.sp,
+                maxFontSize = 18.sp,
+                stepSize = 0.5.sp
+            )
         )
     }
 }
@@ -810,18 +862,28 @@ fun RacecourseRow(
             onClick = onCourse,
             enabled = raceDataReady,
             colors = primaryButtonColors(),
+            contentPadding = CompactButtonContentPadding,
             modifier = Modifier.weight(0.5f)
         ) {
-            Text(stringResource(R.string.course))
+            AutoSizedSingleLineText(
+                text = stringResource(R.string.course),
+                minFontSize = 10.sp,
+                maxFontSize = 14.sp
+            )
         }
 
         Button(
             onClick = onMap,
             enabled = raceDataReady,
             colors = primaryButtonColors(),
+            contentPadding = CompactButtonContentPadding,
             modifier = Modifier.weight(0.5f)
         ) {
-            Text(stringResource(R.string.map))
+            AutoSizedSingleLineText(
+                text = stringResource(R.string.map),
+                minFontSize = 10.sp,
+                maxFontSize = 14.sp
+            )
         }
     }
 }
@@ -844,6 +906,7 @@ fun SmallActionButton(
         onClick = onClick,
         modifier = modifier,
         enabled = enabled,
+        contentPadding = CompactButtonContentPadding,
         colors = ButtonDefaults.buttonColors(
             containerColor = color,
             contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -851,7 +914,11 @@ fun SmallActionButton(
             disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
         )
     ) {
-        Text(text)
+        AutoSizedSingleLineText(
+            text = text,
+            minFontSize = 10.sp,
+            maxFontSize = 14.sp
+        )
     }
 }
 
