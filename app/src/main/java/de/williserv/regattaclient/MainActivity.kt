@@ -1398,24 +1398,26 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         persistedManual: Boolean
     ) {
         val runtimeStatus = TrackingServiceRuntimeState.currentStatus()
-        val serviceOwnsTrackingState = runtimeStatus != TrackingServiceRuntimeStatus.STOPPED
-        val effectiveInRace = serviceOwnsTrackingState && persistedInRace
-        val effectiveManual = serviceOwnsTrackingState && persistedManual
+        val effective = effectiveTrackingRuntimeState(
+            persistedInRace = persistedInRace,
+            persistedManual = persistedManual,
+            runtimeStatus = runtimeStatus
+        )
 
-        inRace.value = effectiveInRace
-        manualTracking.value = effectiveManual
+        inRace.value = effective.inRace
+        manualTracking.value = effective.manualTracking
 
         serviceStatusText.value = when {
             runtimeStatus == TrackingServiceRuntimeStatus.STARTING &&
-                (effectiveInRace || effectiveManual) -> getString(R.string.service_starting)
-            effectiveInRace -> getString(R.string.service_race_running)
-            effectiveManual -> getString(R.string.service_manual_running)
+                (effective.inRace || effective.manualTracking) -> getString(R.string.service_starting)
+            effective.inRace -> getString(R.string.service_race_running)
+            effective.manualTracking -> getString(R.string.service_manual_running)
             else -> getString(R.string.service_stopped)
         }
 
         statusText.value = when {
-            effectiveInRace -> getString(R.string.in_race)
-            effectiveManual -> getString(R.string.manual_tracking_running)
+            effective.inRace -> getString(R.string.in_race)
+            effective.manualTracking -> getString(R.string.manual_tracking_running)
             else -> getString(R.string.tracking_stopped)
         }
     }
