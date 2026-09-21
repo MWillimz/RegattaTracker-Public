@@ -273,6 +273,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
                     .putBoolean("in_race", !manualRecording)
                     .putBoolean("manual_tracking", manualRecording)
                     .apply()
+                onTelemetryTrackingBecameActive(this)
                 startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.tracking_active)))
                 startTrackingService()
                 updateNotification()
@@ -441,6 +442,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
             return START_NOT_STICKY
         }
 
+        onTelemetryTrackingBecameActive(this)
+
         startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.tracking_active)))
         startTrackingService()
         updateNotification()
@@ -561,7 +564,6 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
     private fun startTrackingService() {
         db.resetTrackingSessionMetadata()
-        onTelemetryTrackingBecameActive(this)
 
         if (serviceRunning) {
             reconfigureSamplingSchedule()
