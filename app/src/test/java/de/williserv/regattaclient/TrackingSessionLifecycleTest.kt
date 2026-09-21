@@ -149,6 +149,7 @@ class TrackingSessionLifecycleTest {
         val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
         val service = controller.get()
         val helper = getField<TrackingDbHelper>(service, "db")
+        setField(service, "eventPollRunning", true)
 
         assertEquals(Service.START_STICKY, service.onStartCommand(raceStartIntent(), 0, 1))
 
