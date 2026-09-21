@@ -1581,14 +1581,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
     }
 
-    private fun baseServerUrlForAccess(access: EventAccessKey): String {
-        val server = access.server.trim()
-        return if (server.endsWith("/ingest")) {
-            server.removeSuffix("/ingest")
-        } else {
-            server.trimEnd('/')
-        }
-    }
+    private fun baseServerUrlForAccess(access: EventAccessKey): String =
+        normalizeServerBaseUrl(access.server)
 
     private fun continueAfterRecommendedEventUpdate() {
         showEventUpdateRecommendedDialog.value = false
@@ -3222,15 +3216,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         )
     }
 
-    private fun getBaseServerUrl(): String {
-        val server = raceServer.value.trim()
-
-        return if (server.endsWith("/ingest")) {
-            server.removeSuffix("/ingest")
-        } else {
-            server.trimEnd('/')
-        }
-    }
+    private fun getBaseServerUrl(): String =
+        normalizeServerBaseUrl(raceServer.value)
 
     private fun getJsonStringAny(json: JSONObject, keys: List<String>): String? {
         for (key in keys) {

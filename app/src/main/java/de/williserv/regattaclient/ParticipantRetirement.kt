@@ -63,14 +63,8 @@ internal fun parseParticipantRetirementReceipt(
     ParticipantRetirementReceipt(eventName, identity, reportedAt)
 }.getOrNull()
 
-internal fun normalizeParticipantRetirementServerUrl(serverUrl: String): String {
-    val trimmed = serverUrl.trim().trimEnd('/')
-    return if (trimmed.endsWith("/ingest")) {
-        trimmed.removeSuffix("/ingest")
-    } else {
-        trimmed
-    }
-}
+internal fun normalizeParticipantRetirementServerUrl(serverUrl: String): String =
+    normalizeServerBaseUrl(serverUrl)
 
 internal object ParticipantRetirementStore {
     private const val PREFS = "participant_retirement_self_report"
