@@ -230,6 +230,63 @@ Payload fields:
 }
 ```
 
+### Extended telemetry / `measurements` contract
+
+RegattaServer #300 defines an additive extended-telemetry contract for future RegattaLink/NMEA data. Clients that implement this extension may add an optional `measurements` object to an otherwise normal telemetry sample.
+
+Example:
+
+```json
+{
+  "sequence_id": 1,
+  "timestamp": "2026-05-16T12:05:52",
+  "boat_name": "Boat name",
+  "captain_name": "Max Mustermann",
+  "sail_number": "GER 1234",
+  "lat": 54.0010,
+  "lon": 10.0020,
+  "measurements": {
+    "depth": {
+      "value": 4.2,
+      "unit": "m",
+      "label": "Depth",
+      "group": "nmea"
+    },
+    "stw": {
+      "value": 5.4,
+      "unit": "kn",
+      "label": "STW",
+      "group": "nmea"
+    }
+  }
+}
+```
+
+The extension is optional. Existing samples without `measurements` remain valid.
+
+Measurement keys are stable technical identifiers. A measurement value is a JSON scalar (`number`, `boolean`, or `string`) with optional display metadata `unit`, `label`, and `group`. Extended measurements must not replace or override canonical core telemetry fields.
+
+#### Per-sample size contract
+
+The server's existing ingest safety limit remains authoritative:
+
+```text
+complete serialized telemetry sample <= 5120 UTF-8 bytes
+```
+
+The 5 KiB limit applies to the **complete individual sample**, including all core fields, `measurements`, and any other fields in that sample. There is no separate or additional 16 KiB budget for `measurements`.
+
+Clients should therefore keep measurement keys and metadata compact. Structural limits such as the maximum number of measurements do not guarantee that a sample fits; the 5 KiB total limit can be reached first.
+
+Failure semantics:
+
+- `POST /ingest`: an oversized individual sample is rejected with HTTP `413`.
+- `POST /ingest/batch`: the oversized item is rejected in the per-sample result with code `sample_too_large`.
+- A rejected oversized sample must not be marked as successfully uploaded.
+- Offline/retry handling must preserve the measurement data that belonged to the original sample; retry must not silently substitute current sensor values.
+
+This contract does not raise or bypass the server-side 5 KiB limit.
+
 The client builds the ingest URL from the configured base server URL:
 
 ```text
