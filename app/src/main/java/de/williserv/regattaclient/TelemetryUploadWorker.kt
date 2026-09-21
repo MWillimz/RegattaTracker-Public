@@ -478,7 +478,6 @@ object TelemetryUploadScheduler {
                             .exceptionOrNull()
                     handleTelemetryRecoveryPersistenceResult(
                         context = appContext,
-                        pendingCount = uploadablePendingCount,
                         persistenceError = persistenceError
                     )
                 },
@@ -502,7 +501,6 @@ private val TELEMETRY_RECOVERY_NOTIFICATION_EXECUTOR =
 
 internal fun handleTelemetryRecoveryPersistenceResult(
     context: Context,
-    pendingCount: Long,
     persistenceError: Throwable?
 ) {
     if (persistenceError != null) {
@@ -514,12 +512,7 @@ internal fun handleTelemetryRecoveryPersistenceResult(
         return
     }
 
-    if (pendingCount > 0L) {
-        showTelemetryRecoveryNotification(
-            context = context,
-            remaining = pendingCount
-        )
-    }
+    showTelemetryRecoveryNotificationIfPending(context)
 }
 
 internal fun isTelemetryTrackingActive(context: Context): Boolean {
@@ -990,7 +983,9 @@ class TelemetryUploadWorker(
     private fun handOffToContinuation(afterLocalId: Long): Result {
         return try {
             continuationPersister(afterLocalId)
-            refreshRecoveryNotificationFromDb()
+            if (showRecoveryNotification) {
+                refreshRecoveryNotificationFromDb()
+            }
             TelemetryUploadStatusStore.write(
                 applicationContext,
                 TelemetryUploadStatusStore.WAITING
@@ -1258,7 +1253,9 @@ class TelemetryUploadWorker(
     }
 
     private fun temporaryFailure(): Result {
-        refreshRecoveryNotificationFromDb()
+        if (showRecoveryNotification) {
+            refreshRecoveryNotificationFromDb()
+        }
         TelemetryUploadStatusStore.write(
             applicationContext,
             TelemetryUploadStatusStore.TEMPORARY_ERROR
