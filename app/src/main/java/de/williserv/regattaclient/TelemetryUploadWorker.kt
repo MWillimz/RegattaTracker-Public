@@ -156,33 +156,6 @@ internal fun shouldEnqueueTelemetryUpload(uploadablePendingCount: Long): Boolean
     return uploadablePendingCount > 0L
 }
 
-internal data class TelemetryUploadNotificationProgress(
-    val sent: Long,
-    val total: Long,
-    val percent: Int
-)
-
-internal fun telemetryUploadNotificationProgress(
-    sent: Long,
-    total: Long
-): TelemetryUploadNotificationProgress {
-    val safeTotal = total.coerceAtLeast(0L)
-    val safeSent = sent.coerceIn(0L, safeTotal)
-    val percent = if (safeTotal == 0L) {
-        100
-    } else {
-        ((safeSent.toDouble() / safeTotal.toDouble()) * 100.0)
-            .toInt()
-            .coerceIn(0, 100)
-    }
-
-    return TelemetryUploadNotificationProgress(
-        sent = safeSent,
-        total = safeTotal,
-        percent = percent
-    )
-}
-
 internal const val TELEMETRY_BACKGROUND_SLICE_MS = 5 * 60_000L
 
 internal fun shouldYieldTelemetryUpload(elapsedMs: Long): Boolean {
@@ -459,8 +432,7 @@ object TelemetryUploadScheduler {
         )
         showTelemetryRecoveryNotification(
             context = appContext,
-            sent = 0L,
-            total = uploadablePendingCount
+            remaining = uploadablePendingCount
         )
         return WorkManager.getInstance(appContext)
             .enqueueUniqueWork(
@@ -479,8 +451,7 @@ private const val TELEMETRY_RECOVERY_NOTIFICATION_ID = 1002
 
 internal fun showTelemetryRecoveryNotification(
     context: Context,
-    sent: Long,
-    total: Long
+    remaining: Long
 ) {
     val appContext = context.applicationContext
     val notificationManager =
@@ -494,16 +465,11 @@ internal fun showTelemetryRecoveryNotification(
         )
     )
 
-    val progress = telemetryUploadNotificationProgress(
-        sent = sent,
-        total = total
-    )
     val locale = appContext.resources.configuration.locales[0]
     val numberFormat = java.text.NumberFormat.getIntegerInstance(locale)
     val progressText = appContext.getString(
-        R.string.telemetry_upload_notification_progress,
-        numberFormat.format(progress.sent),
-        numberFormat.format(progress.total)
+        R.string.telemetry_upload_notification_remaining,
+        numberFormat.format(remaining.coerceAtLeast(0L))
     )
 
     val launchIntent = appContext.packageManager
@@ -528,7 +494,7 @@ internal fun showTelemetryRecoveryNotification(
         .setSmallIcon(android.R.drawable.stat_sys_upload)
         .setOngoing(true)
         .setOnlyAlertOnce(true)
-        .setProgress(100, progress.percent, false)
+        .setProgress(0, 0, true)
         .apply {
             contentIntent?.let { setContentIntent(it) }
         }
@@ -569,8 +535,6 @@ class TelemetryUploadWorker(
             TelemetryUploadScheduler.SHOW_RECOVERY_NOTIFICATION_KEY,
             false
         )
-    private var recoveryNotificationTotal = 0L
-    private var recoveryNotificationSent = 0L
 
     internal var elapsedRealtimeProvider: () -> Long = {
         SystemClock.elapsedRealtime()
@@ -586,12 +550,7 @@ class TelemetryUploadWorker(
         uploadStartedAtElapsedMs = elapsedRealtimeProvider()
 
         if (showRecoveryNotification) {
-            recoveryNotificationTotal = db.countUploadablePendingSamples()
-            showTelemetryRecoveryNotification(
-                context = applicationContext,
-                sent = 0L,
-                total = recoveryNotificationTotal
-            )
+            updateRecoveryNotification()
         }
 
         val client = currentClientBuildIdentity()
@@ -662,7 +621,7 @@ class TelemetryUploadWorker(
                 when (uploadSampleBlocking(firstSample, client)) {
                     TelemetryUploadAttemptResult.SUCCESS -> {
                         db.markUploaded(firstSample.localId)
-                        recordRecoveryNotificationProgress(1L)
+                        updateRecoveryNotification()
                     }
 
                     TelemetryUploadAttemptResult.TEMPORARY_FAILURE -> {
@@ -709,9 +668,9 @@ class TelemetryUploadWorker(
                         samples = sameAccessPrefix,
                         client = client
                     )
-                    recordRecoveryNotificationProgress(
-                        sequentialOutcome.uploadedCount.toLong()
-                    )
+                    if (sequentialOutcome.uploadedCount > 0) {
+                        updateRecoveryNotification()
+                    }
 
                     if (
                         sequentialOutcome.result ==
@@ -747,9 +706,9 @@ class TelemetryUploadWorker(
                         TelemetryBatchAttemptKind.PROCESSED -> {
                             val response = requireNotNull(attempt.response)
                             db.markUploaded(response.acceptedLocalIds)
-                            recordRecoveryNotificationProgress(
-                                response.acceptedLocalIds.size.toLong()
-                            )
+                            if (response.acceptedLocalIds.isNotEmpty()) {
+                                updateRecoveryNotification()
+                            }
 
                             if (response.clientUpdateRequired) {
                                 markClientUpdateRequired(
@@ -855,16 +814,12 @@ class TelemetryUploadWorker(
         return Result.success()
     }
 
-    private fun recordRecoveryNotificationProgress(count: Long) {
-        if (!showRecoveryNotification || count <= 0L) return
+    private fun updateRecoveryNotification() {
+        if (!showRecoveryNotification) return
 
-        recoveryNotificationSent =
-            (recoveryNotificationSent + count)
-                .coerceAtMost(recoveryNotificationTotal)
         showTelemetryRecoveryNotification(
             context = applicationContext,
-            sent = recoveryNotificationSent,
-            total = recoveryNotificationTotal
+            remaining = db.countUploadablePendingSamples()
         )
     }
 
