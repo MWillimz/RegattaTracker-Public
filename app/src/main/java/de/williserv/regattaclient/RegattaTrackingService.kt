@@ -20,6 +20,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import org.json.JSONObject
@@ -43,6 +44,14 @@ data class CourseMark(
     val radiusM: Double
 )
 
+internal fun shouldFinishTrackingServiceStop(
+    handoffGeneration: Long,
+    currentGeneration: Long,
+    serviceRunning: Boolean
+): Boolean {
+    return handoffGeneration == currentGeneration && !serviceRunning
+}
+
 class RegattaTrackingService : Service(), SensorEventListener {
 
     companion object {
@@ -50,6 +59,13 @@ class RegattaTrackingService : Service(), SensorEventListener {
         const val ACTION_STOP = "de.williserv.regattaclient.STOP_TRACKING_SERVICE"
         const val ACTION_CONTINUE_AFTER_FINISH =
             "de.williserv.regattaclient.CONTINUE_AFTER_FINISH"
+
+        internal fun shouldIgnoreCommandDuringStopHandoff(
+            stopHandoffInProgress: Boolean,
+            action: String?
+        ): Boolean {
+            return stopHandoffInProgress && action != ACTION_START
+        }
 
         const val EXTRA_SERVER_URL = "server_url"
         const val EXTRA_EVENT_NAME = "event_name"
@@ -68,6 +84,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
         private const val NOTIFICATION_CHANNEL_ID = "regatta_tracking_channel"
         private const val NOTIFICATION_ID = 1001
+        private const val TRACKING_SERVICE_LOG_TAG = "RegattaTrackingService"
 
         const val ACTION_SET_COURSE_PROGRESS = "de.williserv.regattaclient.SET_COURSE_PROGRESS"
 
@@ -150,6 +167,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
     private var gyroZ = 0f
 
     private var autoStopAfterFinishScheduled = false
+    private var stopHandoffInProgress = false
+    private var stopHandoffGeneration = 0L
     private var eventPollRunning = false
     private val eventPollLifecycleLock = Any()
     private var eventPollGeneration = 0L
@@ -209,6 +228,15 @@ class RegattaTrackingService : Service(), SensorEventListener {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (
+            shouldIgnoreCommandDuringStopHandoff(
+                stopHandoffInProgress = stopHandoffInProgress,
+                action = intent?.action
+            )
+        ) {
+            return START_NOT_STICKY
+        }
+
         if (intent == null) {
             return handleStickyRestart()
         }
@@ -235,6 +263,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
                     return START_STICKY
                 }
 
+                invalidatePendingStopHandoff()
                 synchronized(eventPollLifecycleLock) {
                     eventPollGeneration += 1
                 }
@@ -579,6 +608,11 @@ class RegattaTrackingService : Service(), SensorEventListener {
     }
 
     private fun stopTrackingService(clearLocalRaceStatus: Boolean = false) {
+        if (stopHandoffInProgress) return
+
+        stopHandoffInProgress = true
+        val handoffGeneration = ++stopHandoffGeneration
+
         persistTrackingStoppedState()
 
         synchronized(eventPollLifecycleLock) {
@@ -593,7 +627,6 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
         handler.removeCallbacks(sampleRunnable)
         handler.removeCallbacks(eventPollRunnable)
-
         handler.removeCallbacks(autoStopAfterFinishRunnable)
         autoStopAfterFinishScheduled = false
 
@@ -614,6 +647,63 @@ class RegattaTrackingService : Service(), SensorEventListener {
         } catch (_: Exception) {
         }
 
+        thread(name = "regatta-telemetry-shutdown-handoff") {
+            val operation = try {
+                TelemetryUploadScheduler.enqueueShutdownHandoffIfNeeded(this)
+            } catch (e: Exception) {
+                Log.e(
+                    TRACKING_SERVICE_LOG_TAG,
+                    "Could not enqueue telemetry shutdown handoff",
+                    e
+                )
+                null
+            }
+
+            if (operation == null) {
+                handler.post {
+                    finishTrackingServiceStop(handoffGeneration)
+                }
+                return@thread
+            }
+
+            operation.result.addListener(
+                {
+                    runCatching { operation.result.get() }
+                        .exceptionOrNull()
+                        ?.let { error ->
+                            Log.e(
+                                TRACKING_SERVICE_LOG_TAG,
+                                "Telemetry shutdown handoff was not persisted",
+                                error
+                            )
+                        }
+                    finishTrackingServiceStop(handoffGeneration)
+                },
+                ContextCompat.getMainExecutor(this)
+            )
+        }
+    }
+
+    private fun invalidatePendingStopHandoff() {
+        if (!stopHandoffInProgress) return
+
+        stopHandoffGeneration += 1
+        stopHandoffInProgress = false
+    }
+
+    private fun finishTrackingServiceStop(handoffGeneration: Long) {
+        if (
+            !shouldFinishTrackingServiceStop(
+                handoffGeneration = handoffGeneration,
+                currentGeneration = stopHandoffGeneration,
+                serviceRunning = serviceRunning
+            )
+        ) {
+            return
+        }
+
+        stopHandoffInProgress = false
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE)
         } else {
@@ -625,7 +715,6 @@ class RegattaTrackingService : Service(), SensorEventListener {
             getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         notificationManager.cancel(NOTIFICATION_ID)
-
         stopSelf()
     }
 
@@ -1089,7 +1178,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
             return
         }
 
-        TelemetryUploadScheduler.enqueue(this)
+        TelemetryUploadScheduler.enqueueWakeup(this)
         updateNotification()
     }
 

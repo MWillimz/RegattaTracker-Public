@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.pm.ServiceInfo
 import android.os.SystemClock
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.work.BackoffPolicy
 import androidx.work.ForegroundInfo
@@ -14,6 +15,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequest
 import androidx.work.OutOfQuotaPolicy
+import androidx.work.Operation
 import androidx.work.WorkManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
@@ -137,6 +139,22 @@ internal fun classifyTelemetryUploadResponse(
     return classifyTelemetryUploadResponseCode(responseCode)
 }
 
+internal enum class TelemetryUploadScheduleKind {
+    LIVE_WAKEUP,
+    RECOVERY,
+    CONTINUATION
+}
+
+internal fun telemetryUploadExistingWorkPolicy(
+    kind: TelemetryUploadScheduleKind
+): ExistingWorkPolicy {
+    return when (kind) {
+        TelemetryUploadScheduleKind.LIVE_WAKEUP -> ExistingWorkPolicy.KEEP
+        TelemetryUploadScheduleKind.RECOVERY,
+        TelemetryUploadScheduleKind.CONTINUATION -> ExistingWorkPolicy.APPEND_OR_REPLACE
+    }
+}
+
 internal fun shouldEnqueueTelemetryUpload(uploadablePendingCount: Long): Boolean {
     return uploadablePendingCount > 0L
 }
@@ -149,6 +167,15 @@ internal const val TELEMETRY_LONG_RUNNING_BATCH_REQUEST_THRESHOLD = 20L
 internal const val TELEMETRY_LONG_RUNNING_LEGACY_SAMPLE_THRESHOLD = 100L
 internal const val TELEMETRY_LONG_RUNNING_ELAPSED_THRESHOLD_MS = 120_000L
 internal const val TELEMETRY_PENDING_ESTIMATE_REFRESH_INTERVAL_MS = 10_000L
+internal const val TELEMETRY_NON_FOREGROUND_SLICE_MS = 5 * 60_000L
+
+internal fun shouldYieldTelemetryUpload(
+    foregroundActive: Boolean,
+    elapsedMs: Long
+): Boolean {
+    return !foregroundActive &&
+        elapsedMs >= TELEMETRY_NON_FOREGROUND_SLICE_MS
+}
 
 internal fun shouldRefreshTelemetryPendingEstimate(
     remainingPendingEstimate: Long,
@@ -374,7 +401,7 @@ internal object TelemetryUploadStatusStore {
 }
 
 object TelemetryUploadScheduler {
-    private const val UNIQUE_WORK_NAME = "regatta-telemetry-upload"
+    internal const val UNIQUE_WORK_NAME = "regatta-telemetry-upload"
     private const val RACE_SETUP_PREFS_NAME = "race_setup"
     private const val RACE_SERVER_KEY = "race_server"
     internal const val AFTER_LOCAL_ID_KEY = "after_local_id"
@@ -403,10 +430,7 @@ object TelemetryUploadScheduler {
         return builder.build()
     }
 
-    fun enqueue(
-        context: Context,
-        expedited: Boolean = false
-    ) {
+    fun enqueueWakeup(context: Context) {
         TelemetryUploadStatusStore.write(context, TelemetryUploadStatusStore.WAITING)
 
         if (context is RegattaTrackingService) {
@@ -429,33 +453,73 @@ object TelemetryUploadScheduler {
         WorkManager.getInstance(context.applicationContext)
             .enqueueUniqueWork(
                 UNIQUE_WORK_NAME,
-                if (expedited) {
-                    ExistingWorkPolicy.REPLACE
-                } else {
-                    ExistingWorkPolicy.KEEP
-                },
-                buildRequest(expedited = expedited)
+                telemetryUploadExistingWorkPolicy(
+                    TelemetryUploadScheduleKind.LIVE_WAKEUP
+                ),
+                buildRequest()
             )
     }
 
-    fun enqueueIfNeeded(context: Context) {
-        val db = TrackingDbHelper(context.applicationContext)
+    fun enqueueRecoveryIfNeeded(context: Context): Operation? {
+        return enqueueSerialRecoveryIfNeeded(context)
+    }
+
+    fun enqueueShutdownHandoffIfNeeded(context: Context): Operation? {
+        return enqueueSerialRecoveryIfNeeded(context)
+    }
+
+    internal fun appendContinuation(
+        context: Context,
+        afterLocalId: Long
+    ): Operation {
+        TelemetryUploadStatusStore.write(context, TelemetryUploadStatusStore.WAITING)
+        return WorkManager.getInstance(context.applicationContext)
+            .enqueueUniqueWork(
+                UNIQUE_WORK_NAME,
+                telemetryUploadExistingWorkPolicy(
+                    TelemetryUploadScheduleKind.CONTINUATION
+                ),
+                buildRequest(
+                    afterLocalId = afterLocalId,
+                    expedited = true
+                )
+            )
+    }
+
+    private fun enqueueSerialRecoveryIfNeeded(context: Context): Operation? {
+        val appContext = context.applicationContext
+        val db = TrackingDbHelper(appContext)
         val uploadablePendingCount = try {
             db.countUploadablePendingSamples()
         } finally {
             db.close()
         }
 
-        if (shouldEnqueueTelemetryUpload(uploadablePendingCount)) {
-            enqueue(
-                context = context,
-                expedited = shouldExpediteTelemetryUpload(uploadablePendingCount)
+        if (!shouldEnqueueTelemetryUpload(uploadablePendingCount)) {
+            TelemetryUploadStatusStore.write(
+                appContext,
+                TelemetryUploadStatusStore.ALL_SENT
             )
-        } else {
-            TelemetryUploadStatusStore.write(context, TelemetryUploadStatusStore.ALL_SENT)
+            return null
         }
-    }
 
+        TelemetryUploadStatusStore.write(
+            appContext,
+            TelemetryUploadStatusStore.WAITING
+        )
+        return WorkManager.getInstance(appContext)
+            .enqueueUniqueWork(
+                UNIQUE_WORK_NAME,
+                telemetryUploadExistingWorkPolicy(
+                    TelemetryUploadScheduleKind.RECOVERY
+                ),
+                buildRequest(
+                    expedited = shouldExpediteTelemetryUpload(
+                        uploadablePendingCount
+                    )
+                )
+            )
+    }
 }
 
 class TelemetryUploadWorker(
@@ -516,6 +580,18 @@ class TelemetryUploadWorker(
             updateLongRunningForegroundIfNeeded(
                 capability = batchCapabilities[accessContext.id]
             )
+
+            val elapsedMs =
+                (SystemClock.elapsedRealtime() - uploadStartedAtElapsedMs)
+                    .coerceAtLeast(0L)
+            if (
+                shouldYieldTelemetryUpload(
+                    foregroundActive = foregroundActive,
+                    elapsedMs = elapsedMs
+                )
+            ) {
+                return handOffToContinuation(afterLocalId)
+            }
 
             if (
                 ClientCompatibilityBlockStore.isBlocked(
@@ -737,6 +813,27 @@ class TelemetryUploadWorker(
         return Result.success()
     }
 
+    private fun handOffToContinuation(afterLocalId: Long): Result {
+        return try {
+            TelemetryUploadScheduler.appendContinuation(
+                context = applicationContext,
+                afterLocalId = afterLocalId
+            ).result.get()
+            TelemetryUploadStatusStore.write(
+                applicationContext,
+                TelemetryUploadStatusStore.WAITING
+            )
+            Result.success()
+        } catch (e: Exception) {
+            Log.w(
+                TELEMETRY_UPLOAD_LOG_TAG,
+                "Could not persist telemetry continuation; retrying current work",
+                e
+            )
+            temporaryFailure()
+        }
+    }
+
     private data class SequentialUploadOutcome(
         val result: TelemetryUploadAttemptResult,
         val uploadedCount: Int
@@ -842,11 +939,10 @@ class TelemetryUploadWorker(
             foregroundActive = true
         } catch (e: Exception) {
             foregroundPromotionUnavailable = true
-            publishDebugError(
-                applicationContext.getString(
-                    R.string.upload_exception,
-                    e.message ?: "foreground upload notification failed"
-                )
+            Log.w(
+                TELEMETRY_UPLOAD_LOG_TAG,
+                "Foreground telemetry promotion unavailable; using bounded background slices",
+                e
             )
         }
     }
@@ -1292,6 +1388,7 @@ class TelemetryUploadWorker(
     }
 
     private companion object {
+        const val TELEMETRY_UPLOAD_LOG_TAG = "TelemetryUploadWorker"
         const val DISCOVERY_PAGE_SIZE = 2
         const val LEGACY_PAGE_SIZE = 50
         const val LOCAL_SCAN_PAGE_SIZE = 1000
