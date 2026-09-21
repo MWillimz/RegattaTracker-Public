@@ -59,7 +59,7 @@ class TelemetryUploadWorkerHandoffTest {
         worker.elapsedRealtimeProvider = {
             when (clockCall++) {
                 0 -> 0L
-                else -> TELEMETRY_NON_FOREGROUND_SLICE_MS
+                else -> TELEMETRY_BACKGROUND_SLICE_MS
             }
         }
 
@@ -120,7 +120,7 @@ class TelemetryUploadWorkerHandoffTest {
         worker.elapsedRealtimeProvider = {
             when (clockCall++) {
                 0 -> 0L
-                else -> TELEMETRY_NON_FOREGROUND_SLICE_MS
+                else -> TELEMETRY_BACKGROUND_SLICE_MS
             }
         }
         worker.continuationPersister = {
