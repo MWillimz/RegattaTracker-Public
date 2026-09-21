@@ -57,7 +57,6 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLDecoder
-import kotlin.math.roundToInt
 
 private enum class CourseOverlayKind {
     START,
@@ -269,15 +268,13 @@ fun MapScreen(
                             ?.speed
                             ?.toDouble()
                             ?.takeIf { it.isFinite() && it >= 0.0 }
-                        val ownSogKn = ownSpeedMps?.let(::metersPerSecondToKnots)
+                        val ownSogKn = ownSpeedMps?.let(::sogKnotsForDisplay)
                         val ownCogDegrees = ownLocation
                             ?.takeIf { it.hasBearing() }
                             ?.bearing
                             ?.toDouble()
                             ?.let(::normalizeBearingDegrees)
-                        val ownCogRounded = ownCogDegrees
-                            ?.roundToInt()
-                            ?.mod(360)
+                        val ownCogRounded = ownCogDegrees?.let(::cogDegreesForDisplay)
                         val ownSogLabel = if (ownSogKn != null) {
                             stringResource(R.string.map_sog_value_kn, ownSogKn)
                         } else {
@@ -379,6 +376,11 @@ fun MapScreen(
                                         ) ?: return@let
 
                                         val center = Offset(fitted.x.toFloat(), fitted.y.toFloat())
+                                        val zoomScale = scale.value.coerceAtLeast(1f)
+                                        val markerRadius = ownRadius / zoomScale
+                                        val markerStrokeWidth = strokeWidth / zoomScale
+                                        val labelTextSize = ownLabelTextSize / zoomScale
+                                        val labelStrokeWidth = ownLabelStrokeWidth / zoomScale
 
                                         ownShipCourseVectorEndpoint(
                                             lat = location.latitude,
@@ -409,17 +411,17 @@ fun MapScreen(
                                                         destinationFitted.x.toFloat(),
                                                         destinationFitted.y.toFloat()
                                                     ),
-                                                    strokeWidth = strokeWidth
+                                                    strokeWidth = markerStrokeWidth
                                                 )
                                             }
                                         }
 
                                         if (ownCogDegrees != null) {
                                             val boatPath = Path().apply {
-                                                moveTo(center.x, center.y - ownRadius * 1.7f)
-                                                lineTo(center.x + ownRadius, center.y + ownRadius)
-                                                lineTo(center.x, center.y + ownRadius * 0.55f)
-                                                lineTo(center.x - ownRadius, center.y + ownRadius)
+                                                moveTo(center.x, center.y - markerRadius * 1.7f)
+                                                lineTo(center.x + markerRadius, center.y + markerRadius)
+                                                lineTo(center.x, center.y + markerRadius * 0.55f)
+                                                lineTo(center.x - markerRadius, center.y + markerRadius)
                                                 close()
                                             }
 
@@ -430,7 +432,7 @@ fun MapScreen(
                                                 drawPath(
                                                     path = boatPath,
                                                     color = Color.White.copy(alpha = 0.95f),
-                                                    style = Stroke(width = strokeWidth * 1.6f)
+                                                    style = Stroke(width = markerStrokeWidth * 1.6f)
                                                 )
                                                 drawPath(
                                                     path = boatPath,
@@ -440,43 +442,43 @@ fun MapScreen(
                                         } else {
                                             drawCircle(
                                                 color = Color.White.copy(alpha = 0.95f),
-                                                radius = ownRadius + strokeWidth,
+                                                radius = markerRadius + markerStrokeWidth,
                                                 center = center
                                             )
                                             drawCircle(
                                                 color = ownColor,
-                                                radius = ownRadius,
+                                                radius = markerRadius,
                                                 center = center
                                             )
                                             drawCircle(
                                                 color = Color.White,
-                                                radius = ownRadius * 0.32f,
+                                                radius = markerRadius * 0.32f,
                                                 center = center
                                             )
                                         }
 
                                         val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                                             color = android.graphics.Color.WHITE
-                                            textSize = ownLabelTextSize
+                                            textSize = labelTextSize
                                             typeface = Typeface.DEFAULT_BOLD
                                             style = Paint.Style.FILL
                                         }
                                         val outlinePaint = Paint(fillPaint).apply {
                                             color = android.graphics.Color.BLACK
                                             style = Paint.Style.STROKE
-                                            strokeWidth = ownLabelStrokeWidth
+                                            strokeWidth = labelStrokeWidth
                                         }
                                         val labelWidth = maxOf(
                                             fillPaint.measureText(ownSogLabel),
                                             fillPaint.measureText(ownCogLabel)
                                         )
-                                        val labelX = if (center.x + ownRadius * 2f + labelWidth <= size.width) {
-                                            center.x + ownRadius * 2f
+                                        val labelX = if (center.x + markerRadius * 2f + labelWidth <= size.width) {
+                                            center.x + markerRadius * 2f
                                         } else {
-                                            center.x - ownRadius * 2f - labelWidth
+                                            center.x - markerRadius * 2f - labelWidth
                                         }
-                                        val firstBaseline = center.y - ownLabelTextSize * 0.15f
-                                        val secondBaseline = firstBaseline + ownLabelTextSize * 1.15f
+                                        val firstBaseline = center.y - labelTextSize * 0.15f
+                                        val secondBaseline = firstBaseline + labelTextSize * 1.15f
                                         val nativeCanvas = drawContext.canvas.nativeCanvas
 
                                         nativeCanvas.drawText(
