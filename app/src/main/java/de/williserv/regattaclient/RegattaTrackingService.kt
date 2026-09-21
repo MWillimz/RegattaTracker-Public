@@ -911,15 +911,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
         )
     }
 
-    private fun getBaseServerUrl(): String {
-        val trimmed = serverUrl.trim()
-
-        return if (trimmed.endsWith("/ingest")) {
-            trimmed.removeSuffix("/ingest")
-        } else {
-            trimmed.trimEnd('/')
-        }
-    }
+    private fun getBaseServerUrl(): String =
+        normalizeServerBaseUrl(serverUrl)
 
     private fun restoreCachedEventSnapshot() {
         val snapshot = RaceEventSnapshotStore.loadMatching(
