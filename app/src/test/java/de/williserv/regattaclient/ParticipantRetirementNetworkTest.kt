@@ -69,13 +69,61 @@ class ParticipantRetirementNetworkTest {
             assertTrue(getState<Boolean>(activity, "retirementReported").value)
             assertTrue(
                 ParticipantRetirementStore.matches(
-                    context,
-                    "Series Race 3",
-                    ParticipantRetirementIdentity("GER 147", "Test Boat", "Test Skipper")
+                    context = context,
+                    serverUrl = server.baseUrl,
+                    resolvedEventName = "Series Race 3",
+                    identity = ParticipantRetirementIdentity(
+                        "GER 147",
+                        "Test Boat",
+                        "Test Skipper"
+                    )
                 )
             )
 
             controller.destroy()
+        }
+    }
+
+    @Test
+    fun `successful retire becomes visible when response arrives after activity recreation`() {
+        RetirementHttpServer(200).use { server ->
+            val firstController = Robolectric.buildActivity(MainActivity::class.java).create()
+            val firstActivity = firstController.get()
+            configureRunningRace(firstActivity, server.baseUrl)
+
+            invokeNoArg(firstActivity, "reportRetirement")
+            assertTrue(server.awaitRequest())
+
+            firstController.destroy()
+
+            val replacementController =
+                Robolectric.buildActivity(MainActivity::class.java).create()
+            val replacementActivity = replacementController.get()
+            configureRunningRace(replacementActivity, server.baseUrl)
+            assertFalse(
+                getState<Boolean>(
+                    replacementActivity,
+                    "retirementReported"
+                ).value
+            )
+
+            server.releaseResponse()
+            assertTrue(server.awaitResponseSent())
+            assertTrue(awaitRetirementStored(server.baseUrl))
+
+            shadowOf(android.os.Looper.getMainLooper()).idleFor(
+                1_100L,
+                TimeUnit.MILLISECONDS
+            )
+
+            assertTrue(
+                getState<Boolean>(
+                    replacementActivity,
+                    "retirementReported"
+                ).value
+            )
+
+            replacementController.destroy()
         }
     }
 
@@ -143,6 +191,37 @@ class ParticipantRetirementNetworkTest {
 
         shadowOf(android.os.Looper.getMainLooper()).idle()
         assertFalse(getState<Boolean>(activity, "retirementRequestInFlight").value)
+    }
+
+    private fun awaitRetirementStored(
+        serverUrl: String,
+        timeoutMillis: Long = 3_000L
+    ): Boolean {
+        val deadlineNanos =
+            System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
+        val identity =
+            ParticipantRetirementIdentity("GER 147", "Test Boat", "Test Skipper")
+
+        while (System.nanoTime() < deadlineNanos) {
+            if (
+                ParticipantRetirementStore.matches(
+                    context = context,
+                    serverUrl = serverUrl,
+                    resolvedEventName = "Series Race 3",
+                    identity = identity
+                )
+            ) {
+                return true
+            }
+            Thread.sleep(10L)
+        }
+
+        return ParticipantRetirementStore.matches(
+            context = context,
+            serverUrl = serverUrl,
+            resolvedEventName = "Series Race 3",
+            identity = identity
+        )
     }
 
     private fun clearPrefs() {

@@ -63,12 +63,29 @@ internal fun parseParticipantRetirementReceipt(
     ParticipantRetirementReceipt(eventName, identity, reportedAt)
 }.getOrNull()
 
+internal fun normalizeParticipantRetirementServerUrl(serverUrl: String): String {
+    val trimmed = serverUrl.trim().trimEnd('/')
+    return if (trimmed.endsWith("/ingest")) {
+        trimmed.removeSuffix("/ingest")
+    } else {
+        trimmed
+    }
+}
+
 internal object ParticipantRetirementStore {
     private const val PREFS = "participant_retirement_self_report"
 
-    fun save(context: Context, receipt: ParticipantRetirementReceipt) {
+    fun save(
+        context: Context,
+        serverUrl: String,
+        receipt: ParticipantRetirementReceipt
+    ) {
+        val normalizedServerUrl = normalizeParticipantRetirementServerUrl(serverUrl)
+        if (normalizedServerUrl.isBlank()) return
+
         val identity = receipt.identity.normalized()
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString("server_url", normalizedServerUrl)
             .putString("resolved_event_name", receipt.resolvedEventName.trim())
             .putString("sail_number", identity.sailNumber)
             .putString("boat_name", identity.boatName)
@@ -79,12 +96,17 @@ internal object ParticipantRetirementStore {
 
     fun matches(
         context: Context,
+        serverUrl: String,
         resolvedEventName: String,
         identity: ParticipantRetirementIdentity
     ): Boolean {
+        val normalizedServerUrl = normalizeParticipantRetirementServerUrl(serverUrl)
+        if (normalizedServerUrl.isBlank()) return false
+
         val value = identity.normalized()
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        return prefs.getString("resolved_event_name", "").orEmpty() == resolvedEventName.trim() &&
+        return prefs.getString("server_url", "").orEmpty() == normalizedServerUrl &&
+            prefs.getString("resolved_event_name", "").orEmpty() == resolvedEventName.trim() &&
             prefs.getString("sail_number", "").orEmpty() == value.sailNumber &&
             prefs.getString("boat_name", "").orEmpty() == value.boatName &&
             prefs.getString("captain_name", "").orEmpty() == value.captainName
