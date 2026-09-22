@@ -36,7 +36,7 @@ class RegattaLinkDeviceInfoTest {
     @Test(expected = IllegalArgumentException::class)
     fun parseDeviceInfo_rejectsWrongDeclaredRecordSize() {
         val raw = validDeviceInfo()
-        ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN).putShort(2, 31)
+        ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN).putShort(2, 31.toShort())
         parseRegattaLinkDeviceInfo(raw)
     }
 
@@ -69,11 +69,11 @@ class RegattaLinkDeviceInfoTest {
         byteArrayOf(
             0x44, 0xb1.toByte(), 0x76, 0x48, 0x31, 0xb2.toByte()
         ).copyInto(raw, destinationOffset = 8)
-        buffer.putShort(14, 1)
-        buffer.putShort(16, 1)
+        buffer.putShort(14, 1.toShort())
+        buffer.putShort(16, 1.toShort())
         buffer.putLong(18, 22_786_837L)
         buffer.putInt(26, 1_572_864)
-        buffer.putShort(30, 16)
+        buffer.putShort(30, 16.toShort())
         return raw
     }
 }
