@@ -120,8 +120,7 @@ class TrackingDbHelperTest {
             helper = helper,
             sequenceId = 1L,
             accessContextId = accessContextId,
-            sessionId = sessionId,
-            measurementsJson = measurementsJson
+            sessionId = sessionId
         )
 
         assertEquals(sessionId, sampleSessionId(helper, sampleId))
@@ -394,7 +393,8 @@ class TrackingDbHelperTest {
             gyroY = 0.02f,
             gyroZ = 0.03f,
             accessContextId = accessContextId,
-            sessionId = sessionId
+            sessionId = sessionId,
+            measurementsJson = measurementsJson
         )
     }
 
