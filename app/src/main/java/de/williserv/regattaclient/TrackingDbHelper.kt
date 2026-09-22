@@ -329,7 +329,7 @@ class TrackingDbHelper(context: Context) :
                 sessions.mode,
                 sessions.access_context_id,
                 sessions.display_name,
-                contexts.access_identifier,
+                COALESCE(sessions.resolved_event_name, contexts.access_identifier),
                 COUNT(samples.id)
             FROM tracking_sessions AS sessions
             LEFT JOIN access_contexts AS contexts
@@ -343,6 +343,7 @@ class TrackingDbHelper(context: Context) :
                 sessions.mode,
                 sessions.access_context_id,
                 sessions.display_name,
+                sessions.resolved_event_name,
                 contexts.access_identifier
             ORDER BY sessions.started_at DESC, sessions.id DESC
             """.trimIndent(),
