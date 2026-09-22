@@ -81,6 +81,7 @@ internal class RegattaLinkBleClient(
         private const val GATT_TIMEOUT_MS = 20_000L
         private const val BOND_POLL_MS = 250L
         private const val GATT_OPERATION_TIMEOUT_MS = 10_000L
+        private const val OTA_RECONNECT_SERVICE_SETTLE_MS = 200L
         private const val REQUESTED_OTA_MTU = 247
         private const val OTA_PHY_REQUEST_GRACE_MS = 300L
         private const val LOG_TAG = "RegattaLinkBLE"
@@ -934,14 +935,16 @@ internal class RegattaLinkBleClient(
         }
 
         val device = callbackGatt.device
-        connectionSetupComplete = true
         handler.removeCallbacks(gattTimeout)
+
         if (scanPurpose == ScanPurpose.NORMAL) {
+            connectionSetupComplete = true
             selectedDeviceAddress = device.address
             discoveryInProgress = false
             discoveryCandidateInProgress = false
             attemptedDiscoveryAddresses.clear()
         }
+
         emit(
             RegattaLinkClientState(
                 status = RegattaLinkConnectionStatus.CONNECTED,
@@ -966,7 +969,32 @@ internal class RegattaLinkBleClient(
         }
 
         if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
-            reconnectFuture?.complete(info)
+            /*
+             * A Service Changed indication is delivered only after the bonded
+             * link has restored security and can race the first encrypted
+             * Device Info read. Do not hand the connection to the OTA validator
+             * until the GATT database has been quiet for a short bounded window.
+             * If Service Changed arrives, the serialized rediscovery path will
+             * produce another Device Info read and restart this guard.
+             */
+            connectionSetupComplete = false
+            handler.postDelayed(
+                {
+                    if (
+                        gatt === callbackGatt &&
+                        connected &&
+                        scanPurpose == ScanPurpose.OTA_RECONNECT &&
+                        !serviceRediscoveryRequested.get() &&
+                        !serviceRediscoveryPending.get() &&
+                        !serviceDiscoveryInProgress &&
+                        !deviceInfoReadInProgress
+                    ) {
+                        connectionSetupComplete = true
+                        reconnectFuture?.complete(info)
+                    }
+                },
+                OTA_RECONNECT_SERVICE_SETTLE_MS
+            )
         }
     }
 
