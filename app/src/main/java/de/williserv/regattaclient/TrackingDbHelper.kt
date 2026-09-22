@@ -52,6 +52,34 @@ data class TrackingSession(
     val displayName: String
 )
 
+data class TrackingSessionSummary(
+    val id: Long,
+    val startedAt: Long,
+    val endedAt: Long?,
+    val mode: String,
+    val accessContextId: Long?,
+    val displayName: String,
+    val eventIdentifier: String?,
+    val sampleCount: Long
+)
+
+data class SessionTrackingSample(
+    val localId: Long,
+    val timestamp: String,
+    val utcOffsetMinutes: Int?,
+    val lat: Double,
+    val lon: Double,
+    val accuracy: Float,
+    val cog: Float,
+    val sog: Float,
+    val accelX: Float,
+    val accelY: Float,
+    val accelZ: Float,
+    val gyroX: Float,
+    val gyroY: Float,
+    val gyroZ: Float
+)
+
 internal data class AccessContextKey(
     val serverUrl: String,
     val accessIdentifier: String,
@@ -264,6 +292,103 @@ class TrackingDbHelper(context: Context) :
                 displayName = cursor.getString(5)
             )
         }
+    }
+
+    fun getTrackingSessionSummaries(): List<TrackingSessionSummary> {
+        val result = mutableListOf<TrackingSessionSummary>()
+        readableDatabase.rawQuery(
+            """
+            SELECT
+                sessions.id,
+                sessions.started_at,
+                sessions.ended_at,
+                sessions.mode,
+                sessions.access_context_id,
+                sessions.display_name,
+                contexts.access_identifier,
+                COUNT(samples.id)
+            FROM tracking_sessions AS sessions
+            LEFT JOIN access_contexts AS contexts
+                ON contexts.id = sessions.access_context_id
+            LEFT JOIN tracking_samples AS samples
+                ON samples.session_id = sessions.id
+            GROUP BY
+                sessions.id,
+                sessions.started_at,
+                sessions.ended_at,
+                sessions.mode,
+                sessions.access_context_id,
+                sessions.display_name,
+                contexts.access_identifier
+            ORDER BY sessions.started_at DESC, sessions.id DESC
+            """.trimIndent(),
+            null
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                result.add(
+                    TrackingSessionSummary(
+                        id = cursor.getLong(0),
+                        startedAt = cursor.getLong(1),
+                        endedAt = if (cursor.isNull(2)) null else cursor.getLong(2),
+                        mode = cursor.getString(3),
+                        accessContextId = if (cursor.isNull(4)) null else cursor.getLong(4),
+                        displayName = cursor.getString(5),
+                        eventIdentifier = if (cursor.isNull(6)) null else cursor.getString(6),
+                        sampleCount = cursor.getLong(7)
+                    )
+                )
+            }
+        }
+        return result
+    }
+
+    fun getTrackingSamplesForSession(sessionId: Long): List<SessionTrackingSample> {
+        val result = mutableListOf<SessionTrackingSample>()
+        readableDatabase.rawQuery(
+            """
+            SELECT
+                id,
+                timestamp,
+                utc_offset_minutes,
+                lat,
+                lon,
+                accuracy,
+                cog,
+                sog,
+                accel_x,
+                accel_y,
+                accel_z,
+                gyro_x,
+                gyro_y,
+                gyro_z
+            FROM tracking_samples
+            WHERE session_id = ?
+            ORDER BY id ASC
+            """.trimIndent(),
+            arrayOf(sessionId.toString())
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                result.add(
+                    SessionTrackingSample(
+                        localId = cursor.getLong(0),
+                        timestamp = cursor.getString(1),
+                        utcOffsetMinutes = if (cursor.isNull(2)) null else cursor.getInt(2),
+                        lat = cursor.getDouble(3),
+                        lon = cursor.getDouble(4),
+                        accuracy = cursor.getFloat(5),
+                        cog = cursor.getFloat(6),
+                        sog = cursor.getFloat(7),
+                        accelX = cursor.getFloat(8),
+                        accelY = cursor.getFloat(9),
+                        accelZ = cursor.getFloat(10),
+                        gyroX = cursor.getFloat(11),
+                        gyroY = cursor.getFloat(12),
+                        gyroZ = cursor.getFloat(13)
+                    )
+                )
+            }
+        }
+        return result
     }
 
     fun finishTrackingSession(sessionId: Long, endedAt: Long): Boolean {
