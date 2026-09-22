@@ -74,6 +74,7 @@ class FinishStopLifecycleTest {
         assertFalse(getField<Boolean>(service, "serviceRunning"))
         assertEquals(1L, db.countPendingSamples())
 
+        awaitStopHandoff(service)
         controller.destroy()
         db.close()
     }
@@ -95,6 +96,7 @@ class FinishStopLifecycleTest {
         assertFalse(getField<Boolean>(service, "serviceRunning"))
         assertFalse(getField<Boolean>(service, "manualRecording"))
 
+        awaitStopHandoff(service)
         controller.destroy()
     }
 
@@ -275,6 +277,7 @@ class FinishStopLifecycleTest {
                 .getBoolean("race_finished", false)
         )
 
+        awaitStopHandoff(service)
         controller.destroy()
     }
 
@@ -310,6 +313,23 @@ class FinishStopLifecycleTest {
         Intent(context, RegattaTrackingService::class.java).apply {
             action = RegattaTrackingService.ACTION_STOP
         }
+
+    private fun awaitStopHandoff(service: RegattaTrackingService) {
+        val deadlineNanos = System.nanoTime() + 5_000_000_000L
+        val mainLooper = shadowOf(android.os.Looper.getMainLooper())
+
+        while (getField<Boolean>(service, "stopHandoffInProgress")) {
+            mainLooper.idle()
+
+            if (System.nanoTime() >= deadlineNanos) {
+                throw AssertionError("Service shutdown handoff did not complete")
+            }
+
+            Thread.sleep(10L)
+        }
+
+        mainLooper.idle()
+    }
 
     private fun assertStoppedAppState() {
         val prefs = context.getSharedPreferences(APP_STATE_PREFS, Context.MODE_PRIVATE)
