@@ -371,12 +371,11 @@ private fun ReplayTimeline(
 
     fun selectAt(y: Float) {
         if (heightPx <= 0) return
-        val usableHeight = (
-            heightPx.toFloat() - 2f * timelineHandleMarginPx
-        ).coerceAtLeast(1f)
-        val fraction = (
-            (y - timelineHandleMarginPx) / usableHeight
-        ).coerceIn(0f, 1f)
+        val fraction = replayTimelineFractionForY(
+            y = y,
+            heightPx = heightPx.toFloat(),
+            handleMarginPx = timelineHandleMarginPx
+        )
         val index = replaySampleIndexForFraction(fractions, fraction)
         if (index >= 0) onSelectedIndex(index)
     }
@@ -397,13 +396,23 @@ private fun ReplayTimeline(
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val x = size.width / 2f
-            val railTop = timelineHandleMarginPx
-            val railBottom = (size.height - timelineHandleMarginPx)
-                .coerceAtLeast(railTop + 1f)
-            val railHeight = railBottom - railTop
+            val railTop = replayTimelineYForFraction(
+                fraction = 0f,
+                heightPx = size.height,
+                handleMarginPx = timelineHandleMarginPx
+            )
+            val railBottom = replayTimelineYForFraction(
+                fraction = 1f,
+                heightPx = size.height,
+                handleMarginPx = timelineHandleMarginPx
+            )
 
             fun railY(fraction: Float): Float =
-                railTop + fraction.coerceIn(0f, 1f) * railHeight
+                replayTimelineYForFraction(
+                    fraction = fraction,
+                    heightPx = size.height,
+                    handleMarginPx = timelineHandleMarginPx
+                )
 
             if (samples.size == 1) {
                 drawLine(
@@ -447,6 +456,28 @@ private fun ReplayTimeline(
             )
         }
     }
+}
+
+internal fun replayTimelineFractionForY(
+    y: Float,
+    heightPx: Float,
+    handleMarginPx: Float
+): Float {
+    if (heightPx <= 0f) return 0f
+    val top = handleMarginPx.coerceAtLeast(0f)
+    val bottom = (heightPx - handleMarginPx).coerceAtLeast(top + 1f)
+    return ((y - top) / (bottom - top)).coerceIn(0f, 1f)
+}
+
+internal fun replayTimelineYForFraction(
+    fraction: Float,
+    heightPx: Float,
+    handleMarginPx: Float
+): Float {
+    if (heightPx <= 0f) return 0f
+    val top = handleMarginPx.coerceAtLeast(0f)
+    val bottom = (heightPx - handleMarginPx).coerceAtLeast(top + 1f)
+    return top + fraction.coerceIn(0f, 1f) * (bottom - top)
 }
 
 internal fun replayProjectionPoints(
