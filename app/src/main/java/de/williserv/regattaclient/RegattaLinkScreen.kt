@@ -10,6 +10,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,10 +24,14 @@ import androidx.compose.ui.unit.sp
 fun RegattaLinkScreen(
     state: RegattaLinkClientState,
     firmwareState: RegattaLinkFirmwareUiState,
+    otaState: RegattaLinkOtaUiState,
     firmwareSourceAvailable: Boolean,
+    installAvailable: Boolean,
     modifier: Modifier = Modifier,
     onSearch: () -> Unit,
     onCheckFirmware: () -> Unit,
+    onInstallFirmware: () -> Unit,
+    onCancelOta: () -> Unit,
     onDisconnect: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -233,6 +238,137 @@ fun RegattaLinkScreen(
             }
         }
 
+        if (installAvailable || otaState.phase != RegattaLinkOtaPhase.IDLE) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 18.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Text(
+                        text = stringResource(R.string.regattalink_ota_title),
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    if (otaState.phase != RegattaLinkOtaPhase.IDLE) {
+                        Text(
+                            text = regattaLinkOtaPhaseText(otaState.phase),
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+
+                        if (
+                            otaState.installedBuild.isNotBlank() &&
+                            otaState.targetBuild.isNotBlank()
+                        ) {
+                            Text(
+                                text = stringResource(
+                                    R.string.regattalink_ota_builds_value,
+                                    otaState.installedBuild,
+                                    otaState.targetBuild
+                                ),
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+
+                        if (
+                            otaState.phase == RegattaLinkOtaPhase.TRANSFERRING ||
+                            otaState.committedBytes > 0
+                        ) {
+                            LinearProgressIndicator(
+                                progress = { otaState.progress },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 10.dp)
+                            )
+                            Text(
+                                text = stringResource(
+                                    R.string.regattalink_ota_progress_value,
+                                    otaState.committedBytes,
+                                    otaState.totalBytes,
+                                    (otaState.progress * 100f).toInt()
+                                ),
+                                modifier = Modifier.padding(top = 6.dp)
+                            )
+                        }
+
+                        otaState.throughputKibPerSec?.let { throughput ->
+                            Text(
+                                text = stringResource(
+                                    R.string.regattalink_ota_throughput_value,
+                                    throughput
+                                ),
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+
+                        if (otaState.transport.isNotBlank()) {
+                            Text(
+                                text = stringResource(
+                                    R.string.regattalink_ota_transport_value,
+                                    otaState.transport
+                                ),
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+
+                        if (otaState.detail.isNotBlank()) {
+                            Text(
+                                text = otaState.detail,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+
+                        if (otaState.error.isNotBlank()) {
+                            Text(
+                                text = otaState.error,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                        }
+                    }
+
+                    if (
+                        installAvailable &&
+                        !otaState.isActive &&
+                        otaState.phase !in setOf(
+                            RegattaLinkOtaPhase.SUCCESS,
+                            RegattaLinkOtaPhase.CANCELLED
+                        )
+                    ) {
+                        Button(
+                            onClick = onInstallFirmware,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 12.dp)
+                        ) {
+                            Text(stringResource(R.string.regattalink_install_firmware))
+                        }
+                    }
+
+                    if (
+                        otaState.phase in setOf(
+                            RegattaLinkOtaPhase.PREPARING,
+                            RegattaLinkOtaPhase.STARTING,
+                            RegattaLinkOtaPhase.TRANSFERRING
+                        )
+                    ) {
+                        Button(
+                            onClick = onCancelOta,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 12.dp)
+                        ) {
+                            Text(stringResource(R.string.regattalink_cancel_update))
+                        }
+                    }
+                }
+            }
+        }
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -241,7 +377,9 @@ fun RegattaLinkScreen(
         ) {
             Button(
                 onClick = onSearch,
-                enabled = !busy && state.status != RegattaLinkConnectionStatus.CONNECTED,
+                enabled = !busy &&
+                    !otaState.isActive &&
+                    state.status != RegattaLinkConnectionStatus.CONNECTED,
                 modifier = Modifier.weight(1f)
             ) {
                 Text(stringResource(R.string.regattalink_search_connect))
@@ -249,7 +387,8 @@ fun RegattaLinkScreen(
 
             Button(
                 onClick = onDisconnect,
-                enabled = state.status != RegattaLinkConnectionStatus.IDLE,
+                enabled = !otaState.isActive &&
+                    state.status != RegattaLinkConnectionStatus.IDLE,
                 modifier = Modifier.weight(1f)
             ) {
                 Text(stringResource(R.string.regattalink_disconnect))
@@ -258,6 +397,7 @@ fun RegattaLinkScreen(
 
         Button(
             onClick = onBack,
+            enabled = !otaState.isActive,
             colors = primaryButtonColors(),
             modifier = Modifier
                 .fillMaxWidth()
@@ -266,4 +406,35 @@ fun RegattaLinkScreen(
             Text(stringResource(R.string.back))
         }
     }
+}
+
+
+@Composable
+private fun regattaLinkOtaPhaseText(
+    phase: RegattaLinkOtaPhase
+): String = when (phase) {
+    RegattaLinkOtaPhase.IDLE ->
+        stringResource(R.string.regattalink_ota_idle)
+    RegattaLinkOtaPhase.PREPARING ->
+        stringResource(R.string.regattalink_ota_preparing)
+    RegattaLinkOtaPhase.STARTING ->
+        stringResource(R.string.regattalink_ota_starting)
+    RegattaLinkOtaPhase.TRANSFERRING ->
+        stringResource(R.string.regattalink_ota_transferring)
+    RegattaLinkOtaPhase.VERIFYING ->
+        stringResource(R.string.regattalink_ota_verifying)
+    RegattaLinkOtaPhase.REBOOTING ->
+        stringResource(R.string.regattalink_ota_rebooting)
+    RegattaLinkOtaPhase.RECONNECTING ->
+        stringResource(R.string.regattalink_ota_reconnecting)
+    RegattaLinkOtaPhase.VALIDATING ->
+        stringResource(R.string.regattalink_ota_validating)
+    RegattaLinkOtaPhase.SUCCESS ->
+        stringResource(R.string.regattalink_ota_success)
+    RegattaLinkOtaPhase.CANCELLING ->
+        stringResource(R.string.regattalink_ota_cancelling)
+    RegattaLinkOtaPhase.CANCELLED ->
+        stringResource(R.string.regattalink_ota_cancelled)
+    RegattaLinkOtaPhase.ERROR ->
+        stringResource(R.string.regattalink_ota_error)
 }
