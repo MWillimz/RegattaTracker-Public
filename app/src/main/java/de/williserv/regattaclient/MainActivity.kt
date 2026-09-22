@@ -271,6 +271,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 if (::regattaLinkClient.isInitialized) {
                     regattaLinkClient.disconnect()
                 }
+                regattaLinkFirmwareArtifact = null
+                regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState()
                 Screen.BOAT_DATA
             }
             Screen.BOAT_DATA,
@@ -2726,6 +2728,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             } catch (error: Exception) {
                 runOnUiThread {
                     if (!asyncLifetime.isActive()) return@runOnUiThread
+                    if (regattaLinkState.value.deviceInfo?.stableId != deviceInfo.stableId) {
+                        return@runOnUiThread
+                    }
                     regattaLinkFirmwareArtifact = null
                     regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState(
                         status = RegattaLinkFirmwareStatus.ERROR,
