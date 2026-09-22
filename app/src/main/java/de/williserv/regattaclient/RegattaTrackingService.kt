@@ -1314,9 +1314,27 @@ class RegattaTrackingService : Service(), SensorEventListener {
             ).also { accessContextId = it }
         }
 
+        val sampleRaceContextId = if (manualRecording) {
+            null
+        } else {
+            activeRaceContextId ?: sampleAccessContextId?.let { contextId ->
+                resolvedEventName
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { resolvedName ->
+                        db.getOrCreateRaceContext(
+                            accessContextId = contextId,
+                            resolvedEventName = resolvedName,
+                            courseJson = null,
+                            courseMapViewportJson = null
+                        )
+                    }
+                    ?.also { activeRaceContextId = it }
+            }
+        }
+
         if (
             !manualRecording &&
-            (sampleAccessContextId == null || activeRaceContextId == null)
+            (sampleAccessContextId == null || sampleRaceContextId == null)
         ) {
             publishDebugError(getString(R.string.storage_error_access_context))
             return
@@ -1344,7 +1362,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
             gyroZ = gyroZ,
             accessContextId = sampleAccessContextId,
             sessionId = activeSessionId,
-            raceContextId = if (manualRecording) null else activeRaceContextId,
+            raceContextId = sampleRaceContextId,
             utcOffsetMinutes = sampleTime.utcOffsetMinutes
         )
 
