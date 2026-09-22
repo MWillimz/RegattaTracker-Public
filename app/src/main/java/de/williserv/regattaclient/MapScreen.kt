@@ -58,13 +58,13 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLDecoder
 
-private enum class CourseOverlayKind {
+internal enum class CourseOverlayKind {
     START,
     FINISH,
     MARK
 }
 
-private data class CourseOverlayGeoPoint(
+internal data class CourseOverlayGeoPoint(
     val lat: Double,
     val lon: Double,
     val kind: CourseOverlayKind,
@@ -578,7 +578,7 @@ private fun parseMapSnapshotContext(mapImageUrl: String): MapSnapshotContext? {
     }
 }
 
-private fun parseCourseOverlayPoints(
+internal fun parseCourseOverlayPoints(
     courseJson: String,
     courseShortened: Boolean
 ): List<CourseOverlayGeoPoint> {
