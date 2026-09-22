@@ -371,6 +371,7 @@ internal class RegattaLinkBleClient(
 
             if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 connected = false
+                resetServiceDiscoveryState()
                 failPendingGattOperation(
                     RegattaLinkOtaTransportException(
                         "RegattaLink disconnected during GATT operation"
@@ -1836,8 +1837,7 @@ internal class RegattaLinkBleClient(
         runCatching { scanner?.stopScan(scanCallback) }
     }
 
-    private fun closeGatt() {
-        handler.removeCallbacks(gattTimeout)
+    private fun resetServiceDiscoveryState() {
         handler.removeCallbacks(serviceRediscovery)
         serviceRediscoveryGatt = null
         serviceRediscoveryPending.set(false)
@@ -1846,6 +1846,11 @@ internal class RegattaLinkBleClient(
         serviceDiscoveryInProgress = false
         deviceInfoReadInProgress = false
         connectionSetupComplete = false
+    }
+
+    private fun closeGatt() {
+        handler.removeCallbacks(gattTimeout)
+        resetServiceDiscoveryState()
         connected = false
         val existing = gatt
         gatt = null
@@ -1866,9 +1871,7 @@ internal class RegattaLinkBleClient(
         message: String
     ) {
         handler.removeCallbacks(gattTimeout)
-        handler.removeCallbacks(serviceRediscovery)
-        serviceRediscoveryGatt = null
-        serviceRediscoveryPending.set(false)
+        resetServiceDiscoveryState()
         connected = false
         callbackGatt.disconnect()
         callbackGatt.close()
