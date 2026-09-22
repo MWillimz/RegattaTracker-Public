@@ -153,7 +153,7 @@ private fun parseCourseMapViewportObject(obj: JSONObject): CourseMapViewport? {
     }
 }
 
-private fun serializeCourseMapViewport(viewport: CourseMapViewport?): String {
+internal fun serializeCourseMapViewport(viewport: CourseMapViewport?): String {
     if (viewport == null) return ""
     return JSONObject()
         .put("projection", viewport.projection)

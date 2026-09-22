@@ -45,7 +45,8 @@ class SessionHistoryDbTest {
                 startedAt = 1_000L,
                 mode = "race",
                 accessContextId = accessContextId,
-                displayName = "Race session"
+                displayName = "Race session",
+                resolvedEventName = "Wednesday Race - Run 2"
             )
         )
         val manualSessionId = requireNotNull(
@@ -72,7 +73,7 @@ class SessionHistoryDbTest {
 
         assertEquals(raceSessionId, summaries[1].id)
         assertEquals("race", summaries[1].mode)
-        assertEquals("Wednesday Race", summaries[1].eventIdentifier)
+        assertEquals("Wednesday Race - Run 2", summaries[1].eventIdentifier)
         assertEquals(2L, summaries[1].sampleCount)
 
         helper.close()

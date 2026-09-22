@@ -282,7 +282,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
                     .putBoolean("in_race", !manualRecording)
                     .putBoolean("manual_tracking", manualRecording)
                     .apply()
-                if (!startConfirmedTrackingService()) {
+                if (!startConfirmedTrackingService(allowPersistedSessionRestore = false)) {
                     return START_NOT_STICKY
                 }
                 return START_STICKY
@@ -447,22 +447,25 @@ class RegattaTrackingService : Service(), SensorEventListener {
         }
 
         if (!restoreStickyStartContext()) {
+            finishActiveTrackingSession()
             persistTrackingStoppedState()
             stopSelf()
             return START_NOT_STICKY
         }
 
-        if (!startConfirmedTrackingService()) {
+        if (!startConfirmedTrackingService(allowPersistedSessionRestore = true)) {
             return START_NOT_STICKY
         }
         return START_STICKY
     }
 
-    private fun startConfirmedTrackingService(): Boolean {
+    private fun startConfirmedTrackingService(
+        allowPersistedSessionRestore: Boolean
+    ): Boolean {
         try {
             startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.tracking_active)))
 
-            if (!ensureActiveTrackingSession()) {
+            if (!ensureActiveTrackingSession(allowPersistedSessionRestore)) {
                 finishActiveTrackingSession()
                 TrackingServiceRuntimeState.markStopped()
                 persistTrackingStoppedState()
@@ -595,7 +598,9 @@ class RegattaTrackingService : Service(), SensorEventListener {
         }
     }
 
-    private fun ensureActiveTrackingSession(): Boolean {
+    private fun ensureActiveTrackingSession(
+        allowPersistedSessionRestore: Boolean
+    ): Boolean {
         val expectedMode = if (manualRecording) "manual" else "race"
         val expectedAccessContextId = if (manualRecording) null else accessContextId
         if (!manualRecording && expectedAccessContextId == null) return false
@@ -629,6 +634,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
         if (persistedId != null) {
             val persisted = db.getTrackingSession(persistedId)
             if (
+                allowPersistedSessionRestore &&
                 persisted != null &&
                 isCompatibleOpenSession(
                     session = persisted,
@@ -645,6 +651,18 @@ class RegattaTrackingService : Service(), SensorEventListener {
             appPrefs.edit().remove(ACTIVE_TRACKING_SESSION_ID).commit()
         }
 
+        val raceSnapshot = if (manualRecording) {
+            null
+        } else {
+            RaceEventSnapshotStore.loadMatching(
+                context = this,
+                server = serverUrl,
+                event = eventName,
+                secret = sharedSecret,
+                expectedResolvedEventName = resolvedEventName
+            )
+        }
+
         val startedAt = System.currentTimeMillis()
         val displayName = Instant.ofEpochMilli(startedAt)
             .atZone(ZoneId.systemDefault())
@@ -653,7 +671,12 @@ class RegattaTrackingService : Service(), SensorEventListener {
             startedAt = startedAt,
             mode = expectedMode,
             accessContextId = expectedAccessContextId,
-            displayName = displayName
+            displayName = displayName,
+            resolvedEventName = raceSnapshot?.resolvedEventName ?: resolvedEventName,
+            courseJson = raceSnapshot?.courseJson,
+            courseMapViewportJson = raceSnapshot
+                ?.courseMapViewport
+                ?.let(::serializeCourseMapViewport)
         ) ?: return false
 
         activeSessionId = newSessionId
@@ -1081,8 +1104,19 @@ class RegattaTrackingService : Service(), SensorEventListener {
         )
     }
 
+    private fun persistActiveSessionRaceContext(snapshot: RaceEventSnapshot) {
+        val sessionId = activeSessionId ?: return
+        db.updateTrackingSessionRaceContext(
+            sessionId = sessionId,
+            resolvedEventName = snapshot.resolvedEventName,
+            courseJson = snapshot.courseJson,
+            courseMapViewportJson = snapshot.courseMapViewport?.let(::serializeCourseMapViewport)
+        )
+    }
+
     private fun applyRaceEventSnapshot(snapshot: RaceEventSnapshot) {
         adoptResolvedEventName(snapshot.resolvedEventName)
+        persistActiveSessionRaceContext(snapshot)
 
         raceStatus = snapshot.status.ifBlank { "unknown" }
         courseShortened = snapshot.courseShortened

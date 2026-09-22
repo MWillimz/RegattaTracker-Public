@@ -49,7 +49,10 @@ data class TrackingSession(
     val endedAt: Long?,
     val mode: String,
     val accessContextId: Long?,
-    val displayName: String
+    val displayName: String,
+    val resolvedEventName: String? = null,
+    val courseJson: String? = null,
+    val courseMapViewportJson: String? = null
 )
 
 data class TrackingSessionSummary(
@@ -116,7 +119,7 @@ internal fun normalizeAccessContextKey(
 }
 
 class TrackingDbHelper(context: Context) :
-    SQLiteOpenHelper(context, "regatta_tracking.db", null, 8) {
+    SQLiteOpenHelper(context, "regatta_tracking.db", null, 9) {
 
     private val appContext = context.applicationContext
     private var lastBatteryReadAtMs: Long? = null
@@ -150,6 +153,9 @@ class TrackingDbHelper(context: Context) :
         }
         if (oldVersion < 8 && newVersion >= 8) {
             migrateToVersion8(db)
+        }
+        if (oldVersion < 9 && newVersion >= 9) {
+            migrateToVersion9(db)
         }
     }
 
@@ -250,7 +256,10 @@ class TrackingDbHelper(context: Context) :
         startedAt: Long,
         mode: String,
         accessContextId: Long?,
-        displayName: String
+        displayName: String,
+        resolvedEventName: String? = null,
+        courseJson: String? = null,
+        courseMapViewportJson: String? = null
     ): Long? {
         require(mode == "race" || mode == "manual")
         if (mode == "race" && accessContextId == null) return null
@@ -266,6 +275,9 @@ class TrackingDbHelper(context: Context) :
                 putNull("access_context_id")
             }
             put("display_name", displayName)
+            putNullableString("resolved_event_name", resolvedEventName)
+            putNullableString("course_json", courseJson)
+            putNullableString("course_map_viewport_json", courseMapViewportJson)
         }
 
         val insertedId = writableDatabase.insert("tracking_sessions", null, values)
@@ -275,7 +287,16 @@ class TrackingDbHelper(context: Context) :
     fun getTrackingSession(sessionId: Long): TrackingSession? {
         readableDatabase.rawQuery(
             """
-            SELECT id, started_at, ended_at, mode, access_context_id, display_name
+            SELECT
+                id,
+                started_at,
+                ended_at,
+                mode,
+                access_context_id,
+                display_name,
+                resolved_event_name,
+                course_json,
+                course_map_viewport_json
             FROM tracking_sessions
             WHERE id = ?
             LIMIT 1
@@ -289,7 +310,10 @@ class TrackingDbHelper(context: Context) :
                 endedAt = if (cursor.isNull(2)) null else cursor.getLong(2),
                 mode = cursor.getString(3),
                 accessContextId = if (cursor.isNull(4)) null else cursor.getLong(4),
-                displayName = cursor.getString(5)
+                displayName = cursor.getString(5),
+                resolvedEventName = if (cursor.isNull(6)) null else cursor.getString(6),
+                courseJson = if (cursor.isNull(7)) null else cursor.getString(7),
+                courseMapViewportJson = if (cursor.isNull(8)) null else cursor.getString(8)
             )
         }
     }
@@ -305,7 +329,7 @@ class TrackingDbHelper(context: Context) :
                 sessions.mode,
                 sessions.access_context_id,
                 sessions.display_name,
-                contexts.access_identifier,
+                COALESCE(sessions.resolved_event_name, contexts.access_identifier),
                 COUNT(samples.id)
             FROM tracking_sessions AS sessions
             LEFT JOIN access_contexts AS contexts
@@ -319,6 +343,7 @@ class TrackingDbHelper(context: Context) :
                 sessions.mode,
                 sessions.access_context_id,
                 sessions.display_name,
+                sessions.resolved_event_name,
                 contexts.access_identifier
             ORDER BY sessions.started_at DESC, sessions.id DESC
             """.trimIndent(),
@@ -389,6 +414,25 @@ class TrackingDbHelper(context: Context) :
             }
         }
         return result
+    }
+
+    fun updateTrackingSessionRaceContext(
+        sessionId: Long,
+        resolvedEventName: String?,
+        courseJson: String?,
+        courseMapViewportJson: String?
+    ): Boolean {
+        val values = ContentValues().apply {
+            putNullableString("resolved_event_name", resolvedEventName)
+            putNullableString("course_json", courseJson)
+            putNullableString("course_map_viewport_json", courseMapViewportJson)
+        }
+        return writableDatabase.update(
+            "tracking_sessions",
+            values,
+            "id = ? AND mode = 'race'",
+            arrayOf(sessionId.toString())
+        ) > 0
     }
 
     fun finishTrackingSession(sessionId: Long, endedAt: Long): Boolean {
@@ -847,6 +891,21 @@ class TrackingDbHelper(context: Context) :
         createTrackingSampleIndexes(db)
     }
 
+    private fun migrateToVersion9(db: SQLiteDatabase) {
+        createTrackingSessionsTable(db)
+        if (!columnExists(db, "tracking_sessions", "resolved_event_name")) {
+            db.execSQL("ALTER TABLE tracking_sessions ADD COLUMN resolved_event_name TEXT")
+        }
+        if (!columnExists(db, "tracking_sessions", "course_json")) {
+            db.execSQL("ALTER TABLE tracking_sessions ADD COLUMN course_json TEXT")
+        }
+        if (!columnExists(db, "tracking_sessions", "course_map_viewport_json")) {
+            db.execSQL(
+                "ALTER TABLE tracking_sessions ADD COLUMN course_map_viewport_json TEXT"
+            )
+        }
+    }
+
     private fun createAccessContextsTable(db: SQLiteDatabase) {
         db.execSQL(
             """
@@ -872,7 +931,10 @@ class TrackingDbHelper(context: Context) :
                 ended_at INTEGER,
                 mode TEXT NOT NULL,
                 access_context_id INTEGER,
-                display_name TEXT NOT NULL
+                display_name TEXT NOT NULL,
+                resolved_event_name TEXT,
+                course_json TEXT,
+                course_map_viewport_json TEXT
             )
             """.trimIndent()
         )
@@ -912,6 +974,15 @@ class TrackingDbHelper(context: Context) :
             )
             """.trimIndent()
         )
+    }
+
+    private fun ContentValues.putNullableString(key: String, value: String?) {
+        val normalized = value?.takeIf { it.isNotBlank() }
+        if (normalized != null) {
+            put(key, normalized)
+        } else {
+            putNull(key)
+        }
     }
 
     private fun createTrackingSampleIndexes(db: SQLiteDatabase) {
