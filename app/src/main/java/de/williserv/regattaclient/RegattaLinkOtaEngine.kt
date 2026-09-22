@@ -313,7 +313,7 @@ internal class RegattaLinkOtaEngine(
             }
 
             val rateKib = committed.toDouble() / elapsed.toDouble() * 1000.0 / 1024.0
-            if (rateKib >= REGATTALINK_OTA_ADAPT_THROUGHPUT_KIB_S) {
+            if (rateKib >= REGATTALINK_OTA_SLOW_LINK_THROUGHPUT_KIB_S) {
                 resetSample()
                 return
             }
