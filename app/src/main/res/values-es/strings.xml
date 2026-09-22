@@ -366,4 +366,24 @@
     <string name="session_replay_sog_label">SOG</string>
     <string name="session_replay_cog_label">COG</string>
     <string name="session_cog_degrees">%1$d°</string>
+    <string name="regattalink_title">RegattaLink</string>
+    <string name="regattalink_status_not_connected">No conectado</string>
+    <string name="regattalink_status_scanning">Buscando RegattaLink…</string>
+    <string name="regattalink_status_pairing">Emparejando RegattaLink…</string>
+    <string name="regattalink_status_connecting">Conectando…</string>
+    <string name="regattalink_status_discovering">Leyendo servicios…</string>
+    <string name="regattalink_status_reading_device">Leyendo información del dispositivo…</string>
+    <string name="regattalink_status_connected">Conectado</string>
+    <string name="regattalink_status_error">Error de conexión</string>
+    <string name="regattalink_search_connect">Buscar / conectar</string>
+    <string name="regattalink_disconnect">Desconectar</string>
+    <string name="regattalink_permission_denied">Permiso de Bluetooth denegado.</string>
+    <string name="regattalink_address_value">Bluetooth: %1$s</string>
+    <string name="regattalink_stable_id_value">ID estable: %1$s</string>
+    <string name="regattalink_build_value">Compilación de firmware: %1$s</string>
+    <string name="regattalink_protocol_value">Protocolo: %1$d.%2$d</string>
+    <string name="regattalink_product_profile_value">Producto / perfil: %1$d / %2$d</string>
+    <string name="regattalink_ota_available">OTA disponible</string>
+    <string name="regattalink_ota_unavailable">OTA no disponible</string>
+
 </resources>
