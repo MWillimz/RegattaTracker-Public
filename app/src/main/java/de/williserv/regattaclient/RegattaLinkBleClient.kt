@@ -151,6 +151,7 @@ internal class RegattaLinkBleClient(
     @Volatile private var lastTelemetryState = RegattaLinkTelemetryState()
     private val telemetryLock = Any()
     private val serviceRediscoveryPending = AtomicBoolean(false)
+    private val serviceRediscoveryDeferredForOta = AtomicBoolean(false)
     private var serviceRediscoveryGatt: BluetoothGatt? = null
     private var reconnectFuture: CompletableFuture<RegattaLinkDeviceInfo?>? = null
     private var selectedDeviceAddress: String? = null
@@ -223,6 +224,18 @@ internal class RegattaLinkBleClient(
             // previous discovery internally. Retry without disconnecting; the
             // remote GATT database itself is valid.
             handler.postDelayed(this, 250L)
+        }
+    }
+
+    private fun scheduleServiceRediscovery(
+        activeGatt: BluetoothGatt,
+        reason: String
+    ) {
+        if (gatt !== activeGatt || !connected) return
+        Log.i(LOG_TAG, "$reason; rediscovering services")
+        serviceRediscoveryGatt = activeGatt
+        if (serviceRediscoveryPending.compareAndSet(false, true)) {
+            handler.post(serviceRediscovery)
         }
     }
 
@@ -349,14 +362,27 @@ internal class RegattaLinkBleClient(
         override fun onServiceChanged(callbackGatt: BluetoothGatt) {
             if (gatt !== callbackGatt) return
 
-            Log.i(
-                LOG_TAG,
-                "RegattaLink GATT Service Changed received; rediscovering services"
-            )
-            serviceRediscoveryGatt = callbackGatt
-            if (serviceRediscoveryPending.compareAndSet(false, true)) {
-                handler.post(serviceRediscovery)
+            if (otaRunning.get()) {
+                /*
+                 * OTA post-boot reconciliation owns the GATT operation stream.
+                 * Starting discoverServices() here races MTU / CCCD / SNAPSHOT
+                 * operations and can create an endless reconnect-validation
+                 * loop. The OTA service handles are stable across this schema
+                 * change, so defer rediscovery until OTA has reached a terminal
+                 * state.
+                 */
+                serviceRediscoveryDeferredForOta.set(true)
+                Log.i(
+                    LOG_TAG,
+                    "RegattaLink GATT Service Changed deferred until OTA completes"
+                )
+                return
             }
+
+            scheduleServiceRediscovery(
+                callbackGatt,
+                "RegattaLink GATT Service Changed received"
+            )
         }
 
         override fun onServicesDiscovered(
@@ -612,6 +638,18 @@ internal class RegattaLinkBleClient(
                 otaRunning.set(false)
                 otaCancelled.set(false)
                 scanPurpose = ScanPurpose.NORMAL
+
+                if (serviceRediscoveryDeferredForOta.getAndSet(false)) {
+                    val activeGatt = gatt
+                    if (activeGatt != null && connected) {
+                        handler.post {
+                            scheduleServiceRediscovery(
+                                activeGatt,
+                                "Deferred RegattaLink GATT Service Changed"
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -1730,6 +1768,7 @@ internal class RegattaLinkBleClient(
         handler.removeCallbacks(serviceRediscovery)
         serviceRediscoveryGatt = null
         serviceRediscoveryPending.set(false)
+        serviceRediscoveryDeferredForOta.set(false)
         connected = false
         val existing = gatt
         gatt = null
