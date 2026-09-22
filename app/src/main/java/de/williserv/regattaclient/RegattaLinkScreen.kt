@@ -166,21 +166,24 @@ fun RegattaLinkScreen(
         }
 
         if (telemetryState.supported) {
-            val fastStale = !isRegattaLinkTelemetryFresh(
-                telemetryState.fastReceivedAtElapsedMs,
-                REGATTALINK_FAST_STALE_MS,
-                telemetryNowElapsedMs
-            )
-            val summaryStale = !isRegattaLinkTelemetryFresh(
-                telemetryState.summaryReceivedAtElapsedMs,
-                REGATTALINK_SLOW_STALE_MS,
-                telemetryNowElapsedMs
-            )
-            val calibrationStale = !isRegattaLinkTelemetryFresh(
-                telemetryState.calibrationReceivedAtElapsedMs,
-                REGATTALINK_SLOW_STALE_MS,
-                telemetryNowElapsedMs
-            )
+            val fastStale = telemetryState.fast != null &&
+                !isRegattaLinkTelemetryFresh(
+                    telemetryState.fastReceivedAtElapsedMs,
+                    REGATTALINK_FAST_STALE_MS,
+                    telemetryNowElapsedMs
+                )
+            val summaryStale = telemetryState.summary != null &&
+                !isRegattaLinkTelemetryFresh(
+                    telemetryState.summaryReceivedAtElapsedMs,
+                    REGATTALINK_SLOW_STALE_MS,
+                    telemetryNowElapsedMs
+                )
+            val calibrationStale = telemetryState.calibration != null &&
+                !isRegattaLinkTelemetryFresh(
+                    telemetryState.calibrationReceivedAtElapsedMs,
+                    REGATTALINK_SLOW_STALE_MS,
+                    telemetryNowElapsedMs
+                )
 
             Card(
                 modifier = Modifier
