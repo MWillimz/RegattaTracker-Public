@@ -67,6 +67,10 @@
     <string name="loading_map">Cargando mapa…</string>
     <string name="map_unavailable">Mapa no disponible</string>
     <string name="map_could_not_be_loaded">No se pudo cargar el mapa</string>
+    <string name="map_sog_value_kn">SOG: %1$.1f kn</string>
+    <string name="map_sog_unknown">SOG: --</string>
+    <string name="map_cog_value_degrees">COG: %1$d°</string>
+    <string name="map_cog_unknown">COG: --</string>
     <string name="settings_about_legal">Ajustes / Acerca de / Legal</string>
     <string name="legal_notice">Aviso legal</string>
     <string name="privacy_policy">Política de privacidad</string>
@@ -324,5 +328,34 @@
     <string name="telemetry_upload_notification_progress">%1$s de %2$s posiciones enviadas · El envío continúa en segundo plano</string>
     <string name="telemetry_upload_notification_remaining">%1$s posiciones pendientes</string>
     <string name="telemetry_upload_notification_keep_running">No cierres Regatta Tracker hasta que finalice el envío.</string>
+
+    <!-- Local session history -->
+    <string name="session_history_button">Sesiones</string>
+    <string name="session_history_title">Historial de sesiones</string>
+    <string name="session_history_empty">Aún no hay sesiones registradas.</string>
+    <string name="session_details_title">Detalles de la sesión</string>
+    <string name="session_details_unavailable">Los detalles de la sesión no están disponibles.</string>
+    <string name="session_back">Atrás</string>
+    <string name="session_mode_label">Modo</string>
+    <string name="session_mode_race">Regata</string>
+    <string name="session_mode_manual">Manual</string>
+    <string name="session_running">En curso</string>
+    <string name="session_event_label">Evento</string>
+    <string name="session_event_value">Evento: %1$s</string>
+    <string name="session_start_label">Inicio</string>
+    <string name="session_start_value">Inicio: %1$s</string>
+    <string name="session_end_label">Fin</string>
+    <string name="session_duration_label">Duración</string>
+    <string name="session_duration_value">Duración: %1$s</string>
+    <string name="session_samples_label">Muestras</string>
+    <string name="session_samples_value">Muestras: %1$d</string>
+    <string name="session_distance_label">Distancia</string>
+    <string name="session_average_sog_label">SOG medio</string>
+    <string name="session_max_sog_label">SOG máx.</string>
+    <string name="session_distance_nm">%1$.2f NM</string>
+    <string name="session_speed_kn">%1$.1f kn</string>
+    <string name="session_unknown_value">--</string>
+    <string name="session_duration_minutes">%1$d min</string>
+    <string name="session_duration_hours_minutes">%1$d h %2$d min</string>
 
 </resources>

@@ -67,6 +67,10 @@
     <string name="loading_map">Karte wird geladen…</string>
     <string name="map_unavailable">Karte nicht verfügbar</string>
     <string name="map_could_not_be_loaded">Karte konnte nicht geladen werden</string>
+    <string name="map_sog_value_kn">SOG: %1$.1f kn</string>
+    <string name="map_sog_unknown">SOG: --</string>
+    <string name="map_cog_value_degrees">COG: %1$d°</string>
+    <string name="map_cog_unknown">COG: --</string>
     <string name="settings_about_legal">Einstellungen / Über die App / Rechtliches</string>
     <string name="legal_notice">Impressum</string>
     <string name="privacy_policy">Datenschutzerklärung</string>
@@ -324,5 +328,34 @@
     <string name="telemetry_upload_notification_progress">%1$s von %2$s Positionen gesendet · Upload läuft im Hintergrund</string>
     <string name="telemetry_upload_notification_remaining">%1$s Positionen ausstehend</string>
     <string name="telemetry_upload_notification_keep_running">Bitte Regatta Tracker bis zum Abschluss nicht beenden.</string>
+
+    <!-- Local session history -->
+    <string name="session_history_button">Sessions</string>
+    <string name="session_history_title">Aufzeichnungen</string>
+    <string name="session_history_empty">Noch keine Aufzeichnungen vorhanden.</string>
+    <string name="session_details_title">Aufzeichnungsdetails</string>
+    <string name="session_details_unavailable">Aufzeichnungsdetails sind nicht verfügbar.</string>
+    <string name="session_back">Zurück</string>
+    <string name="session_mode_label">Modus</string>
+    <string name="session_mode_race">Regatta</string>
+    <string name="session_mode_manual">Manuell</string>
+    <string name="session_running">Läuft</string>
+    <string name="session_event_label">Event</string>
+    <string name="session_event_value">Event: %1$s</string>
+    <string name="session_start_label">Start</string>
+    <string name="session_start_value">Start: %1$s</string>
+    <string name="session_end_label">Ende</string>
+    <string name="session_duration_label">Dauer</string>
+    <string name="session_duration_value">Dauer: %1$s</string>
+    <string name="session_samples_label">Samples</string>
+    <string name="session_samples_value">Samples: %1$d</string>
+    <string name="session_distance_label">Strecke</string>
+    <string name="session_average_sog_label">Ø SOG</string>
+    <string name="session_max_sog_label">Max SOG</string>
+    <string name="session_distance_nm">%1$.2f NM</string>
+    <string name="session_speed_kn">%1$.1f kn</string>
+    <string name="session_unknown_value">--</string>
+    <string name="session_duration_minutes">%1$d min</string>
+    <string name="session_duration_hours_minutes">%1$d h %2$d min</string>
 
 </resources>

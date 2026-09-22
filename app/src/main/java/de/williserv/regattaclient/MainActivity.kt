@@ -60,7 +60,9 @@ enum class Screen {
     MAP,
     QR_SCANNER,
     LEGAL,
-    RESULTS
+    RESULTS,
+    SESSION_HISTORY,
+    SESSION_DETAIL
 }
 
 private enum class PendingTrackingAction {
@@ -194,6 +196,13 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private val retirementRequestInFlight = mutableStateOf(false)
     private val showAdvanced = mutableStateOf(false)
 
+    private val sessionSummaries = mutableStateOf<List<TrackingSessionSummary>>(emptyList())
+    private val sessionHistoryLoading = mutableStateOf(false)
+    private val selectedSessionId = mutableStateOf<Long?>(null)
+    private val sessionDetail = mutableStateOf<SessionDetailData?>(null)
+    private val sessionDetailLoading = mutableStateOf(false)
+    private var sessionLoadGeneration = 0L
+
     private val cogText = mutableStateOf("")
     private val sogText = mutableStateOf("")
     private val gpsAccuracyText = mutableStateOf("")
@@ -255,7 +264,12 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             Screen.RACE,
             Screen.COURSE,
             Screen.LEGAL,
-            Screen.RESULTS -> Screen.HOME
+            Screen.RESULTS,
+            Screen.SESSION_HISTORY -> Screen.HOME
+            Screen.SESSION_DETAIL -> {
+                loadSessionHistory()
+                Screen.SESSION_HISTORY
+            }
             Screen.RACE_LEGAL,
             Screen.QR_SCANNER -> Screen.RACE
             Screen.MAP -> if (selectedCourseMapView.value == null) {
@@ -452,6 +466,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                     requestTrackingConsent(PendingTrackingAction.START_MANUAL_TRACKING)
                                 }
                             },
+                            onSessionHistory = {
+                                currentScreen.value = Screen.SESSION_HISTORY
+                                loadSessionHistory()
+                            },
                             onExport = {
                                 exportCsvLauncher.launch("regatta_tracking_export.csv")
                             },
@@ -468,6 +486,26 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             onToggleAdvanced = {
                                 showAdvanced.value = !showAdvanced.value
                             }
+                        )
+
+                        Screen.SESSION_HISTORY -> SessionHistoryScreen(
+                            sessions = sessionSummaries.value,
+                            loading = sessionHistoryLoading.value,
+                            modifier = Modifier.padding(innerPadding),
+                            onSessionClick = { sessionId ->
+                                selectedSessionId.value = sessionId
+                                sessionDetail.value = null
+                                currentScreen.value = Screen.SESSION_DETAIL
+                                loadSessionDetail(sessionId)
+                            },
+                            onBack = ::navigateBack
+                        )
+
+                        Screen.SESSION_DETAIL -> SessionDetailScreen(
+                            detail = sessionDetail.value,
+                            loading = sessionDetailLoading.value,
+                            modifier = Modifier.padding(innerPadding),
+                            onBack = ::navigateBack
                         )
 
                         Screen.RACE_LEGAL -> RaceLegalScreen(
@@ -1359,27 +1397,20 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private fun loadAppState() {
         val prefs = getSharedPreferences(appStatePrefsName, Context.MODE_PRIVATE)
+        val persistedInRace = prefs.getBoolean("in_race", false)
+        var persistedManual = prefs.getBoolean("manual_tracking", false)
 
-        inRace.value = prefs.getBoolean("in_race", false)
-        manualTracking.value = prefs.getBoolean("manual_tracking", false)
-        if (inRace.value && manualTracking.value) {
-            manualTracking.value = false
+        if (persistedInRace && persistedManual) {
+            persistedManual = false
             prefs.edit()
                 .putBoolean("manual_tracking", false)
                 .apply()
         }
 
-        serviceStatusText.value = when {
-            inRace.value -> getString(R.string.service_race_running)
-            manualTracking.value -> getString(R.string.service_manual_running)
-            else -> getString(R.string.service_stopped)
-        }
-
-        statusText.value = when {
-            inRace.value -> getString(R.string.in_race)
-            manualTracking.value -> getString(R.string.manual_tracking_running)
-            else -> getString(R.string.tracking_stopped)
-        }
+        applyTrackingRuntimeState(
+            persistedInRace = persistedInRace,
+            persistedManual = persistedManual
+        )
     }
 
     private fun reconcileTrackingState() {
@@ -1394,24 +1425,38 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 .apply()
         }
 
-        if (
-            inRace.value == persistedInRace &&
-            manualTracking.value == persistedManual
-        ) {
-            return
-        }
+        applyTrackingRuntimeState(
+            persistedInRace = persistedInRace,
+            persistedManual = persistedManual
+        )
+    }
 
-        inRace.value = persistedInRace
-        manualTracking.value = persistedManual
+    private fun applyTrackingRuntimeState(
+        persistedInRace: Boolean,
+        persistedManual: Boolean
+    ) {
+        val runtimeStatus = TrackingServiceRuntimeState.currentStatus()
+        val effective = effectiveTrackingRuntimeState(
+            persistedInRace = persistedInRace,
+            persistedManual = persistedManual,
+            runtimeStatus = runtimeStatus
+        )
+
+        inRace.value = effective.inRace
+        manualTracking.value = effective.manualTracking
 
         serviceStatusText.value = when {
-            persistedInRace -> getString(R.string.service_race_running)
-            persistedManual -> getString(R.string.service_manual_running)
+            runtimeStatus == TrackingServiceRuntimeStatus.STARTING &&
+                (effective.inRace || effective.manualTracking) -> getString(R.string.service_starting)
+            effective.inRace -> getString(R.string.service_race_running)
+            effective.manualTracking -> getString(R.string.service_manual_running)
             else -> getString(R.string.service_stopped)
         }
 
-        if (!persistedInRace && !persistedManual) {
-            statusText.value = getString(R.string.tracking_stopped)
+        statusText.value = when {
+            effective.inRace -> getString(R.string.in_race)
+            effective.manualTracking -> getString(R.string.manual_tracking_running)
+            else -> getString(R.string.tracking_stopped)
         }
     }
 
@@ -2603,6 +2648,16 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             return false
         }
 
+        val raceContextId = db.getOrCreateRaceContext(
+            accessContextId = accessContextId,
+            resolvedEventName = resolvedEventName.value,
+            courseJson = rawRaceCourseJson,
+            courseMapViewportJson = null
+        ) ?: run {
+            statusText.value = getString(R.string.race_entry_store_failed)
+            return false
+        }
+
         val insertedId = db.insertSample(
             sequenceId = entry.sequenceId,
             timestamp = entry.timestamp,
@@ -2623,7 +2678,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             gyroX = entry.gyroX,
             gyroY = entry.gyroY,
             gyroZ = entry.gyroZ,
-            accessContextId = accessContextId
+            accessContextId = accessContextId,
+            raceContextId = raceContextId
         )
 
         if (insertedId == -1L) {
@@ -2848,12 +2904,13 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             putExtra(RegattaTrackingService.EXTRA_MANUAL_RECORDING, manualMode)
         }
 
-        ContextCompat.startForegroundService(this, intent)
-
-        serviceStatusText.value = if (manualMode) {
-            getString(R.string.service_manual_running)
-        } else {
-            getString(R.string.service_race_running)
+        TrackingServiceRuntimeState.markStarting()
+        try {
+            ContextCompat.startForegroundService(this, intent)
+            serviceStatusText.value = getString(R.string.service_starting)
+        } catch (e: RuntimeException) {
+            TrackingServiceRuntimeState.markStopped()
+            throw e
         }
     }
 
@@ -3236,9 +3293,88 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
 
         db.deleteAllSamples()
+        sessionSummaries.value = emptyList()
+        selectedSessionId.value = null
+        sessionDetail.value = null
         updateStorageText()
         lastCsvLine.value = getString(R.string.no_csv_line_yet)
         statusText.value = getString(R.string.old_data_deleted)
+    }
+
+    private fun loadSessionHistory() {
+        val generation = ++sessionLoadGeneration
+        sessionHistoryLoading.value = true
+
+        thread(name = "regatta-session-history") {
+            val summaries = runCatching {
+                db.getTrackingSessionSummaries()
+            }.getOrDefault(emptyList())
+
+            if (!asyncLifetime.isActive()) return@thread
+            runOnUiThread {
+                if (!asyncLifetime.isActive() || generation != sessionLoadGeneration) {
+                    return@runOnUiThread
+                }
+                sessionSummaries.value = summaries
+                sessionHistoryLoading.value = false
+            }
+        }
+    }
+
+    private fun loadSessionDetail(sessionId: Long) {
+        val generation = ++sessionLoadGeneration
+        sessionDetailLoading.value = true
+
+        thread(name = "regatta-session-detail") {
+            val detail = runCatching {
+                val session = db.getTrackingSession(sessionId) ?: return@runCatching null
+                val samples = db.getTrackingSamplesForSession(sessionId)
+                val resolvedEventNames = samples
+                    .mapNotNull { sample ->
+                        sample.resolvedEventName?.takeIf { it.isNotBlank() }
+                    }
+                    .distinct()
+                val accessIdentifier = session.accessContextId
+                    ?.let(db::getAccessContext)
+                    ?.accessIdentifier
+                val eventIdentifier = when (resolvedEventNames.size) {
+                    1 -> resolvedEventNames.single()
+                    else -> session.resolvedEventName
+                        ?.takeIf { it.isNotBlank() && resolvedEventNames.isEmpty() }
+                        ?: accessIdentifier
+                }
+                val summary = TrackingSessionSummary(
+                    id = session.id,
+                    startedAt = session.startedAt,
+                    endedAt = session.endedAt,
+                    mode = session.mode,
+                    accessContextId = session.accessContextId,
+                    displayName = session.displayName,
+                    eventIdentifier = eventIdentifier,
+                    sampleCount = samples.size.toLong()
+                )
+                SessionDetailData(
+                    session = summary,
+                    statistics = calculateSessionStatistics(
+                        session = session,
+                        samples = samples
+                    )
+                )
+            }.getOrNull()
+
+            if (!asyncLifetime.isActive()) return@thread
+            runOnUiThread {
+                if (
+                    !asyncLifetime.isActive() ||
+                    generation != sessionLoadGeneration ||
+                    selectedSessionId.value != sessionId
+                ) {
+                    return@runOnUiThread
+                }
+                sessionDetail.value = detail
+                sessionDetailLoading.value = false
+            }
+        }
     }
 
     private fun startGpsDisplayUpdates() {

@@ -28,6 +28,7 @@ class FinishStopActivityLifecycleTest {
         context = RuntimeEnvironment.getApplication()
         context.deleteDatabase(DB_NAME)
         clearPrefs()
+        TrackingServiceRuntimeState.markStopped()
     }
 
     @After
@@ -35,6 +36,7 @@ class FinishStopActivityLifecycleTest {
         shadowOf(android.os.Looper.getMainLooper()).idle()
         context.deleteDatabase(DB_NAME)
         clearPrefs()
+        TrackingServiceRuntimeState.markStopped()
     }
 
     @Test
@@ -62,6 +64,7 @@ class FinishStopActivityLifecycleTest {
     @Test
     fun `normal leave race persists stopped state`() {
         seedAppState(inRace = true, manualTracking = false)
+        TrackingServiceRuntimeState.markActive()
         val controller = Robolectric.buildActivity(MainActivity::class.java).create()
         val activity = controller.get()
         assertTrue(getState<Boolean>(activity, "inRace").value)
@@ -86,6 +89,7 @@ class FinishStopActivityLifecycleTest {
     @Test
     fun `normal manual stop persists stopped state`() {
         seedAppState(inRace = false, manualTracking = true)
+        TrackingServiceRuntimeState.markActive()
         val controller = Robolectric.buildActivity(MainActivity::class.java).create()
         val activity = controller.get()
         assertTrue(getState<Boolean>(activity, "manualTracking").value)

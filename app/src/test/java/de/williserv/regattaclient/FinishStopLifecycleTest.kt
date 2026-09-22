@@ -30,6 +30,7 @@ class FinishStopLifecycleTest {
         context = RuntimeEnvironment.getApplication()
         context.deleteDatabase(DB_NAME)
         clearPrefs()
+        TrackingServiceRuntimeState.markStopped()
     }
 
     @After
@@ -37,6 +38,7 @@ class FinishStopLifecycleTest {
         shadowOf(android.os.Looper.getMainLooper()).idle()
         context.deleteDatabase(DB_NAME)
         clearPrefs()
+        TrackingServiceRuntimeState.markStopped()
     }
 
     @Test
@@ -279,6 +281,7 @@ class FinishStopLifecycleTest {
     @Test
     fun `open activity reconciles service side stop from app state`() {
         seedAppState(inRace = true, manualTracking = false)
+        TrackingServiceRuntimeState.markActive()
         val controller = Robolectric.buildActivity(MainActivity::class.java).create()
         val activity = controller.get()
 
@@ -286,6 +289,7 @@ class FinishStopLifecycleTest {
         assertFalse(getState<Boolean>(activity, "manualTracking").value)
 
         seedAppState(inRace = false, manualTracking = false)
+        TrackingServiceRuntimeState.markStopped()
         invokeNoArg(activity, "reconcileTrackingState")
 
         assertFalse(getState<Boolean>(activity, "inRace").value)

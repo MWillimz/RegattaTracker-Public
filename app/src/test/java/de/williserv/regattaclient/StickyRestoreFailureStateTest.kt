@@ -23,11 +23,13 @@ class StickyRestoreFailureStateTest {
     fun setUp() {
         context = RuntimeEnvironment.getApplication()
         clearPrefs()
+        TrackingServiceRuntimeState.markStopped()
     }
 
     @After
     fun tearDown() {
         clearPrefs()
+        TrackingServiceRuntimeState.markStopped()
     }
 
     @Test
@@ -53,6 +55,7 @@ class StickyRestoreFailureStateTest {
         val appState = context.getSharedPreferences("app_state", Context.MODE_PRIVATE)
         assertFalse(appState.getBoolean("in_race", true))
         assertFalse(appState.getBoolean("manual_tracking", true))
+        assertFalse(TrackingServiceRuntimeState.isActive())
 
         controller.destroy()
     }
