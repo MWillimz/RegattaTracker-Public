@@ -150,6 +150,8 @@ internal class RegattaLinkBleClient(
     @Volatile private var lastOtaState = RegattaLinkOtaUiState()
     @Volatile private var lastTelemetryState = RegattaLinkTelemetryState()
     private val telemetryLock = Any()
+    private val serviceRediscoveryPending = AtomicBoolean(false)
+    private var serviceRediscoveryGatt: BluetoothGatt? = null
     private var reconnectFuture: CompletableFuture<RegattaLinkDeviceInfo?>? = null
     private var selectedDeviceAddress: String? = null
     private val attemptedDiscoveryAddresses = mutableSetOf<String>()
@@ -183,6 +185,44 @@ internal class RegattaLinkBleClient(
             } else {
                 emitError(device, "RegattaLink connection timed out")
             }
+        }
+    }
+
+    private val serviceRediscovery = object : Runnable {
+        override fun run() {
+            val activeGatt = serviceRediscoveryGatt
+            if (
+                activeGatt == null ||
+                gatt !== activeGatt ||
+                !connected
+            ) {
+                serviceRediscoveryGatt = null
+                serviceRediscoveryPending.set(false)
+                return
+            }
+
+            val localGattBusy = synchronized(pendingGattLock) {
+                pendingGattOperation != null
+            }
+            if (localGattBusy) {
+                handler.postDelayed(this, 100L)
+                return
+            }
+
+            emitForDevice(
+                activeGatt.device,
+                RegattaLinkConnectionStatus.DISCOVERING
+            )
+            if (activeGatt.discoverServices()) {
+                serviceRediscoveryGatt = null
+                serviceRediscoveryPending.set(false)
+                return
+            }
+
+            // Service Changed may arrive while Android is still finishing its
+            // previous discovery internally. Retry without disconnecting; the
+            // remote GATT database itself is valid.
+            handler.postDelayed(this, 250L)
         }
     }
 
@@ -303,6 +343,19 @@ internal class RegattaLinkBleClient(
                         )
                     }
                 }
+            }
+        }
+
+        override fun onServiceChanged(callbackGatt: BluetoothGatt) {
+            if (gatt !== callbackGatt) return
+
+            Log.i(
+                LOG_TAG,
+                "RegattaLink GATT Service Changed received; rediscovering services"
+            )
+            serviceRediscoveryGatt = callbackGatt
+            if (serviceRediscoveryPending.compareAndSet(false, true)) {
+                handler.post(serviceRediscovery)
             }
         }
 
@@ -1674,6 +1727,9 @@ internal class RegattaLinkBleClient(
 
     private fun closeGatt() {
         handler.removeCallbacks(gattTimeout)
+        handler.removeCallbacks(serviceRediscovery)
+        serviceRediscoveryGatt = null
+        serviceRediscoveryPending.set(false)
         connected = false
         val existing = gatt
         gatt = null
@@ -1694,6 +1750,9 @@ internal class RegattaLinkBleClient(
         message: String
     ) {
         handler.removeCallbacks(gattTimeout)
+        handler.removeCallbacks(serviceRediscovery)
+        serviceRediscoveryGatt = null
+        serviceRediscoveryPending.set(false)
         connected = false
         callbackGatt.disconnect()
         callbackGatt.close()
