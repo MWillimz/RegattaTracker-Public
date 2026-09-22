@@ -80,6 +80,74 @@ class SessionHistoryDbTest {
     }
 
     @Test
+    fun multipleResolvedRuns_shareOneSession_butKeepPerSampleRaceContext() {
+        val helper = TrackingDbHelper(context)
+        val accessContextId = requireNotNull(
+            helper.getOrCreateAccessContext(
+                serverUrl = "https://raceoffice.example.org",
+                accessIdentifier = "Wednesday Race",
+                accessSecret = "secret-value"
+            )
+        )
+        val sessionId = requireNotNull(
+            helper.createTrackingSession(
+                startedAt = 1_000L,
+                mode = "race",
+                accessContextId = accessContextId,
+                displayName = "Race session",
+                resolvedEventName = "Wednesday Race - Run 1"
+            )
+        )
+        val run1ContextId = requireNotNull(
+            helper.getOrCreateRaceContext(
+                accessContextId = accessContextId,
+                resolvedEventName = "Wednesday Race - Run 1",
+                courseJson = """{"marks":[1]}""",
+                courseMapViewportJson = null
+            )
+        )
+        val run2ContextId = requireNotNull(
+            helper.getOrCreateRaceContext(
+                accessContextId = accessContextId,
+                resolvedEventName = "Wednesday Race - Run 2",
+                courseJson = """{"marks":[1,2]}""",
+                courseMapViewportJson = null
+            )
+        )
+
+        insertSample(
+            helper = helper,
+            sequenceId = 1L,
+            sessionId = sessionId,
+            accessContextId = accessContextId,
+            raceContextId = run1ContextId
+        )
+        insertSample(
+            helper = helper,
+            sequenceId = 2L,
+            sessionId = sessionId,
+            accessContextId = accessContextId,
+            raceContextId = run2ContextId
+        )
+
+        val samples = helper.getTrackingSamplesForSession(sessionId)
+        assertEquals(
+            listOf("Wednesday Race - Run 1", "Wednesday Race - Run 2"),
+            samples.map { it.resolvedEventName }
+        )
+        assertEquals(
+            listOf("""{"marks":[1]}""", """{"marks":[1,2]}"""),
+            samples.map { it.courseJson }
+        )
+
+        val summary = helper.getTrackingSessionSummaries().single()
+        assertEquals("Wednesday Race", summary.eventIdentifier)
+        assertEquals(2L, summary.sampleCount)
+
+        helper.close()
+    }
+
+    @Test
     fun samplesForSession_areIsolatedAndReturnedInLocalRowOrder() {
         val helper = TrackingDbHelper(context)
         val firstSession = requireNotNull(
@@ -135,7 +203,8 @@ class SessionHistoryDbTest {
         sequenceId: Long,
         sessionId: Long?,
         accessContextId: Long?,
-        lat: Double = 54.0
+        lat: Double = 54.0,
+        raceContextId: Long? = null
     ): Long {
         return helper.insertSample(
             sequenceId = sequenceId,
@@ -159,6 +228,7 @@ class SessionHistoryDbTest {
             gyroZ = 0f,
             accessContextId = accessContextId,
             sessionId = sessionId,
+            raceContextId = raceContextId,
             utcOffsetMinutes = 120
         )
     }

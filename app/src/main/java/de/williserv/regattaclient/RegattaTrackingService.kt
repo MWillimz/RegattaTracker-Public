@@ -116,6 +116,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
     private var resolvedEventName: String? = null
     private var accessContextId: Long? = null
     private var activeSessionId: Long? = null
+    private var activeRaceContextId: Long? = null
 
     private var boatName = "Boat name"
     private var captainName = "Max Mustermann"
@@ -584,6 +585,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
         sharedSecret = ""
         resolvedEventName = null
         accessContextId = null
+        activeRaceContextId = null
     }
 
     private fun refreshAccessContextId() {
@@ -715,6 +717,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
         }
 
         activeSessionId = null
+        activeRaceContextId = null
         appPrefs.edit().remove(ACTIVE_TRACKING_SESSION_ID).commit()
     }
 
@@ -1104,10 +1107,10 @@ class RegattaTrackingService : Service(), SensorEventListener {
         )
     }
 
-    private fun persistActiveSessionRaceContext(snapshot: RaceEventSnapshot) {
-        val sessionId = activeSessionId ?: return
-        db.updateTrackingSessionRaceContext(
-            sessionId = sessionId,
+    private fun persistActiveRaceContext(snapshot: RaceEventSnapshot) {
+        val contextId = accessContextId ?: return
+        activeRaceContextId = db.getOrCreateRaceContext(
+            accessContextId = contextId,
             resolvedEventName = snapshot.resolvedEventName,
             courseJson = snapshot.courseJson,
             courseMapViewportJson = snapshot.courseMapViewport?.let(::serializeCourseMapViewport)
@@ -1116,7 +1119,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
     private fun applyRaceEventSnapshot(snapshot: RaceEventSnapshot) {
         adoptResolvedEventName(snapshot.resolvedEventName)
-        persistActiveSessionRaceContext(snapshot)
+        persistActiveRaceContext(snapshot)
 
         raceStatus = snapshot.status.ifBlank { "unknown" }
         courseShortened = snapshot.courseShortened
@@ -1311,7 +1314,28 @@ class RegattaTrackingService : Service(), SensorEventListener {
             ).also { accessContextId = it }
         }
 
-        if (!manualRecording && sampleAccessContextId == null) {
+        val sampleRaceContextId = if (manualRecording) {
+            null
+        } else {
+            activeRaceContextId ?: sampleAccessContextId?.let { contextId ->
+                resolvedEventName
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { resolvedName ->
+                        db.getOrCreateRaceContext(
+                            accessContextId = contextId,
+                            resolvedEventName = resolvedName,
+                            courseJson = null,
+                            courseMapViewportJson = null
+                        )
+                    }
+                    ?.also { activeRaceContextId = it }
+            }
+        }
+
+        if (
+            !manualRecording &&
+            (sampleAccessContextId == null || sampleRaceContextId == null)
+        ) {
             publishDebugError(getString(R.string.storage_error_access_context))
             return
         }
@@ -1338,6 +1362,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
             gyroZ = gyroZ,
             accessContextId = sampleAccessContextId,
             sessionId = activeSessionId,
+            raceContextId = sampleRaceContextId,
             utcOffsetMinutes = sampleTime.utcOffsetMinutes
         )
 

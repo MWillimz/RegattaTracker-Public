@@ -2648,6 +2648,16 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             return false
         }
 
+        val raceContextId = db.getOrCreateRaceContext(
+            accessContextId = accessContextId,
+            resolvedEventName = resolvedEventName.value,
+            courseJson = rawRaceCourseJson,
+            courseMapViewportJson = null
+        ) ?: run {
+            statusText.value = getString(R.string.race_entry_store_failed)
+            return false
+        }
+
         val insertedId = db.insertSample(
             sequenceId = entry.sequenceId,
             timestamp = entry.timestamp,
@@ -2668,7 +2678,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             gyroX = entry.gyroX,
             gyroY = entry.gyroY,
             gyroZ = entry.gyroZ,
-            accessContextId = accessContextId
+            accessContextId = accessContextId,
+            raceContextId = raceContextId
         )
 
         if (insertedId == -1L) {
@@ -3318,9 +3329,20 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             val detail = runCatching {
                 val session = db.getTrackingSession(sessionId) ?: return@runCatching null
                 val samples = db.getTrackingSamplesForSession(sessionId)
-                val eventIdentifier = session.accessContextId
+                val resolvedEventNames = samples
+                    .mapNotNull { sample ->
+                        sample.resolvedEventName?.takeIf { it.isNotBlank() }
+                    }
+                    .distinct()
+                val accessIdentifier = session.accessContextId
                     ?.let(db::getAccessContext)
                     ?.accessIdentifier
+                val eventIdentifier = when (resolvedEventNames.size) {
+                    1 -> resolvedEventNames.single()
+                    else -> session.resolvedEventName
+                        ?.takeIf { it.isNotBlank() && resolvedEventNames.isEmpty() }
+                        ?: accessIdentifier
+                }
                 val summary = TrackingSessionSummary(
                     id = session.id,
                     startedAt = session.startedAt,

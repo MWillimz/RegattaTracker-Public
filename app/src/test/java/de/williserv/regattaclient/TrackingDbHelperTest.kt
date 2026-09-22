@@ -169,6 +169,9 @@ class TrackingDbHelperTest {
         assertTrue(columnExists(db, "tracking_sessions", "resolved_event_name"))
         assertTrue(columnExists(db, "tracking_sessions", "course_json"))
         assertTrue(columnExists(db, "tracking_sessions", "course_map_viewport_json"))
+        assertTrue(tableExists(db, "race_contexts"))
+        assertTrue(columnExists(db, "tracking_samples", "race_context_id"))
+        assertTrue(indexExists(db, "idx_tracking_samples_race_context_id"))
 
         val session = requireNotNull(helper.getTrackingSession(81L))
         assertEquals("race", session.mode)
