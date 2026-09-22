@@ -422,6 +422,30 @@ class RegattaTrackingServiceLifecycleTest {
     }
 
     @Test
+    fun `rescheduling the same sample loop keeps only one pending callback`() {
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+        val helper = getField<TrackingDbHelper>(service, "db")
+        val looper = shadowOf(Looper.getMainLooper())
+
+        setField(service, "serviceRunning", true)
+        setField(service, "manualRecording", true)
+
+        invokeScheduleNextSample(service, 2_000L)
+        invokeScheduleNextSample(service, 2_000L)
+
+        looper.idleFor(1_999L, TimeUnit.MILLISECONDS)
+        assertEquals(0L, helper.countSamples())
+
+        looper.idleFor(1L, TimeUnit.MILLISECONDS)
+        assertEquals(1L, helper.countSamples())
+
+        setField(service, "serviceRunning", false)
+        controller.destroy()
+        helper.close()
+    }
+
+    @Test
     fun `repeated sticky restart does not duplicate manual sample loop`() {
         seedBoatSetup()
         seedAppState(inRace = false, manualTracking = true)
@@ -537,6 +561,18 @@ class RegattaTrackingServiceLifecycleTest {
             isAccessible = true
             invoke(target)
         }
+    }
+
+    private fun invokeScheduleNextSample(
+        service: RegattaTrackingService,
+        intervalMs: Long
+    ) {
+        service.javaClass
+            .getDeclaredMethod("scheduleNextSample", Long::class.javaPrimitiveType)
+            .apply {
+                isAccessible = true
+                invoke(service, intervalMs)
+            }
     }
 
     private fun invokeRefreshLocationSampling(service: RegattaTrackingService) {
