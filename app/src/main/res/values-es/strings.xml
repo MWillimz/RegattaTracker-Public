@@ -358,4 +358,12 @@
     <string name="session_duration_minutes">%1$d min</string>
     <string name="session_duration_hours_minutes">%1$d h %2$d min</string>
 
+    <string name="session_replay_button">Replay</string>
+    <string name="session_replay_title">Replay de la sesión</string>
+    <string name="session_replay_empty">No hay muestras disponibles para el replay.</string>
+    <string name="session_replay_no_position">No hay una posición GPS utilizable en esta sesión.</string>
+    <string name="session_replay_time_label">Hora</string>
+    <string name="session_replay_sog_label">SOG</string>
+    <string name="session_replay_cog_label">COG</string>
+    <string name="session_cog_degrees">%1$d°</string>
 </resources>
