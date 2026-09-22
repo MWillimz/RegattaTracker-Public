@@ -1715,16 +1715,19 @@ internal class RegattaLinkBleClient(
         val next = synchronized(telemetryLock) {
             transform(lastTelemetryState).also {
                 lastTelemetryState = it
+                RegattaLinkTelemetrySnapshotStore.update(it)
             }
         }
-        emitTelemetry(next)
+        handler.post {
+            onTelemetryStateChanged(next)
+        }
     }
 
     private fun emitTelemetry(state: RegattaLinkTelemetryState) {
         synchronized(telemetryLock) {
             lastTelemetryState = state
+            RegattaLinkTelemetrySnapshotStore.update(state)
         }
-        RegattaLinkTelemetrySnapshotStore.update(state)
         handler.post {
             onTelemetryStateChanged(state)
         }
