@@ -79,6 +79,9 @@ class TrackingDbHelperTest {
 
         assertTrue(tableExists(db, "tracking_sessions"))
         assertTrue(columnExists(db, "tracking_samples", "session_id"))
+        assertTrue(columnExists(db, "tracking_sessions", "resolved_event_name"))
+        assertTrue(columnExists(db, "tracking_sessions", "course_json"))
+        assertTrue(columnExists(db, "tracking_sessions", "course_map_viewport_json"))
         assertTrue(indexExists(db, "idx_tracking_samples_session_id"))
     }
 
@@ -118,6 +121,61 @@ class TrackingDbHelperTest {
         assertEquals(0L, helper.countSamples())
         assertEquals(0L, helper.countTrackingSessions())
         assertNull(helper.getTrackingSession(sessionId))
+    }
+
+    @Test
+    fun trackingSession_persistsAndUpdatesRaceContext() {
+        val helper = TrackingDbHelper(context)
+        val accessContextId = createAccessContext(helper, "Series A", "secret-a")
+        val sessionId = requireNotNull(
+            helper.createTrackingSession(
+                startedAt = 1_700_000_000_000L,
+                mode = "race",
+                accessContextId = accessContextId,
+                displayName = "Session",
+                resolvedEventName = "Series A Run 1",
+                courseJson = """{"marks":[1]}""",
+                courseMapViewportJson = """{"generation_id":"gen-1"}"""
+            )
+        )
+
+        val created = requireNotNull(helper.getTrackingSession(sessionId))
+        assertEquals("Series A Run 1", created.resolvedEventName)
+        assertEquals("""{"marks":[1]}""", created.courseJson)
+        assertEquals("""{"generation_id":"gen-1"}""", created.courseMapViewportJson)
+
+        assertTrue(
+            helper.updateTrackingSessionRaceContext(
+                sessionId = sessionId,
+                resolvedEventName = "Series A Run 1",
+                courseJson = """{"marks":[1,2]}""",
+                courseMapViewportJson = """{"generation_id":"gen-2"}"""
+            )
+        )
+
+        val updated = requireNotNull(helper.getTrackingSession(sessionId))
+        assertEquals("Series A Run 1", updated.resolvedEventName)
+        assertEquals("""{"marks":[1,2]}""", updated.courseJson)
+        assertEquals("""{"generation_id":"gen-2"}""", updated.courseMapViewportJson)
+    }
+
+    @Test
+    fun version8Upgrade_preservesSessionAndAddsRaceContextColumns() {
+        createLegacyVersion8Database()
+
+        val helper = TrackingDbHelper(context)
+        val db = helper.writableDatabase
+
+        assertTrue(columnExists(db, "tracking_sessions", "resolved_event_name"))
+        assertTrue(columnExists(db, "tracking_sessions", "course_json"))
+        assertTrue(columnExists(db, "tracking_sessions", "course_map_viewport_json"))
+
+        val session = requireNotNull(helper.getTrackingSession(81L))
+        assertEquals("race", session.mode)
+        assertEquals("Legacy Session", session.displayName)
+        assertNull(session.resolvedEventName)
+        assertNull(session.courseJson)
+        assertNull(session.courseMapViewportJson)
     }
 
     @Test
@@ -407,6 +465,82 @@ class TrackingDbHelperTest {
             }
 
             db.version = 3
+        }
+    }
+
+    private fun createLegacyVersion8Database() {
+        val dbFile = context.getDatabasePath(DB_NAME)
+        dbFile.parentFile?.mkdirs()
+
+        SQLiteDatabase.openOrCreateDatabase(dbFile, null).use { db ->
+            db.execSQL(
+                """
+                CREATE TABLE access_contexts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    server_url TEXT NOT NULL,
+                    access_identifier TEXT NOT NULL,
+                    access_secret TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    last_used_at INTEGER NOT NULL,
+                    UNIQUE(server_url, access_identifier, access_secret)
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE TABLE tracking_sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    started_at INTEGER NOT NULL,
+                    ended_at INTEGER,
+                    mode TEXT NOT NULL,
+                    access_context_id INTEGER,
+                    display_name TEXT NOT NULL
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE TABLE tracking_samples (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    sequence_id INTEGER NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    boat_name TEXT NOT NULL,
+                    captain_name TEXT NOT NULL,
+                    hull_color TEXT NOT NULL,
+                    sail_number TEXT NOT NULL,
+                    yardstick REAL NOT NULL,
+                    boat_type TEXT NOT NULL,
+                    lat REAL NOT NULL,
+                    lon REAL NOT NULL,
+                    accuracy REAL NOT NULL,
+                    cog REAL NOT NULL,
+                    sog REAL NOT NULL,
+                    accel_x REAL NOT NULL,
+                    accel_y REAL NOT NULL,
+                    accel_z REAL NOT NULL,
+                    gyro_x REAL NOT NULL,
+                    gyro_y REAL NOT NULL,
+                    gyro_z REAL NOT NULL,
+                    uploaded INTEGER NOT NULL DEFAULT 0,
+                    access_context_id INTEGER,
+                    battery_percent INTEGER,
+                    battery_charging INTEGER,
+                    tracking_profile TEXT,
+                    utc_offset_minutes INTEGER,
+                    session_id INTEGER
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                INSERT INTO tracking_sessions (
+                    id, started_at, ended_at, mode, access_context_id, display_name
+                ) VALUES (
+                    81, 1700000000000, NULL, 'race', NULL, 'Legacy Session'
+                )
+                """.trimIndent()
+            )
+            db.version = 8
         }
     }
 
