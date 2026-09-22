@@ -259,6 +259,7 @@ internal class RegattaLinkBleClient(
         }
         if (localGattBusy) return false
 
+        connectionSetupComplete = false
         emitForDevice(
             activeGatt.device,
             RegattaLinkConnectionStatus.DISCOVERING
@@ -1001,6 +1002,8 @@ internal class RegattaLinkBleClient(
     private fun setupTelemetry(activeGatt: BluetoothGatt) {
         if (gatt !== activeGatt || !connected) return
         if (
+            !connectionSetupComplete ||
+            deviceInfoReadInProgress ||
             serviceRediscoveryRequested.get() ||
             serviceDiscoveryInProgress ||
             serviceRediscoveryPending.get()
