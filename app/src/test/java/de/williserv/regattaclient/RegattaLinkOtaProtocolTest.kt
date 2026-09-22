@@ -101,6 +101,61 @@ class RegattaLinkOtaProtocolTest {
     }
 
     @Test
+    fun postBootValidation_doesNotRequirePreRebootRequestFields() {
+        val status = RegattaLinkOtaStatus(
+            revision = 1u,
+            session = 0u,
+            acceptedOffset = 0u,
+            totalSize = 0u,
+            state = RegattaLinkOtaDeviceState.IDLE,
+            error = 0,
+            maxDataPayload = 236,
+            requestId = 0u,
+            runningBuild = 22874099uL,
+            targetBuild = 0uL,
+            bootResult = RegattaLinkOtaBootResult.VALIDATED,
+            assembling = false,
+            assembledBytes = 0
+        )
+
+        assertTrue(
+            isRegattaLinkPostBootValidated(
+                status,
+                targetBuild = 22874099uL
+            )
+        )
+    }
+
+    @Test
+    fun postBootValidation_rejectsWrongBuildOrNonValidatedBoot() {
+        val validated = RegattaLinkOtaStatus(
+            revision = 1u,
+            session = 0u,
+            acceptedOffset = 0u,
+            totalSize = 0u,
+            state = RegattaLinkOtaDeviceState.IDLE,
+            error = 0,
+            maxDataPayload = 236,
+            requestId = 0u,
+            runningBuild = 22874099uL,
+            targetBuild = 0uL,
+            bootResult = RegattaLinkOtaBootResult.VALIDATED,
+            assembling = false,
+            assembledBytes = 0
+        )
+
+        assertTrue(!isRegattaLinkPostBootValidated(validated, 22874100uL))
+        assertTrue(
+            !isRegattaLinkPostBootValidated(
+                validated.copy(
+                    bootResult = RegattaLinkOtaBootResult.PENDING_VERIFY
+                ),
+                22874099uL
+            )
+        )
+    }
+
+    @Test
     fun currentOtaClient_requiresPipelineSnapshotAndTransport() {
         val artifact = artifact(ByteArray(256), build = 200uL)
 
