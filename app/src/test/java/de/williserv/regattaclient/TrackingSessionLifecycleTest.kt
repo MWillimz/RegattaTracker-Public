@@ -87,6 +87,35 @@ class TrackingSessionLifecycleTest {
     }
 
     @Test
+    fun destroyWithoutStop_thenExplicitStart_createsNewSession() {
+        val firstController = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val firstService = firstController.get()
+        val firstHelper = getField<TrackingDbHelper>(firstService, "db")
+
+        assertEquals(Service.START_STICKY, firstService.onStartCommand(manualStartIntent(), 0, 1))
+        val firstSessionId = requireNotNull(getField<Long?>(firstService, "activeSessionId"))
+
+        firstController.destroy()
+        firstHelper.close()
+
+        val secondController = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val secondService = secondController.get()
+        val secondHelper = getField<TrackingDbHelper>(secondService, "db")
+
+        assertEquals(Service.START_STICKY, secondService.onStartCommand(manualStartIntent(), 0, 2))
+        val secondSessionId = requireNotNull(getField<Long?>(secondService, "activeSessionId"))
+
+        assertNotEquals(firstSessionId, secondSessionId)
+        assertTrue(requireNotNull(secondHelper.getTrackingSession(firstSessionId)).endedAt != null)
+        assertNull(requireNotNull(secondHelper.getTrackingSession(secondSessionId)).endedAt)
+        assertEquals(2L, secondHelper.countTrackingSessions())
+
+        setField(secondService, "serviceRunning", false)
+        secondController.destroy()
+        secondHelper.close()
+    }
+
+    @Test
     fun destroyWithoutStop_keepsOpenSessionForStickyRestart() {
         val firstController = Robolectric.buildService(RegattaTrackingService::class.java).create()
         val firstService = firstController.get()
@@ -145,13 +174,96 @@ class TrackingSessionLifecycleTest {
     }
 
     @Test
+    fun failedStickyRestore_finishesPersistedOpenSession() {
+        val helper = TrackingDbHelper(context)
+        val accessContextId = requireNotNull(
+            helper.getOrCreateAccessContext(
+                serverUrl = "https://raceoffice.example.org",
+                accessIdentifier = "Event 194",
+                accessSecret = "secret"
+            )
+        )
+        val sessionId = requireNotNull(
+            helper.createTrackingSession(
+                startedAt = 1_700_000_000_000L,
+                mode = "race",
+                accessContextId = accessContextId,
+                displayName = "Session"
+            )
+        )
+        helper.close()
+
+        context.getSharedPreferences(APP_STATE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("in_race", true)
+            .putBoolean("manual_tracking", false)
+            .putLong(ACTIVE_SESSION_PREF, sessionId)
+            .commit()
+
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+        val serviceHelper = getField<TrackingDbHelper>(service, "db")
+
+        assertEquals(Service.START_NOT_STICKY, service.onStartCommand(null, 0, 1))
+
+        assertTrue(requireNotNull(serviceHelper.getTrackingSession(sessionId)).endedAt != null)
+        assertFalse(
+            context.getSharedPreferences(APP_STATE_PREFS, Context.MODE_PRIVATE)
+                .contains(ACTIVE_SESSION_PREF)
+        )
+        assertFalse(
+            context.getSharedPreferences(APP_STATE_PREFS, Context.MODE_PRIVATE)
+                .getBoolean("in_race", true)
+        )
+
+        controller.destroy()
+        serviceHelper.close()
+    }
+
+    @Test
     fun raceStart_createsSessionWithAccessContext() {
         val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
         val service = controller.get()
         val helper = getField<TrackingDbHelper>(service, "db")
         setField(service, "eventPollRunning", true)
 
-        assertEquals(Service.START_STICKY, service.onStartCommand(raceStartIntent(), 0, 1))
+        val snapshot = RaceEventSnapshot(
+            resolvedEventName = "Event 194 Run 1",
+            status = "scheduled",
+            startRaw = "2026-09-22T10:00:00Z",
+            stopRaw = "2026-09-22T12:00:00Z",
+            raceInfo = "",
+            courseJson = """{"marks":[]}""",
+            courseShortened = false,
+            courseMapViewport = CourseMapViewport(
+                projection = "web_mercator",
+                zoom = 15,
+                leftPx = 100.0,
+                topPx = 200.0,
+                widthPx = 1200,
+                heightPx = 800,
+                generationId = "gen-194"
+            )
+        )
+        RaceEventSnapshotStore.save(
+            context = context,
+            server = "https://raceoffice.example.org",
+            event = "Event 194",
+            secret = "secret",
+            snapshot = snapshot
+        )
+
+        assertEquals(
+            Service.START_STICKY,
+            service.onStartCommand(
+                raceStartIntent().putExtra(
+                    RegattaTrackingService.EXTRA_RESOLVED_EVENT_NAME,
+                    snapshot.resolvedEventName
+                ),
+                0,
+                1
+            )
+        )
 
         val sessionId = requireNotNull(getField<Long?>(service, "activeSessionId"))
         val accessContextId = requireNotNull(getField<Long?>(service, "accessContextId"))
@@ -159,6 +271,9 @@ class TrackingSessionLifecycleTest {
 
         assertEquals("race", session.mode)
         assertEquals(accessContextId, session.accessContextId)
+        assertEquals(snapshot.resolvedEventName, session.resolvedEventName)
+        assertEquals(snapshot.courseJson, session.courseJson)
+        assertTrue(session.courseMapViewportJson?.contains("gen-194") == true)
 
         setField(service, "serviceRunning", false)
         controller.destroy()
