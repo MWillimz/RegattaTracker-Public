@@ -972,6 +972,17 @@ internal class RegattaLinkBleClient(
 
     private fun setupTelemetry(activeGatt: BluetoothGatt) {
         if (gatt !== activeGatt || !connected) return
+        if (
+            serviceRediscoveryRequested.get() ||
+            serviceDiscoveryInProgress ||
+            serviceRediscoveryPending.get()
+        ) {
+            Log.i(
+                LOG_TAG,
+                "Skipping telemetry setup until fresh GATT discovery completes"
+            )
+            return
+        }
 
         val service = activeGatt.getService(TELEMETRY_SERVICE_UUID)
         val fast = service?.getCharacteristic(TELEMETRY_FAST_UUID)
