@@ -92,7 +92,7 @@ internal fun calculateSessionStatistics(
     )
 }
 
-private fun areSessionSamplesContiguous(
+internal fun areSessionSamplesContiguous(
     first: SessionTrackingSample,
     second: SessionTrackingSample
 ): Boolean {
@@ -102,7 +102,7 @@ private fun areSessionSamplesContiguous(
     return deltaMs in 1..SESSION_CONTINUITY_MAX_GAP_MS
 }
 
-private fun SessionTrackingSample.hasUsableGpsPosition(): Boolean {
+internal fun SessionTrackingSample.hasUsableGpsPosition(): Boolean {
     return lat.isFinite() &&
         lon.isFinite() &&
         lat in -90.0..90.0 &&
@@ -112,7 +112,7 @@ private fun SessionTrackingSample.hasUsableGpsPosition(): Boolean {
         accuracy <= 25f
 }
 
-private fun SessionTrackingSample.sampleEpochMillis(): Long? {
+internal fun SessionTrackingSample.sampleEpochMillis(): Long? {
     val offsetMinutes = utcOffsetMinutes ?: return null
     return runCatching {
         val localDateTime = LocalDateTime.parse(timestamp, DateTimeFormatter.ISO_LOCAL_DATE_TIME)
