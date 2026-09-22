@@ -22,8 +22,11 @@ import androidx.compose.ui.unit.sp
 @Composable
 fun RegattaLinkScreen(
     state: RegattaLinkClientState,
+    firmwareState: RegattaLinkFirmwareUiState,
+    firmwareSourceAvailable: Boolean,
     modifier: Modifier = Modifier,
     onSearch: () -> Unit,
+    onCheckFirmware: () -> Unit,
     onDisconnect: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -134,6 +137,98 @@ fun RegattaLinkScreen(
                         },
                         modifier = Modifier.padding(top = 4.dp)
                     )
+                }
+            }
+        }
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 18.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Text(
+                    text = stringResource(R.string.regattalink_firmware_title),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                if (!firmwareSourceAvailable) {
+                    Text(
+                        text = stringResource(R.string.regattalink_firmware_server_required),
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                } else {
+                    when (firmwareState.status) {
+                        RegattaLinkFirmwareStatus.IDLE -> {
+                            Text(
+                                text = stringResource(R.string.regattalink_firmware_not_checked),
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                        }
+
+                        RegattaLinkFirmwareStatus.LOADING -> {
+                            Text(
+                                text = stringResource(R.string.regattalink_firmware_checking),
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                        }
+
+                        RegattaLinkFirmwareStatus.READY -> {
+                            Text(
+                                text = stringResource(
+                                    R.string.regattalink_available_build_value,
+                                    firmwareState.availableBuild
+                                ),
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                            Text(
+                                text = when (firmwareState.direction) {
+                                    RegattaLinkFirmwareDirection.UPGRADE ->
+                                        stringResource(R.string.regattalink_direction_upgrade)
+                                    RegattaLinkFirmwareDirection.DOWNGRADE ->
+                                        stringResource(R.string.regattalink_direction_downgrade)
+                                    RegattaLinkFirmwareDirection.REINSTALL ->
+                                        stringResource(R.string.regattalink_direction_reinstall)
+                                    null -> stringResource(R.string.regattalink_firmware_not_checked)
+                                },
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                            Text(
+                                text = if (firmwareState.signed) {
+                                    stringResource(R.string.regattalink_firmware_signed)
+                                } else {
+                                    stringResource(R.string.regattalink_firmware_unsigned)
+                                },
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+
+                        RegattaLinkFirmwareStatus.ERROR -> {
+                            Text(
+                                text = firmwareState.error.ifBlank {
+                                    stringResource(R.string.regattalink_firmware_check_failed)
+                                },
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                        }
+                    }
+                }
+
+                Button(
+                    onClick = onCheckFirmware,
+                    enabled = firmwareSourceAvailable &&
+                        state.status == RegattaLinkConnectionStatus.CONNECTED &&
+                        firmwareState.status != RegattaLinkFirmwareStatus.LOADING,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp)
+                ) {
+                    Text(stringResource(R.string.regattalink_check_firmware))
                 }
             }
         }
