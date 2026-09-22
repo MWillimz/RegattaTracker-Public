@@ -400,4 +400,25 @@
     <string name="regattalink_connect_before_firmware">Connectez un RegattaLink avant de vérifier le firmware.</string>
     <string name="regattalink_firmware_check_failed">La vérification du firmware a échoué.</string>
 
+    <string name="regattalink_ota_title">Mise à jour du firmware</string>
+    <string name="regattalink_install_firmware">Installer le firmware</string>
+    <string name="regattalink_cancel_update">Annuler la mise à jour</string>
+    <string name="regattalink_firmware_check_first">Vérifiez et validez le firmware avant de l’installer.</string>
+    <string name="regattalink_ota_builds_value">Build : %1$s → %2$s</string>
+    <string name="regattalink_ota_progress_value">Validé : %1$d / %2$d octets (%3$d%%)</string>
+    <string name="regattalink_ota_throughput_value">Débit validé : %1$.1f KiB/s</string>
+    <string name="regattalink_ota_transport_value">Transport BLE : %1$s</string>
+    <string name="regattalink_ota_idle">Prêt à installer</string>
+    <string name="regattalink_ota_preparing">Préparation de la mise à jour…</string>
+    <string name="regattalink_ota_starting">Démarrage de la transaction OTA…</string>
+    <string name="regattalink_ota_transferring">Transfert du firmware…</string>
+    <string name="regattalink_ota_verifying">Vérification du firmware sur RegattaLink…</string>
+    <string name="regattalink_ota_rebooting">Redémarrage de RegattaLink…</string>
+    <string name="regattalink_ota_reconnecting">Reconnexion à RegattaLink…</string>
+    <string name="regattalink_ota_validating">Confirmation de la validation au premier démarrage…</string>
+    <string name="regattalink_ota_success">Firmware installé et validé</string>
+    <string name="regattalink_ota_cancelling">Annulation de la mise à jour…</string>
+    <string name="regattalink_ota_cancelled">Mise à jour du firmware annulée</string>
+    <string name="regattalink_ota_error">Échec de la mise à jour du firmware</string>
+
 </resources>
