@@ -43,14 +43,6 @@ data class AccessContext(
     val lastUsedAt: Long
 )
 
-data class RaceContext(
-    val id: Long,
-    val accessContextId: Long,
-    val resolvedEventName: String,
-    val courseJson: String?,
-    val courseMapViewportJson: String?
-)
-
 data class TrackingSession(
     val id: Long,
     val startedAt: Long,
@@ -313,32 +305,6 @@ class TrackingDbHelper(context: Context) :
         }
 
         return raceContextId
-    }
-
-    fun getRaceContext(raceContextId: Long): RaceContext? {
-        readableDatabase.rawQuery(
-            """
-            SELECT
-                id,
-                access_context_id,
-                resolved_event_name,
-                course_json,
-                course_map_viewport_json
-            FROM race_contexts
-            WHERE id = ?
-            LIMIT 1
-            """.trimIndent(),
-            arrayOf(raceContextId.toString())
-        ).use { cursor ->
-            if (!cursor.moveToFirst()) return null
-            return RaceContext(
-                id = cursor.getLong(0),
-                accessContextId = cursor.getLong(1),
-                resolvedEventName = cursor.getString(2),
-                courseJson = if (cursor.isNull(3)) null else cursor.getString(3),
-                courseMapViewportJson = if (cursor.isNull(4)) null else cursor.getString(4)
-            )
-        }
     }
 
     fun createTrackingSession(
