@@ -90,6 +90,7 @@ class RegattaLinkFirmwareClient {
     private fun openGet(url: String, accept: String): HttpURLConnection {
         val connection = URL(url).openConnection() as HttpURLConnection
         connection.requestMethod = "GET"
+        connection.instanceFollowRedirects = false
         connection.connectTimeout = 5_000
         connection.readTimeout = 15_000
         connection.setRequestProperty("Accept", accept)
