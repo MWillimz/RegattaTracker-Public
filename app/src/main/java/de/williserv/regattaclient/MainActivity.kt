@@ -99,6 +99,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private val regattaLinkFirmwareState = mutableStateOf(RegattaLinkFirmwareUiState())
     private var regattaLinkFirmwareArtifact: RegattaLinkFirmwareArtifact? = null
     private val regattaLinkOtaState = mutableStateOf(RegattaLinkOtaUiState())
+    private val regattaLinkTelemetryState = mutableStateOf(RegattaLinkTelemetryState())
 
     private val currentScreen = mutableStateOf(Screen.HOME)
 
@@ -421,6 +422,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             )
                     }
                 }
+            },
+            onTelemetryStateChanged = { state ->
+                if (asyncLifetime.isActive()) {
+                    regattaLinkTelemetryState.value = state
+                }
             }
         )
         loadBoatSetup()
@@ -666,6 +672,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             state = regattaLinkState.value,
                             firmwareState = regattaLinkFirmwareState.value,
                             otaState = regattaLinkOtaState.value,
+                            telemetryState = regattaLinkTelemetryState.value,
                             firmwareSourceAvailable = raceServer.value.isNotBlank(),
                             installAvailable =
                                 regattaLinkFirmwareArtifact != null &&
@@ -683,6 +690,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                 regattaLinkFirmwareArtifact = null
                                 regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState()
                                 regattaLinkOtaState.value = RegattaLinkOtaUiState()
+                                regattaLinkTelemetryState.value = RegattaLinkTelemetryState()
                             },
                             onBack = ::navigateBack
                         )
