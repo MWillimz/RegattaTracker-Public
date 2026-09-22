@@ -52,10 +52,9 @@ class RegattaLinkBleClient(
         val DEVICE_INFO_UUID: UUID =
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710003")
 
-        private const val PREFS_NAME = "regattalink"
-        private const val LAST_DEVICE_ADDRESS = "last_device_address"
         private const val SCAN_TIMEOUT_MS = 12_000L
         private const val BOND_TIMEOUT_MS = 30_000L
+        private const val GATT_TIMEOUT_MS = 20_000L
         private const val BOND_POLL_MS = 250L
 
         fun requiredPermissions(): Array<String> =
@@ -73,7 +72,6 @@ class RegattaLinkBleClient(
     private val bluetoothManager =
         appContext.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
     private val handler = Handler(Looper.getMainLooper())
-    private val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     private var scanner: BluetoothLeScanner? = null
     private var gatt: BluetoothGatt? = null
@@ -89,6 +87,14 @@ class RegattaLinkBleClient(
                 error = "No RegattaLink found"
             )
         )
+    }
+
+    private val gattTimeout = Runnable {
+        val device = currentDevice
+        closeGatt()
+        if (device != null) {
+            emitError(device, "RegattaLink connection timed out")
+        }
     }
 
     private val bondPoll = object : Runnable {
@@ -232,15 +238,6 @@ class RegattaLinkBleClient(
         }
 
         scanner = adapter.bluetoothLeScanner
-        val savedAddress = prefs.getString(LAST_DEVICE_ADDRESS, null)
-        val savedDevice = savedAddress?.let { address ->
-            adapter.bondedDevices.firstOrNull { it.address == address }
-        }
-        if (savedDevice != null) {
-            prepareDevice(savedDevice)
-            return
-        }
-
         val activeScanner = scanner
         if (activeScanner == null) {
             emit(
@@ -269,6 +266,7 @@ class RegattaLinkBleClient(
     fun disconnect() {
         stopScan()
         handler.removeCallbacks(bondPoll)
+        handler.removeCallbacks(gattTimeout)
         if (gatt == null) {
             emit(RegattaLinkClientState())
             return
@@ -280,6 +278,7 @@ class RegattaLinkBleClient(
     fun close() {
         stopScan()
         handler.removeCallbacks(bondPoll)
+        handler.removeCallbacks(gattTimeout)
         userDisconnect = true
         closeGatt()
         currentDevice = null
@@ -315,6 +314,8 @@ class RegattaLinkBleClient(
         )
         if (gatt == null) {
             emitError(device, "Could not open RegattaLink connection")
+        } else {
+            handler.postDelayed(gattTimeout, GATT_TIMEOUT_MS)
         }
     }
 
@@ -347,7 +348,7 @@ class RegattaLinkBleClient(
         }
 
         val device = callbackGatt.device
-        prefs.edit().putString(LAST_DEVICE_ADDRESS, device.address).apply()
+        handler.removeCallbacks(gattTimeout)
         emit(
             RegattaLinkClientState(
                 status = RegattaLinkConnectionStatus.CONNECTED,
@@ -373,6 +374,7 @@ class RegattaLinkBleClient(
     }
 
     private fun closeGattWithError(callbackGatt: BluetoothGatt, message: String) {
+        handler.removeCallbacks(gattTimeout)
         callbackGatt.disconnect()
         callbackGatt.close()
         if (gatt === callbackGatt) {
