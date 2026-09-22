@@ -17,7 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -51,16 +51,6 @@ fun RegattaLinkScreen(
         RegattaLinkConnectionStatus.DISCOVERING,
         RegattaLinkConnectionStatus.READING_DEVICE_INFO
     )
-    var telemetryNowElapsedMs by remember {
-        mutableLongStateOf(SystemClock.elapsedRealtime())
-    }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(1_000L)
-            telemetryNowElapsedMs = SystemClock.elapsedRealtime()
-        }
-    }
-
     val statusText = when (state.status) {
         RegattaLinkConnectionStatus.IDLE -> stringResource(R.string.regattalink_status_not_connected)
         RegattaLinkConnectionStatus.SCANNING -> stringResource(R.string.regattalink_status_scanning)
@@ -166,24 +156,22 @@ fun RegattaLinkScreen(
         }
 
         if (telemetryState.supported) {
-            val fastStale = telemetryState.fast != null &&
-                !isRegattaLinkTelemetryFresh(
-                    telemetryState.fastReceivedAtElapsedMs,
-                    REGATTALINK_FAST_STALE_MS,
-                    telemetryNowElapsedMs
-                )
-            val summaryStale = telemetryState.summary != null &&
-                !isRegattaLinkTelemetryFresh(
-                    telemetryState.summaryReceivedAtElapsedMs,
-                    REGATTALINK_SLOW_STALE_MS,
-                    telemetryNowElapsedMs
-                )
-            val calibrationStale = telemetryState.calibration != null &&
-                !isRegattaLinkTelemetryFresh(
-                    telemetryState.calibrationReceivedAtElapsedMs,
-                    REGATTALINK_SLOW_STALE_MS,
-                    telemetryNowElapsedMs
-                )
+            val fastIsStale = rememberTelemetryStale(
+                telemetryState.fastReceivedAtElapsedMs,
+                REGATTALINK_FAST_STALE_MS
+            )
+            val summaryIsStale = rememberTelemetryStale(
+                telemetryState.summaryReceivedAtElapsedMs,
+                REGATTALINK_SLOW_STALE_MS
+            )
+            val calibrationIsStale = rememberTelemetryStale(
+                telemetryState.calibrationReceivedAtElapsedMs,
+                REGATTALINK_SLOW_STALE_MS
+            )
+            val fastStale = telemetryState.fast != null && fastIsStale
+            val summaryStale = telemetryState.summary != null && summaryIsStale
+            val calibrationStale =
+                telemetryState.calibration != null && calibrationIsStale
 
             Card(
                 modifier = Modifier
@@ -647,6 +635,43 @@ fun RegattaLinkScreen(
     }
 }
 
+
+@Composable
+private fun rememberTelemetryStale(
+    receivedAtElapsedMs: Long?,
+    staleAfterMs: Long
+): Boolean {
+    var stale by remember { mutableStateOf(false) }
+
+    LaunchedEffect(receivedAtElapsedMs, staleAfterMs) {
+        if (receivedAtElapsedMs == null || receivedAtElapsedMs <= 0L) {
+            stale = false
+            return@LaunchedEffect
+        }
+
+        val now = SystemClock.elapsedRealtime()
+        stale = !isRegattaLinkTelemetryFresh(
+            receivedAtElapsedMs,
+            staleAfterMs,
+            now
+        )
+        if (stale) {
+            return@LaunchedEffect
+        }
+
+        val ageMs = (now - receivedAtElapsedMs).coerceAtLeast(0L)
+        val untilStaleMs = (staleAfterMs - ageMs + 1L).coerceAtLeast(1L)
+        delay(untilStaleMs)
+
+        stale = !isRegattaLinkTelemetryFresh(
+            receivedAtElapsedMs,
+            staleAfterMs,
+            SystemClock.elapsedRealtime()
+        )
+    }
+
+    return stale
+}
 
 @Composable
 private fun telemetryValue(label: String, value: String) {
