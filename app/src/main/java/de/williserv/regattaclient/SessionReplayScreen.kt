@@ -231,7 +231,8 @@ private fun ReplayTrackCanvas(
             courseShortened = false
         )
     }
-    val mapPaddingPx = with(LocalDensity.current) { 20.dp.toPx() }
+    val density = LocalDensity.current
+    val minPaddingPx = with(density) { 12.dp.toPx() }
     val trackColor = MaterialTheme.colorScheme.primary
     val futureColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.20f)
     val courseColor = MaterialTheme.colorScheme.secondary
@@ -272,7 +273,8 @@ private fun ReplayTrackCanvas(
                 points = geoPoints,
                 widthPx = size.width,
                 heightPx = size.height,
-                paddingPx = mapPaddingPx
+                paddingFraction = 0.09f,
+                minPaddingPx = minPaddingPx
             ) ?: return@Canvas
 
             fun point(sample: SessionTrackingSample): Offset? =
@@ -311,7 +313,7 @@ private fun ReplayTrackCanvas(
                             color = if (kind == CourseOverlayKind.START) startColor else finishColor,
                             start = from,
                             end = to,
-                            strokeWidth = 5f
+                            strokeWidth = (min(size.width, size.height) * 0.007f).coerceIn(3f, 8f)
                         )
                     }
                 }
@@ -323,9 +325,9 @@ private fun ReplayTrackCanvas(
                     coursePoint(mark)?.let { center ->
                         drawCircle(
                             color = courseColor.copy(alpha = if (mark.inactive) 0.35f else 0.9f),
-                            radius = 7f,
+                            radius = (min(size.width, size.height) * 0.018f).coerceIn(7f, 18f),
                             center = center,
-                            style = Stroke(width = 3f)
+                            style = Stroke(width = (min(size.width, size.height) * 0.004f).coerceIn(2f, 5f))
                         )
                     }
                 }
@@ -530,7 +532,8 @@ private data class ReplayMapProjection(
             points: List<OwnShipGeoPoint>,
             widthPx: Float,
             heightPx: Float,
-            paddingPx: Float
+            paddingFraction: Float,
+            minPaddingPx: Float
         ): ReplayMapProjection? {
             if (points.isEmpty() || widthPx <= 0f || heightPx <= 0f) return null
 
@@ -544,6 +547,7 @@ private data class ReplayMapProjection(
             val spanX = (xValues.maxOrNull()!! - xValues.minOrNull()!!).coerceAtLeast(20.0)
             val spanY = (yValues.maxOrNull()!! - yValues.minOrNull()!!).coerceAtLeast(20.0)
 
+            val paddingPx = max(minPaddingPx, min(widthPx, heightPx) * paddingFraction.coerceIn(0f, 0.25f))
             val availableWidth = (widthPx - 2f * paddingPx).coerceAtLeast(1f)
             val availableHeight = (heightPx - 2f * paddingPx).coerceAtLeast(1f)
             val scale = min(
