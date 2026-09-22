@@ -54,7 +54,7 @@ fun SessionReplayScreen(
 ) {
     val samples = detail?.samples.orEmpty()
     var selectedIndex by remember(detail?.session?.id, samples.size) {
-        mutableIntStateOf(0)
+        mutableIntStateOf(initialReplayIndex(samples.size))
     }
 
     Column(
@@ -231,7 +231,9 @@ private fun ReplayTrackCanvas(
             courseShortened = false
         )
     }
-    val mapPaddingPx = with(LocalDensity.current) { 20.dp.toPx() }
+    val density = LocalDensity.current
+    val mapPaddingPx = with(density) { 20.dp.toPx() }
+    val boatRadiusPx = with(density) { 16.dp.toPx() }
     val trackColor = MaterialTheme.colorScheme.primary
     val futureColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.20f)
     val courseColor = MaterialTheme.colorScheme.secondary
@@ -335,7 +337,7 @@ private fun ReplayTrackCanvas(
                     val bearing = cogDegreesForDisplay(selected.cog.toDouble())?.toFloat() ?: 0f
                     drawReplayBoat(
                         center = center,
-                        radius = 10f,
+                        radius = boatRadiusPx,
                         bearingDegrees = bearing,
                         color = markerColor
                     )
@@ -361,8 +363,10 @@ private fun ReplayTimeline(
             ?: 0.0
     }
     var heightPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
     val markerColor = MaterialTheme.colorScheme.primary
     val railBackground = MaterialTheme.colorScheme.surfaceVariant
+    val timelineBoatRadiusPx = with(density) { 12.dp.toPx() }
 
     fun selectAt(y: Float) {
         if (heightPx <= 0) return
@@ -416,13 +420,16 @@ private fun ReplayTimeline(
                 .coerceIn(0f, 1f)
             drawReplayBoat(
                 center = Offset(x, selectedFraction * size.height),
-                radius = 9f,
+                radius = timelineBoatRadiusPx,
                 bearingDegrees = 180f,
                 color = markerColor
             )
         }
     }
 }
+
+internal fun initialReplayIndex(sampleCount: Int): Int =
+    (sampleCount - 1).coerceAtLeast(0)
 
 internal fun replaySampleFractions(samples: List<SessionTrackingSample>): List<Float> {
     if (samples.isEmpty()) return emptyList()
@@ -569,6 +576,17 @@ private fun DrawScope.drawReplayBoat(
     bearingDegrees: Float,
     color: Color
 ) {
+    drawCircle(
+        color = Color.White.copy(alpha = 0.92f),
+        radius = radius * 1.45f,
+        center = center
+    )
+    drawCircle(
+        color = color.copy(alpha = 0.18f),
+        radius = radius * 1.25f,
+        center = center
+    )
+
     val path = Path().apply {
         moveTo(center.x, center.y - radius * 1.7f)
         lineTo(center.x + radius, center.y + radius)
@@ -583,8 +601,8 @@ private fun DrawScope.drawReplayBoat(
     ) {
         drawPath(
             path = path,
-            color = Color.White.copy(alpha = 0.95f),
-            style = Stroke(width = 4f)
+            color = Color.White,
+            style = Stroke(width = max(3f, radius * 0.22f))
         )
         drawPath(
             path = path,
