@@ -859,7 +859,12 @@ internal class RegattaLinkBleClient(
             characteristics.forEach { characteristic ->
                 if (gatt !== activeGatt || !connected) return
                 val raw = readCharacteristicBlocking(activeGatt, characteristic)
-                handleTelemetryRecord(activeGatt, characteristic.uuid, raw)
+                handleTelemetryRecord(
+                    activeGatt,
+                    characteristic.uuid,
+                    raw,
+                    initialOnly = true
+                )
             }
         } catch (error: Exception) {
             if (gatt === activeGatt) {
@@ -902,7 +907,8 @@ internal class RegattaLinkBleClient(
     private fun handleTelemetryRecord(
         callbackGatt: BluetoothGatt,
         characteristicUuid: UUID,
-        value: ByteArray
+        value: ByteArray,
+        initialOnly: Boolean = false
     ) {
         if (gatt !== callbackGatt) return
         val receivedAt = SystemClock.elapsedRealtime()
@@ -912,36 +918,48 @@ internal class RegattaLinkBleClient(
                 TELEMETRY_FAST_UUID -> {
                     val parsed = parseRegattaLinkFastMotion(value)
                     updateTelemetry {
-                        it.copy(
-                            supported = true,
-                            fast = parsed,
-                            fastReceivedAtElapsedMs = receivedAt,
-                            error = ""
-                        )
+                        if (initialOnly && it.fast != null) {
+                            it
+                        } else {
+                            it.copy(
+                                supported = true,
+                                fast = parsed,
+                                fastReceivedAtElapsedMs = receivedAt,
+                                error = ""
+                            )
+                        }
                     }
                 }
 
                 TELEMETRY_SUMMARY_UUID -> {
                     val parsed = parseRegattaLinkMotionSummary(value)
                     updateTelemetry {
-                        it.copy(
-                            supported = true,
-                            summary = parsed,
-                            summaryReceivedAtElapsedMs = receivedAt,
-                            error = ""
-                        )
+                        if (initialOnly && it.summary != null) {
+                            it
+                        } else {
+                            it.copy(
+                                supported = true,
+                                summary = parsed,
+                                summaryReceivedAtElapsedMs = receivedAt,
+                                error = ""
+                            )
+                        }
                     }
                 }
 
                 TELEMETRY_CALIBRATION_UUID -> {
                     val parsed = parseRegattaLinkCalibrationDiagnostics(value)
                     updateTelemetry {
-                        it.copy(
-                            supported = true,
-                            calibration = parsed,
-                            calibrationReceivedAtElapsedMs = receivedAt,
-                            error = ""
-                        )
+                        if (initialOnly && it.calibration != null) {
+                            it
+                        } else {
+                            it.copy(
+                                supported = true,
+                                calibration = parsed,
+                                calibrationReceivedAtElapsedMs = receivedAt,
+                                error = ""
+                            )
+                        }
                     }
                 }
             }
