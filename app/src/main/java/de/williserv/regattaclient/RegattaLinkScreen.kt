@@ -1,5 +1,6 @@
 package de.williserv.regattaclient
 
+import android.os.SystemClock
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,17 +15,25 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
+import java.util.Locale
 
 @Composable
 fun RegattaLinkScreen(
     state: RegattaLinkClientState,
     firmwareState: RegattaLinkFirmwareUiState,
     otaState: RegattaLinkOtaUiState,
+    telemetryState: RegattaLinkTelemetryState,
     firmwareSourceAvailable: Boolean,
     installAvailable: Boolean,
     modifier: Modifier = Modifier,
@@ -42,6 +51,16 @@ fun RegattaLinkScreen(
         RegattaLinkConnectionStatus.DISCOVERING,
         RegattaLinkConnectionStatus.READING_DEVICE_INFO
     )
+    var telemetryNowElapsedMs by remember {
+        mutableLongStateOf(SystemClock.elapsedRealtime())
+    }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1_000L)
+            telemetryNowElapsedMs = SystemClock.elapsedRealtime()
+        }
+    }
+
     val statusText = when (state.status) {
         RegattaLinkConnectionStatus.IDLE -> stringResource(R.string.regattalink_status_not_connected)
         RegattaLinkConnectionStatus.SCANNING -> stringResource(R.string.regattalink_status_scanning)
@@ -141,6 +160,226 @@ fun RegattaLinkScreen(
                             stringResource(R.string.regattalink_ota_unavailable)
                         },
                         modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
+        }
+
+        if (telemetryState.supported) {
+            val fastStale = telemetryState.fast != null &&
+                !isRegattaLinkTelemetryFresh(
+                    telemetryState.fastReceivedAtElapsedMs,
+                    REGATTALINK_FAST_STALE_MS,
+                    telemetryNowElapsedMs
+                )
+            val summaryStale = telemetryState.summary != null &&
+                !isRegattaLinkTelemetryFresh(
+                    telemetryState.summaryReceivedAtElapsedMs,
+                    REGATTALINK_SLOW_STALE_MS,
+                    telemetryNowElapsedMs
+                )
+            val calibrationStale = telemetryState.calibration != null &&
+                !isRegattaLinkTelemetryFresh(
+                    telemetryState.calibrationReceivedAtElapsedMs,
+                    REGATTALINK_SLOW_STALE_MS,
+                    telemetryNowElapsedMs
+                )
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 18.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Text(
+                        text = stringResource(R.string.regattalink_motion_title),
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    if (telemetryState.pausedForOta) {
+                        Text(
+                            text = stringResource(R.string.regattalink_telemetry_paused_ota),
+                            modifier = Modifier.padding(top = 8.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else if (summaryStale || fastStale) {
+                        Text(
+                            text = stringResource(R.string.regattalink_telemetry_stale),
+                            modifier = Modifier.padding(top = 8.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    if (telemetryState.error.isNotBlank()) {
+                        Text(
+                            text = telemetryState.error,
+                            modifier = Modifier.padding(top = 8.dp),
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+
+                    telemetryState.summary?.let { summary ->
+                        Text(
+                            text = stringResource(
+                                R.string.regattalink_learning_confidence,
+                                summary.confidencePct
+                            ),
+                            modifier = Modifier.padding(top = 10.dp)
+                        )
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_heel),
+                            value = formatTelemetry(summary.heelFilteredDeg, "°")
+                        )
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_trim),
+                            value = formatTelemetry(summary.trimFilteredDeg, "°")
+                        )
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_roll_rms),
+                            value = formatTelemetry(summary.rollRmsDeg, "°")
+                        )
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_pitch_rms),
+                            value = formatTelemetry(summary.pitchRmsDeg, "°")
+                        )
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_vertical_rms),
+                            value = formatTelemetry(summary.verticalAccelRmsG, " g", 3)
+                        )
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_motion_intensity),
+                            value = summary.motionIntensity.toString()
+                        )
+                    } ?: Text(
+                        text = stringResource(R.string.regattalink_telemetry_waiting),
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+
+                    telemetryState.fast?.let { fast ->
+                        Text(
+                            text = stringResource(R.string.regattalink_live_motion),
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(top = 12.dp)
+                        )
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_roll),
+                            value = formatTelemetry(fast.rollDeg, "°")
+                        )
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_pitch),
+                            value = formatTelemetry(fast.pitchDeg, "°")
+                        )
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_roll_rate),
+                            value = formatTelemetry(fast.rollRateDps, "°/s")
+                        )
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_pitch_rate),
+                            value = formatTelemetry(fast.pitchRateDps, "°/s")
+                        )
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_yaw_rate),
+                            value = formatTelemetry(fast.yawRateDps, "°/s")
+                        )
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_vertical_accel),
+                            value = formatTelemetry(fast.verticalAccelG, " g", 3)
+                        )
+                    }
+                }
+            }
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 18.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Text(
+                        text = stringResource(R.string.regattalink_calibration_title),
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    if (calibrationStale && !telemetryState.pausedForOta) {
+                        Text(
+                            text = stringResource(R.string.regattalink_telemetry_stale),
+                            modifier = Modifier.padding(top = 8.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    telemetryState.calibration?.let { calibration ->
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_confidence_overall),
+                            value = "${calibration.overallConfidencePct} %"
+                        )
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_confidence_forward),
+                            value = "${calibration.forwardConfidencePct} %"
+                        )
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_confidence_roll),
+                            value = "${calibration.rollConfidencePct} %"
+                        )
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_learner_state),
+                            value = when (calibration.learnerState) {
+                                1 -> stringResource(R.string.regattalink_learner_turn)
+                                2 -> stringResource(R.string.regattalink_learner_post)
+                                else -> stringResource(R.string.regattalink_learner_idle)
+                            }
+                        )
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_gyro_bias),
+                            value = if (calibration.gyroBiasValid) {
+                                stringResource(R.string.regattalink_valid)
+                            } else {
+                                stringResource(R.string.regattalink_learning)
+                            }
+                        )
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_boat_frame),
+                            value = if (calibration.boatFrameValid) {
+                                stringResource(R.string.regattalink_valid)
+                            } else {
+                                stringResource(R.string.regattalink_learning)
+                            }
+                        )
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_positive_maneuvers),
+                            value = calibration.positiveManeuvers.toString()
+                        )
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_negative_maneuvers),
+                            value = calibration.negativeManeuvers.toString()
+                        )
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_roll_pairs),
+                            value = calibration.rollPairObservations.toString()
+                        )
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_contradictions),
+                            value = calibration.contradictoryManeuvers.toString()
+                        )
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_mounting_epoch),
+                            value = calibration.mountingEpoch.toString()
+                        )
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_calibration_revision),
+                            value = calibration.calibrationRevision.toString()
+                        )
+                    } ?: Text(
+                        text = stringResource(R.string.regattalink_telemetry_waiting),
+                        modifier = Modifier.padding(top = 8.dp)
                     )
                 }
             }
@@ -408,6 +647,25 @@ fun RegattaLinkScreen(
     }
 }
 
+
+@Composable
+private fun telemetryValue(label: String, value: String) {
+    Text(
+        text = "$label: $value",
+        modifier = Modifier.padding(top = 4.dp)
+    )
+}
+
+private fun formatTelemetry(
+    value: Double,
+    suffix: String,
+    decimals: Int = 2
+): String = String.format(
+    Locale.getDefault(),
+    "%.${decimals}f%s",
+    value,
+    suffix
+)
 
 @Composable
 private fun regattaLinkOtaPhaseText(

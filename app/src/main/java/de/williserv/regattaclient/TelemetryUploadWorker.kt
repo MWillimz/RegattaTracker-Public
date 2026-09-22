@@ -232,6 +232,7 @@ internal fun getTelemetryUploadPage(
             samples.battery_charging,
             samples.tracking_profile,
             samples.utc_offset_minutes,
+            samples.measurements_json,
             contexts.id,
             contexts.server_url,
             contexts.access_identifier,
@@ -250,12 +251,12 @@ internal fun getTelemetryUploadPage(
     ).use { cursor ->
         while (cursor.moveToNext()) {
             val accessContext = AccessContext(
-                id = cursor.getLong(24),
-                serverUrl = cursor.getString(25),
-                accessIdentifier = cursor.getString(26),
-                accessSecret = cursor.getString(27),
-                createdAt = cursor.getLong(28),
-                lastUsedAt = cursor.getLong(29)
+                id = cursor.getLong(25),
+                serverUrl = cursor.getString(26),
+                accessIdentifier = cursor.getString(27),
+                accessSecret = cursor.getString(28),
+                createdAt = cursor.getLong(29),
+                lastUsedAt = cursor.getLong(30)
             )
 
             result += PendingTrackingSample(
@@ -283,7 +284,8 @@ internal fun getTelemetryUploadPage(
                 batteryPercent = if (cursor.isNull(20)) null else cursor.getInt(20),
                 batteryCharging = if (cursor.isNull(21)) null else cursor.getInt(21) != 0,
                 trackingProfile = if (cursor.isNull(22)) null else cursor.getString(22),
-                utcOffsetMinutes = if (cursor.isNull(23)) null else cursor.getInt(23)
+                utcOffsetMinutes = if (cursor.isNull(23)) null else cursor.getInt(23),
+                measurementsJson = if (cursor.isNull(24)) null else cursor.getString(24)
             )
         }
     }
@@ -320,6 +322,9 @@ internal fun buildTelemetryUploadPayload(
     sample.batteryPercent?.let { put("battery_percent", it) }
     sample.batteryCharging?.let { put("battery_charging", it) }
     sample.trackingProfile?.let { put("tracking_profile", it) }
+    sample.measurementsJson?.let { persisted ->
+        put("measurements", JSONObject(persisted))
+    }
 }
 
 internal object TelemetryUploadStatusStore {

@@ -12,6 +12,12 @@ import java.security.MessageDigest
 class RegattaLinkOtaProtocolTest {
 
     @Test
+    fun throughputThresholds_matchSupportedDevicePolicy() {
+        assertEquals(10.0, REGATTALINK_OTA_SLOW_LINK_THROUGHPUT_KIB_S, 0.0)
+        assertEquals(4.0, REGATTALINK_OTA_MIN_THROUGHPUT_KIB_S, 0.0)
+    }
+
+    @Test
     fun metadataEncoding_matchesWireContract() {
         val image = ByteArray(256) { it.toByte() }
         val artifact = artifact(image, build = 123456uL)

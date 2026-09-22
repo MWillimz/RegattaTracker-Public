@@ -332,6 +332,27 @@ The extension is optional. Existing samples without `measurements` remain valid.
 
 Measurement keys are stable technical identifiers. A measurement value is a JSON scalar (`number`, `boolean`, or `string`) with optional display metadata `unit`, `label`, and `group`. Extended measurements must not replace or override canonical core telemetry fields.
 
+#### RegattaLink IMU namespace
+
+RegattaLink motion/calibration telemetry uses stable keys below `regattalink.*`.
+Each normal tracking sample takes the latest fresh BLE snapshot; the client does not
+create additional 10 Hz server samples. The exact snapshot is persisted locally with
+the sample before upload/retry.
+
+Groups:
+
+- `regattalink.fast.*`: confidence, sequence, device timestamp, roll/pitch,
+  roll/pitch/yaw rates and vertical acceleration;
+- `regattalink.summary.*`: confidence, sequence, device timestamp, filtered
+  heel/trim, roll/pitch RMS, vertical-acceleration RMS and motion intensity;
+- `regattalink.calibration.*`: overall/forward/roll confidence, learner state,
+  gyro-bias/boat-frame validity, sequence, maneuver counters, roll pairs,
+  contradictions, mounting epoch and calibration revision.
+
+Fast records older than 2 seconds and summary/calibration records older than
+3 seconds are not attached to new samples. Telemetry paused during RegattaLink OTA
+is likewise omitted until fresh records resume.
+
 #### Per-sample size contract
 
 The server's existing ingest safety limit remains authoritative:

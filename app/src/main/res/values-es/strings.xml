@@ -421,4 +421,41 @@
     <string name="regattalink_ota_cancelled">Actualización de firmware cancelada</string>
     <string name="regattalink_ota_error">Error en la actualización de firmware</string>
 
+
+    <string name="regattalink_motion_title">Movimiento del barco</string>
+    <string name="regattalink_telemetry_paused_ota">Telemetría pausada durante la actualización de firmware.</string>
+    <string name="regattalink_telemetry_stale">La telemetría está desactualizada; la conexión sigue activa.</string>
+    <string name="regattalink_telemetry_waiting">Esperando telemetría…</string>
+    <string name="regattalink_learning_confidence">Aprendiendo orientación · Confianza %1$d%%</string>
+    <string name="regattalink_heel">Escora</string>
+    <string name="regattalink_trim">Trim</string>
+    <string name="regattalink_roll_rms">RMS de balanceo</string>
+    <string name="regattalink_pitch_rms">RMS de cabeceo</string>
+    <string name="regattalink_vertical_rms">RMS vertical</string>
+    <string name="regattalink_motion_intensity">Intensidad de movimiento</string>
+    <string name="regattalink_live_motion">Movimiento en vivo</string>
+    <string name="regattalink_roll">Balanceo</string>
+    <string name="regattalink_pitch">Cabeceo</string>
+    <string name="regattalink_roll_rate">Velocidad de balanceo</string>
+    <string name="regattalink_pitch_rate">Velocidad de cabeceo</string>
+    <string name="regattalink_yaw_rate">Velocidad de guiñada</string>
+    <string name="regattalink_vertical_accel">Aceleración vertical</string>
+    <string name="regattalink_calibration_title">Orientación / calibración del sensor</string>
+    <string name="regattalink_confidence_overall">Confianza total</string>
+    <string name="regattalink_confidence_forward">Confianza longitudinal</string>
+    <string name="regattalink_confidence_roll">Confianza de balanceo</string>
+    <string name="regattalink_learner_state">Estado de aprendizaje</string>
+    <string name="regattalink_learner_idle">Esperando / observando</string>
+    <string name="regattalink_learner_turn">Evaluando maniobra</string>
+    <string name="regattalink_learner_post">Recogiendo actitud tras la maniobra</string>
+    <string name="regattalink_gyro_bias">Sesgo del giróscopo</string>
+    <string name="regattalink_boat_frame">Marco del barco</string>
+    <string name="regattalink_valid">Válido</string>
+    <string name="regattalink_learning">Aprendiendo</string>
+    <string name="regattalink_positive_maneuvers">Observaciones de maniobra positivas</string>
+    <string name="regattalink_negative_maneuvers">Observaciones de maniobra negativas</string>
+    <string name="regattalink_roll_pairs">Pares de balanceo</string>
+    <string name="regattalink_contradictions">Contradicciones</string>
+    <string name="regattalink_mounting_epoch">Época de montaje</string>
+    <string name="regattalink_calibration_revision">Revisión de calibración</string>
 </resources>

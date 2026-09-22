@@ -48,6 +48,23 @@ class TrackingDbHelperTest {
     }
 
     @Test
+    fun pendingSample_preservesOriginalMeasurementsSnapshot() {
+        val helper = TrackingDbHelper(context)
+        val contextId = createAccessContext(helper, "Event A", "secret-a")
+        val measurements = """{"regattalink.fast.roll_deg":{"value":12.3,"group":"regattalink"}}"""
+
+        insertSample(
+            helper = helper,
+            sequenceId = 1L,
+            accessContextId = contextId,
+            measurementsJson = measurements
+        )
+
+        val pending = helper.getPendingSamples(10).single()
+        assertEquals(measurements, pending.measurementsJson)
+    }
+
+    @Test
     fun batchAcknowledgement_marksOnlyAcceptedLocalRowsUploaded() {
         val helper = TrackingDbHelper(context)
         val contextId = createAccessContext(helper, "Event A", "secret-a")
@@ -79,6 +96,7 @@ class TrackingDbHelperTest {
 
         assertTrue(tableExists(db, "tracking_sessions"))
         assertTrue(columnExists(db, "tracking_samples", "session_id"))
+        assertTrue(columnExists(db, "tracking_samples", "measurements_json"))
         assertTrue(columnExists(db, "tracking_sessions", "resolved_event_name"))
         assertTrue(columnExists(db, "tracking_sessions", "course_json"))
         assertTrue(columnExists(db, "tracking_sessions", "course_map_viewport_json"))
@@ -193,13 +211,14 @@ class TrackingDbHelperTest {
         assertTrue(indexExists(db, "idx_tracking_samples_session_id"))
 
         db.rawQuery(
-            "SELECT id, sail_number, session_id FROM tracking_samples",
+            "SELECT id, sail_number, session_id, measurements_json FROM tracking_samples",
             null
         ).use { cursor ->
             assertTrue(cursor.moveToFirst())
             assertEquals(71L, cursor.getLong(0))
             assertEquals("V7-LEGACY", cursor.getString(1))
             assertTrue(cursor.isNull(2))
+            assertTrue(cursor.isNull(3))
             assertFalse(cursor.moveToNext())
         }
     }
@@ -350,7 +369,8 @@ class TrackingDbHelperTest {
         sequenceId: Long,
         accessContextId: Long?,
         sailNumber: String = "GER 1234",
-        sessionId: Long? = null
+        sessionId: Long? = null,
+        measurementsJson: String? = null
     ): Long {
         return helper.insertSample(
             sequenceId = sequenceId,
@@ -373,7 +393,8 @@ class TrackingDbHelperTest {
             gyroY = 0.02f,
             gyroZ = 0.03f,
             accessContextId = accessContextId,
-            sessionId = sessionId
+            sessionId = sessionId,
+            measurementsJson = measurementsJson
         )
     }
 

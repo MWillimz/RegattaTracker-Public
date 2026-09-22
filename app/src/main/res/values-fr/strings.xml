@@ -421,4 +421,41 @@
     <string name="regattalink_ota_cancelled">Mise à jour du firmware annulée</string>
     <string name="regattalink_ota_error">Échec de la mise à jour du firmware</string>
 
+
+    <string name="regattalink_motion_title">Mouvement du bateau</string>
+    <string name="regattalink_telemetry_paused_ota">Télémétrie suspendue pendant la mise à jour du firmware.</string>
+    <string name="regattalink_telemetry_stale">La télémétrie est obsolète ; la connexion reste active.</string>
+    <string name="regattalink_telemetry_waiting">En attente de télémétrie…</string>
+    <string name="regattalink_learning_confidence">Apprentissage de l’orientation · Confiance %1$d%%</string>
+    <string name="regattalink_heel">Gîte</string>
+    <string name="regattalink_trim">Assiette</string>
+    <string name="regattalink_roll_rms">RMS roulis</string>
+    <string name="regattalink_pitch_rms">RMS tangage</string>
+    <string name="regattalink_vertical_rms">RMS vertical</string>
+    <string name="regattalink_motion_intensity">Intensité du mouvement</string>
+    <string name="regattalink_live_motion">Mouvement en direct</string>
+    <string name="regattalink_roll">Roulis</string>
+    <string name="regattalink_pitch">Tangage</string>
+    <string name="regattalink_roll_rate">Vitesse de roulis</string>
+    <string name="regattalink_pitch_rate">Vitesse de tangage</string>
+    <string name="regattalink_yaw_rate">Vitesse de lacet</string>
+    <string name="regattalink_vertical_accel">Accélération verticale</string>
+    <string name="regattalink_calibration_title">Orientation / calibration du capteur</string>
+    <string name="regattalink_confidence_overall">Confiance globale</string>
+    <string name="regattalink_confidence_forward">Confiance avant</string>
+    <string name="regattalink_confidence_roll">Confiance roulis</string>
+    <string name="regattalink_learner_state">État d’apprentissage</string>
+    <string name="regattalink_learner_idle">En attente / observation</string>
+    <string name="regattalink_learner_turn">Évaluation de la manœuvre</string>
+    <string name="regattalink_learner_post">Collecte de l’attitude après manœuvre</string>
+    <string name="regattalink_gyro_bias">Biais gyroscope</string>
+    <string name="regattalink_boat_frame">Repère bateau</string>
+    <string name="regattalink_valid">Valide</string>
+    <string name="regattalink_learning">Apprentissage</string>
+    <string name="regattalink_positive_maneuvers">Observations de manœuvre positives</string>
+    <string name="regattalink_negative_maneuvers">Observations de manœuvre négatives</string>
+    <string name="regattalink_roll_pairs">Paires de roulis</string>
+    <string name="regattalink_contradictions">Contradictions</string>
+    <string name="regattalink_mounting_epoch">Époque de montage</string>
+    <string name="regattalink_calibration_revision">Révision de calibration</string>
 </resources>
