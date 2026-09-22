@@ -49,6 +49,7 @@ fun BoatDataScreen(
     setupConfirmed: Boolean,
     modifier: Modifier = Modifier,
     onConfirmSetup: (BoatSetupValues) -> Unit,
+    onRegattaLink: () -> Unit,
     onBack: () -> Unit
 ) {
     val confirmedValues = BoatSetupValues(
@@ -138,6 +139,16 @@ fun BoatDataScreen(
         TrackingProfileSelector(
             modifier = Modifier.padding(top = 20.dp)
         )
+
+        Button(
+            onClick = onRegattaLink,
+            colors = primaryButtonColors(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp)
+        ) {
+            Text(stringResource(R.string.regattalink_title))
+        }
 
         Button(
             onClick = {

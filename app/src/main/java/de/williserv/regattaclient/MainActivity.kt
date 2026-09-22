@@ -54,6 +54,7 @@ import de.williserv.regattaclient.ui.theme.RegattaRed
 enum class Screen {
     HOME,
     BOAT_DATA,
+    REGATTALINK,
     RACE,
     RACE_LEGAL,
     COURSE,
@@ -62,7 +63,8 @@ enum class Screen {
     LEGAL,
     RESULTS,
     SESSION_HISTORY,
-    SESSION_DETAIL
+    SESSION_DETAIL,
+    SESSION_REPLAY
 }
 
 private enum class PendingTrackingAction {
@@ -91,6 +93,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private lateinit var db: TrackingDbHelper
     private lateinit var locationManager: LocationManager
     private lateinit var sensorManager: SensorManager
+    private lateinit var regattaLinkClient: RegattaLinkBleClient
+    private val regattaLinkState = mutableStateOf(RegattaLinkClientState())
+    private val regattaLinkFirmwareClient = RegattaLinkFirmwareClient()
+    private val regattaLinkFirmwareState = mutableStateOf(RegattaLinkFirmwareUiState())
+    private var regattaLinkFirmwareArtifact: RegattaLinkFirmwareArtifact? = null
 
     private val currentScreen = mutableStateOf(Screen.HOME)
 
@@ -260,6 +267,14 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private fun navigateBack() {
         currentScreen.value = when (currentScreen.value) {
             Screen.HOME -> Screen.HOME
+            Screen.REGATTALINK -> {
+                if (::regattaLinkClient.isInitialized) {
+                    regattaLinkClient.disconnect()
+                }
+                regattaLinkFirmwareArtifact = null
+                regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState()
+                Screen.BOAT_DATA
+            }
             Screen.BOAT_DATA,
             Screen.RACE,
             Screen.COURSE,
@@ -270,6 +285,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 loadSessionHistory()
                 Screen.SESSION_HISTORY
             }
+            Screen.SESSION_REPLAY -> Screen.SESSION_DETAIL
             Screen.RACE_LEGAL,
             Screen.QR_SCANNER -> Screen.RACE
             Screen.MAP -> if (selectedCourseMapView.value == null) {
@@ -301,6 +317,25 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 startGpsDisplayUpdates()
             } else {
                 statusText.value = getString(R.string.gps_permission_denied)
+            }
+        }
+
+    private val regattaLinkPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+            val granted = RegattaLinkBleClient.requiredPermissions().all { permission ->
+                ContextCompat.checkSelfPermission(
+                    this,
+                    permission
+                ) == PackageManager.PERMISSION_GRANTED
+            }
+
+            if (granted && ::regattaLinkClient.isInitialized) {
+                regattaLinkClient.startDiscovery()
+            } else {
+                regattaLinkState.value = RegattaLinkClientState(
+                    status = RegattaLinkConnectionStatus.ERROR,
+                    error = getString(R.string.regattalink_permission_denied)
+                )
             }
         }
 
@@ -359,6 +394,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         db = TrackingDbHelper(this)
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        regattaLinkClient = RegattaLinkBleClient(this) { state ->
+            if (asyncLifetime.isActive()) {
+                regattaLinkState.value = state
+            }
+        }
         loadBoatSetup()
         loadRaceSetup()
         loadAppState()
@@ -505,6 +545,15 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             detail = sessionDetail.value,
                             loading = sessionDetailLoading.value,
                             modifier = Modifier.padding(innerPadding),
+                            onReplay = {
+                                currentScreen.value = Screen.SESSION_REPLAY
+                            },
+                            onBack = ::navigateBack
+                        )
+
+                        Screen.SESSION_REPLAY -> SessionReplayScreen(
+                            detail = sessionDetail.value,
+                            modifier = Modifier.padding(innerPadding),
                             onBack = ::navigateBack
                         )
 
@@ -582,6 +631,24 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                                     currentScreen.value = Screen.HOME
                                 }
+                            },
+                            onRegattaLink = {
+                                currentScreen.value = Screen.REGATTALINK
+                            },
+                            onBack = ::navigateBack
+                        )
+
+                        Screen.REGATTALINK -> RegattaLinkScreen(
+                            state = regattaLinkState.value,
+                            firmwareState = regattaLinkFirmwareState.value,
+                            firmwareSourceAvailable = raceServer.value.isNotBlank(),
+                            modifier = Modifier.padding(innerPadding),
+                            onSearch = ::startRegattaLinkConnection,
+                            onCheckFirmware = ::loadRegattaLinkFirmware,
+                            onDisconnect = {
+                                regattaLinkClient.disconnect()
+                                regattaLinkFirmwareArtifact = null
+                                regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState()
                             },
                             onBack = ::navigateBack
                         )
@@ -2610,6 +2677,88 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         handler.removeCallbacks(raceDataRefreshRunnable)
     }
 
+    private fun loadRegattaLinkFirmware() {
+        val deviceInfo = regattaLinkState.value.deviceInfo
+        if (deviceInfo == null) {
+            regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState(
+                status = RegattaLinkFirmwareStatus.ERROR,
+                error = getString(R.string.regattalink_connect_before_firmware)
+            )
+            return
+        }
+
+        val firmwareServer = raceServer.value.trim()
+        if (firmwareServer.isBlank()) {
+            regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState(
+                status = RegattaLinkFirmwareStatus.ERROR,
+                error = getString(R.string.regattalink_firmware_server_required)
+            )
+            return
+        }
+
+        regattaLinkFirmwareArtifact = null
+        regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState(
+            status = RegattaLinkFirmwareStatus.LOADING
+        )
+
+        thread {
+            try {
+                val artifact = regattaLinkFirmwareClient.load(
+                    serverUrl = firmwareServer,
+                    deviceInfo = deviceInfo
+                )
+                val direction = validateRegattaLinkFirmwareForDevice(
+                    artifact.manifest,
+                    deviceInfo
+                )
+
+                runOnUiThread {
+                    if (!asyncLifetime.isActive()) return@runOnUiThread
+                    if (regattaLinkState.value.deviceInfo?.stableId != deviceInfo.stableId) {
+                        return@runOnUiThread
+                    }
+                    regattaLinkFirmwareArtifact = artifact
+                    regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState(
+                        status = RegattaLinkFirmwareStatus.READY,
+                        availableBuild = artifact.manifest.buildNumber.toString(),
+                        direction = direction,
+                        signed = artifact.manifest.signed
+                    )
+                }
+            } catch (error: Exception) {
+                runOnUiThread {
+                    if (!asyncLifetime.isActive()) return@runOnUiThread
+                    if (regattaLinkState.value.deviceInfo?.stableId != deviceInfo.stableId) {
+                        return@runOnUiThread
+                    }
+                    regattaLinkFirmwareArtifact = null
+                    regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState(
+                        status = RegattaLinkFirmwareStatus.ERROR,
+                        error = error.message ?: getString(R.string.regattalink_firmware_check_failed)
+                    )
+                }
+            }
+        }
+    }
+
+    private fun startRegattaLinkConnection() {
+        regattaLinkFirmwareArtifact = null
+        regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState()
+        val permissions = RegattaLinkBleClient.requiredPermissions()
+        val missing = permissions.filter { permission ->
+            ContextCompat.checkSelfPermission(
+                this,
+                permission
+            ) != PackageManager.PERMISSION_GRANTED
+        }
+
+        if (missing.isEmpty()) {
+            regattaLinkClient.startDiscovery()
+        } else {
+            regattaLinkPermissionLauncher.launch(missing.toTypedArray())
+        }
+    }
+
     private fun requestPermissionsForApp() {
         val permissions = mutableListOf(
             Manifest.permission.ACCESS_FINE_LOCATION
@@ -3358,7 +3507,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     statistics = calculateSessionStatistics(
                         session = session,
                         samples = samples
-                    )
+                    ),
+                    samples = samples
                 )
             }.getOrNull()
 
@@ -3485,6 +3635,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     override fun onDestroy() {
         asyncLifetime.invalidate()
         cancelEnterRaceServerCheck()
+        if (::regattaLinkClient.isInitialized) {
+            regattaLinkClient.close()
+        }
         super.onDestroy()
 
         handler.removeCallbacks(uiRefreshRunnable)

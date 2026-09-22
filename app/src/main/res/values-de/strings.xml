@@ -358,4 +358,46 @@
     <string name="session_duration_minutes">%1$d min</string>
     <string name="session_duration_hours_minutes">%1$d h %2$d min</string>
 
+    <string name="session_replay_button">Replay</string>
+    <string name="session_replay_title">Aufzeichnungs-Replay</string>
+    <string name="session_replay_empty">Keine Samples für das Replay verfügbar.</string>
+    <string name="session_replay_no_position">Keine nutzbare GPS-Position in dieser Aufzeichnung.</string>
+    <string name="session_replay_time_label">Zeit</string>
+    <string name="session_replay_sog_label">SOG</string>
+    <string name="session_replay_cog_label">COG</string>
+    <string name="session_cog_degrees">%1$d°</string>
+    <string name="regattalink_title">RegattaLink</string>
+    <string name="regattalink_status_not_connected">Nicht verbunden</string>
+    <string name="regattalink_status_scanning">RegattaLink wird gesucht…</string>
+    <string name="regattalink_status_pairing">RegattaLink wird gekoppelt…</string>
+    <string name="regattalink_status_connecting">Verbindung wird hergestellt…</string>
+    <string name="regattalink_status_discovering">Dienste werden gelesen…</string>
+    <string name="regattalink_status_reading_device">Geräteinformationen werden gelesen…</string>
+    <string name="regattalink_status_connected">Verbunden</string>
+    <string name="regattalink_status_error">Verbindung fehlgeschlagen</string>
+    <string name="regattalink_search_connect">Suchen / verbinden</string>
+    <string name="regattalink_disconnect">Trennen</string>
+    <string name="regattalink_permission_denied">Bluetooth-Berechtigung verweigert.</string>
+    <string name="regattalink_address_value">Bluetooth: %1$s</string>
+    <string name="regattalink_stable_id_value">Stable ID: %1$s</string>
+    <string name="regattalink_build_value">Firmware-Build: %1$s</string>
+    <string name="regattalink_protocol_value">Protokoll: %1$d.%2$d</string>
+    <string name="regattalink_product_profile_value">Produkt / Profil: %1$d / %2$d</string>
+    <string name="regattalink_ota_available">OTA verfügbar</string>
+    <string name="regattalink_ota_unavailable">OTA nicht verfügbar</string>
+
+    <string name="regattalink_firmware_title">Firmware</string>
+    <string name="regattalink_firmware_server_required">Vor der Firmware-Prüfung ein Event von einem kompatiblen Regatta Server laden.</string>
+    <string name="regattalink_firmware_not_checked">Firmware noch nicht geprüft.</string>
+    <string name="regattalink_firmware_checking">Firmware wird geladen und geprüft…</string>
+    <string name="regattalink_available_build_value">Verfügbarer Build: %1$s</string>
+    <string name="regattalink_direction_upgrade">Update-Richtung: Upgrade</string>
+    <string name="regattalink_direction_downgrade">Update-Richtung: Downgrade</string>
+    <string name="regattalink_direction_reinstall">Update-Richtung: Neuinstallation</string>
+    <string name="regattalink_firmware_signed">Signierte Firmware</string>
+    <string name="regattalink_firmware_unsigned">Unsignierte Entwicklungs-Firmware</string>
+    <string name="regattalink_check_firmware">Firmware prüfen</string>
+    <string name="regattalink_connect_before_firmware">Vor der Firmware-Prüfung einen RegattaLink verbinden.</string>
+    <string name="regattalink_firmware_check_failed">Firmware-Prüfung fehlgeschlagen.</string>
+
 </resources>
