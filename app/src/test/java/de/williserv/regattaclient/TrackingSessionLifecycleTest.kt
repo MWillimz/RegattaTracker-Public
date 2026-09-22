@@ -280,6 +280,84 @@ class TrackingSessionLifecycleTest {
         helper.close()
     }
 
+    @Test
+    fun raceRunChange_keepsOneSessionAndAssociatesSamplesWithTheirResolvedRuns() {
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+        val helper = getField<TrackingDbHelper>(service, "db")
+        setField(service, "eventPollRunning", true)
+
+        val firstSnapshot = RaceEventSnapshot(
+            resolvedEventName = "Event 194 Run 1",
+            status = "scheduled",
+            startRaw = "2026-09-22T10:00:00Z",
+            stopRaw = "2026-09-22T10:45:00Z",
+            raceInfo = "",
+            courseJson = """{"marks":[{"order":1}]}""",
+            courseShortened = false,
+            courseMapViewport = CourseMapViewport(
+                projection = "web_mercator",
+                zoom = 15,
+                leftPx = 100.0,
+                topPx = 200.0,
+                widthPx = 1200,
+                heightPx = 800,
+                generationId = "gen-run-1"
+            )
+        )
+        RaceEventSnapshotStore.save(
+            context = context,
+            server = "https://raceoffice.example.org",
+            event = "Event 194",
+            secret = "secret",
+            snapshot = firstSnapshot
+        )
+
+        assertEquals(
+            Service.START_STICKY,
+            service.onStartCommand(
+                raceStartIntent().putExtra(
+                    RegattaTrackingService.EXTRA_RESOLVED_EVENT_NAME,
+                    firstSnapshot.resolvedEventName
+                ),
+                0,
+                1
+            )
+        )
+
+        val sessionId = requireNotNull(getField<Long?>(service, "activeSessionId"))
+        invokeNoArg(service, "generateAndStoreSample")
+
+        val secondSnapshot = firstSnapshot.copy(
+            resolvedEventName = "Event 194 Run 2",
+            startRaw = "2026-09-22T11:00:00Z",
+            stopRaw = "2026-09-22T11:45:00Z",
+            courseJson = """{"marks":[{"order":1},{"order":2}]}""",
+            courseMapViewport = firstSnapshot.courseMapViewport?.copy(
+                generationId = "gen-run-2"
+            )
+        )
+        invokeApplyRaceEventSnapshot(service, secondSnapshot)
+        invokeNoArg(service, "generateAndStoreSample")
+
+        assertEquals(sessionId, getField<Long?>(service, "activeSessionId"))
+        val samples = helper.getTrackingSamplesForSession(sessionId)
+        assertEquals(
+            listOf("Event 194 Run 1", "Event 194 Run 2"),
+            samples.map { it.resolvedEventName }
+        )
+        assertNotEquals(samples[0].raceContextId, samples[1].raceContextId)
+        assertEquals(firstSnapshot.courseJson, samples[0].courseJson)
+        assertEquals(secondSnapshot.courseJson, samples[1].courseJson)
+
+        val session = requireNotNull(helper.getTrackingSession(sessionId))
+        assertEquals("Event 194 Run 1", session.resolvedEventName)
+
+        setField(service, "serviceRunning", false)
+        controller.destroy()
+        helper.close()
+    }
+
     private fun latestSampleSessionId(helper: TrackingDbHelper): Long? {
         helper.readableDatabase.rawQuery(
             "SELECT session_id FROM tracking_samples ORDER BY id DESC LIMIT 1",
@@ -319,6 +397,18 @@ class TrackingSessionLifecycleTest {
             isAccessible = true
             invoke(target)
         }
+    }
+
+    private fun invokeApplyRaceEventSnapshot(
+        target: Any,
+        snapshot: RaceEventSnapshot
+    ) {
+        target.javaClass
+            .getDeclaredMethod("applyRaceEventSnapshot", RaceEventSnapshot::class.java)
+            .apply {
+                isAccessible = true
+                invoke(target, snapshot)
+            }
     }
 
     private fun setField(target: Any, fieldName: String, value: Any?) {
