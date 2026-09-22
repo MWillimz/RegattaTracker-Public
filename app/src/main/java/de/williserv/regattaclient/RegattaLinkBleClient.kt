@@ -22,6 +22,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
 import android.os.SystemClock
+import android.util.Log
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutionException
@@ -72,6 +73,8 @@ internal class RegattaLinkBleClient(
         private const val BOND_POLL_MS = 250L
         private const val GATT_OPERATION_TIMEOUT_MS = 10_000L
         private const val REQUESTED_OTA_MTU = 247
+        private const val OTA_PHY_REQUEST_GRACE_MS = 300L
+        private const val LOG_TAG = "RegattaLinkBLE"
 
         fun requiredPermissions(): Array<String> =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -385,6 +388,19 @@ internal class RegattaLinkBleClient(
             }
             completeMtu(mtu)
         }
+
+        override fun onPhyUpdate(
+            callbackGatt: BluetoothGatt,
+            txPhy: Int,
+            rxPhy: Int,
+            status: Int
+        ) {
+            if (gatt !== callbackGatt) return
+            Log.i(
+                LOG_TAG,
+                "PHY update status=${status} tx=${phyName(txPhy)} rx=${phyName(rxPhy)}"
+            )
+        }
     }
 
     fun startDiscovery() {
@@ -673,18 +689,38 @@ internal class RegattaLinkBleClient(
     override fun tuneConnection(info: RegattaLinkDeviceInfo) {
         val activeGatt = requireGatt()
         requestMtuBestEffort(activeGatt)
-        runCatching {
+
+        val priorityAccepted = runCatching {
             activeGatt.requestConnectionPriority(
                 BluetoothGatt.CONNECTION_PRIORITY_HIGH
             )
-        }
+        }.onFailure { error ->
+            Log.w(LOG_TAG, "High-priority BLE request failed locally", error)
+        }.getOrDefault(false)
+        Log.i(
+            LOG_TAG,
+            "High-priority BLE request accepted=${priorityAccepted}"
+        )
+
         if (info.otaPhy2m) {
+            if (priorityAccepted) {
+                try {
+                    Thread.sleep(OTA_PHY_REQUEST_GRACE_MS)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return
+                }
+            }
+
             runCatching {
                 activeGatt.setPreferredPhy(
                     BluetoothDevice.PHY_LE_2M_MASK,
                     BluetoothDevice.PHY_LE_2M_MASK,
                     BluetoothDevice.PHY_OPTION_NO_PREFERRED
                 )
+                Log.i(LOG_TAG, "Requested BLE OTA 2M PHY preference")
+            }.onFailure { error ->
+                Log.w(LOG_TAG, "BLE OTA 2M PHY request failed locally", error)
             }
         }
     }
@@ -1380,6 +1416,13 @@ internal class RegattaLinkBleClient(
         handler.post {
             onStateChanged(state)
         }
+    }
+
+    private fun phyName(phy: Int): String = when (phy) {
+        BluetoothDevice.PHY_LE_1M -> "1M"
+        BluetoothDevice.PHY_LE_2M -> "2M"
+        BluetoothDevice.PHY_LE_CODED -> "coded"
+        else -> phy.toString()
     }
 
     private fun emitOta(state: RegattaLinkOtaUiState) {
