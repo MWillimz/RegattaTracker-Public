@@ -806,20 +806,12 @@ internal class RegattaLinkOtaEngine(
 
                 while (nowMs() < validationDeadline && transport.isConnected()) {
                     val snapshot = transport.snapshot()
-                    if (
-                        snapshot.requestId == requestId &&
-                        snapshot.bootResult == RegattaLinkOtaBootResult.ROLLBACK
-                    ) {
+                    if (snapshot.bootResult == RegattaLinkOtaBootResult.ROLLBACK) {
                         throw IllegalStateException(
                             "RegattaLink rolled back the firmware update"
                         )
                     }
-                    if (
-                        snapshot.requestId == requestId &&
-                        snapshot.targetBuild == targetBuild &&
-                        snapshot.runningBuild == targetBuild &&
-                        snapshot.bootResult == RegattaLinkOtaBootResult.VALIDATED
-                    ) {
+                    if (isRegattaLinkPostBootValidated(snapshot, targetBuild)) {
                         return
                     }
                     Thread.sleep(250)
