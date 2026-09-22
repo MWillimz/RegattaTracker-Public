@@ -233,6 +233,13 @@ internal fun parseRegattaLinkOtaProgress(raw: ByteArray): RegattaLinkOtaProgress
     )
 }
 
+internal fun isRegattaLinkPostBootValidated(
+    status: RegattaLinkOtaStatus,
+    targetBuild: ULong
+): Boolean =
+    status.runningBuild == targetBuild &&
+        status.bootResult == RegattaLinkOtaBootResult.VALIDATED
+
 internal fun parseRegattaLinkOtaStatus(raw: ByteArray): RegattaLinkOtaStatus {
     require(raw.size == REGATTALINK_OTA_STATUS_SIZE) {
         "Full OTA status must be $REGATTALINK_OTA_STATUS_SIZE bytes, got " + raw.size
