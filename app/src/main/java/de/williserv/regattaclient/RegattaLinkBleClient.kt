@@ -56,13 +56,22 @@ data class RegattaLinkClientState(
 internal class RegattaLinkBleClient(
     context: Context,
     private val onStateChanged: (RegattaLinkClientState) -> Unit,
-    private val onOtaStateChanged: (RegattaLinkOtaUiState) -> Unit = {}
+    private val onOtaStateChanged: (RegattaLinkOtaUiState) -> Unit = {},
+    private val onTelemetryStateChanged: (RegattaLinkTelemetryState) -> Unit = {}
 ) : RegattaLinkOtaTransport {
     companion object {
         val CONFIG_SERVICE_UUID: UUID =
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710001")
         val DEVICE_INFO_UUID: UUID =
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710003")
+        val TELEMETRY_SERVICE_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710020")
+        val TELEMETRY_FAST_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710021")
+        val TELEMETRY_SUMMARY_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710022")
+        val TELEMETRY_CALIBRATION_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710023")
 
         private val CCCD_UUID: UUID =
             UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
@@ -139,6 +148,8 @@ internal class RegattaLinkBleClient(
     private val otaDataTransportError = AtomicReference<String?>(null)
     @Volatile private var lastState = RegattaLinkClientState()
     @Volatile private var lastOtaState = RegattaLinkOtaUiState()
+    @Volatile private var lastTelemetryState = RegattaLinkTelemetryState()
+    private val telemetryLock = Any()
     private var reconnectFuture: CompletableFuture<RegattaLinkDeviceInfo?>? = null
     private var selectedDeviceAddress: String? = null
     private val attemptedDiscoveryAddresses = mutableSetOf<String>()
@@ -269,6 +280,17 @@ internal class RegattaLinkBleClient(
                     gatt = null
                 }
 
+                if (otaRunning.get()) {
+                    updateTelemetry {
+                        it.copy(
+                            subscribed = false,
+                            pausedForOta = true
+                        )
+                    }
+                } else {
+                    clearTelemetry()
+                }
+
                 if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
                     reconnectFuture?.complete(null)
                 } else if (!otaRunning.get()) {
@@ -288,6 +310,7 @@ internal class RegattaLinkBleClient(
             callbackGatt: BluetoothGatt,
             status: Int
         ) {
+            if (gatt !== callbackGatt) return
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 closeGattWithError(
                     callbackGatt,
@@ -327,6 +350,7 @@ internal class RegattaLinkBleClient(
             characteristic: BluetoothGattCharacteristic,
             status: Int
         ) {
+            if (gatt !== callbackGatt) return
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
                 handleCharacteristicRead(
                     callbackGatt,
@@ -343,6 +367,7 @@ internal class RegattaLinkBleClient(
             value: ByteArray,
             status: Int
         ) {
+            if (gatt !== callbackGatt) return
             handleCharacteristicRead(
                 callbackGatt,
                 characteristic.uuid,
@@ -356,6 +381,7 @@ internal class RegattaLinkBleClient(
             characteristic: BluetoothGattCharacteristic,
             status: Int
         ) {
+            if (gatt !== callbackGatt) return
             val handled = completeCharacteristicWrite(
                 characteristic.uuid,
                 status
@@ -379,6 +405,7 @@ internal class RegattaLinkBleClient(
         ) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
                 handleCharacteristicChanged(
+                    callbackGatt,
                     characteristic.uuid,
                     characteristic.value ?: byteArrayOf()
                 )
@@ -390,7 +417,8 @@ internal class RegattaLinkBleClient(
             characteristic: BluetoothGattCharacteristic,
             value: ByteArray
         ) {
-            handleCharacteristicChanged(characteristic.uuid, value)
+            if (gatt !== callbackGatt) return
+            handleCharacteristicChanged(callbackGatt, characteristic.uuid, value)
         }
 
         override fun onDescriptorWrite(
@@ -398,6 +426,7 @@ internal class RegattaLinkBleClient(
             descriptor: BluetoothGattDescriptor,
             status: Int
         ) {
+            if (gatt !== callbackGatt) return
             completeDescriptorWrite(descriptor.uuid, status)
         }
 
@@ -406,6 +435,7 @@ internal class RegattaLinkBleClient(
             negotiatedMtu: Int,
             status: Int
         ) {
+            if (gatt !== callbackGatt) return
             if (status == BluetoothGatt.GATT_SUCCESS && negotiatedMtu >= 23) {
                 mtu = negotiatedMtu
             }
@@ -428,6 +458,7 @@ internal class RegattaLinkBleClient(
 
     fun startDiscovery() {
         if (otaRunning.get()) return
+        clearTelemetry()
         selectedDeviceAddress = null
         attemptedDiscoveryAddresses.clear()
         discoveryInProgress = true
@@ -566,6 +597,7 @@ internal class RegattaLinkBleClient(
         handler.removeCallbacks(bondPoll)
         handler.removeCallbacks(gattTimeout)
         closeGatt()
+        clearTelemetry()
         currentDevice = null
         discoveryInProgress = false
         discoveryCandidateInProgress = false
@@ -579,6 +611,7 @@ internal class RegattaLinkBleClient(
         handler.removeCallbacks(bondPoll)
         handler.removeCallbacks(gattTimeout)
         closeGatt()
+        clearTelemetry()
         currentDevice = null
         discoveryInProgress = false
         discoveryCandidateInProgress = false
@@ -753,25 +786,190 @@ internal class RegattaLinkBleClient(
             )
         )
 
+        if (info.telemetryAvailable) {
+            emitTelemetry(
+                RegattaLinkTelemetryState(
+                    supported = true,
+                    pausedForOta = otaRunning.get()
+                )
+            )
+            otaExecutor.execute {
+                setupTelemetry(callbackGatt)
+            }
+        } else {
+            clearTelemetry()
+        }
+
         if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
             reconnectFuture?.complete(info)
         }
     }
 
+    private fun setupTelemetry(activeGatt: BluetoothGatt) {
+        if (gatt !== activeGatt || !connected) return
+
+        val service = activeGatt.getService(TELEMETRY_SERVICE_UUID)
+        val fast = service?.getCharacteristic(TELEMETRY_FAST_UUID)
+        val summary = service?.getCharacteristic(TELEMETRY_SUMMARY_UUID)
+        val calibration = service?.getCharacteristic(TELEMETRY_CALIBRATION_UUID)
+
+        if (service == null || fast == null || summary == null || calibration == null) {
+            updateTelemetry {
+                it.copy(
+                    supported = true,
+                    subscribed = false,
+                    error = "RegattaLink telemetry service is incomplete"
+                )
+            }
+            return
+        }
+
+        val characteristics = listOf(fast, summary, calibration)
+        try {
+            characteristics.forEach { characteristic ->
+                if (gatt !== activeGatt || !connected) return
+                if (!activeGatt.setCharacteristicNotification(characteristic, true)) {
+                    throw RegattaLinkOtaTransportException(
+                        "Could not enable RegattaLink telemetry notification " +
+                            characteristic.uuid,
+                        ambiguous = false
+                    )
+                }
+                val descriptor = characteristic.getDescriptor(CCCD_UUID)
+                    ?: throw RegattaLinkOtaTransportException(
+                        "RegattaLink telemetry CCCD is unavailable for " +
+                            characteristic.uuid,
+                        ambiguous = false
+                    )
+                writeDescriptorBlocking(
+                    activeGatt,
+                    descriptor,
+                    BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                )
+            }
+
+            updateTelemetry {
+                it.copy(
+                    supported = true,
+                    subscribed = true,
+                    error = ""
+                )
+            }
+
+            characteristics.forEach { characteristic ->
+                if (gatt !== activeGatt || !connected) return
+                val raw = readCharacteristicBlocking(activeGatt, characteristic)
+                handleTelemetryRecord(
+                    activeGatt,
+                    characteristic.uuid,
+                    raw,
+                    initialOnly = true
+                )
+            }
+        } catch (error: Exception) {
+            if (gatt === activeGatt) {
+                updateTelemetry {
+                    it.copy(
+                        supported = true,
+                        subscribed = false,
+                        error = error.message
+                            ?: "RegattaLink telemetry subscription failed"
+                    )
+                }
+            }
+        }
+    }
+
     private fun handleCharacteristicChanged(
+        callbackGatt: BluetoothGatt,
         characteristicUuid: UUID,
         value: ByteArray
     ) {
-        if (characteristicUuid != REGATTALINK_OTA_STATUS_UUID) return
-        runCatching {
-            parseRegattaLinkOtaProgress(value)
-        }.onSuccess { progress ->
-            otaProgressQueue.offer(progress)
-        }.onFailure { error ->
-            otaDataTransportError.compareAndSet(
-                null,
-                error.message ?: "Invalid OTA status notification"
-            )
+        if (gatt !== callbackGatt) return
+
+        if (characteristicUuid == REGATTALINK_OTA_STATUS_UUID) {
+            runCatching {
+                parseRegattaLinkOtaProgress(value)
+            }.onSuccess { progress ->
+                otaProgressQueue.offer(progress)
+            }.onFailure { error ->
+                otaDataTransportError.compareAndSet(
+                    null,
+                    error.message ?: "Invalid OTA status notification"
+                )
+            }
+            return
+        }
+
+        handleTelemetryRecord(callbackGatt, characteristicUuid, value)
+    }
+
+    private fun handleTelemetryRecord(
+        callbackGatt: BluetoothGatt,
+        characteristicUuid: UUID,
+        value: ByteArray,
+        initialOnly: Boolean = false
+    ) {
+        if (gatt !== callbackGatt) return
+        val receivedAt = SystemClock.elapsedRealtime()
+
+        try {
+            when (characteristicUuid) {
+                TELEMETRY_FAST_UUID -> {
+                    val parsed = parseRegattaLinkFastMotion(value)
+                    updateTelemetry {
+                        if (initialOnly && it.fast != null) {
+                            it
+                        } else {
+                            it.copy(
+                                supported = true,
+                                fast = parsed,
+                                fastReceivedAtElapsedMs = receivedAt,
+                                error = ""
+                            )
+                        }
+                    }
+                }
+
+                TELEMETRY_SUMMARY_UUID -> {
+                    val parsed = parseRegattaLinkMotionSummary(value)
+                    updateTelemetry {
+                        if (initialOnly && it.summary != null) {
+                            it
+                        } else {
+                            it.copy(
+                                supported = true,
+                                summary = parsed,
+                                summaryReceivedAtElapsedMs = receivedAt,
+                                error = ""
+                            )
+                        }
+                    }
+                }
+
+                TELEMETRY_CALIBRATION_UUID -> {
+                    val parsed = parseRegattaLinkCalibrationDiagnostics(value)
+                    updateTelemetry {
+                        if (initialOnly && it.calibration != null) {
+                            it
+                        } else {
+                            it.copy(
+                                supported = true,
+                                calibration = parsed,
+                                calibrationReceivedAtElapsedMs = receivedAt,
+                                error = ""
+                            )
+                        }
+                    }
+                }
+            }
+        } catch (error: IllegalArgumentException) {
+            updateTelemetry {
+                it.copy(
+                    supported = true,
+                    error = error.message ?: "Invalid RegattaLink telemetry record"
+                )
+            }
         }
     }
 
@@ -1067,14 +1265,22 @@ internal class RegattaLinkBleClient(
     private fun readCharacteristicBlocking(
         activeGatt: BluetoothGatt,
         uuid: UUID
+    ): ByteArray =
+        readCharacteristicBlocking(
+            activeGatt,
+            requireOtaCharacteristic(activeGatt, uuid)
+        )
+
+    private fun readCharacteristicBlocking(
+        activeGatt: BluetoothGatt,
+        characteristic: BluetoothGattCharacteristic
     ): ByteArray {
         var attempts = 0
         while (true) {
             attempts += 1
-            val characteristic = requireOtaCharacteristic(activeGatt, uuid)
             val future = CompletableFuture<ByteArray>()
             val pending =
-                PendingGattOperation.CharacteristicRead(uuid, future)
+                PendingGattOperation.CharacteristicRead(characteristic.uuid, future)
             if (!setPendingGattOperation(pending)) {
                 throw RegattaLinkOtaTransportException(
                     "Another GATT operation is active",
@@ -1096,7 +1302,7 @@ internal class RegattaLinkBleClient(
 
             return awaitByteArrayFuture(
                 future,
-                "GATT read " + uuid
+                "GATT read " + characteristic.uuid
             )
         }
     }
@@ -1462,6 +1668,9 @@ internal class RegattaLinkBleClient(
         failPendingGattOperation(
             RegattaLinkOtaTransportException(message)
         )
+        if (!otaRunning.get()) {
+            clearTelemetry()
+        }
 
         if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
             reconnectFuture?.complete(null)
@@ -1518,8 +1727,40 @@ internal class RegattaLinkBleClient(
         else -> phy.toString()
     }
 
+    private fun updateTelemetry(
+        transform: (RegattaLinkTelemetryState) -> RegattaLinkTelemetryState
+    ) {
+        val next = synchronized(telemetryLock) {
+            transform(lastTelemetryState).also {
+                lastTelemetryState = it
+                RegattaLinkTelemetrySnapshotStore.update(it)
+            }
+        }
+        handler.post {
+            onTelemetryStateChanged(next)
+        }
+    }
+
+    private fun emitTelemetry(state: RegattaLinkTelemetryState) {
+        synchronized(telemetryLock) {
+            lastTelemetryState = state
+            RegattaLinkTelemetrySnapshotStore.update(state)
+        }
+        handler.post {
+            onTelemetryStateChanged(state)
+        }
+    }
+
+    private fun clearTelemetry() {
+        emitTelemetry(RegattaLinkTelemetryState())
+    }
+
     private fun emitOta(state: RegattaLinkOtaUiState) {
         lastOtaState = state
+        val paused = state.isActive
+        if (lastTelemetryState.pausedForOta != paused) {
+            updateTelemetry { it.copy(pausedForOta = paused) }
+        }
         handler.post {
             onOtaStateChanged(state)
         }

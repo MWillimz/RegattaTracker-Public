@@ -61,6 +61,29 @@ class TelemetryMetadataPayloadTest {
     }
 
     @Test
+    fun `persisted measurements are uploaded from the original sample`() {
+        val measurements =
+            """{"regattalink.fast.roll_deg":{"value":12.3,"unit":"deg","group":"regattalink"}}"""
+        val payload = buildTelemetryUploadPayload(
+            sample = sample(
+                batteryPercent = null,
+                batteryCharging = null,
+                trackingProfile = null,
+                utcOffsetMinutes = null
+            ).copy(measurementsJson = measurements),
+            client = client
+        )
+
+        assertEquals(
+            12.3,
+            payload.getJSONObject("measurements")
+                .getJSONObject("regattalink.fast.roll_deg")
+                .getDouble("value"),
+            0.001
+        )
+    }
+
+    @Test
     fun `persisted utc offset is uploaded unchanged`() {
         val payload = buildTelemetryUploadPayload(
             sample = sample(

@@ -61,6 +61,27 @@ class TelemetryBatchUploadTest {
     }
 
     @Test
+    fun batchPayload_usesSamePersistedMeasurementsAsSingleUpload() {
+        val measurements =
+            """{"regattalink.summary.motion_intensity":{"value":74,"group":"regattalink"}}"""
+        val sample = sample(
+            localId = 13L,
+            sequenceId = 103L,
+            measurementsJson = measurements
+        )
+
+        val single = buildTelemetryUploadPayload(sample, client)
+        val batch = buildTelemetryBatchUploadPayload(listOf(sample), client)
+            .getJSONArray("samples")
+            .getJSONObject(0)
+
+        assertEquals(
+            single.getJSONObject("measurements").toString(),
+            batch.getJSONObject("measurements").toString()
+        )
+    }
+
+    @Test
     fun batchResponse_marksOnlyExplicitAcceptedIndexesAsUploadable() {
         val samples = listOf(
             sample(localId = 21L, sequenceId = 1L),
@@ -284,7 +305,8 @@ class TelemetryBatchUploadTest {
         localId: Long,
         sequenceId: Long,
         timestamp: String = "2026-09-20T10:00:00",
-        utcOffsetMinutes: Int? = null
+        utcOffsetMinutes: Int? = null,
+        measurementsJson: String? = null
     ): PendingTrackingSample {
         return PendingTrackingSample(
             localId = localId,
@@ -318,7 +340,8 @@ class TelemetryBatchUploadTest {
             batteryPercent = 87,
             batteryCharging = false,
             trackingProfile = "normal",
-            utcOffsetMinutes = utcOffsetMinutes
+            utcOffsetMinutes = utcOffsetMinutes,
+            measurementsJson = measurementsJson
         )
     }
 }

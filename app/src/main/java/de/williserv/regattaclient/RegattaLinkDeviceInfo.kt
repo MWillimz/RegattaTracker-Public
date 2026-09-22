@@ -10,6 +10,7 @@ internal const val REGATTALINK_PROFILE_ID = 1
 
 private const val CAP_OTA_AVAILABLE: UInt = 0x00000002u
 private const val CAP_SIGNATURE_VERIFICATION: UInt = 0x00000004u
+private const val CAP_TELEMETRY: UInt = 0x00000008u
 private const val CAP_OTA_PIPELINED_DATA: UInt = 0x00000010u
 private const val CAP_OTA_DATA_WRITE_NO_RESPONSE: UInt = 0x00000020u
 private const val CAP_OTA_DATA_WRITE_RESPONSE: UInt = 0x00000040u
@@ -32,6 +33,9 @@ data class RegattaLinkDeviceInfo(
 
     val signatureVerification: Boolean
         get() = capabilities and CAP_SIGNATURE_VERIFICATION != 0u
+
+    val telemetryAvailable: Boolean
+        get() = capabilities and CAP_TELEMETRY != 0u
 
     val otaPipelinedData: Boolean
         get() = capabilities and CAP_OTA_PIPELINED_DATA != 0u

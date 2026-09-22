@@ -1363,7 +1363,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
             accessContextId = sampleAccessContextId,
             sessionId = activeSessionId,
             raceContextId = sampleRaceContextId,
-            utcOffsetMinutes = sampleTime.utcOffsetMinutes
+            utcOffsetMinutes = sampleTime.utcOffsetMinutes,
+            measurementsJson = RegattaLinkTelemetrySnapshotStore.measurementsJson()
         )
 
         if (insertedId == -1L) return
