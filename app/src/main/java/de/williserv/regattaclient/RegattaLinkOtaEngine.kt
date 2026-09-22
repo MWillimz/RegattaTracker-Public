@@ -1,7 +1,6 @@
 package de.williserv.regattaclient
 
 import java.util.ArrayDeque
-import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
 
@@ -293,12 +292,7 @@ internal class RegattaLinkOtaEngine(
             if (committed <= previousOffset) return
             lastProgressMs = nowMs()
             if (growthEnabled) {
-                val committedBytes = committed - previousOffset
-                val committedBlocks = max(
-                    1,
-                    ceil(committedBytes.toDouble() / status.maxDataPayload.toDouble()).toInt()
-                )
-                window = min(maxWindow, window + committedBlocks)
+                window = min(maxWindow, window + 1)
                 if (window >= maxWindow) {
                     growthEnabled = false
                     rampComplete = true
