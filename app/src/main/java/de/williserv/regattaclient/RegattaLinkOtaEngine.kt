@@ -259,7 +259,6 @@ internal class RegattaLinkOtaEngine(
             activeTransport == RegattaLinkOtaDataTransport.WRITE_WITHOUT_RESPONSE &&
                 window < maxWindow
         var rampComplete = !growthEnabled
-        var reducedWindowTried = false
         var pendingAdaptation: Adaptation? = null
         val inflight = ArrayDeque<Int>()
 
@@ -319,15 +318,12 @@ internal class RegattaLinkOtaEngine(
                 return
             }
 
-            if (
-                activeTransport == RegattaLinkOtaDataTransport.WRITE_WITHOUT_RESPONSE &&
-                !reducedWindowTried
-            ) {
-                val reduced = max(2, min(window, maxWindow) / 2)
-                if (reduced < window) {
-                    pendingAdaptation = Adaptation.REDUCE_WINDOW
-                    return
-                }
+            if (rateKib >= REGATTALINK_OTA_MIN_THROUGHPUT_KIB_S) {
+                emitProgress(
+                    "BLE link is slower than the preferred rate; continuing at maximum stable speed"
+                )
+                resetSample()
+                return
             }
 
             if (
@@ -356,10 +352,14 @@ internal class RegattaLinkOtaEngine(
             when (pendingAdaptation) {
                 Adaptation.REDUCE_WINDOW -> {
                     window = max(2, min(window, maxWindow) / 2)
-                    growthEnabled = false
-                    rampComplete = true
-                    reducedWindowTried = true
-                    emitProgress("Reducing BLE sender window to " + window)
+                    growthEnabled =
+                        activeTransport == RegattaLinkOtaDataTransport.WRITE_WITHOUT_RESPONSE &&
+                            window < maxWindow
+                    rampComplete = !growthEnabled
+                    emitProgress(
+                        "Local BLE queue pressure; reducing sender window to " +
+                            window + " and ramping up again"
+                    )
                 }
 
                 Adaptation.SWITCH_TO_RESPONSE -> {
