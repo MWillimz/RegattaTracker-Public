@@ -52,7 +52,7 @@ data class RegattaLinkClientState(
 )
 
 @SuppressLint("MissingPermission")
-class RegattaLinkBleClient(
+internal class RegattaLinkBleClient(
     context: Context,
     private val onStateChanged: (RegattaLinkClientState) -> Unit,
     private val onOtaStateChanged: (RegattaLinkOtaUiState) -> Unit = {}
