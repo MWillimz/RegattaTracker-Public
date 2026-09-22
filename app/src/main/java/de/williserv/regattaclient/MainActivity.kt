@@ -54,6 +54,7 @@ import de.williserv.regattaclient.ui.theme.RegattaRed
 enum class Screen {
     HOME,
     BOAT_DATA,
+    REGATTALINK,
     RACE,
     RACE_LEGAL,
     COURSE,
@@ -92,6 +93,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private lateinit var db: TrackingDbHelper
     private lateinit var locationManager: LocationManager
     private lateinit var sensorManager: SensorManager
+    private lateinit var regattaLinkClient: RegattaLinkBleClient
+    private val regattaLinkState = mutableStateOf(RegattaLinkClientState())
 
     private val currentScreen = mutableStateOf(Screen.HOME)
 
@@ -261,6 +264,12 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private fun navigateBack() {
         currentScreen.value = when (currentScreen.value) {
             Screen.HOME -> Screen.HOME
+            Screen.REGATTALINK -> {
+                if (::regattaLinkClient.isInitialized) {
+                    regattaLinkClient.disconnect()
+                }
+                Screen.BOAT_DATA
+            }
             Screen.BOAT_DATA,
             Screen.RACE,
             Screen.COURSE,
@@ -303,6 +312,25 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 startGpsDisplayUpdates()
             } else {
                 statusText.value = getString(R.string.gps_permission_denied)
+            }
+        }
+
+    private val regattaLinkPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+            val granted = RegattaLinkBleClient.requiredPermissions().all { permission ->
+                ContextCompat.checkSelfPermission(
+                    this,
+                    permission
+                ) == PackageManager.PERMISSION_GRANTED
+            }
+
+            if (granted && ::regattaLinkClient.isInitialized) {
+                regattaLinkClient.startDiscovery()
+            } else {
+                regattaLinkState.value = RegattaLinkClientState(
+                    status = RegattaLinkConnectionStatus.ERROR,
+                    error = getString(R.string.regattalink_permission_denied)
+                )
             }
         }
 
@@ -361,6 +389,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         db = TrackingDbHelper(this)
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        regattaLinkClient = RegattaLinkBleClient(this) { state ->
+            if (asyncLifetime.isActive()) {
+                regattaLinkState.value = state
+            }
+        }
         loadBoatSetup()
         loadRaceSetup()
         loadAppState()
@@ -593,6 +626,19 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                                     currentScreen.value = Screen.HOME
                                 }
+                            },
+                            onRegattaLink = {
+                                currentScreen.value = Screen.REGATTALINK
+                            },
+                            onBack = ::navigateBack
+                        )
+
+                        Screen.REGATTALINK -> RegattaLinkScreen(
+                            state = regattaLinkState.value,
+                            modifier = Modifier.padding(innerPadding),
+                            onSearch = ::startRegattaLinkConnection,
+                            onDisconnect = {
+                                regattaLinkClient.disconnect()
                             },
                             onBack = ::navigateBack
                         )
@@ -2621,6 +2667,22 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         handler.removeCallbacks(raceDataRefreshRunnable)
     }
 
+    private fun startRegattaLinkConnection() {
+        val permissions = RegattaLinkBleClient.requiredPermissions()
+        val missing = permissions.filter { permission ->
+            ContextCompat.checkSelfPermission(
+                this,
+                permission
+            ) != PackageManager.PERMISSION_GRANTED
+        }
+
+        if (missing.isEmpty()) {
+            regattaLinkClient.startDiscovery()
+        } else {
+            regattaLinkPermissionLauncher.launch(missing.toTypedArray())
+        }
+    }
+
     private fun requestPermissionsForApp() {
         val permissions = mutableListOf(
             Manifest.permission.ACCESS_FINE_LOCATION
@@ -3497,6 +3559,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     override fun onDestroy() {
         asyncLifetime.invalidate()
         cancelEnterRaceServerCheck()
+        if (::regattaLinkClient.isInitialized) {
+            regattaLinkClient.close()
+        }
         super.onDestroy()
 
         handler.removeCallbacks(uiRefreshRunnable)
