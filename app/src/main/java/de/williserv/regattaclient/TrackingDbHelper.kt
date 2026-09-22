@@ -89,10 +89,10 @@ data class SessionTrackingSample(
     val gyroX: Float,
     val gyroY: Float,
     val gyroZ: Float,
-    val raceContextId: Long?,
-    val resolvedEventName: String?,
-    val courseJson: String?,
-    val courseMapViewportJson: String?
+    val raceContextId: Long? = null,
+    val resolvedEventName: String? = null,
+    val courseJson: String? = null,
+    val courseMapViewportJson: String? = null
 )
 
 internal data class AccessContextKey(
