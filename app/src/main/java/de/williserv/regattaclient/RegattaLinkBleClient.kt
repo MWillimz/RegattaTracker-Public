@@ -1262,7 +1262,7 @@ internal class RegattaLinkBleClient(
             attempts += 1
             val future = CompletableFuture<ByteArray>()
             val pending =
-                PendingGattOperation.CharacteristicRead(uuid, future)
+                PendingGattOperation.CharacteristicRead(characteristic.uuid, future)
             if (!setPendingGattOperation(pending)) {
                 throw RegattaLinkOtaTransportException(
                     "Another GATT operation is active",
