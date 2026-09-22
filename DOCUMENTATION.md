@@ -193,56 +193,69 @@ Notes:
 
 ### RegattaLink firmware access contract
 
-A compatible server may expose the currently published RegattaLink firmware through the authenticated server metadata response:
-
-```http
-GET /server-metadata
-Accept: application/json
-x-api-version: v1
-x-event-name: <event-or-series-access-identifier>
-x-shared-secret: <secret>
-```
-
-Relevant response field:
-
-```json
-{
-  "regattalink_release": {
-    "build_number": 22834262,
-    "source_sha": "cccccccccccccccccccccccccccccccccccccccc",
-    "size_bytes": 592112,
-    "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-    "uploaded_at": "2026-09-22T12:26:00+00:00",
-    "download_url": "/regattalink/firmware"
-  }
-}
-```
-
-If no valid RegattaLink firmware is published, `regattalink_release` is `null`.
-
-Client contract:
-
-- `download_url` is authoritative and must be resolved relative to the configured server origin.
-- The app must not invent or hard-code a firmware download path.
-- Firmware download does not use `RELEASE_UPLOAD_TOKEN` or admin credentials; those are server-side release-upload credentials and must never be present in the app.
-- Before a downloaded firmware artifact is used or forwarded to a RegattaLink device, the client must verify both `size_bytes` and `sha256`.
-- `build_number` is the machine-comparable RegattaLink firmware identity.
-- `source_sha` is traceability metadata for the firmware source revision.
-- Older compatible servers may omit `regattalink_release`; the client must tolerate a missing field as equivalent to no discoverable firmware.
-
-The reference server also exposes the same validated metadata directly at:
+A compatible server may expose the currently published RegattaLink firmware through
+the authenticated `/server-metadata` response and should expose the canonical OTA
+artifact metadata directly at:
 
 ```http
 GET /regattalink/firmware/metadata
+Accept: application/json
 ```
 
-and the binary through the returned path, currently:
+The direct metadata response used by the RegattaLink setup flow contains the OTA
+artifact contract plus release traceability fields:
 
-```http
-GET /regattalink/firmware
+```json
+{
+  "schema_version": 1,
+  "product": "RegattaLink",
+  "target": "esp32c3",
+  "hardware_profile": "esp32c3-wroom02-4mb",
+  "build_number": 22834262,
+  "filename": "regattalink.bin",
+  "size": 592112,
+  "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "signed": true,
+  "signing_key_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "source_sha": "cccccccccccccccccccccccccccccccccccccccc",
+  "size_bytes": 592112,
+  "uploaded_at": "2026-09-22T12:26:00+00:00",
+  "download_url": "/regattalink/firmware"
+}
 ```
 
-The server-side contract makes firmware discovery and download available to RegattaTracker. Device selection, BLE transfer and OTA UX are separate client features and are not implied merely by the availability of this metadata.
+`size_bytes` remains as the server release-metadata compatibility field; the OTA
+artifact contract uses `size`. For a canonical publication the two values must match.
+
+If the server also advertises the release through authenticated `/server-metadata`,
+the same validated release identity may be returned in `regattalink_release`.
+Older compatible servers may omit it.
+
+Client contract:
+
+- metadata and firmware are fetched only from the configured HTTPS Regatta Server;
+- `download_url` is authoritative and must resolve as a relative path on that same
+  server origin;
+- firmware download does not use `RELEASE_UPLOAD_TOKEN` or admin credentials;
+- before the binary can be offered to the BLE OTA layer, the client validates manifest
+  schema, product, target, hardware profile, build number, filename, size, SHA-256 and
+  signing metadata;
+- the downloaded file size and SHA-256 must exactly match the manifest;
+- the binary must be an ESP application image whose application descriptor names
+  project `regattalink` and whose embedded build equals `build_number`;
+- after Device Info is available, product/profile and OTA-slot size are checked against
+  the connected RegattaLink;
+- if the device advertises signature-verification capability, unsigned firmware is
+  rejected;
+- upgrade, downgrade and same-build reinstall are all valid directions when the
+  artifact is otherwise compatible.
+
+The server-side release upload stores the canonical `manifest.json` produced by
+RegattaLink packaging together with the firmware. The server validates that manifest
+against the uploaded binary and release identity before publication.
+
+Device selection, BLE transfer and reboot/validation are separate client features.
+The actual OTA state machine is not part of this metadata/download contract.
 
 ### Ingest endpoint
 

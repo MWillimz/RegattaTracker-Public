@@ -428,4 +428,18 @@
     <string name="regattalink_ota_available">OTA available</string>
     <string name="regattalink_ota_unavailable">OTA unavailable</string>
 
+    <string name="regattalink_firmware_title">Firmware</string>
+    <string name="regattalink_firmware_server_required">Load an event from a compatible Regatta Server before checking firmware.</string>
+    <string name="regattalink_firmware_not_checked">Firmware not checked.</string>
+    <string name="regattalink_firmware_checking">Checking and validating firmware…</string>
+    <string name="regattalink_available_build_value">Available build: %1$s</string>
+    <string name="regattalink_direction_upgrade">Update direction: upgrade</string>
+    <string name="regattalink_direction_downgrade">Update direction: downgrade</string>
+    <string name="regattalink_direction_reinstall">Update direction: reinstall</string>
+    <string name="regattalink_firmware_signed">Signed firmware</string>
+    <string name="regattalink_firmware_unsigned">Unsigned development firmware</string>
+    <string name="regattalink_check_firmware">Check firmware</string>
+    <string name="regattalink_connect_before_firmware">Connect a RegattaLink before checking firmware.</string>
+    <string name="regattalink_firmware_check_failed">Firmware check failed.</string>
+
 </resources>

@@ -9,6 +9,7 @@ internal const val REGATTALINK_PRODUCT_ID = 1
 internal const val REGATTALINK_PROFILE_ID = 1
 
 private const val CAP_OTA_AVAILABLE: UInt = 0x00000002u
+private const val CAP_SIGNATURE_VERIFICATION: UInt = 0x00000004u
 
 data class RegattaLinkDeviceInfo(
     val protocolMajor: Int,
@@ -23,6 +24,9 @@ data class RegattaLinkDeviceInfo(
 ) {
     val otaAvailable: Boolean
         get() = capabilities and CAP_OTA_AVAILABLE != 0u
+
+    val signatureVerification: Boolean
+        get() = capabilities and CAP_SIGNATURE_VERIFICATION != 0u
 }
 
 internal fun parseRegattaLinkDeviceInfo(raw: ByteArray): RegattaLinkDeviceInfo {
