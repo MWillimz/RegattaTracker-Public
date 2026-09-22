@@ -25,6 +25,7 @@ class RegattaLinkDeviceInfoTest {
         assertEquals(1_572_864u, info.otaSlotSize)
         assertEquals(16, info.maxInflightBlocks)
         assertTrue(info.otaAvailable)
+        assertTrue(info.telemetryAvailable)
         assertNull(validateRegattaLinkDeviceInfo(info))
     }
 
@@ -65,7 +66,7 @@ class RegattaLinkDeviceInfoTest {
         raw[0] = 1
         raw[1] = 0
         buffer.putShort(2, REGATTALINK_DEVICE_INFO_SIZE.toShort())
-        buffer.putInt(4, 1 shl 1)
+        buffer.putInt(4, (1 shl 1) or (1 shl 3))
         byteArrayOf(
             0x44, 0xb1.toByte(), 0x76, 0x48, 0x31, 0xb2.toByte()
         ).copyInto(raw, destinationOffset = 8)
