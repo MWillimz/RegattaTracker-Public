@@ -143,6 +143,7 @@ fun HomeScreen(
     onLegal: () -> Unit,
     onOcsPanelClick: () -> Unit,
     onToggleManualTracking: () -> Unit,
+    onSessionHistory: () -> Unit,
     onExport: () -> Unit,
     onClearOldDataClick: () -> Unit,
     onConfirmClearOldData: () -> Unit,
@@ -363,6 +364,7 @@ fun HomeScreen(
                 sogText = sogText,
                 gpsAccuracyText = gpsAccuracyText,
                 onToggleManualTracking = onToggleManualTracking,
+                onSessionHistory = onSessionHistory,
                 onExport = onExport,
                 onClearOldDataClick = onClearOldDataClick
             )
@@ -933,6 +935,7 @@ fun AdvancedDebugBlock(
     sogText: String,
     gpsAccuracyText: String,
     onToggleManualTracking: () -> Unit,
+    onSessionHistory: () -> Unit,
     onExport: () -> Unit,
     onClearOldDataClick: () -> Unit
 ) {
@@ -966,6 +969,15 @@ fun AdvancedDebugBlock(
                 } else {
                     Text(stringResource(R.string.start_manual_tracking))
                 }
+            }
+
+            Spacer(modifier = Modifier.height(HomeGapMedium))
+
+            Button(
+                onClick = onSessionHistory,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.session_history_button))
             }
 
             Spacer(modifier = Modifier.height(HomeGapLarge))
