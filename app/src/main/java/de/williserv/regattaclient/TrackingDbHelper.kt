@@ -31,7 +31,8 @@ data class PendingTrackingSample(
     val batteryPercent: Int? = null,
     val batteryCharging: Boolean? = null,
     val trackingProfile: String? = null,
-    val utcOffsetMinutes: Int? = null
+    val utcOffsetMinutes: Int? = null,
+    val measurementsJson: String? = null
 )
 
 data class AccessContext(
@@ -123,7 +124,7 @@ internal fun normalizeAccessContextKey(
 }
 
 class TrackingDbHelper(context: Context) :
-    SQLiteOpenHelper(context, "regatta_tracking.db", null, 10) {
+    SQLiteOpenHelper(context, "regatta_tracking.db", null, 11) {
 
     private val appContext = context.applicationContext
     private var lastBatteryReadAtMs: Long? = null
@@ -164,6 +165,9 @@ class TrackingDbHelper(context: Context) :
         }
         if (oldVersion < 10 && newVersion >= 10) {
             migrateToVersion10(db)
+        }
+        if (oldVersion < 11 && newVersion >= 11) {
+            migrateToVersion11(db)
         }
     }
 
@@ -560,6 +564,7 @@ class TrackingDbHelper(context: Context) :
                 samples.battery_charging,
                 samples.tracking_profile,
                 samples.utc_offset_minutes,
+                samples.measurements_json,
                 contexts.id,
                 contexts.server_url,
                 contexts.access_identifier,
@@ -577,12 +582,12 @@ class TrackingDbHelper(context: Context) :
         ).use { cursor ->
             while (cursor.moveToNext()) {
                 val accessContext = AccessContext(
-                    id = cursor.getLong(24),
-                    serverUrl = cursor.getString(25),
-                    accessIdentifier = cursor.getString(26),
-                    accessSecret = cursor.getString(27),
-                    createdAt = cursor.getLong(28),
-                    lastUsedAt = cursor.getLong(29)
+                    id = cursor.getLong(25),
+                    serverUrl = cursor.getString(26),
+                    accessIdentifier = cursor.getString(27),
+                    accessSecret = cursor.getString(28),
+                    createdAt = cursor.getLong(29),
+                    lastUsedAt = cursor.getLong(30)
                 )
 
                 result.add(
@@ -611,7 +616,8 @@ class TrackingDbHelper(context: Context) :
                         batteryPercent = if (cursor.isNull(20)) null else cursor.getInt(20),
                         batteryCharging = if (cursor.isNull(21)) null else cursor.getInt(21) != 0,
                         trackingProfile = if (cursor.isNull(22)) null else cursor.getString(22),
-                        utcOffsetMinutes = if (cursor.isNull(23)) null else cursor.getInt(23)
+                        utcOffsetMinutes = if (cursor.isNull(23)) null else cursor.getInt(23),
+                        measurementsJson = if (cursor.isNull(24)) null else cursor.getString(24)
                     )
                 )
             }
@@ -646,7 +652,8 @@ class TrackingDbHelper(context: Context) :
         accessContextId: Long? = null,
         sessionId: Long? = null,
         raceContextId: Long? = null,
-        utcOffsetMinutes: Int? = null
+        utcOffsetMinutes: Int? = null,
+        measurementsJson: String? = null
     ): Long {
         val nowMs = System.currentTimeMillis()
         val shouldReadBattery = batteryPercent == null &&
@@ -701,6 +708,7 @@ class TrackingDbHelper(context: Context) :
             if (effectiveBatteryCharging != null) put("battery_charging", if (effectiveBatteryCharging) 1 else 0) else putNull("battery_charging")
             if (automaticProfile != null) put("tracking_profile", automaticProfile) else putNull("tracking_profile")
             if (utcOffsetMinutes != null) put("utc_offset_minutes", utcOffsetMinutes) else putNull("utc_offset_minutes")
+            putNullableString("measurements_json", measurementsJson)
 
             if (accessContextId != null) {
                 put("access_context_id", accessContextId)
@@ -987,6 +995,18 @@ class TrackingDbHelper(context: Context) :
         }
     }
 
+    private fun migrateToVersion11(db: SQLiteDatabase) {
+        if (!tableExists(db, "tracking_samples")) {
+            createTrackingSamplesTable(db)
+            return
+        }
+        if (!columnExists(db, "tracking_samples", "measurements_json")) {
+            db.execSQL(
+                "ALTER TABLE tracking_samples ADD COLUMN measurements_json TEXT"
+            )
+        }
+    }
+
     private fun migrateToVersion10(db: SQLiteDatabase) {
         createRaceContextsTable(db)
 
@@ -1120,6 +1140,7 @@ class TrackingDbHelper(context: Context) :
                 battery_charging INTEGER,
                 tracking_profile TEXT,
                 utc_offset_minutes INTEGER,
+                measurements_json TEXT,
                 session_id INTEGER,
                 race_context_id INTEGER
             )
