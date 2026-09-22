@@ -76,7 +76,6 @@ class RegattaLinkBleClient(
     private var scanner: BluetoothLeScanner? = null
     private var gatt: BluetoothGatt? = null
     private var currentDevice: BluetoothDevice? = null
-    private var userDisconnect = false
     private var bondDeadline = 0L
 
     private val scanTimeout = Runnable {
@@ -161,12 +160,7 @@ class RegattaLinkBleClient(
                 if (gatt === callbackGatt) {
                     gatt = null
                 }
-                if (userDisconnect) {
-                    userDisconnect = false
-                    emit(RegattaLinkClientState())
-                } else {
-                    emitError(callbackGatt.device, "RegattaLink disconnected ($status)")
-                }
+                emitError(callbackGatt.device, "RegattaLink disconnected ($status)")
             }
         }
 
@@ -267,19 +261,15 @@ class RegattaLinkBleClient(
         stopScan()
         handler.removeCallbacks(bondPoll)
         handler.removeCallbacks(gattTimeout)
-        if (gatt == null) {
-            emit(RegattaLinkClientState())
-            return
-        }
-        userDisconnect = true
-        gatt?.disconnect()
+        closeGatt()
+        currentDevice = null
+        emit(RegattaLinkClientState())
     }
 
     fun close() {
         stopScan()
         handler.removeCallbacks(bondPoll)
         handler.removeCallbacks(gattTimeout)
-        userDisconnect = true
         closeGatt()
         currentDevice = null
     }
@@ -304,7 +294,6 @@ class RegattaLinkBleClient(
         handler.removeCallbacks(bondPoll)
         closeGatt()
         currentDevice = device
-        userDisconnect = false
         emitForDevice(device, RegattaLinkConnectionStatus.CONNECTING)
         gatt = device.connectGatt(
             appContext,
