@@ -3330,7 +3330,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 val session = db.getTrackingSession(sessionId) ?: return@runCatching null
                 val samples = db.getTrackingSamplesForSession(sessionId)
                 val resolvedEventNames = samples
-                    .mapNotNull { it.resolvedEventName?.takeIf(String::isNotBlank) }
+                    .mapNotNull { sample ->
+                        sample.resolvedEventName?.takeIf { it.isNotBlank() }
+                    }
                     .distinct()
                 val accessIdentifier = session.accessContextId
                     ?.let(db::getAccessContext)
