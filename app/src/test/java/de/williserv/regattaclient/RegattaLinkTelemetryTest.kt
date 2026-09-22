@@ -6,7 +6,12 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35])
 class RegattaLinkTelemetryTest {
     @Test
     fun parsesFastMotionWithSignedValuesAndUnsignedTimestamp() {
@@ -133,6 +138,85 @@ class RegattaLinkTelemetryTest {
             json.getJSONObject("regattalink.fast.sequence").getInt("value")
         )
         assertFalse(json.has("regattalink.summary.heel_filtered_deg"))
+    }
+
+    @Test
+    fun fullTelemetrySnapshotFitsServerMeasurementAndSampleBudgets() {
+        val state = RegattaLinkTelemetryState(
+            supported = true,
+            subscribed = true,
+            fast = RegattaLinkFastMotion(
+                confidencePct = 100,
+                sequence = 65535,
+                timestampMs = 4_294_967_295L,
+                rollDeg = -180.0,
+                pitchDeg = 180.0,
+                rollRateDps = 327.67,
+                pitchRateDps = -327.68,
+                yawRateDps = 123.45,
+                verticalAccelG = 32.767
+            ),
+            fastReceivedAtElapsedMs = 10_000L,
+            summary = RegattaLinkMotionSummary(
+                confidencePct = 100,
+                sequence = 65535,
+                timestampMs = 4_294_967_295L,
+                heelFilteredDeg = -180.0,
+                trimFilteredDeg = 180.0,
+                rollRmsDeg = 655.35,
+                pitchRmsDeg = 655.35,
+                verticalAccelRmsG = 65.535,
+                motionIntensity = 65535
+            ),
+            summaryReceivedAtElapsedMs = 10_000L,
+            calibration = RegattaLinkCalibrationDiagnostics(
+                overallConfidencePct = 100,
+                forwardConfidencePct = 100,
+                rollConfidencePct = 100,
+                learnerState = 2,
+                gyroBiasValid = true,
+                boatFrameValid = true,
+                sequence = 65535,
+                positiveManeuvers = 65535,
+                negativeManeuvers = 65535,
+                rollPairObservations = 65535,
+                contradictoryManeuvers = 65535,
+                mountingEpoch = 65535,
+                calibrationRevision = 65535
+            ),
+            calibrationReceivedAtElapsedMs = 10_000L
+        )
+
+        val measurements = JSONObject(
+            requireNotNull(buildRegattaLinkMeasurementsJson(state, 10_000L))
+        )
+        assertEquals(31, measurements.length())
+
+        val sample = JSONObject()
+            .put("sequence_id", Long.MAX_VALUE)
+            .put("timestamp", "2026-09-22T17:30:00+02:00")
+            .put("client_version_code", 2_100_000_000)
+            .put("client_build_id", "26.09.22-1730-production")
+            .put("boat_name", "Test Boat")
+            .put("captain_name", "Test Captain")
+            .put("hull_color", "white")
+            .put("sail_number", "GER 12345")
+            .put("yardstick", 100.0)
+            .put("boat_type", "Test Type")
+            .put("lat", 54.0)
+            .put("lon", 10.0)
+            .put("accuracy", 5.0)
+            .put("cog", 180.0)
+            .put("sog", 5.0)
+            .put("accel_x", 0.0)
+            .put("accel_y", 0.0)
+            .put("accel_z", 0.0)
+            .put("gyro_x", 0.0)
+            .put("gyro_y", 0.0)
+            .put("gyro_z", 0.0)
+            .put("measurements", measurements)
+
+        assertTrue(sample.toString().toByteArray(Charsets.UTF_8).size < 5 * 1024)
     }
 
     @Test
