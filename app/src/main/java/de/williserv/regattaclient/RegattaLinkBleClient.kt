@@ -1088,31 +1088,66 @@ internal class RegattaLinkBleClient(
             REGATTALINK_OTA_DATA_UUID
         )
 
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            when (
-                activeGatt.writeCharacteristic(
-                    characteristic,
-                    value,
-                    BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-                )
-            ) {
-                BluetoothStatusCodes.SUCCESS ->
-                    RegattaLinkOtaSubmitResult.ACCEPTED
-                BluetoothStatusCodes.ERROR_GATT_WRITE_REQUEST_BUSY ->
-                    RegattaLinkOtaSubmitResult.LOCAL_QUEUE_BUSY
-                else ->
-                    RegattaLinkOtaSubmitResult.REJECTED
+        var attempts = 0
+        while (attempts < 4) {
+            attempts += 1
+
+            // Android exposes one local GATT write operation at a time on many
+            // stacks, even for WRITE_TYPE_NO_RESPONSE. This local serialization
+            // is independent of the RegattaLink receiver's DATA in-flight window.
+            // Wait for Android's write-completion callback before admitting the
+            // next command, while keeping already submitted blocks logically
+            // in-flight until the device advances authoritative accepted_offset.
+            val future = CompletableFuture<Unit>()
+            val pending = PendingGattOperation.CharacteristicWrite(
+                REGATTALINK_OTA_DATA_UUID,
+                future
+            )
+            if (!setPendingGattOperation(pending)) {
+                if (attempts < 4) {
+                    Thread.sleep(5)
+                    continue
+                }
+                return RegattaLinkOtaSubmitResult.LOCAL_QUEUE_BUSY
             }
-        } else {
-            characteristic.writeType =
+
+            val submitResult = submitCharacteristicWrite(
+                activeGatt,
+                characteristic,
+                value,
                 BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-            characteristic.value = value
-            if (activeGatt.writeCharacteristic(characteristic)) {
+            )
+            if (submitResult != RegattaLinkOtaSubmitResult.ACCEPTED) {
+                clearPendingGattOperation(pending)
+                if (
+                    submitResult == RegattaLinkOtaSubmitResult.LOCAL_QUEUE_BUSY &&
+                    attempts < 4
+                ) {
+                    Thread.sleep(5)
+                    continue
+                }
+                return submitResult
+            }
+
+            return try {
+                awaitUnitFuture(
+                    future,
+                    "OTA DATA write command"
+                )
                 RegattaLinkOtaSubmitResult.ACCEPTED
-            } else {
-                RegattaLinkOtaSubmitResult.LOCAL_QUEUE_BUSY
+            } catch (error: RegattaLinkOtaTransportException) {
+                // The command was accepted by Android before the callback became
+                // ambiguous. Let the OTA engine reconcile against accepted_offset
+                // instead of retransmitting blindly.
+                otaDataTransportError.compareAndSet(
+                    null,
+                    error.message ?: "OTA DATA write command became ambiguous"
+                )
+                RegattaLinkOtaSubmitResult.ACCEPTED
             }
         }
+
+        return RegattaLinkOtaSubmitResult.LOCAL_QUEUE_BUSY
     }
 
     override fun writeDataWithResponse(value: ByteArray) {
