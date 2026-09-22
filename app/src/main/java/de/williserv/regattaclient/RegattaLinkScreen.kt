@@ -638,13 +638,13 @@ fun RegattaLinkScreen(
 
 @Composable
 private fun rememberTelemetryStale(
-    receivedAtElapsedMs: Long,
+    receivedAtElapsedMs: Long?,
     staleAfterMs: Long
 ): Boolean {
     var stale by remember { mutableStateOf(false) }
 
     LaunchedEffect(receivedAtElapsedMs, staleAfterMs) {
-        if (receivedAtElapsedMs <= 0L) {
+        if (receivedAtElapsedMs == null || receivedAtElapsedMs <= 0L) {
             stale = false
             return@LaunchedEffect
         }
