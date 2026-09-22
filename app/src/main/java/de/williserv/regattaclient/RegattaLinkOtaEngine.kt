@@ -314,7 +314,7 @@ internal class RegattaLinkOtaEngine(
             }
 
             val rateKib = committed.toDouble() / elapsed.toDouble() * 1000.0 / 1024.0
-            if (rateKib >= REGATTALINK_OTA_MIN_THROUGHPUT_KIB_S) {
+            if (rateKib >= REGATTALINK_OTA_ADAPT_THROUGHPUT_KIB_S) {
                 resetSample()
                 return
             }
@@ -339,11 +339,17 @@ internal class RegattaLinkOtaEngine(
                 return
             }
 
-            throw IllegalStateException(
-                "TRANSPORT_TOO_SLOW: committed DATA throughput " +
-                    String.format("%.1f", rateKib) +
-                    " KiB/s is below the 15 KiB/s supported-device floor"
-            )
+            if (rateKib < REGATTALINK_OTA_MIN_THROUGHPUT_KIB_S) {
+                throw IllegalStateException(
+                    "TRANSPORT_TOO_SLOW: committed DATA throughput " +
+                        String.format("%.1f", rateKib) +
+                        " KiB/s is below the " +
+                        String.format("%.1f", REGATTALINK_OTA_MIN_THROUGHPUT_KIB_S) +
+                        " KiB/s hard floor after all transport adaptations"
+                )
+            }
+
+            resetSample()
         }
 
         fun applyAdaptation() {
