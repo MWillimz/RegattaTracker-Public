@@ -98,6 +98,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private val regattaLinkFirmwareClient = RegattaLinkFirmwareClient()
     private val regattaLinkFirmwareState = mutableStateOf(RegattaLinkFirmwareUiState())
     private var regattaLinkFirmwareArtifact: RegattaLinkFirmwareArtifact? = null
+    private val regattaLinkOtaState = mutableStateOf(RegattaLinkOtaUiState())
 
     private val currentScreen = mutableStateOf(Screen.HOME)
 
@@ -268,12 +269,21 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         currentScreen.value = when (currentScreen.value) {
             Screen.HOME -> Screen.HOME
             Screen.REGATTALINK -> {
-                if (::regattaLinkClient.isInitialized) {
-                    regattaLinkClient.disconnect()
+                if (
+                    ::regattaLinkClient.isInitialized &&
+                    regattaLinkOtaState.value.isActive
+                ) {
+                    regattaLinkClient.cancelOta()
+                    Screen.REGATTALINK
+                } else {
+                    if (::regattaLinkClient.isInitialized) {
+                        regattaLinkClient.disconnect()
+                    }
+                    regattaLinkFirmwareArtifact = null
+                    regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState()
+                    regattaLinkOtaState.value = RegattaLinkOtaUiState()
+                    Screen.BOAT_DATA
                 }
-                regattaLinkFirmwareArtifact = null
-                regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState()
-                Screen.BOAT_DATA
             }
             Screen.BOAT_DATA,
             Screen.RACE,
@@ -394,11 +404,25 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         db = TrackingDbHelper(this)
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        regattaLinkClient = RegattaLinkBleClient(this) { state ->
-            if (asyncLifetime.isActive()) {
-                regattaLinkState.value = state
+        regattaLinkClient = RegattaLinkBleClient(
+            context = this,
+            onStateChanged = { state ->
+                if (asyncLifetime.isActive()) {
+                    regattaLinkState.value = state
+                }
+            },
+            onOtaStateChanged = { state ->
+                if (asyncLifetime.isActive()) {
+                    regattaLinkOtaState.value = state
+                    if (state.phase == RegattaLinkOtaPhase.SUCCESS) {
+                        regattaLinkFirmwareState.value =
+                            regattaLinkFirmwareState.value.copy(
+                                direction = RegattaLinkFirmwareDirection.REINSTALL
+                            )
+                    }
+                }
             }
-        }
+        )
         loadBoatSetup()
         loadRaceSetup()
         loadAppState()
@@ -641,14 +665,24 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         Screen.REGATTALINK -> RegattaLinkScreen(
                             state = regattaLinkState.value,
                             firmwareState = regattaLinkFirmwareState.value,
+                            otaState = regattaLinkOtaState.value,
                             firmwareSourceAvailable = raceServer.value.isNotBlank(),
+                            installAvailable =
+                                regattaLinkFirmwareArtifact != null &&
+                                    regattaLinkFirmwareState.value.status ==
+                                    RegattaLinkFirmwareStatus.READY,
                             modifier = Modifier.padding(innerPadding),
                             onSearch = ::startRegattaLinkConnection,
                             onCheckFirmware = ::loadRegattaLinkFirmware,
+                            onInstallFirmware = ::installRegattaLinkFirmware,
+                            onCancelOta = {
+                                regattaLinkClient.cancelOta()
+                            },
                             onDisconnect = {
                                 regattaLinkClient.disconnect()
                                 regattaLinkFirmwareArtifact = null
                                 regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState()
+                                regattaLinkOtaState.value = RegattaLinkOtaUiState()
                             },
                             onBack = ::navigateBack
                         )
@@ -2677,7 +2711,22 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         handler.removeCallbacks(raceDataRefreshRunnable)
     }
 
+    private fun installRegattaLinkFirmware() {
+        val artifact = regattaLinkFirmwareArtifact
+        if (artifact == null) {
+            regattaLinkOtaState.value = RegattaLinkOtaUiState(
+                phase = RegattaLinkOtaPhase.ERROR,
+                error = getString(R.string.regattalink_firmware_check_first)
+            )
+            return
+        }
+        regattaLinkClient.startOta(artifact)
+    }
+
     private fun loadRegattaLinkFirmware() {
+        if (regattaLinkOtaState.value.isActive) return
+        regattaLinkClient.resetOtaState()
+        regattaLinkOtaState.value = RegattaLinkOtaUiState()
         val deviceInfo = regattaLinkState.value.deviceInfo
         if (deviceInfo == null) {
             regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState(
@@ -2742,8 +2791,13 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     }
 
     private fun startRegattaLinkConnection() {
+        if (regattaLinkOtaState.value.isActive) return
         regattaLinkFirmwareArtifact = null
         regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState()
+        regattaLinkOtaState.value = RegattaLinkOtaUiState()
+        if (::regattaLinkClient.isInitialized) {
+            regattaLinkClient.resetOtaState()
+        }
         val permissions = RegattaLinkBleClient.requiredPermissions()
         val missing = permissions.filter { permission ->
             ContextCompat.checkSelfPermission(
