@@ -191,6 +191,59 @@ Notes:
 - Race data is refreshed periodically while in race.
 - Race data is persisted locally after successful load.
 
+### RegattaLink firmware access contract
+
+A compatible server may expose the currently published RegattaLink firmware through the authenticated server metadata response:
+
+```http
+GET /server-metadata
+Accept: application/json
+x-api-version: v1
+x-event-name: <event-or-series-access-identifier>
+x-shared-secret: <secret>
+```
+
+Relevant response field:
+
+```json
+{
+  "regattalink_release": {
+    "build_number": 22834262,
+    "source_sha": "cccccccccccccccccccccccccccccccccccccccc",
+    "size_bytes": 592112,
+    "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "uploaded_at": "2026-09-22T12:26:00+00:00",
+    "download_url": "/regattalink/firmware"
+  }
+}
+```
+
+If no valid RegattaLink firmware is published, `regattalink_release` is `null`.
+
+Client contract:
+
+- `download_url` is authoritative and must be resolved relative to the configured server origin.
+- The app must not invent or hard-code a firmware download path.
+- Firmware download does not use `RELEASE_UPLOAD_TOKEN` or admin credentials; those are server-side release-upload credentials and must never be present in the app.
+- Before a downloaded firmware artifact is used or forwarded to a RegattaLink device, the client must verify both `size_bytes` and `sha256`.
+- `build_number` is the machine-comparable RegattaLink firmware identity.
+- `source_sha` is traceability metadata for the firmware source revision.
+- Older compatible servers may omit `regattalink_release`; the client must tolerate a missing field as equivalent to no discoverable firmware.
+
+The reference server also exposes the same validated metadata directly at:
+
+```http
+GET /regattalink/firmware/metadata
+```
+
+and the binary through the returned path, currently:
+
+```http
+GET /regattalink/firmware
+```
+
+The server-side contract makes firmware discovery and download available to RegattaTracker. Device selection, BLE transfer and OTA UX are separate client features and are not implied merely by the availability of this metadata.
+
 ### Ingest endpoint
 
 Request:
