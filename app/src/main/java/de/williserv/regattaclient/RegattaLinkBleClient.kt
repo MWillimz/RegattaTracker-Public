@@ -280,6 +280,17 @@ internal class RegattaLinkBleClient(
                     gatt = null
                 }
 
+                if (otaRunning.get()) {
+                    updateTelemetry {
+                        it.copy(
+                            subscribed = false,
+                            pausedForOta = true
+                        )
+                    }
+                } else {
+                    clearTelemetry()
+                }
+
                 if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
                     reconnectFuture?.complete(null)
                 } else if (!otaRunning.get()) {
@@ -1639,6 +1650,9 @@ internal class RegattaLinkBleClient(
         failPendingGattOperation(
             RegattaLinkOtaTransportException(message)
         )
+        if (!otaRunning.get()) {
+            clearTelemetry()
+        }
 
         if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
             reconnectFuture?.complete(null)
