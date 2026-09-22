@@ -4,6 +4,8 @@ import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
+internal const val SESSION_CONTINUITY_MAX_GAP_MS = 120_000L
+
 data class SessionStatistics(
     val sampleCount: Long,
     val durationMs: Long,
@@ -21,19 +23,23 @@ internal fun calculateSessionStatistics(
     val durationMs = (effectiveEnd - session.startedAt).coerceAtLeast(0L)
 
     var distanceM = 0.0
-    var previousValidPoint: GeoPoint? = null
+    var previousValidSample: SessionTrackingSample? = null
 
     for (sample in samples) {
         if (!sample.hasUsableGpsPosition()) {
-            previousValidPoint = null
+            previousValidSample = null
             continue
         }
 
-        val current = GeoPoint(sample.lat, sample.lon)
-        previousValidPoint?.let { previous ->
-            distanceM += StartLineMath.distanceBetweenMeters(previous, current)
+        previousValidSample?.let { previous ->
+            if (areSessionSamplesContiguous(previous, sample)) {
+                distanceM += StartLineMath.distanceBetweenMeters(
+                    GeoPoint(previous.lat, previous.lon),
+                    GeoPoint(sample.lat, sample.lon)
+                )
+            }
         }
-        previousValidPoint = current
+        previousValidSample = sample
     }
 
     val validSogValues = samples
@@ -64,7 +70,7 @@ internal fun calculateSessionStatistics(
         val firstInstantMs = first.sampleEpochMillis() ?: continue
         val secondInstantMs = second.sampleEpochMillis() ?: continue
         val deltaMs = secondInstantMs - firstInstantMs
-        if (deltaMs <= 0L) continue
+        if (deltaMs <= 0L || deltaMs > SESSION_CONTINUITY_MAX_GAP_MS) continue
 
         val deltaSeconds = deltaMs / 1000.0
         weightedSogSum += ((firstSog + secondSog) / 2.0) * deltaSeconds
@@ -84,6 +90,16 @@ internal fun calculateSessionStatistics(
         averageSogMps = averageSog,
         maxSogMps = maxSog
     )
+}
+
+private fun areSessionSamplesContiguous(
+    first: SessionTrackingSample,
+    second: SessionTrackingSample
+): Boolean {
+    val firstInstantMs = first.sampleEpochMillis() ?: return false
+    val secondInstantMs = second.sampleEpochMillis() ?: return false
+    val deltaMs = secondInstantMs - firstInstantMs
+    return deltaMs in 1..SESSION_CONTINUITY_MAX_GAP_MS
 }
 
 private fun SessionTrackingSample.hasUsableGpsPosition(): Boolean {
