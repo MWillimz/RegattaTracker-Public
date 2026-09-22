@@ -329,4 +329,33 @@
     <string name="telemetry_upload_notification_remaining">%1$s positions en attente</string>
     <string name="telemetry_upload_notification_keep_running">Ne fermez pas Regatta Tracker avant la fin de l’envoi.</string>
 
+    <!-- Local session history -->
+    <string name="session_history_button">Sessions</string>
+    <string name="session_history_title">Historique des sessions</string>
+    <string name="session_history_empty">Aucune session enregistrée.</string>
+    <string name="session_details_title">Détails de la session</string>
+    <string name="session_details_unavailable">Les détails de la session ne sont pas disponibles.</string>
+    <string name="session_back">Retour</string>
+    <string name="session_mode_label">Mode</string>
+    <string name="session_mode_race">Course</string>
+    <string name="session_mode_manual">Manuel</string>
+    <string name="session_running">En cours</string>
+    <string name="session_event_label">Événement</string>
+    <string name="session_event_value">Événement : %1$s</string>
+    <string name="session_start_label">Début</string>
+    <string name="session_start_value">Début : %1$s</string>
+    <string name="session_end_label">Fin</string>
+    <string name="session_duration_label">Durée</string>
+    <string name="session_duration_value">Durée : %1$s</string>
+    <string name="session_samples_label">Échantillons</string>
+    <string name="session_samples_value">Échantillons : %1$d</string>
+    <string name="session_distance_label">Distance</string>
+    <string name="session_average_sog_label">SOG moyen</string>
+    <string name="session_max_sog_label">SOG max.</string>
+    <string name="session_distance_nm">%1$.2f NM</string>
+    <string name="session_speed_kn">%1$.1f kn</string>
+    <string name="session_unknown_value">--</string>
+    <string name="session_duration_minutes">%1$d min</string>
+    <string name="session_duration_hours_minutes">%1$d h %2$d min</string>
+
 </resources>
