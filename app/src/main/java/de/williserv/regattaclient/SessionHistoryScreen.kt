@@ -83,16 +83,6 @@ fun SessionHistoryScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        if (detail != null && detail.samples.isNotEmpty()) {
-            Button(
-                onClick = onReplay,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(stringResource(R.string.session_replay_button))
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-
         Button(
             onClick = onBack,
             modifier = Modifier.fillMaxWidth()
@@ -290,6 +280,16 @@ fun SessionDetailScreen(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
+
+        if (detail != null && detail.samples.isNotEmpty()) {
+            Button(
+                onClick = onReplay,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.session_replay_button))
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
 
         Button(
             onClick = onBack,
