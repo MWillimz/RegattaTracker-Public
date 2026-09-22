@@ -463,4 +463,41 @@
     <string name="regattalink_ota_cancelled">Firmware update cancelled</string>
     <string name="regattalink_ota_error">Firmware update failed</string>
 
+
+    <string name="regattalink_motion_title">Boat motion</string>
+    <string name="regattalink_telemetry_paused_ota">Telemetry paused during firmware update.</string>
+    <string name="regattalink_telemetry_stale">Telemetry is stale; connection remains active.</string>
+    <string name="regattalink_telemetry_waiting">Waiting for telemetry…</string>
+    <string name="regattalink_learning_confidence">Orientation learning · Confidence %1$d%%</string>
+    <string name="regattalink_heel">Heel</string>
+    <string name="regattalink_trim">Trim</string>
+    <string name="regattalink_roll_rms">Roll RMS</string>
+    <string name="regattalink_pitch_rms">Pitch RMS</string>
+    <string name="regattalink_vertical_rms">Vertical RMS</string>
+    <string name="regattalink_motion_intensity">Motion intensity</string>
+    <string name="regattalink_live_motion">Live motion</string>
+    <string name="regattalink_roll">Roll</string>
+    <string name="regattalink_pitch">Pitch</string>
+    <string name="regattalink_roll_rate">Roll rate</string>
+    <string name="regattalink_pitch_rate">Pitch rate</string>
+    <string name="regattalink_yaw_rate">Yaw rate</string>
+    <string name="regattalink_vertical_accel">Vertical acceleration</string>
+    <string name="regattalink_calibration_title">Sensor orientation / calibration</string>
+    <string name="regattalink_confidence_overall">Overall confidence</string>
+    <string name="regattalink_confidence_forward">Forward confidence</string>
+    <string name="regattalink_confidence_roll">Roll confidence</string>
+    <string name="regattalink_learner_state">Learner state</string>
+    <string name="regattalink_learner_idle">Waiting / observing</string>
+    <string name="regattalink_learner_turn">Evaluating maneuver</string>
+    <string name="regattalink_learner_post">Collecting post-maneuver attitude</string>
+    <string name="regattalink_gyro_bias">Gyro bias</string>
+    <string name="regattalink_boat_frame">Boat frame</string>
+    <string name="regattalink_valid">Valid</string>
+    <string name="regattalink_learning">Learning</string>
+    <string name="regattalink_positive_maneuvers">Positive maneuver observations</string>
+    <string name="regattalink_negative_maneuvers">Negative maneuver observations</string>
+    <string name="regattalink_roll_pairs">Roll pairs</string>
+    <string name="regattalink_contradictions">Contradictions</string>
+    <string name="regattalink_mounting_epoch">Mounting epoch</string>
+    <string name="regattalink_calibration_revision">Calibration revision</string>
 </resources>
