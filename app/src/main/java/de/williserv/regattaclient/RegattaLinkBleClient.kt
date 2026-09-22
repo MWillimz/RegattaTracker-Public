@@ -9,6 +9,7 @@ import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattService
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
+import android.bluetooth.le.BluetoothLeScanner
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
@@ -74,7 +75,7 @@ class RegattaLinkBleClient(
     private val handler = Handler(Looper.getMainLooper())
     private val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    private var scanner = bluetoothManager.adapter?.bluetoothLeScanner
+    private var scanner: BluetoothLeScanner? = null
     private var gatt: BluetoothGatt? = null
     private var currentDevice: BluetoothDevice? = null
     private var userDisconnect = false
@@ -129,6 +130,13 @@ class RegattaLinkBleClient(
             status: Int,
             newState: Int
         ) {
+            if (gatt !== callbackGatt) {
+                if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                    callbackGatt.close()
+                }
+                return
+            }
+
             if (status == BluetoothGatt.GATT_SUCCESS &&
                 newState == BluetoothProfile.STATE_CONNECTED
             ) {
