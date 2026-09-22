@@ -119,7 +119,7 @@ fun SessionReplayScreen(
                     selectedIndex = safeIndex,
                     onSelectedIndex = { selectedIndex = it },
                     modifier = Modifier
-                        .width(52.dp)
+                        .width(76.dp)
                         .fillMaxHeight()
                 )
             }
@@ -265,10 +265,10 @@ private fun ReplayTrackCanvas(
                 .fillMaxSize()
                 .padding(4.dp)
         ) {
-            val geoPoints = buildList {
-                validSamples.forEach { add(OwnShipGeoPoint(it.lat, it.lon)) }
-                coursePoints.forEach { add(OwnShipGeoPoint(it.lat, it.lon)) }
-            }
+            val geoPoints = replayProjectionPoints(
+                samples = validSamples,
+                coursePoints = coursePoints
+            )
 
             val projection = ReplayMapProjection.create(
                 points = geoPoints,
@@ -366,11 +366,17 @@ private fun ReplayTimeline(
     val density = LocalDensity.current
     val markerColor = MaterialTheme.colorScheme.primary
     val railBackground = MaterialTheme.colorScheme.surfaceVariant
-    val timelineBoatRadiusPx = with(density) { 12.dp.toPx() }
+    val timelineBoatRadiusPx = with(density) { 14.dp.toPx() }
+    val timelineHandleMarginPx = timelineBoatRadiusPx * 1.9f
 
     fun selectAt(y: Float) {
         if (heightPx <= 0) return
-        val fraction = (y / heightPx.toFloat()).coerceIn(0f, 1f)
+        val usableHeight = (
+            heightPx.toFloat() - 2f * timelineHandleMarginPx
+        ).coerceAtLeast(1f)
+        val fraction = (
+            (y - timelineHandleMarginPx) / usableHeight
+        ).coerceIn(0f, 1f)
         val index = replaySampleIndexForFraction(fractions, fraction)
         if (index >= 0) onSelectedIndex(index)
     }
@@ -391,11 +397,19 @@ private fun ReplayTimeline(
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val x = size.width / 2f
+            val railTop = timelineHandleMarginPx
+            val railBottom = (size.height - timelineHandleMarginPx)
+                .coerceAtLeast(railTop + 1f)
+            val railHeight = railBottom - railTop
+
+            fun railY(fraction: Float): Float =
+                railTop + fraction.coerceIn(0f, 1f) * railHeight
+
             if (samples.size == 1) {
                 drawLine(
                     color = replaySpeedColor(samples[0].sog.toDouble(), maxSog),
-                    start = Offset(x, 8f),
-                    end = Offset(x, size.height - 8f),
+                    start = Offset(x, railTop),
+                    end = Offset(x, railBottom),
                     strokeWidth = 10f
                 )
             } else {
@@ -403,8 +417,8 @@ private fun ReplayTimeline(
                 var index = 0
                 while (index < samples.lastIndex) {
                     val next = min(samples.lastIndex, index + stride)
-                    val y1 = fractions[index] * size.height
-                    val y2 = fractions[next] * size.height
+                    val y1 = railY(fractions[index])
+                    val y2 = railY(fractions[next])
                     drawLine(
                         color = replaySpeedColor(samples[index].sog.toDouble(), maxSog),
                         start = Offset(x, y1),
@@ -418,13 +432,71 @@ private fun ReplayTimeline(
             val selectedFraction = fractions
                 .getOrElse(selectedIndex) { 0f }
                 .coerceIn(0f, 1f)
+            val selectedBearing = samples
+                .getOrNull(selectedIndex)
+                ?.cog
+                ?.toDouble()
+                ?.let(::cogDegreesForDisplay)
+                ?.toFloat()
+                ?: 0f
             drawReplayBoat(
-                center = Offset(x, selectedFraction * size.height),
+                center = Offset(x, railY(selectedFraction)),
                 radius = timelineBoatRadiusPx,
-                bearingDegrees = 180f,
+                bearingDegrees = selectedBearing,
                 color = markerColor
             )
         }
+    }
+}
+
+internal fun replayProjectionPoints(
+    samples: List<SessionTrackingSample>,
+    coursePoints: List<CourseOverlayGeoPoint>
+): List<OwnShipGeoPoint> {
+    val track = samples
+        .filter { it.hasUsableGpsPosition() }
+        .map { OwnShipGeoPoint(it.lat, it.lon) }
+
+    if (track.isEmpty()) {
+        return coursePoints.map { OwnShipGeoPoint(it.lat, it.lon) }
+    }
+
+    val centerLat = (track.minOf { it.lat } + track.maxOf { it.lat }) / 2.0
+    val centerLon = (track.minOf { it.lon } + track.maxOf { it.lon }) / 2.0
+    val metersPerLonDegree =
+        METERS_PER_LAT_DEGREE *
+            cos(Math.toRadians(centerLat)).coerceAtLeast(0.05)
+
+    val trackSpanX = (
+        (track.maxOf { it.lon } - track.minOf { it.lon }) *
+            metersPerLonDegree
+    ).coerceAtLeast(0.0)
+    val trackSpanY = (
+        (track.maxOf { it.lat } - track.minOf { it.lat }) *
+            METERS_PER_LAT_DEGREE
+    ).coerceAtLeast(0.0)
+    val trackSpanM = max(trackSpanX, trackSpanY)
+
+    /*
+     * Fit primarily to the sailed track. Nearby course geometry is useful
+     * context, but a distant mark/start/finish must not shrink a short track
+     * to a few pixels. A stationary/short session still gets 300 m of context;
+     * longer tracks admit proportionally more nearby course geometry.
+     */
+    val courseContextRadiusM = max(
+        REPLAY_MIN_CONTEXT_RADIUS_M,
+        trackSpanM * REPLAY_COURSE_CONTEXT_MULTIPLIER
+    )
+
+    val nearbyCourse = coursePoints.filter { point ->
+        val dx = (point.lon - centerLon) * metersPerLonDegree
+        val dy = (point.lat - centerLat) * METERS_PER_LAT_DEGREE
+        dx * dx + dy * dy <= courseContextRadiusM * courseContextRadiusM
+    }
+
+    return buildList {
+        addAll(track)
+        nearbyCourse.forEach { add(OwnShipGeoPoint(it.lat, it.lon)) }
     }
 }
 
@@ -548,8 +620,10 @@ private data class ReplayMapProjection(
 
             val xValues = points.map { (it.lon - centerLon) * metersPerLonDegree }
             val yValues = points.map { (it.lat - centerLat) * METERS_PER_LAT_DEGREE }
-            val spanX = (xValues.maxOrNull()!! - xValues.minOrNull()!!).coerceAtLeast(20.0)
-            val spanY = (yValues.maxOrNull()!! - yValues.minOrNull()!!).coerceAtLeast(20.0)
+            val spanX = (xValues.maxOrNull()!! - xValues.minOrNull()!!)
+                .coerceAtLeast(REPLAY_MIN_VIEW_SPAN_M)
+            val spanY = (yValues.maxOrNull()!! - yValues.minOrNull()!!)
+                .coerceAtLeast(REPLAY_MIN_VIEW_SPAN_M)
 
             val availableWidth = (widthPx - 2f * paddingPx).coerceAtLeast(1f)
             val availableHeight = (heightPx - 2f * paddingPx).coerceAtLeast(1f)
@@ -612,3 +686,6 @@ private fun DrawScope.drawReplayBoat(
 }
 
 private const val METERS_PER_LAT_DEGREE = 111_320.0
+private const val REPLAY_MIN_VIEW_SPAN_M = 120.0
+private const val REPLAY_MIN_CONTEXT_RADIUS_M = 300.0
+private const val REPLAY_COURSE_CONTEXT_MULTIPLIER = 2.0
