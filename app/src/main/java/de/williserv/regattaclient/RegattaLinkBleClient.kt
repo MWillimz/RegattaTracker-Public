@@ -81,7 +81,7 @@ internal class RegattaLinkBleClient(
         private const val GATT_TIMEOUT_MS = 20_000L
         private const val BOND_POLL_MS = 250L
         private const val GATT_OPERATION_TIMEOUT_MS = 10_000L
-        private const val OTA_RECONNECT_SERVICE_SETTLE_MS = 200L
+        private const val OTA_RECONNECT_SERVICE_SETTLE_MS = 500L
         private const val REQUESTED_OTA_MTU = 247
         private const val OTA_PHY_REQUEST_GRACE_MS = 300L
         private const val LOG_TAG = "RegattaLinkBLE"
