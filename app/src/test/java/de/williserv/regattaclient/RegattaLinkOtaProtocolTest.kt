@@ -12,8 +12,9 @@ import java.security.MessageDigest
 class RegattaLinkOtaProtocolTest {
 
     @Test
-    fun throughputFloor_matchesSupportedDevicePolicy() {
-        assertEquals(10.0, REGATTALINK_OTA_MIN_THROUGHPUT_KIB_S, 0.0)
+    fun throughputThresholds_matchSupportedDevicePolicy() {
+        assertEquals(10.0, REGATTALINK_OTA_ADAPT_THROUGHPUT_KIB_S, 0.0)
+        assertEquals(4.0, REGATTALINK_OTA_MIN_THROUGHPUT_KIB_S, 0.0)
     }
 
     @Test
