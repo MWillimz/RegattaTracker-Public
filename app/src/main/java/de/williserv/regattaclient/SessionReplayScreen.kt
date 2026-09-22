@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -364,11 +365,20 @@ private fun ReplayTrackCanvas(
                             strokeWidth = stroke
                         )
                         if (!mark.inactive) {
-                            drawCircle(
-                                color = color,
-                                radius = radius * 0.42f,
-                                center = Offset(center.x, center.y - radius * 1.65f),
-                                style = Stroke(width = stroke)
+                            val badgeCenter = Offset(center.x, center.y - radius * 1.65f)
+                            drawCircle(color = color, radius = radius * 0.62f, center = badgeCenter)
+                            val labelPaint = android.graphics.Paint().apply {
+                                isAntiAlias = true
+                                textAlign = android.graphics.Paint.Align.CENTER
+                                textSize = radius
+                                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                                this.color = android.graphics.Color.WHITE
+                            }
+                            drawContext.canvas.nativeCanvas.drawText(
+                                (index + 1).toString(),
+                                badgeCenter.x,
+                                badgeCenter.y - (labelPaint.ascent() + labelPaint.descent()) / 2f,
+                                labelPaint
                             )
                         }
                     }
