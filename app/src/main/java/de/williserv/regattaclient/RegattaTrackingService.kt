@@ -52,6 +52,20 @@ internal fun shouldFinishTrackingServiceStop(
     return handoffGeneration == currentGeneration && !serviceRunning
 }
 
+internal fun shouldRecordRaceSample(
+    raceStatus: String,
+    raceStartInstant: Instant?,
+    now: Instant
+): Boolean {
+    if (raceStatus.equals("postponed", ignoreCase = true)) {
+        return false
+    }
+
+    val start = raceStartInstant ?: return false
+    val recordingStart = start.minus(Duration.ofMinutes(30))
+    return !now.isBefore(recordingStart)
+}
+
 class RegattaTrackingService : Service(), SensorEventListener {
 
     companion object {
@@ -1256,29 +1270,11 @@ class RegattaTrackingService : Service(), SensorEventListener {
     }
 
     private fun isInsideRaceWindow(): Boolean {
-        if (raceStatus.equals("postponed", ignoreCase = true)) {
-            return false
-        }
-
-        val start = raceStartInstant
-        val stop = raceStopInstant
-
-        if (start == null) {
-            return false
-        }
-
-        val recordingStart = start.minus(Duration.ofMinutes(30))
-        val now = Instant.now()
-
-        if (now.isBefore(recordingStart)) {
-            return false
-        }
-
-        if (stop == null) {
-            return true
-        }
-
-        return !now.isAfter(stop)
+        return shouldRecordRaceSample(
+            raceStatus = raceStatus,
+            raceStartInstant = raceStartInstant,
+            now = Instant.now()
+        )
     }
 
     private fun generateAndStoreSample() {
