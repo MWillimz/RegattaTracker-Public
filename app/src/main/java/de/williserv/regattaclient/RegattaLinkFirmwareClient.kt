@@ -143,9 +143,14 @@ class RegattaLinkFirmwareClient {
 
     private fun requireUnsignedInteger(json: JSONObject, key: String): ULong {
         val value = json.get(key)
-        val text = when (value) {
-            is Byte, is Short, is Int, is Long -> value.toString()
-            else -> throw IllegalArgumentException(
+        if (value !is Number) {
+            throw IllegalArgumentException(
+                "Firmware manifest $key must be an integer"
+            )
+        }
+        val text = value.toString()
+        if (!Regex("^[0-9]+$").matches(text)) {
+            throw IllegalArgumentException(
                 "Firmware manifest $key must be an integer"
             )
         }
@@ -158,9 +163,11 @@ class RegattaLinkFirmwareClient {
 
     private fun requirePositiveInt(json: JSONObject, key: String): Int {
         val value = json.get(key)
-        val longValue = when (value) {
-            is Byte, is Short, is Int, is Long -> value.toString().toLongOrNull()
-            else -> null
+        val text = value.toString()
+        val longValue = if (value is Number && Regex("^[0-9]+$").matches(text)) {
+            text.toLongOrNull()
+        } else {
+            null
         } ?: throw IllegalArgumentException(
             "Firmware manifest $key must be an integer"
         )
@@ -171,7 +178,7 @@ class RegattaLinkFirmwareClient {
     }
 
     private fun normalizeFirmwareServerUrl(serverUrl: String): String {
-        val normalized = serverUrl.trim().trimEnd('/')
+        val normalized = normalizeServerBaseUrl(serverUrl)
         require(normalized.startsWith("https://")) {
             "A configured HTTPS Regatta Server is required for firmware updates"
         }
