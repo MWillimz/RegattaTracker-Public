@@ -137,6 +137,7 @@ internal class RegattaLinkBleClient(
     @Volatile private var lastState = RegattaLinkClientState()
     @Volatile private var lastOtaState = RegattaLinkOtaUiState()
     private var reconnectFuture: CompletableFuture<RegattaLinkDeviceInfo?>? = null
+    private var selectedDeviceAddress: String? = null
 
     private val scanTimeout = Runnable {
         stopScan()
@@ -388,6 +389,7 @@ internal class RegattaLinkBleClient(
 
     fun startDiscovery() {
         if (otaRunning.get()) return
+        selectedDeviceAddress = null
         stopScan()
         handler.removeCallbacks(bondPoll)
         closeGatt()
@@ -535,12 +537,16 @@ internal class RegattaLinkBleClient(
         otaExecutor.shutdownNow()
     }
 
-    private fun startFilteredScan(activeScanner: BluetoothLeScanner) {
-        val filters = listOf(
-            ScanFilter.Builder()
-                .setServiceUuid(ParcelUuid(CONFIG_SERVICE_UUID))
-                .build()
-        )
+    private fun startFilteredScan(
+        activeScanner: BluetoothLeScanner,
+        deviceAddress: String? = null
+    ) {
+        val filterBuilder = ScanFilter.Builder()
+            .setServiceUuid(ParcelUuid(CONFIG_SERVICE_UUID))
+        if (deviceAddress != null) {
+            filterBuilder.setDeviceAddress(deviceAddress)
+        }
+        val filters = listOf(filterBuilder.build())
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .build()
@@ -628,6 +634,9 @@ internal class RegattaLinkBleClient(
 
         val device = callbackGatt.device
         handler.removeCallbacks(gattTimeout)
+        if (scanPurpose == ScanPurpose.NORMAL) {
+            selectedDeviceAddress = device.address
+        }
         emit(
             RegattaLinkClientState(
                 status = RegattaLinkConnectionStatus.CONNECTED,
@@ -820,6 +829,7 @@ internal class RegattaLinkBleClient(
         val adapter = bluetoothManager.adapter ?: return null
         if (!adapter.isEnabled) return null
         val activeScanner = adapter.bluetoothLeScanner ?: return null
+        val targetAddress = selectedDeviceAddress ?: return null
         scanner = activeScanner
 
         val future = CompletableFuture<RegattaLinkDeviceInfo?>()
@@ -832,7 +842,7 @@ internal class RegattaLinkBleClient(
                     status = RegattaLinkConnectionStatus.SCANNING
                 )
             )
-            startFilteredScan(activeScanner)
+            startFilteredScan(activeScanner, targetAddress)
         }
 
         return try {
