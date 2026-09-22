@@ -766,6 +766,7 @@ internal class RegattaLinkOtaEngine(
         val targetBuild = artifact.manifest.buildNumber
         val expectedStableId = initialDeviceInfo.stableId
         val deadline = nowMs() + RECONNECT_TIMEOUT_MS
+        var lastObservation = "updated RegattaLink not yet rediscovered"
 
         while (nowMs() < deadline) {
             emitState(
@@ -779,13 +780,21 @@ internal class RegattaLinkOtaEngine(
             val info = transport.reconnectCandidate(
                 expectedStableId,
                 min(POST_BOOT_CANDIDATE_TIMEOUT_MS, remaining)
-            ) ?: continue
+            )
+            if (info == null) {
+                lastObservation = "no matching RegattaLink completed reconnect"
+                continue
+            }
 
             if (info.stableId != expectedStableId) {
+                lastObservation =
+                    "unexpected stable ID ${info.stableId}"
                 transport.closeCurrentConnection()
                 continue
             }
             if (info.runningBuild != targetBuild) {
+                lastObservation =
+                    "Device Info still reports build ${info.runningBuild}"
                 transport.closeCurrentConnection()
                 Thread.sleep(100)
                 continue
@@ -806,6 +815,8 @@ internal class RegattaLinkOtaEngine(
 
                 while (nowMs() < validationDeadline && transport.isConnected()) {
                     val snapshot = transport.snapshot()
+                    lastObservation =
+                        "status build=${snapshot.runningBuild}, boot=${snapshot.bootResult}"
                     if (snapshot.bootResult == RegattaLinkOtaBootResult.ROLLBACK) {
                         throw IllegalStateException(
                             "RegattaLink rolled back the firmware update"
@@ -820,8 +831,11 @@ internal class RegattaLinkOtaEngine(
                 if (error.message?.contains("rolled back", ignoreCase = true) == true) {
                     throw error
                 }
-            } catch (_: Exception) {
-                // Reconnect and continue authoritative post-boot reconciliation.
+                lastObservation =
+                    error.message ?: "post-boot validation failed"
+            } catch (error: Exception) {
+                lastObservation =
+                    error.message ?: error.javaClass.simpleName
             }
 
             transport.closeCurrentConnection()
@@ -829,7 +843,8 @@ internal class RegattaLinkOtaEngine(
         }
 
         throw IllegalStateException(
-            "RegattaLink did not return with an attempt-specific VALIDATED target build"
+            "RegattaLink did not return with a VALIDATED target build; last observation: " +
+                lastObservation
         )
     }
 

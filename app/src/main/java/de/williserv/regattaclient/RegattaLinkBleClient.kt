@@ -81,6 +81,7 @@ internal class RegattaLinkBleClient(
         private const val GATT_TIMEOUT_MS = 20_000L
         private const val BOND_POLL_MS = 250L
         private const val GATT_OPERATION_TIMEOUT_MS = 10_000L
+        private const val OTA_RECONNECT_SERVICE_SETTLE_MS = 500L
         private const val REQUESTED_OTA_MTU = 247
         private const val OTA_PHY_REQUEST_GRACE_MS = 300L
         private const val LOG_TAG = "RegattaLinkBLE"
@@ -151,6 +152,11 @@ internal class RegattaLinkBleClient(
     @Volatile private var lastTelemetryState = RegattaLinkTelemetryState()
     private val telemetryLock = Any()
     private val serviceRediscoveryPending = AtomicBoolean(false)
+    private val serviceRediscoveryRequested = AtomicBoolean(false)
+    private val serviceRediscoveryDeferredForOta = AtomicBoolean(false)
+    @Volatile private var serviceDiscoveryInProgress = false
+    @Volatile private var deviceInfoReadInProgress = false
+    @Volatile private var connectionSetupComplete = false
     private var serviceRediscoveryGatt: BluetoothGatt? = null
     private var reconnectFuture: CompletableFuture<RegattaLinkDeviceInfo?>? = null
     private var selectedDeviceAddress: String? = null
@@ -198,31 +204,87 @@ internal class RegattaLinkBleClient(
             ) {
                 serviceRediscoveryGatt = null
                 serviceRediscoveryPending.set(false)
+                serviceRediscoveryRequested.set(false)
+                return
+            }
+
+            if (
+                otaRunning.get() &&
+                connectionSetupComplete
+            ) {
+                serviceRediscoveryDeferredForOta.set(true)
+                serviceRediscoveryPending.set(false)
                 return
             }
 
             val localGattBusy = synchronized(pendingGattLock) {
                 pendingGattOperation != null
             }
-            if (localGattBusy) {
+            if (
+                localGattBusy ||
+                serviceDiscoveryInProgress ||
+                deviceInfoReadInProgress
+            ) {
                 handler.postDelayed(this, 100L)
                 return
             }
 
-            emitForDevice(
-                activeGatt.device,
-                RegattaLinkConnectionStatus.DISCOVERING
-            )
-            if (activeGatt.discoverServices()) {
+            serviceRediscoveryRequested.set(false)
+            if (beginServiceDiscovery(activeGatt, "GATT Service Changed")) {
                 serviceRediscoveryGatt = null
                 serviceRediscoveryPending.set(false)
                 return
             }
 
-            // Service Changed may arrive while Android is still finishing its
-            // previous discovery internally. Retry without disconnecting; the
-            // remote GATT database itself is valid.
+            serviceRediscoveryRequested.set(true)
             handler.postDelayed(this, 250L)
+        }
+    }
+
+    private fun beginServiceDiscovery(
+        activeGatt: BluetoothGatt,
+        reason: String
+    ): Boolean {
+        if (
+            gatt !== activeGatt ||
+            !connected ||
+            serviceDiscoveryInProgress ||
+            deviceInfoReadInProgress
+        ) {
+            return false
+        }
+
+        val localGattBusy = synchronized(pendingGattLock) {
+            pendingGattOperation != null
+        }
+        if (localGattBusy) return false
+
+        connectionSetupComplete = false
+        emitForDevice(
+            activeGatt.device,
+            RegattaLinkConnectionStatus.DISCOVERING
+        )
+        if (!activeGatt.discoverServices()) {
+            return false
+        }
+
+        serviceDiscoveryInProgress = true
+        handler.removeCallbacks(gattTimeout)
+        handler.postDelayed(gattTimeout, GATT_TIMEOUT_MS)
+        Log.i(LOG_TAG, "RegattaLink service discovery started: $reason")
+        return true
+    }
+
+    private fun scheduleServiceRediscovery(
+        activeGatt: BluetoothGatt,
+        reason: String
+    ) {
+        if (gatt !== activeGatt || !connected) return
+        serviceRediscoveryRequested.set(true)
+        Log.i(LOG_TAG, "$reason; queued service rediscovery")
+        serviceRediscoveryGatt = activeGatt
+        if (serviceRediscoveryPending.compareAndSet(false, true)) {
+            handler.post(serviceRediscovery)
         }
     }
 
@@ -295,11 +357,12 @@ internal class RegattaLinkBleClient(
                 newState == BluetoothProfile.STATE_CONNECTED
             ) {
                 connected = true
-                emitForDevice(
-                    callbackGatt.device,
-                    RegattaLinkConnectionStatus.DISCOVERING
-                )
-                if (!callbackGatt.discoverServices()) {
+                connectionSetupComplete = false
+                serviceDiscoveryInProgress = false
+                deviceInfoReadInProgress = false
+                serviceRediscoveryRequested.set(false)
+                serviceRediscoveryDeferredForOta.set(false)
+                if (!beginServiceDiscovery(callbackGatt, "initial connection")) {
                     closeGattWithError(
                         callbackGatt,
                         "Could not discover RegattaLink services"
@@ -310,6 +373,7 @@ internal class RegattaLinkBleClient(
 
             if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 connected = false
+                resetServiceDiscoveryState()
                 failPendingGattOperation(
                     RegattaLinkOtaTransportException(
                         "RegattaLink disconnected during GATT operation"
@@ -349,14 +413,28 @@ internal class RegattaLinkBleClient(
         override fun onServiceChanged(callbackGatt: BluetoothGatt) {
             if (gatt !== callbackGatt) return
 
-            Log.i(
-                LOG_TAG,
-                "RegattaLink GATT Service Changed received; rediscovering services"
-            )
-            serviceRediscoveryGatt = callbackGatt
-            if (serviceRediscoveryPending.compareAndSet(false, true)) {
-                handler.post(serviceRediscovery)
+            /*
+             * Never start a second discoverServices() in parallel. During
+             * connection setup the current discovery / Device Info result is
+             * discarded and one fresh discovery is serialized afterwards. If
+             * OTA post-boot validation already owns a fully established
+             * connection, defer the rediscovery until the OTA reaches a
+             * terminal state so CCCD / SNAPSHOT operations cannot race it.
+             */
+            if (otaRunning.get() && connectionSetupComplete) {
+                serviceRediscoveryRequested.set(true)
+                serviceRediscoveryDeferredForOta.set(true)
+                Log.i(
+                    LOG_TAG,
+                    "RegattaLink GATT Service Changed deferred until OTA completes"
+                )
+                return
             }
+
+            scheduleServiceRediscovery(
+                callbackGatt,
+                "RegattaLink GATT Service Changed received"
+            )
         }
 
         override fun onServicesDiscovered(
@@ -364,10 +442,20 @@ internal class RegattaLinkBleClient(
             status: Int
         ) {
             if (gatt !== callbackGatt) return
+            serviceDiscoveryInProgress = false
+
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 closeGattWithError(
                     callbackGatt,
                     "RegattaLink service discovery failed ($status)"
+                )
+                return
+            }
+
+            if (serviceRediscoveryRequested.get()) {
+                scheduleServiceRediscovery(
+                    callbackGatt,
+                    "Service Changed arrived during discovery"
                 )
                 return
             }
@@ -389,7 +477,9 @@ internal class RegattaLinkBleClient(
                 callbackGatt.device,
                 RegattaLinkConnectionStatus.READING_DEVICE_INFO
             )
+            deviceInfoReadInProgress = true
             if (!callbackGatt.readCharacteristic(characteristic)) {
+                deviceInfoReadInProgress = false
                 closeGattWithError(
                     callbackGatt,
                     "Could not read RegattaLink Device Info"
@@ -612,6 +702,19 @@ internal class RegattaLinkBleClient(
                 otaRunning.set(false)
                 otaCancelled.set(false)
                 scanPurpose = ScanPurpose.NORMAL
+
+                if (serviceRediscoveryDeferredForOta.getAndSet(false)) {
+                    val activeGatt = gatt
+                    if (activeGatt != null && connected) {
+                        serviceRediscoveryRequested.set(true)
+                        handler.post {
+                            scheduleServiceRediscovery(
+                                activeGatt,
+                                "Deferred RegattaLink GATT Service Changed"
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -798,6 +901,16 @@ internal class RegattaLinkBleClient(
         }
 
         if (characteristicUuid != DEVICE_INFO_UUID) return
+        deviceInfoReadInProgress = false
+
+        if (serviceRediscoveryRequested.get()) {
+            scheduleServiceRediscovery(
+                callbackGatt,
+                "Service Changed arrived during Device Info read"
+            )
+            return
+        }
+
         if (status != BluetoothGatt.GATT_SUCCESS) {
             closeGattWithError(
                 callbackGatt,
@@ -824,12 +937,15 @@ internal class RegattaLinkBleClient(
 
         val device = callbackGatt.device
         handler.removeCallbacks(gattTimeout)
+
         if (scanPurpose == ScanPurpose.NORMAL) {
+            connectionSetupComplete = true
             selectedDeviceAddress = device.address
             discoveryInProgress = false
             discoveryCandidateInProgress = false
             attemptedDiscoveryAddresses.clear()
         }
+
         emit(
             RegattaLinkClientState(
                 status = RegattaLinkConnectionStatus.CONNECTED,
@@ -854,12 +970,50 @@ internal class RegattaLinkBleClient(
         }
 
         if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
-            reconnectFuture?.complete(info)
+            /*
+             * A Service Changed indication is delivered only after the bonded
+             * link has restored security and can race the first encrypted
+             * Device Info read. Do not hand the connection to the OTA validator
+             * until the GATT database has been quiet for a short bounded window.
+             * If Service Changed arrives, the serialized rediscovery path will
+             * produce another Device Info read and restart this guard.
+             */
+            connectionSetupComplete = false
+            handler.postDelayed(
+                {
+                    if (
+                        gatt === callbackGatt &&
+                        connected &&
+                        scanPurpose == ScanPurpose.OTA_RECONNECT &&
+                        !serviceRediscoveryRequested.get() &&
+                        !serviceRediscoveryPending.get() &&
+                        !serviceDiscoveryInProgress &&
+                        !deviceInfoReadInProgress
+                    ) {
+                        connectionSetupComplete = true
+                        reconnectFuture?.complete(info)
+                    }
+                },
+                OTA_RECONNECT_SERVICE_SETTLE_MS
+            )
         }
     }
 
     private fun setupTelemetry(activeGatt: BluetoothGatt) {
         if (gatt !== activeGatt || !connected) return
+        if (
+            !connectionSetupComplete ||
+            deviceInfoReadInProgress ||
+            serviceRediscoveryRequested.get() ||
+            serviceDiscoveryInProgress ||
+            serviceRediscoveryPending.get()
+        ) {
+            Log.i(
+                LOG_TAG,
+                "Skipping telemetry setup until fresh GATT discovery completes"
+            )
+            return
+        }
 
         val service = activeGatt.getService(TELEMETRY_SERVICE_UUID)
         val fast = service?.getCharacteristic(TELEMETRY_FAST_UUID)
@@ -1725,11 +1879,20 @@ internal class RegattaLinkBleClient(
         runCatching { scanner?.stopScan(scanCallback) }
     }
 
-    private fun closeGatt() {
-        handler.removeCallbacks(gattTimeout)
+    private fun resetServiceDiscoveryState() {
         handler.removeCallbacks(serviceRediscovery)
         serviceRediscoveryGatt = null
         serviceRediscoveryPending.set(false)
+        serviceRediscoveryRequested.set(false)
+        serviceRediscoveryDeferredForOta.set(false)
+        serviceDiscoveryInProgress = false
+        deviceInfoReadInProgress = false
+        connectionSetupComplete = false
+    }
+
+    private fun closeGatt() {
+        handler.removeCallbacks(gattTimeout)
+        resetServiceDiscoveryState()
         connected = false
         val existing = gatt
         gatt = null
@@ -1750,9 +1913,7 @@ internal class RegattaLinkBleClient(
         message: String
     ) {
         handler.removeCallbacks(gattTimeout)
-        handler.removeCallbacks(serviceRediscovery)
-        serviceRediscoveryGatt = null
-        serviceRediscoveryPending.set(false)
+        resetServiceDiscoveryState()
         connected = false
         callbackGatt.disconnect()
         callbackGatt.close()
