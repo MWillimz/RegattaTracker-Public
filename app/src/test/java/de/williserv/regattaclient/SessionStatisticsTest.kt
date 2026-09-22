@@ -2,6 +2,7 @@ package de.williserv.regattaclient
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SessionStatisticsTest {
@@ -47,6 +48,59 @@ class SessionStatisticsTest {
             StartLineMath.distanceBetweenMeters(GeoPoint(a.lat, a.lon), GeoPoint(b.lat, b.lon)) +
                 StartLineMath.distanceBetweenMeters(GeoPoint(c.lat, c.lon), GeoPoint(d.lat, d.lon))
         assertEquals(expected, stats.distanceM, 0.01)
+    }
+
+    @Test
+    fun longRecordingGap_breaksDistanceAndAverageSogContinuity() {
+        val session = session(startedAt = 0L, endedAt = 600_000L)
+        val first = sample(
+            id = 1L,
+            second = 0,
+            lat = 54.0,
+            lon = 10.0,
+            sog = 2f,
+            timestamp = "2026-09-22T10:00:00"
+        )
+        val second = sample(
+            id = 2L,
+            second = 0,
+            lat = 54.01,
+            lon = 10.0,
+            sog = 8f,
+            timestamp = "2026-09-22T10:05:00"
+        )
+
+        val stats = calculateSessionStatistics(session, listOf(first, second))
+
+        assertEquals(0.0, stats.distanceM, 0.0)
+        assertNull(stats.averageSogMps)
+        assertEquals(8.0, stats.maxSogMps!!, 0.0)
+    }
+
+    @Test
+    fun maximumRegularGap_isStillContinuous() {
+        val session = session(startedAt = 0L, endedAt = SESSION_CONTINUITY_MAX_GAP_MS)
+        val first = sample(
+            id = 1L,
+            second = 0,
+            lat = 54.0,
+            lon = 10.0,
+            sog = 2f,
+            timestamp = "2026-09-22T10:00:00"
+        )
+        val second = sample(
+            id = 2L,
+            second = 0,
+            lat = 54.0001,
+            lon = 10.0,
+            sog = 4f,
+            timestamp = "2026-09-22T10:02:00"
+        )
+
+        val stats = calculateSessionStatistics(session, listOf(first, second))
+
+        assertTrue(stats.distanceM > 0.0)
+        assertEquals(3.0, stats.averageSogMps!!, 1e-9)
     }
 
     @Test
