@@ -199,7 +199,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
                 publishLocalRaceStatus()
             }
 
-            handler.postDelayed(this, currentSamplingIntervalMs())
+            scheduleNextSample(currentSamplingIntervalMs())
         }
     }
 
@@ -753,7 +753,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
             pollEvent()
         }
 
-        handler.postDelayed(sampleRunnable, currentSamplingIntervalMs())
+        scheduleNextSample(currentSamplingIntervalMs())
         if (!manualRecording) {
             handler.postDelayed(eventPollRunnable, 10_000L)
             publishLocalRaceStatus()
@@ -763,10 +763,13 @@ class RegattaTrackingService : Service(), SensorEventListener {
     }
 
     private fun reconfigureSamplingSchedule() {
-        handler.removeCallbacks(sampleRunnable)
-
         val intervalMs = currentSamplingIntervalMs()
         requestLocationUpdatesForInterval(intervalMs)
+        scheduleNextSample(intervalMs)
+    }
+
+    private fun scheduleNextSample(intervalMs: Long) {
+        handler.removeCallbacks(sampleRunnable)
         handler.postDelayed(sampleRunnable, intervalMs)
     }
 
@@ -948,9 +951,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
         val nextIntervalMs = currentSamplingIntervalMs()
         if (nextIntervalMs != activeLocationIntervalMs) {
-            handler.removeCallbacks(sampleRunnable)
             requestLocationUpdatesForInterval(nextIntervalMs)
-            handler.postDelayed(sampleRunnable, nextIntervalMs)
+            scheduleNextSample(nextIntervalMs)
         }
     }
 
