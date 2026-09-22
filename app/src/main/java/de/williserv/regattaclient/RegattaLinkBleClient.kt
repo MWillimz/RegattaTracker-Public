@@ -703,13 +703,11 @@ internal class RegattaLinkBleClient(
         )
 
         if (info.otaPhy2m) {
-            if (priorityAccepted) {
-                try {
-                    Thread.sleep(OTA_PHY_REQUEST_GRACE_MS)
-                } catch (_: InterruptedException) {
-                    Thread.currentThread().interrupt()
-                    return
-                }
+            try {
+                Thread.sleep(OTA_PHY_REQUEST_GRACE_MS)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return
             }
 
             runCatching {
