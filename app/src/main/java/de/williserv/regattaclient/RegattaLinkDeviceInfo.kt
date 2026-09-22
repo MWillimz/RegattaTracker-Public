@@ -8,7 +8,7 @@ internal const val REGATTALINK_PROTOCOL_MAJOR = 1
 internal const val REGATTALINK_PRODUCT_ID = 1
 internal const val REGATTALINK_PROFILE_ID = 1
 
-private const val CAP_OTA_AVAILABLE = 1u shl 1
+private const val CAP_OTA_AVAILABLE: UInt = 0x00000002u
 
 data class RegattaLinkDeviceInfo(
     val protocolMajor: Int,
