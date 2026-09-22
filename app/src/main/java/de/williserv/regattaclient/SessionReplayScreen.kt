@@ -319,16 +319,58 @@ private fun ReplayTrackCanvas(
                 }
             }
 
+            val activeMarks = coursePoints.filter { it.kind == CourseOverlayKind.MARK && !it.inactive }
+            val startLine = coursePoints.filter { it.kind == CourseOverlayKind.START }.take(2)
+            val finishLine = coursePoints.filter { it.kind == CourseOverlayKind.FINISH }.take(2)
+            val referenceRoute = buildList {
+                fun midpoint(line: List<CourseOverlayGeoPoint>): Offset? {
+                    if (line.size != 2) return null
+                    val a = coursePoint(line[0]) ?: return null
+                    val b = coursePoint(line[1]) ?: return null
+                    return Offset((a.x + b.x) / 2f, (a.y + b.y) / 2f)
+                }
+                midpoint(startLine)?.let(::add)
+                activeMarks.mapNotNull(::coursePoint).forEach(::add)
+                midpoint(finishLine)?.let(::add)
+            }
+            referenceRoute.zipWithNext().forEach { (from, to) ->
+                drawLine(
+                    color = courseColor.copy(alpha = 0.40f),
+                    start = from,
+                    end = to,
+                    strokeWidth = (min(size.width, size.height) * 0.004f).coerceIn(2f, 5f)
+                )
+            }
+
             coursePoints
                 .filter { it.kind == CourseOverlayKind.MARK }
-                .forEach { mark ->
+                .forEachIndexed { index, mark ->
                     coursePoint(mark)?.let { center ->
-                        drawCircle(
-                            color = courseColor.copy(alpha = if (mark.inactive) 0.35f else 0.9f),
-                            radius = (min(size.width, size.height) * 0.018f).coerceIn(7f, 18f),
-                            center = center,
-                            style = Stroke(width = (min(size.width, size.height) * 0.004f).coerceIn(2f, 5f))
+                        val radius = (min(size.width, size.height) * 0.018f).coerceIn(7f, 18f)
+                        val stroke = (min(size.width, size.height) * 0.004f).coerceIn(2f, 5f)
+                        val color = courseColor.copy(alpha = if (mark.inactive) 0.28f else 0.95f)
+                        val buoy = Path().apply {
+                            moveTo(center.x, center.y - radius)
+                            lineTo(center.x + radius * 0.7f, center.y + radius)
+                            lineTo(center.x - radius * 0.7f, center.y + radius)
+                            close()
+                        }
+                        drawPath(buoy, color.copy(alpha = color.alpha * 0.18f))
+                        drawPath(buoy, color, style = Stroke(width = stroke))
+                        drawLine(
+                            color = color,
+                            start = Offset(center.x - radius * 0.9f, center.y + radius),
+                            end = Offset(center.x + radius * 0.9f, center.y + radius),
+                            strokeWidth = stroke
                         )
+                        if (!mark.inactive) {
+                            drawCircle(
+                                color = color,
+                                radius = radius * 0.42f,
+                                center = Offset(center.x, center.y - radius * 1.65f),
+                                style = Stroke(width = stroke)
+                            )
+                        }
                     }
                 }
 
