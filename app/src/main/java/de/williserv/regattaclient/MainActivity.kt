@@ -60,7 +60,9 @@ enum class Screen {
     MAP,
     QR_SCANNER,
     LEGAL,
-    RESULTS
+    RESULTS,
+    SESSION_HISTORY,
+    SESSION_DETAIL
 }
 
 private enum class PendingTrackingAction {
@@ -194,6 +196,13 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private val retirementRequestInFlight = mutableStateOf(false)
     private val showAdvanced = mutableStateOf(false)
 
+    private val sessionSummaries = mutableStateOf<List<TrackingSessionSummary>>(emptyList())
+    private val sessionHistoryLoading = mutableStateOf(false)
+    private val selectedSessionId = mutableStateOf<Long?>(null)
+    private val sessionDetail = mutableStateOf<SessionDetailData?>(null)
+    private val sessionDetailLoading = mutableStateOf(false)
+    private var sessionLoadGeneration = 0L
+
     private val cogText = mutableStateOf("")
     private val sogText = mutableStateOf("")
     private val gpsAccuracyText = mutableStateOf("")
@@ -255,7 +264,12 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             Screen.RACE,
             Screen.COURSE,
             Screen.LEGAL,
-            Screen.RESULTS -> Screen.HOME
+            Screen.RESULTS,
+            Screen.SESSION_HISTORY -> Screen.HOME
+            Screen.SESSION_DETAIL -> {
+                loadSessionHistory()
+                Screen.SESSION_HISTORY
+            }
             Screen.RACE_LEGAL,
             Screen.QR_SCANNER -> Screen.RACE
             Screen.MAP -> if (selectedCourseMapView.value == null) {
@@ -452,6 +466,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                     requestTrackingConsent(PendingTrackingAction.START_MANUAL_TRACKING)
                                 }
                             },
+                            onSessionHistory = {
+                                currentScreen.value = Screen.SESSION_HISTORY
+                                loadSessionHistory()
+                            },
                             onExport = {
                                 exportCsvLauncher.launch("regatta_tracking_export.csv")
                             },
@@ -468,6 +486,26 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             onToggleAdvanced = {
                                 showAdvanced.value = !showAdvanced.value
                             }
+                        )
+
+                        Screen.SESSION_HISTORY -> SessionHistoryScreen(
+                            sessions = sessionSummaries.value,
+                            loading = sessionHistoryLoading.value,
+                            modifier = Modifier.padding(innerPadding),
+                            onSessionClick = { sessionId ->
+                                selectedSessionId.value = sessionId
+                                sessionDetail.value = null
+                                currentScreen.value = Screen.SESSION_DETAIL
+                                loadSessionDetail(sessionId)
+                            },
+                            onBack = ::navigateBack
+                        )
+
+                        Screen.SESSION_DETAIL -> SessionDetailScreen(
+                            detail = sessionDetail.value,
+                            loading = sessionDetailLoading.value,
+                            modifier = Modifier.padding(innerPadding),
+                            onBack = ::navigateBack
                         )
 
                         Screen.RACE_LEGAL -> RaceLegalScreen(
@@ -3244,9 +3282,77 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
 
         db.deleteAllSamples()
+        sessionSummaries.value = emptyList()
+        selectedSessionId.value = null
+        sessionDetail.value = null
         updateStorageText()
         lastCsvLine.value = getString(R.string.no_csv_line_yet)
         statusText.value = getString(R.string.old_data_deleted)
+    }
+
+    private fun loadSessionHistory() {
+        val generation = ++sessionLoadGeneration
+        sessionHistoryLoading.value = true
+
+        thread(name = "regatta-session-history") {
+            val summaries = runCatching {
+                db.getTrackingSessionSummaries()
+            }.getOrDefault(emptyList())
+
+            if (!asyncLifetime.isActive()) return@thread
+            runOnUiThread {
+                if (!asyncLifetime.isActive() || generation != sessionLoadGeneration) {
+                    return@runOnUiThread
+                }
+                sessionSummaries.value = summaries
+                sessionHistoryLoading.value = false
+            }
+        }
+    }
+
+    private fun loadSessionDetail(sessionId: Long) {
+        val generation = ++sessionLoadGeneration
+        sessionDetailLoading.value = true
+
+        thread(name = "regatta-session-detail") {
+            val detail = runCatching {
+                val session = db.getTrackingSession(sessionId) ?: return@runCatching null
+                val samples = db.getTrackingSamplesForSession(sessionId)
+                val eventIdentifier = session.accessContextId
+                    ?.let(db::getAccessContext)
+                    ?.accessIdentifier
+                val summary = TrackingSessionSummary(
+                    id = session.id,
+                    startedAt = session.startedAt,
+                    endedAt = session.endedAt,
+                    mode = session.mode,
+                    accessContextId = session.accessContextId,
+                    displayName = session.displayName,
+                    eventIdentifier = eventIdentifier,
+                    sampleCount = samples.size.toLong()
+                )
+                SessionDetailData(
+                    session = summary,
+                    statistics = calculateSessionStatistics(
+                        session = session,
+                        samples = samples
+                    )
+                )
+            }.getOrNull()
+
+            if (!asyncLifetime.isActive()) return@thread
+            runOnUiThread {
+                if (
+                    !asyncLifetime.isActive() ||
+                    generation != sessionLoadGeneration ||
+                    selectedSessionId.value != sessionId
+                ) {
+                    return@runOnUiThread
+                }
+                sessionDetail.value = detail
+                sessionDetailLoading.value = false
+            }
+        }
     }
 
     private fun startGpsDisplayUpdates() {
