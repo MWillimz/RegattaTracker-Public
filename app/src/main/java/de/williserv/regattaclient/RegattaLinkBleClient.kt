@@ -1284,7 +1284,7 @@ internal class RegattaLinkBleClient(
 
             return awaitByteArrayFuture(
                 future,
-                "GATT read " + uuid
+                "GATT read " + characteristic.uuid
             )
         }
     }
