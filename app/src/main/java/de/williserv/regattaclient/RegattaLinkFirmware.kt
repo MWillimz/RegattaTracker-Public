@@ -1,5 +1,6 @@
 package de.williserv.regattaclient
 
+import java.net.URI
 import java.security.MessageDigest
 
 internal const val REGATTALINK_FIRMWARE_MAX_BYTES = 4 * 1024 * 1024
@@ -51,8 +52,14 @@ internal fun validateRegattaLinkFirmwareManifest(manifest: RegattaLinkFirmwareMa
     require(Regex("^[0-9a-f]{64}$").matches(manifest.sha256)) {
         "Firmware SHA-256 is invalid"
     }
-    require(manifest.downloadUrl == REGATTALINK_DOWNLOAD_URL) {
-        "Unexpected firmware download URL"
+    val downloadUri = URI(manifest.downloadUrl)
+    require(
+        manifest.downloadUrl.startsWith("/") &&
+            !manifest.downloadUrl.startsWith("//") &&
+            !downloadUri.isAbsolute &&
+            downloadUri.host == null
+    ) {
+        "Firmware download URL must be a relative path on the configured server"
     }
 
     if (manifest.signed) {
