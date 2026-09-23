@@ -1,8 +1,10 @@
 package de.williserv.regattaclient
 
 import java.text.DateFormat
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,11 +18,19 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -39,6 +49,7 @@ fun SessionHistoryScreen(
     loading: Boolean,
     modifier: Modifier = Modifier,
     onSessionClick: (Long) -> Unit,
+    onSessionDelete: (Long) -> Unit,
     onBack: () -> Unit
 ) {
     Column(
@@ -72,9 +83,10 @@ fun SessionHistoryScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(sessions, key = { it.id }) { session ->
-                        SessionSummaryCard(
+                        DismissibleSessionSummaryCard(
                             session = session,
-                            onClick = { onSessionClick(session.id) }
+                            onClick = { onSessionClick(session.id) },
+                            onDelete = { onSessionDelete(session.id) }
                         )
                     }
                 }
@@ -89,6 +101,71 @@ fun SessionHistoryScreen(
         ) {
             Text(stringResource(R.string.session_back))
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DismissibleSessionSummaryCard(
+    session: TrackingSessionSummary,
+    onClick: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val canDelete = session.endedAt != null
+    if (!canDelete) {
+        SessionSummaryCard(
+            session = session,
+            onClick = onClick
+        )
+        return
+    }
+
+    val deleteLabel = stringResource(R.string.delete)
+    val dismissState = rememberSwipeToDismissBoxState()
+
+    LaunchedEffect(dismissState.currentValue) {
+        if (dismissState.currentValue == SwipeToDismissBoxValue.EndToStart) {
+            onDelete()
+        }
+    }
+
+    val accessibilityModifier = Modifier.semantics {
+        customActions = listOf(
+            CustomAccessibilityAction(
+                label = deleteLabel,
+                action = {
+                    onDelete()
+                    true
+                }
+            )
+        )
+    }
+
+    SwipeToDismissBox(
+        state = dismissState,
+        modifier = accessibilityModifier.fillMaxWidth(),
+        backgroundContent = {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.errorContainer)
+                    .padding(horizontal = 20.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Text(
+                    text = deleteLabel,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        },
+        enableDismissFromStartToEnd = false,
+        enableDismissFromEndToStart = true
+    ) {
+        SessionSummaryCard(
+            session = session,
+            onClick = onClick
+        )
     }
 }
 
