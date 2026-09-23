@@ -50,6 +50,10 @@ Regatta Tracker is designed to work with compatible HTTPS regatta servers rather
 
 The current protocol and endpoint details are documented in [DOCUMENTATION.md](DOCUMENTATION.md).
 
+### RegattaLink BLE client contract
+
+The complete public RegattaLink ↔ RegattaTracker BLE wire contract is documented in [docs/REGATTALINK-BLE-CLIENT-CONTRACT.md](docs/REGATTALINK-BLE-CLIENT-CONTRACT.md). It covers security/bonding, all current service and characteristic UUIDs, Device Info capabilities, NMEA2000 PGN inventory, IMU telemetry records, OTA framing/state/reconciliation, Android GATT rules, compatibility behavior and explicitly undefined future NMEA surfaces.
+
 ## Privacy and data handling
 
 The app processes location, boat and technical telemetry required for tracking. Race telemetry may be sent to the server configured for the active event; the operator of that server is responsible for its server-side processing and retention.

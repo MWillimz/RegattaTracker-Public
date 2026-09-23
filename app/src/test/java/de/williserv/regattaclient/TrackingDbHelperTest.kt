@@ -175,6 +175,55 @@ class TrackingDbHelperTest {
     }
 
     @Test
+    fun deleteTrackingSession_removesOnlyFinishedTargetSession() {
+        val helper = TrackingDbHelper(context)
+        val accessContextId = createAccessContext(helper, "Event A", "secret-a")
+        val finishedSessionId = requireNotNull(
+            helper.createTrackingSession(
+                startedAt = 1_700_000_000_000L,
+                mode = "race",
+                accessContextId = accessContextId,
+                displayName = "Finished"
+            )
+        )
+        val runningSessionId = requireNotNull(
+            helper.createTrackingSession(
+                startedAt = 1_700_000_120_000L,
+                mode = "race",
+                accessContextId = accessContextId,
+                displayName = "Running"
+            )
+        )
+
+        insertSample(
+            helper = helper,
+            sequenceId = 1L,
+            accessContextId = accessContextId,
+            sessionId = finishedSessionId
+        )
+        val runningSampleId = insertSample(
+            helper = helper,
+            sequenceId = 2L,
+            accessContextId = accessContextId,
+            sessionId = runningSessionId
+        )
+        assertTrue(helper.finishTrackingSession(finishedSessionId, 1_700_000_060_000L))
+
+        assertTrue(helper.deleteTrackingSession(finishedSessionId))
+
+        assertNull(helper.getTrackingSession(finishedSessionId))
+        assertEquals(listOf(runningSessionId), helper.getTrackingSessionSummaries().map { it.id })
+        assertEquals(1L, helper.countSamples())
+        assertEquals(1L, helper.countTrackingSessions())
+        assertEquals(runningSessionId, sampleSessionId(helper, runningSampleId))
+        assertTrue(helper.getAccessContext(accessContextId) != null)
+
+        assertFalse(helper.deleteTrackingSession(runningSessionId))
+        assertTrue(helper.getTrackingSession(runningSessionId) != null)
+        assertEquals(1L, helper.countSamples())
+    }
+
+    @Test
     fun trackingSession_persistsAndUpdatesRaceContext() {
         val helper = TrackingDbHelper(context)
         val accessContextId = createAccessContext(helper, "Series A", "secret-a")

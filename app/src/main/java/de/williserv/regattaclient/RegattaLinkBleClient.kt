@@ -696,7 +696,8 @@ internal class RegattaLinkBleClient(
                     initialDeviceInfo = info,
                     transport = this,
                     cancelled = { otaCancelled.get() },
-                    emit = ::emitOta
+                    emit = ::emitOta,
+                    onTerminalDisconnect = ::invalidateTerminalOtaConnection
                 ).run()
             } finally {
                 otaRunning.set(false)
@@ -2008,6 +2009,26 @@ internal class RegattaLinkBleClient(
 
     private fun clearTelemetry() {
         emitTelemetry(RegattaLinkTelemetryState())
+    }
+
+    private fun invalidateTerminalOtaConnection() {
+        val previousState = lastState
+
+        // The OTA engine has already closed the GATT connection here. Keep
+        // telemetry paused while replacing the snapshot so the terminal
+        // CANCELLED/ERROR state can never expose pre-OTA measurements again.
+        emitTelemetry(
+            RegattaLinkTelemetryState(
+                pausedForOta = true
+            )
+        )
+        emit(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.IDLE,
+                deviceName = previousState.deviceName,
+                deviceAddress = previousState.deviceAddress
+            )
+        )
     }
 
     private fun emitOta(state: RegattaLinkOtaUiState) {

@@ -45,7 +45,8 @@ internal class RegattaLinkOtaEngine(
     private val initialDeviceInfo: RegattaLinkDeviceInfo,
     private val transport: RegattaLinkOtaTransport,
     private val cancelled: () -> Boolean,
-    private val emit: (RegattaLinkOtaUiState) -> Unit
+    private val emit: (RegattaLinkOtaUiState) -> Unit,
+    private val onTerminalDisconnect: () -> Unit = {}
 ) {
     companion object {
         private const val OPERATION_TIMEOUT_MS = 65_000L
@@ -154,6 +155,7 @@ internal class RegattaLinkOtaEngine(
         } catch (_: RegattaLinkOtaCancelledException) {
             bestEffortAbort()
             transport.closeCurrentConnection()
+            onTerminalDisconnect()
             emitState(
                 phase = RegattaLinkOtaPhase.CANCELLED,
                 detail = "Firmware update cancelled"
@@ -161,6 +163,7 @@ internal class RegattaLinkOtaEngine(
         } catch (error: Exception) {
             bestEffortAbort()
             transport.closeCurrentConnection()
+            onTerminalDisconnect()
             emitState(
                 phase = RegattaLinkOtaPhase.ERROR,
                 error = error.message ?: "RegattaLink OTA failed",

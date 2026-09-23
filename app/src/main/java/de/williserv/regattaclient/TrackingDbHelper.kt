@@ -434,6 +434,50 @@ class TrackingDbHelper(context: Context) :
         return result
     }
 
+    fun deleteTrackingSession(sessionId: Long): Boolean {
+        val db = writableDatabase
+        val args = arrayOf(sessionId.toString())
+
+        db.beginTransaction()
+        try {
+            val isFinished = db.rawQuery(
+                """
+                SELECT ended_at
+                FROM tracking_sessions
+                WHERE id = ?
+                LIMIT 1
+                """.trimIndent(),
+                args
+            ).use { cursor ->
+                cursor.moveToFirst() && !cursor.isNull(0)
+            }
+            if (!isFinished) {
+                return false
+            }
+
+            db.delete(
+                "tracking_samples",
+                "session_id = ?",
+                args
+            )
+            val deletedSessions = db.delete(
+                "tracking_sessions",
+                "id = ? AND ended_at IS NOT NULL",
+                args
+            )
+            if (deletedSessions != 1) {
+                return false
+            }
+
+            deleteOrphanedRaceContexts(db)
+            deleteOrphanedAccessContexts(db)
+            db.setTransactionSuccessful()
+            return true
+        } finally {
+            db.endTransaction()
+        }
+    }
+
     fun getTrackingSamplesForSession(sessionId: Long): List<SessionTrackingSample> {
         val result = mutableListOf<SessionTrackingSample>()
         readableDatabase.rawQuery(
@@ -1182,6 +1226,25 @@ class TrackingDbHelper(context: Context) :
         }
     }
 
+    private fun deleteOrphanedRaceContexts(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            DELETE FROM race_contexts
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM tracking_samples
+                WHERE tracking_samples.race_context_id = race_contexts.id
+            )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM tracking_sessions
+                WHERE tracking_sessions.access_context_id = race_contexts.access_context_id
+                  AND tracking_sessions.resolved_event_name = race_contexts.resolved_event_name
+            )
+            """.trimIndent()
+        )
+    }
+
     private fun deleteOrphanedAccessContexts(db: SQLiteDatabase) {
         db.execSQL(
             """
@@ -1190,6 +1253,16 @@ class TrackingDbHelper(context: Context) :
                 SELECT 1
                 FROM tracking_samples
                 WHERE tracking_samples.access_context_id = access_contexts.id
+            )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM tracking_sessions
+                WHERE tracking_sessions.access_context_id = access_contexts.id
+            )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM race_contexts
+                WHERE race_contexts.access_context_id = access_contexts.id
             )
             """.trimIndent()
         )
