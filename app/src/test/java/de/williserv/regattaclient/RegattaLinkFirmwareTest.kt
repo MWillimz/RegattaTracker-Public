@@ -8,6 +8,24 @@ import java.security.MessageDigest
 class RegattaLinkFirmwareTest {
 
     @Test
+    fun firmwareDownloadUrl_usesBuildNumberAsCacheBuster() {
+        assertEquals(
+            "https://regatta.example.org/regattalink/firmware?v=22834262",
+            versionedRegattaLinkFirmwareDownloadUrl(
+                "https://regatta.example.org/regattalink/firmware",
+                22_834_262uL
+            )
+        )
+        assertEquals(
+            "https://regatta.example.org/regattalink/firmware?source=metadata&v=22834262",
+            versionedRegattaLinkFirmwareDownloadUrl(
+                "https://regatta.example.org/regattalink/firmware?source=metadata",
+                22_834_262uL
+            )
+        )
+    }
+
+    @Test
     fun validArtifact_matchesDeviceAndClassifiesUpgrade() {
         val image = espApplicationImage(build = 200uL)
         val manifest = manifestFor(image, build = 200uL, signed = true)
