@@ -19,6 +19,14 @@ data class RegattaLinkFirmwareUiState(
     val error: String = ""
 )
 
+internal fun versionedRegattaLinkFirmwareDownloadUrl(
+    rawUrl: String,
+    buildNumber: ULong
+): String {
+    val separator = if (rawUrl.contains("?")) "&" else "?"
+    return "$rawUrl${separator}v=$buildNumber"
+}
+
 class RegattaLinkFirmwareClient {
     fun load(
         serverUrl: String,
@@ -29,7 +37,11 @@ class RegattaLinkFirmwareClient {
         val manifest = parseManifest(metadataJson)
 
         validateRegattaLinkFirmwareManifest(manifest)
-        val image = getFirmwareBytes(baseUrl + manifest.downloadUrl, manifest.size)
+        val firmwareUrl = versionedRegattaLinkFirmwareDownloadUrl(
+            baseUrl + manifest.downloadUrl,
+            manifest.buildNumber
+        )
+        val image = getFirmwareBytes(firmwareUrl, manifest.size)
         return validateRegattaLinkFirmwareArtifact(manifest, image, deviceInfo)
     }
 
