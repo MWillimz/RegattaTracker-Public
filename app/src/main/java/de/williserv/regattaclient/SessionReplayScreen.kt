@@ -164,6 +164,10 @@ private fun ReplayCurrentSampleCard(
         ?.takeIf { it.isNotBlank() }
         ?: fallbackEvent?.takeIf { it.isNotBlank() }
 
+    val extraValues = remember(sample.localId, extraFields) {
+        replayExtraFieldValues(sample, extraFields)
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -200,7 +204,7 @@ private fun ReplayCurrentSampleCard(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         rowFields.forEach { field ->
-                            val value = replayExtraFieldValue(sample, field)
+                            val value = extraValues[field.id]
                                 ?: stringResource(R.string.session_unknown_value)
                             ReplayValue(
                                 label = replayExtraFieldReplayLabel(field),
