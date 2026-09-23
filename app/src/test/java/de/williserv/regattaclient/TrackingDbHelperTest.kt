@@ -149,14 +149,20 @@ class TrackingDbHelperTest {
             )
         )
 
+        val measurements = """{"regattalink.fast.roll_deg":{"value":12.5,"unit":"deg","group":"regattalink"}}"""
         val sampleId = insertSample(
             helper = helper,
             sequenceId = 1L,
             accessContextId = accessContextId,
-            sessionId = sessionId
+            sessionId = sessionId,
+            measurementsJson = measurements
         )
 
         assertEquals(sessionId, sampleSessionId(helper, sampleId))
+        assertEquals(
+            measurements,
+            helper.getTrackingSamplesForSession(sessionId).single().measurementsJson
+        )
         assertEquals(1L, helper.countTrackingSessions())
         assertNull(requireNotNull(helper.getTrackingSession(sessionId)).endedAt)
 
