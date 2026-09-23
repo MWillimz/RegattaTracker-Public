@@ -1122,7 +1122,8 @@ class TrackingDbHelper(context: Context) :
                 display_name TEXT NOT NULL,
                 resolved_event_name TEXT,
                 course_json TEXT,
-                course_map_viewport_json TEXT
+                course_map_viewport_json TEXT,
+                deleted INTEGER NOT NULL DEFAULT 0
             )
             """.trimIndent()
         )
