@@ -3,6 +3,7 @@ package de.williserv.regattaclient
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberScrollState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -198,25 +200,21 @@ private fun ReplayCurrentSampleCard(
 
             if (extraFields.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(10.dp))
-                extraFields.chunked(3).forEach { rowFields ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        rowFields.forEach { field ->
-                            val value = extraValues[field.id]
-                                ?: stringResource(R.string.session_unknown_value)
-                            ReplayValue(
-                                label = replayExtraFieldReplayLabel(field),
-                                value = value,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                        repeat(3 - rowFields.size) {
-                            Spacer(modifier = Modifier.weight(1f))
-                        }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    extraFields.forEach { field ->
+                        val value = extraValues[field.id]
+                            ?: stringResource(R.string.session_unknown_value)
+                        ReplayValue(
+                            label = replayExtraFieldReplayLabel(field),
+                            value = value,
+                            modifier = Modifier.width(150.dp)
+                        )
                     }
-                    Spacer(modifier = Modifier.height(6.dp))
                 }
             }
 
