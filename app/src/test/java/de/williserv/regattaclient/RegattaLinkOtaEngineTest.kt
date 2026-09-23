@@ -31,9 +31,38 @@ class RegattaLinkOtaEngineTest {
         assertEquals(image.size, states.last().committedBytes)
     }
 
+    @Test
+    fun newerPreparingNotificationDuringTransfer_remainsFatal() {
+        val image = ByteArray(32) { it.toByte() }
+        val artifact = artifact(image, build = 22880000uL)
+        val deviceInfo = deviceInfo(runningBuild = 22865706uL)
+        val transport = StalePreparingTransport(
+            initialDeviceInfo = deviceInfo,
+            artifact = artifact,
+            queuedPreparingRevision = 3u
+        )
+        val states = mutableListOf<RegattaLinkOtaUiState>()
+
+        RegattaLinkOtaEngine(
+            artifact = artifact,
+            initialDeviceInfo = deviceInfo,
+            transport = transport,
+            cancelled = { false },
+            emit = states::add
+        ).run()
+
+        assertEquals(RegattaLinkOtaPhase.ERROR, states.last().phase)
+        assertTrue(
+            states.last().error.contains(
+                "Unexpected OTA state during transfer: PREPARING"
+            )
+        )
+    }
+
     private class StalePreparingTransport(
         private val initialDeviceInfo: RegattaLinkDeviceInfo,
-        private val artifact: RegattaLinkFirmwareArtifact
+        private val artifact: RegattaLinkFirmwareArtifact,
+        private val queuedPreparingRevision: UInt = 1u
     ) : RegattaLinkOtaTransport {
         override val mtu: Int = 247
 
@@ -91,7 +120,7 @@ class RegattaLinkOtaEngineTest {
                     )
                     progressQueue.addLast(
                         RegattaLinkOtaProgress(
-                            revision = 1u,
+                            revision = queuedPreparingRevision,
                             session = otaSession,
                             acceptedOffset = 0u,
                             totalSize = artifact.image.size.toUInt(),
@@ -123,8 +152,14 @@ class RegattaLinkOtaEngineTest {
             assertEquals(status.acceptedOffset.toInt(), offset)
 
             val committed = offset + value.size - 8
+            val nextRevision =
+                if (isRegattaLinkOtaRevisionNewer(queuedPreparingRevision, status.revision)) {
+                    queuedPreparingRevision + 1u
+                } else {
+                    status.revision + 1u
+                }
             status = status.copy(
-                revision = status.revision + 1u,
+                revision = nextRevision,
                 acceptedOffset = committed.toUInt(),
                 state = RegattaLinkOtaDeviceState.RECEIVING
             )
