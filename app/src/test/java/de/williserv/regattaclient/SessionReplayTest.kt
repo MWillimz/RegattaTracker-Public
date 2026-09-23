@@ -8,6 +8,13 @@ import java.time.format.DateTimeFormatter
 class SessionReplayTest {
 
     @Test
+    fun initialReplaySelection_opensAtLatestSample() {
+        assertEquals(0, replayInitialSampleIndex(0))
+        assertEquals(0, replayInitialSampleIndex(1))
+        assertEquals(2, replayInitialSampleIndex(3))
+    }
+
+    @Test
     fun sampleFractions_useElapsedTimeInsteadOfSampleIndex() {
         val samples = listOf(
             sample(id = 1, seconds = 0),
