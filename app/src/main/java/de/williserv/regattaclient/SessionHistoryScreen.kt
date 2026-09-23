@@ -238,8 +238,8 @@ fun SessionDetailScreen(
     detail: SessionDetailData?,
     loading: Boolean,
     modifier: Modifier = Modifier,
-    selectedReplayFieldIds: Set<String>,
-    onReplayFieldSelectionChange: (Set<String>) -> Unit,
+    selectedReplayFieldIds: Set<String> = emptySet(),
+    onReplayFieldSelectionChange: (Set<String>) -> Unit = {},
     onReplay: () -> Unit,
     onBack: () -> Unit
 ) {
