@@ -133,6 +133,7 @@ class TrackingDbHelperTest {
         assertTrue(columnExists(db, "tracking_sessions", "resolved_event_name"))
         assertTrue(columnExists(db, "tracking_sessions", "course_json"))
         assertTrue(columnExists(db, "tracking_sessions", "course_map_viewport_json"))
+        assertTrue(columnExists(db, "tracking_sessions", "deleted"))
         assertTrue(indexExists(db, "idx_tracking_samples_session_id"))
     }
 
@@ -175,7 +176,7 @@ class TrackingDbHelperTest {
     }
 
     @Test
-    fun deleteTrackingSession_removesOnlyFinishedTargetSession() {
+    fun deleteTrackingSession_hidesImmediatelyButPreservesPendingUploadUntilAcknowledged() {
         val helper = TrackingDbHelper(context)
         val accessContextId = createAccessContext(helper, "Event A", "secret-a")
         val finishedSessionId = requireNotNull(
@@ -195,15 +196,23 @@ class TrackingDbHelperTest {
             )
         )
 
-        insertSample(
+        val alreadyUploadedId = insertSample(
             helper = helper,
             sequenceId = 1L,
             accessContextId = accessContextId,
             sessionId = finishedSessionId
         )
-        val runningSampleId = insertSample(
+        helper.markUploaded(alreadyUploadedId)
+
+        val pendingFinishedId = insertSample(
             helper = helper,
             sequenceId = 2L,
+            accessContextId = accessContextId,
+            sessionId = finishedSessionId
+        )
+        val runningSampleId = insertSample(
+            helper = helper,
+            sequenceId = 3L,
             accessContextId = accessContextId,
             sessionId = runningSessionId
         )
@@ -212,15 +221,28 @@ class TrackingDbHelperTest {
         assertTrue(helper.deleteTrackingSession(finishedSessionId))
 
         assertNull(helper.getTrackingSession(finishedSessionId))
-        assertNotNull(helper.getTrackingSession(runningSessionId))
-        assertEquals(runningSessionId, sampleSessionId(helper, runningSampleId))
-        assertEquals(1L, helper.countSamples())
+        assertEquals(
+            listOf(runningSessionId),
+            helper.getTrackingSessionSummaries().map { it.id }
+        )
         assertEquals(1L, helper.countTrackingSessions())
+        assertEquals(2L, helper.countSamples())
+        assertEquals(
+            listOf(pendingFinishedId, runningSampleId),
+            helper.getPendingSamples(10).map { it.localId }
+        )
+        assertEquals(1L, rawTrackingSessionCount(helper, finishedSessionId))
         assertNotNull(helper.getAccessContext(accessContextId))
+
+        helper.markUploaded(pendingFinishedId)
+
+        assertEquals(1L, helper.countSamples())
+        assertEquals(listOf(runningSampleId), helper.getPendingSamples(10).map { it.localId })
+        assertEquals(0L, rawTrackingSessionCount(helper, finishedSessionId))
 
         assertFalse(helper.deleteTrackingSession(runningSessionId))
         assertNotNull(helper.getTrackingSession(runningSessionId))
-        assertEquals(1L, helper.countSamples())
+        assertEquals(runningSessionId, sampleSessionId(helper, runningSampleId))
     }
 
     @Test
@@ -269,6 +291,7 @@ class TrackingDbHelperTest {
         assertTrue(columnExists(db, "tracking_sessions", "resolved_event_name"))
         assertTrue(columnExists(db, "tracking_sessions", "course_json"))
         assertTrue(columnExists(db, "tracking_sessions", "course_map_viewport_json"))
+        assertTrue(columnExists(db, "tracking_sessions", "deleted"))
         assertTrue(tableExists(db, "race_contexts"))
         assertTrue(columnExists(db, "tracking_samples", "race_context_id"))
         assertTrue(indexExists(db, "idx_tracking_samples_race_context_id"))
@@ -497,6 +520,19 @@ class TrackingDbHelperTest {
         ).use { cursor ->
             assertTrue(cursor.moveToFirst())
             return cursor.getInt(0)
+        }
+    }
+
+    private fun rawTrackingSessionCount(
+        helper: TrackingDbHelper,
+        sessionId: Long
+    ): Long {
+        helper.readableDatabase.rawQuery(
+            "SELECT COUNT(*) FROM tracking_sessions WHERE id = ?",
+            arrayOf(sessionId.toString())
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            return cursor.getLong(0)
         }
     }
 
