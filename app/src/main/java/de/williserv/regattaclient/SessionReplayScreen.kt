@@ -233,6 +233,7 @@ private fun ReplayTrackCanvas(
         )
     }
     val density = LocalDensity.current
+    val densityValue = density.density
     val minPaddingPx = with(density) { 12.dp.toPx() }
     val trackColor = MaterialTheme.colorScheme.primary
     val futureColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.20f)
@@ -284,6 +285,11 @@ private fun ReplayTrackCanvas(
             fun coursePoint(point: CourseOverlayGeoPoint): Offset? =
                 projection.project(point.lat, point.lon)
 
+            val sizing = replayCanvasSizing(
+                canvasScalePx = min(size.width, size.height),
+                density = densityValue
+            )
+
             for (index in 1 until samples.size) {
                 val previous = samples[index - 1]
                 val current = samples[index]
@@ -300,7 +306,11 @@ private fun ReplayTrackCanvas(
                     color = if (index <= selectedIndex) trackColor else futureColor,
                     start = from,
                     end = to,
-                    strokeWidth = if (index <= selectedIndex) 4f else 2.5f
+                    strokeWidth = if (index <= selectedIndex) {
+                        sizing.sailedTrackWidthPx
+                    } else {
+                        sizing.futureTrackWidthPx
+                    }
                 )
             }
 
@@ -314,7 +324,7 @@ private fun ReplayTrackCanvas(
                             color = if (kind == CourseOverlayKind.START) startColor else finishColor,
                             start = from,
                             end = to,
-                            strokeWidth = (min(size.width, size.height) * 0.007f).coerceIn(3f, 8f)
+                            strokeWidth = sizing.startFinishWidthPx
                         )
                     }
                 }
@@ -339,7 +349,7 @@ private fun ReplayTrackCanvas(
                     color = courseColor.copy(alpha = 0.40f),
                     start = from,
                     end = to,
-                    strokeWidth = (min(size.width, size.height) * 0.004f).coerceIn(2f, 5f)
+                    strokeWidth = sizing.referenceRouteWidthPx
                 )
             }
 
@@ -347,8 +357,8 @@ private fun ReplayTrackCanvas(
                 .filter { it.kind == CourseOverlayKind.MARK }
                 .forEachIndexed { index, mark ->
                     coursePoint(mark)?.let { center ->
-                        val radius = (min(size.width, size.height) * 0.018f).coerceIn(7f, 18f)
-                        val stroke = (min(size.width, size.height) * 0.004f).coerceIn(2f, 5f)
+                        val radius = sizing.markRadiusPx
+                        val stroke = sizing.markStrokeWidthPx
                         val color = courseColor.copy(alpha = if (mark.inactive) 0.28f else 0.95f)
                         val buoy = Path().apply {
                             moveTo(center.x, center.y - radius)
@@ -389,9 +399,10 @@ private fun ReplayTrackCanvas(
                     val bearing = cogDegreesForDisplay(selected.cog.toDouble())?.toFloat() ?: 0f
                     drawReplayBoat(
                         center = center,
-                        radius = 10f,
+                        radius = sizing.boatRadiusPx,
                         bearingDegrees = bearing,
-                        color = markerColor
+                        color = markerColor,
+                        outlineWidth = sizing.boatOutlineWidthPx
                     )
                 }
             }
@@ -415,6 +426,12 @@ private fun ReplayTimeline(
             ?: 0.0
     }
     var heightPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+    val timelineInsetPx = with(density) { 8.dp.toPx() }
+    val timelineStrokeWidthPx = with(density) { 10.dp.toPx() }
+    val timelineMinSegmentPx = with(density) { 1.dp.toPx() }
+    val timelineBoatRadiusPx = with(density) { 9.dp.toPx() }
+    val timelineBoatOutlineWidthPx = with(density) { 4.dp.toPx() }
     val markerColor = MaterialTheme.colorScheme.primary
     val railBackground = MaterialTheme.colorScheme.surfaceVariant
 
@@ -444,9 +461,9 @@ private fun ReplayTimeline(
             if (samples.size == 1) {
                 drawLine(
                     color = replaySpeedColor(samples[0].sog.toDouble(), maxSog),
-                    start = Offset(x, 8f),
-                    end = Offset(x, size.height - 8f),
-                    strokeWidth = 10f
+                    start = Offset(x, timelineInsetPx),
+                    end = Offset(x, size.height - timelineInsetPx),
+                    strokeWidth = timelineStrokeWidthPx
                 )
             } else {
                 val stride = max(1, samples.size / 600)
@@ -458,8 +475,8 @@ private fun ReplayTimeline(
                     drawLine(
                         color = replaySpeedColor(samples[index].sog.toDouble(), maxSog),
                         start = Offset(x, y1),
-                        end = Offset(x, max(y1 + 1f, y2)),
-                        strokeWidth = 10f
+                        end = Offset(x, max(y1 + timelineMinSegmentPx, y2)),
+                        strokeWidth = timelineStrokeWidthPx
                     )
                     index = next
                 }
@@ -470,9 +487,10 @@ private fun ReplayTimeline(
                 .coerceIn(0f, 1f)
             drawReplayBoat(
                 center = Offset(x, selectedFraction * size.height),
-                radius = 9f,
+                radius = timelineBoatRadiusPx,
                 bearingDegrees = 180f,
-                color = markerColor
+                color = markerColor,
+                outlineWidth = timelineBoatOutlineWidthPx
             )
         }
     }
@@ -530,6 +548,39 @@ internal fun replaySampleIndexForFraction(
     } else {
         previous
     }
+}
+
+internal data class ReplayCanvasSizing(
+    val sailedTrackWidthPx: Float,
+    val futureTrackWidthPx: Float,
+    val boatRadiusPx: Float,
+    val boatOutlineWidthPx: Float,
+    val startFinishWidthPx: Float,
+    val referenceRouteWidthPx: Float,
+    val markRadiusPx: Float,
+    val markStrokeWidthPx: Float
+)
+
+internal fun replayCanvasSizing(
+    canvasScalePx: Float,
+    density: Float
+): ReplayCanvasSizing {
+    require(canvasScalePx >= 0f) { "canvasScalePx must be non-negative" }
+    require(density > 0f) { "density must be positive" }
+
+    fun scaled(fraction: Float, minDp: Float, maxDp: Float): Float =
+        (canvasScalePx * fraction).coerceIn(minDp * density, maxDp * density)
+
+    return ReplayCanvasSizing(
+        sailedTrackWidthPx = scaled(0.006f, 2.5f, 6f),
+        futureTrackWidthPx = scaled(0.004f, 1.5f, 4f),
+        boatRadiusPx = scaled(0.016f, 7f, 16f),
+        boatOutlineWidthPx = scaled(0.005f, 2f, 5f),
+        startFinishWidthPx = scaled(0.007f, 3f, 8f),
+        referenceRouteWidthPx = scaled(0.004f, 2f, 5f),
+        markRadiusPx = scaled(0.018f, 7f, 18f),
+        markStrokeWidthPx = scaled(0.004f, 2f, 5f)
+    )
 }
 
 internal fun replaySpeedFraction(speedMps: Double, maxSpeedMps: Double): Float {
@@ -623,7 +674,8 @@ private fun DrawScope.drawReplayBoat(
     center: Offset,
     radius: Float,
     bearingDegrees: Float,
-    color: Color
+    color: Color,
+    outlineWidth: Float
 ) {
     val path = Path().apply {
         moveTo(center.x, center.y - radius * 1.7f)
@@ -640,7 +692,7 @@ private fun DrawScope.drawReplayBoat(
         drawPath(
             path = path,
             color = Color.White.copy(alpha = 0.95f),
-            style = Stroke(width = 4f)
+            style = Stroke(width = outlineWidth)
         )
         drawPath(
             path = path,

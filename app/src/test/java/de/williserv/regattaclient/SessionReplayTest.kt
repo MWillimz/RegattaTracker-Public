@@ -43,6 +43,49 @@ class SessionReplayTest {
         assertEquals(0f, replaySpeedFraction(Double.NaN, 10.0), 0.0001f)
     }
 
+    @Test
+    fun replayCanvasSizing_keepsLogicalSizeStableAcrossDensities() {
+        val mdpi = replayCanvasSizing(canvasScalePx = 600f, density = 1f)
+        val xxhdpi = replayCanvasSizing(canvasScalePx = 1800f, density = 3f)
+
+        assertEquals(mdpi.sailedTrackWidthPx, xxhdpi.sailedTrackWidthPx / 3f, 0.0001f)
+        assertEquals(mdpi.futureTrackWidthPx, xxhdpi.futureTrackWidthPx / 3f, 0.0001f)
+        assertEquals(mdpi.boatRadiusPx, xxhdpi.boatRadiusPx / 3f, 0.0001f)
+        assertEquals(mdpi.boatOutlineWidthPx, xxhdpi.boatOutlineWidthPx / 3f, 0.0001f)
+        assertEquals(mdpi.startFinishWidthPx, xxhdpi.startFinishWidthPx / 3f, 0.0001f)
+        assertEquals(mdpi.referenceRouteWidthPx, xxhdpi.referenceRouteWidthPx / 3f, 0.0001f)
+        assertEquals(mdpi.markRadiusPx, xxhdpi.markRadiusPx / 3f, 0.0001f)
+        assertEquals(mdpi.markStrokeWidthPx, xxhdpi.markStrokeWidthPx / 3f, 0.0001f)
+    }
+
+    @Test
+    fun replayCanvasSizing_appliesDpDerivedMinimumsOnSmallCanvas() {
+        val sizing = replayCanvasSizing(canvasScalePx = 300f, density = 3f)
+
+        assertEquals(7.5f, sizing.sailedTrackWidthPx, 0.0001f)
+        assertEquals(4.5f, sizing.futureTrackWidthPx, 0.0001f)
+        assertEquals(21f, sizing.boatRadiusPx, 0.0001f)
+        assertEquals(6f, sizing.boatOutlineWidthPx, 0.0001f)
+        assertEquals(9f, sizing.startFinishWidthPx, 0.0001f)
+        assertEquals(6f, sizing.referenceRouteWidthPx, 0.0001f)
+        assertEquals(21f, sizing.markRadiusPx, 0.0001f)
+        assertEquals(6f, sizing.markStrokeWidthPx, 0.0001f)
+    }
+
+    @Test
+    fun replayCanvasSizing_appliesDpDerivedMaximumsOnLargeCanvas() {
+        val sizing = replayCanvasSizing(canvasScalePx = 10_000f, density = 2f)
+
+        assertEquals(12f, sizing.sailedTrackWidthPx, 0.0001f)
+        assertEquals(8f, sizing.futureTrackWidthPx, 0.0001f)
+        assertEquals(32f, sizing.boatRadiusPx, 0.0001f)
+        assertEquals(10f, sizing.boatOutlineWidthPx, 0.0001f)
+        assertEquals(16f, sizing.startFinishWidthPx, 0.0001f)
+        assertEquals(10f, sizing.referenceRouteWidthPx, 0.0001f)
+        assertEquals(36f, sizing.markRadiusPx, 0.0001f)
+        assertEquals(10f, sizing.markStrokeWidthPx, 0.0001f)
+    }
+
     private fun sample(id: Long, seconds: Long): SessionTrackingSample {
         val timestamp = LocalDateTime.of(2026, 9, 22, 10, 0)
             .plusSeconds(seconds)
