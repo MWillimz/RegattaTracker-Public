@@ -878,7 +878,7 @@ class TrackingDbHelper(context: Context) :
                 gyro_y,
                 gyro_z
             FROM tracking_samples
-            ORDER BY sequence_id ASC
+            ORDER BY id ASC
             """.trimIndent(),
             null
         ).use { cursor ->
