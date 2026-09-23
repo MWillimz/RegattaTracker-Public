@@ -48,6 +48,39 @@ class TrackingDbHelperTest {
     }
 
     @Test
+    fun csvExport_keepsLocalInsertionOrderWhenSequenceIdRestarts() {
+        val helper = TrackingDbHelper(context)
+
+        insertSample(
+            helper = helper,
+            sequenceId = 100L,
+            accessContextId = null,
+            sailNumber = "FIRST"
+        )
+        insertSample(
+            helper = helper,
+            sequenceId = 101L,
+            accessContextId = null,
+            sailNumber = "SECOND"
+        )
+        insertSample(
+            helper = helper,
+            sequenceId = 1L,
+            accessContextId = null,
+            sailNumber = "AFTER-RESTART"
+        )
+
+        val exportedSailNumbers = helper.exportAllAsCsv()
+            .lineSequence()
+            .drop(1)
+            .filter { it.isNotBlank() }
+            .map { it.split(',')[6] }
+            .toList()
+
+        assertEquals(listOf("FIRST", "SECOND", "AFTER-RESTART"), exportedSailNumbers)
+    }
+
+    @Test
     fun pendingSample_preservesOriginalMeasurementsSnapshot() {
         val helper = TrackingDbHelper(context)
         val contextId = createAccessContext(helper, "Event A", "secret-a")
