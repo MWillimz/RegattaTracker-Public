@@ -27,7 +27,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -42,7 +41,8 @@ import java.util.Date
 data class SessionDetailData(
     val session: TrackingSessionSummary,
     val statistics: SessionStatistics,
-    val samples: List<SessionTrackingSample> = emptyList()
+    val samples: List<SessionTrackingSample> = emptyList(),
+    val replayFields: List<ReplayExtraField> = emptyList()
 )
 
 @Composable
@@ -259,10 +259,6 @@ fun SessionDetailScreen(
         if (loading) {
             CircularProgressIndicator()
         } else if (detail != null) {
-            val replayFields = remember(detail.session.id, detail.samples.size) {
-                discoverReplayExtraFields(detail.samples)
-            }
-
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -357,7 +353,7 @@ fun SessionDetailScreen(
                     )
                 }
 
-                if (replayFields.isNotEmpty()) {
+                if (detail.replayFields.isNotEmpty()) {
                     item {
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
@@ -373,7 +369,7 @@ fun SessionDetailScreen(
                         )
                     }
 
-                    items(replayFields, key = { it.id }) { field ->
+                    items(detail.replayFields, key = { it.id }) { field ->
                         ReplayFieldSelectionRow(
                             field = field,
                             checked = field.id in selectedReplayFieldIds,
