@@ -284,6 +284,12 @@ private fun ReplayTrackCanvas(
             fun coursePoint(point: CourseOverlayGeoPoint): Offset? =
                 projection.project(point.lat, point.lon)
 
+            val canvasScale = min(size.width, size.height)
+            val sailedTrackWidth = (canvasScale * 0.006f).coerceIn(2.5f, 6f)
+            val futureTrackWidth = (canvasScale * 0.004f).coerceIn(1.5f, 4f)
+            val boatRadius = (canvasScale * 0.016f).coerceIn(7f, 16f)
+            val boatOutlineWidth = (canvasScale * 0.005f).coerceIn(2f, 5f)
+
             for (index in 1 until samples.size) {
                 val previous = samples[index - 1]
                 val current = samples[index]
@@ -300,7 +306,7 @@ private fun ReplayTrackCanvas(
                     color = if (index <= selectedIndex) trackColor else futureColor,
                     start = from,
                     end = to,
-                    strokeWidth = if (index <= selectedIndex) 4f else 2.5f
+                    strokeWidth = if (index <= selectedIndex) sailedTrackWidth else futureTrackWidth
                 )
             }
 
@@ -389,9 +395,10 @@ private fun ReplayTrackCanvas(
                     val bearing = cogDegreesForDisplay(selected.cog.toDouble())?.toFloat() ?: 0f
                     drawReplayBoat(
                         center = center,
-                        radius = 10f,
+                        radius = boatRadius,
                         bearingDegrees = bearing,
-                        color = markerColor
+                        color = markerColor,
+                        outlineWidth = boatOutlineWidth
                     )
                 }
             }
@@ -623,7 +630,8 @@ private fun DrawScope.drawReplayBoat(
     center: Offset,
     radius: Float,
     bearingDegrees: Float,
-    color: Color
+    color: Color,
+    outlineWidth: Float = 4f
 ) {
     val path = Path().apply {
         moveTo(center.x, center.y - radius * 1.7f)
@@ -640,7 +648,7 @@ private fun DrawScope.drawReplayBoat(
         drawPath(
             path = path,
             color = Color.White.copy(alpha = 0.95f),
-            style = Stroke(width = 4f)
+            style = Stroke(width = outlineWidth)
         )
         drawPath(
             path = path,
