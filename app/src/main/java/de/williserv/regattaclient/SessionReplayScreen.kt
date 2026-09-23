@@ -51,6 +51,7 @@ import kotlin.math.min
 fun SessionReplayScreen(
     detail: SessionDetailData?,
     modifier: Modifier = Modifier,
+    extraFieldIds: Set<String> = emptySet(),
     onBack: () -> Unit
 ) {
     val samples = detail?.samples.orEmpty()
@@ -93,10 +94,15 @@ fun SessionReplayScreen(
         } else {
             val safeIndex = selectedIndex.coerceIn(0, samples.lastIndex)
             val selectedSample = samples[safeIndex]
+            val extraFields = remember(detail.session.id, samples.size, extraFieldIds) {
+                discoverReplayExtraFields(samples)
+                    .filter { it.id in extraFieldIds }
+            }
 
             ReplayCurrentSampleCard(
                 sample = selectedSample,
-                fallbackEvent = detail.session.eventIdentifier
+                fallbackEvent = detail.session.eventIdentifier,
+                extraFields = extraFields
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -140,7 +146,8 @@ fun SessionReplayScreen(
 @Composable
 private fun ReplayCurrentSampleCard(
     sample: SessionTrackingSample,
-    fallbackEvent: String?
+    fallbackEvent: String?,
+    extraFields: List<ReplayExtraField>
 ) {
     val epochMillis = sample.sampleEpochMillis()
     val timeText = epochMillis?.let {
@@ -187,6 +194,30 @@ private fun ReplayCurrentSampleCard(
                 )
             }
 
+            if (extraFields.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(10.dp))
+                extraFields.chunked(3).forEach { rowFields ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        rowFields.forEach { field ->
+                            val value = replayExtraFieldValue(sample, field)
+                                ?: stringResource(R.string.session_unknown_value)
+                            ReplayValue(
+                                label = replayExtraFieldReplayLabel(field),
+                                value = value,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        repeat(3 - rowFields.size) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                }
+            }
+
             event?.let {
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
@@ -197,6 +228,26 @@ private fun ReplayCurrentSampleCard(
             }
         }
     }
+}
+
+@Composable
+private fun replayExtraFieldReplayLabel(field: ReplayExtraField): String {
+    val source = when (field.source) {
+        ReplayExtraFieldSource.INTERNAL_IMU ->
+            stringResource(R.string.session_replay_field_source_internal_imu)
+        ReplayExtraFieldSource.MEASUREMENT ->
+            field.measurementGroup
+                ?.takeIf { it.isNotBlank() }
+                ?.let { group ->
+                    if (group.equals("regattalink", ignoreCase = true)) {
+                        "RegattaLink"
+                    } else {
+                        group
+                    }
+                }
+                ?: stringResource(R.string.session_replay_field_source_measurements)
+    }
+    return "$source · ${field.label}"
 }
 
 @Composable
