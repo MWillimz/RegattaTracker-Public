@@ -814,15 +814,25 @@ class TrackingDbHelper(context: Context) :
 
         db.beginTransaction()
         try {
+            var purgedDeletedSessionSample = false
             localIds.forEach { localId ->
-                db.update(
+                val args = arrayOf(localId.toString())
+                val updated = db.update(
                     "tracking_samples",
                     values,
                     "id = ?",
-                    arrayOf(localId.toString())
+                    args
                 )
+                if (
+                    updated > 0 &&
+                    deleteAcknowledgedSampleFromDeletedSession(db, localId)
+                ) {
+                    purgedDeletedSessionSample = true
+                }
             }
-            purgeDeletedTrackingSessions(db)
+            if (purgedDeletedSessionSample) {
+                finalizeDeletedTrackingSessions(db)
+            }
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
@@ -1232,6 +1242,29 @@ class TrackingDbHelper(context: Context) :
             )
             """.trimIndent()
         )
+        finalizeDeletedTrackingSessions(db)
+    }
+
+    private fun deleteAcknowledgedSampleFromDeletedSession(
+        db: SQLiteDatabase,
+        localId: Long
+    ): Boolean {
+        return db.delete(
+            "tracking_samples",
+            """
+            id = ?
+            AND EXISTS (
+                SELECT 1
+                FROM tracking_sessions
+                WHERE tracking_sessions.id = tracking_samples.session_id
+                  AND tracking_sessions.deleted = 1
+            )
+            """.trimIndent(),
+            arrayOf(localId.toString())
+        ) > 0
+    }
+
+    private fun finalizeDeletedTrackingSessions(db: SQLiteDatabase) {
         db.execSQL(
             """
             DELETE FROM tracking_sessions
