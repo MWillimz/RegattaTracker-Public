@@ -55,7 +55,7 @@ fun SessionReplayScreen(
 ) {
     val samples = detail?.samples.orEmpty()
     var selectedIndex by remember(detail?.session?.id, samples.size) {
-        mutableIntStateOf(0)
+        mutableIntStateOf(replayInitialSampleIndex(samples.size))
     }
 
     Column(
@@ -495,6 +495,9 @@ private fun ReplayTimeline(
         }
     }
 }
+
+internal fun replayInitialSampleIndex(sampleCount: Int): Int =
+    (sampleCount - 1).coerceAtLeast(0)
 
 internal fun replaySampleFractions(samples: List<SessionTrackingSample>): List<Float> {
     if (samples.isEmpty()) return emptyList()
