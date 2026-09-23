@@ -123,6 +123,12 @@ Course displays:
 
 Map displays a static PNG loaded from the server.
 
+## RegattaLink BLE contract
+
+The complete public client-side wire contract for RegattaLink BLE is maintained in [docs/REGATTALINK-BLE-CLIENT-CONTRACT.md](docs/REGATTALINK-BLE-CLIENT-CONTRACT.md). That document is normative for UUIDs, security/bonding, Device Info, NMEA2000 PGN inventory, motion telemetry, OTA transport/state/reconciliation, Android GATT behavior and compatibility rules.
+
+The current NMEA2000 BLE surface is deliberately limited to the PGN inventory characteristic. Decoded NMEA boat data and raw CAN capture are not part of the current client contract until their wire formats are explicitly defined there.
+
 ## Server API
 
 The client expects API version:
