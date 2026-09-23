@@ -74,7 +74,7 @@ class TrackingDbHelperTest {
             .lineSequence()
             .drop(1)
             .filter { it.isNotBlank() }
-            .map { it.split(',')[6] }
+            .map { it.split(',')[6].removeSurrounding(""") }
             .toList()
 
         assertEquals(listOf("FIRST", "SECOND", "AFTER-RESTART"), exportedSailNumbers)
