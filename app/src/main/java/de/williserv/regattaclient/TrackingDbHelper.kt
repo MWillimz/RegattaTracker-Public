@@ -1235,6 +1235,12 @@ class TrackingDbHelper(context: Context) :
                 FROM tracking_samples
                 WHERE tracking_samples.race_context_id = race_contexts.id
             )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM tracking_sessions
+                WHERE tracking_sessions.access_context_id = race_contexts.access_context_id
+                  AND tracking_sessions.resolved_event_name = race_contexts.resolved_event_name
+            )
             """.trimIndent()
         )
     }
