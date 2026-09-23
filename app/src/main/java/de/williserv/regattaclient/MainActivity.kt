@@ -568,6 +568,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                 currentScreen.value = Screen.SESSION_DETAIL
                                 loadSessionDetail(sessionId)
                             },
+                            onSessionDelete = ::deleteSession,
                             onBack = ::navigateBack
                         )
 
@@ -3495,6 +3496,36 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
 
         return null
+    }
+
+    private fun deleteSession(sessionId: Long) {
+        val summary = sessionSummaries.value.firstOrNull { it.id == sessionId } ?: return
+        if (summary.endedAt == null) {
+            return
+        }
+
+        sessionSummaries.value = sessionSummaries.value.filterNot { it.id == sessionId }
+
+        thread(name = "regatta-session-delete") {
+            val deleted = runCatching {
+                db.deleteTrackingSession(sessionId)
+            }.getOrDefault(false)
+
+            if (!asyncLifetime.isActive()) return@thread
+            runOnUiThread {
+                if (!asyncLifetime.isActive()) return@runOnUiThread
+
+                if (deleted && selectedSessionId.value == sessionId) {
+                    selectedSessionId.value = null
+                    sessionDetail.value = null
+                    sessionDetailLoading.value = false
+                }
+                if (deleted) {
+                    updateStorageText()
+                }
+                loadSessionHistory()
+            }
+        }
     }
 
     private fun clearOldData() {
