@@ -60,6 +60,9 @@ fun BoatDataScreen(
         yardstick = yardstick,
         boatType = boatType
     )
+    // By design: unconfirmed boat-data edits are screen-local and are discarded when
+    // navigating away (including RegattaLink). Only Confirm Setup persists them.
+    // See DOCUMENTATION.md ("Boat data draft semantics") and issue #221.
     var draft by remember(
         boatName,
         skipperName,
