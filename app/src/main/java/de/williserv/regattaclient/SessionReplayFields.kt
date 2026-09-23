@@ -5,12 +5,12 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToLong
 
-internal enum class ReplayExtraFieldSource {
+enum class ReplayExtraFieldSource {
     INTERNAL_IMU,
     MEASUREMENT
 }
 
-internal enum class ReplayBuiltinField {
+enum class ReplayBuiltinField {
     ACCEL_X,
     ACCEL_Y,
     ACCEL_Z,
@@ -19,7 +19,7 @@ internal enum class ReplayBuiltinField {
     GYRO_Z
 }
 
-internal data class ReplayExtraField(
+data class ReplayExtraField(
     val id: String,
     val source: ReplayExtraFieldSource,
     val label: String,
@@ -116,9 +116,41 @@ internal fun discoverReplayExtraFields(
     return fields
 }
 
+internal fun replayExtraFieldValues(
+    sample: SessionTrackingSample,
+    fields: List<ReplayExtraField>
+): Map<String, String> {
+    val measurements = if (fields.any { it.source == ReplayExtraFieldSource.MEASUREMENT }) {
+        parseMeasurements(sample.measurementsJson)
+    } else {
+        null
+    }
+    return buildMap {
+        fields.forEach { field ->
+            replayExtraFieldValue(sample, field, measurements)?.let { value ->
+                put(field.id, value)
+            }
+        }
+    }
+}
+
 internal fun replayExtraFieldValue(
     sample: SessionTrackingSample,
     field: ReplayExtraField
+): String? = replayExtraFieldValue(
+    sample = sample,
+    field = field,
+    measurements = if (field.source == ReplayExtraFieldSource.MEASUREMENT) {
+        parseMeasurements(sample.measurementsJson)
+    } else {
+        null
+    }
+)
+
+private fun replayExtraFieldValue(
+    sample: SessionTrackingSample,
+    field: ReplayExtraField,
+    measurements: JSONObject?
 ): String? {
     val builtinValue = when (field.builtin) {
         ReplayBuiltinField.ACCEL_X -> sample.accelX.toDouble()
@@ -136,8 +168,7 @@ internal fun replayExtraFieldValue(
     }
 
     val key = field.measurementKey ?: return null
-    val json = parseMeasurements(sample.measurementsJson) ?: return null
-    val measurement = json.optJSONObject(key) ?: return null
+    val measurement = measurements?.optJSONObject(key) ?: return null
     if (!measurement.has("value") || measurement.isNull("value")) return null
 
     val value = measurement.opt("value")
