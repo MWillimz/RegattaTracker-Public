@@ -429,6 +429,7 @@ private fun ReplayTimeline(
     val density = LocalDensity.current
     val timelineInsetPx = with(density) { 8.dp.toPx() }
     val timelineStrokeWidthPx = with(density) { 10.dp.toPx() }
+    val timelineMinSegmentPx = with(density) { 1.dp.toPx() }
     val timelineBoatRadiusPx = with(density) { 9.dp.toPx() }
     val timelineBoatOutlineWidthPx = with(density) { 4.dp.toPx() }
     val markerColor = MaterialTheme.colorScheme.primary
@@ -474,7 +475,7 @@ private fun ReplayTimeline(
                     drawLine(
                         color = replaySpeedColor(samples[index].sog.toDouble(), maxSog),
                         start = Offset(x, y1),
-                        end = Offset(x, max(y1 + 1f, y2)),
+                        end = Offset(x, max(y1 + timelineMinSegmentPx, y2)),
                         strokeWidth = timelineStrokeWidthPx
                     )
                     index = next
@@ -674,7 +675,7 @@ private fun DrawScope.drawReplayBoat(
     radius: Float,
     bearingDegrees: Float,
     color: Color,
-    outlineWidth: Float = 4f
+    outlineWidth: Float
 ) {
     val path = Path().apply {
         moveTo(center.x, center.y - radius * 1.7f)
