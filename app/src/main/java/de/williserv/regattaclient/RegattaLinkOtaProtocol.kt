@@ -101,6 +101,15 @@ internal fun regattaLinkOtaErrorName(code: Int): String = when (code) {
     else -> "UNKNOWN($code)"
 }
 
+internal fun isRegattaLinkOtaRevisionNewer(candidate: UInt, baseline: UInt): Boolean {
+    if (candidate == baseline) return false
+
+    // Revisions are uint32 counters on the wire. Interpret the modular delta as
+    // a signed value so the natural wrap from UInt.MAX_VALUE to 0 stays newer.
+    // A legitimate observer cannot fall behind by half the uint32 range.
+    return (candidate - baseline).toInt() > 0
+}
+
 internal fun newRegattaLinkOtaRequestId(random: SecureRandom = SecureRandom()): UInt {
     while (true) {
         val value = random.nextInt().toUInt()
