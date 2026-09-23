@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -231,7 +232,8 @@ private fun ReplayTrackCanvas(
             courseShortened = false
         )
     }
-    val mapPaddingPx = with(LocalDensity.current) { 20.dp.toPx() }
+    val density = LocalDensity.current
+    val minPaddingPx = with(density) { 12.dp.toPx() }
     val trackColor = MaterialTheme.colorScheme.primary
     val futureColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.20f)
     val courseColor = MaterialTheme.colorScheme.secondary
@@ -272,7 +274,8 @@ private fun ReplayTrackCanvas(
                 points = geoPoints,
                 widthPx = size.width,
                 heightPx = size.height,
-                paddingPx = mapPaddingPx
+                paddingFraction = 0.09f,
+                minPaddingPx = minPaddingPx
             ) ?: return@Canvas
 
             fun point(sample: SessionTrackingSample): Offset? =
@@ -311,22 +314,73 @@ private fun ReplayTrackCanvas(
                             color = if (kind == CourseOverlayKind.START) startColor else finishColor,
                             start = from,
                             end = to,
-                            strokeWidth = 5f
+                            strokeWidth = (min(size.width, size.height) * 0.007f).coerceIn(3f, 8f)
                         )
                     }
                 }
             }
 
+            val activeMarks = coursePoints.filter { it.kind == CourseOverlayKind.MARK && !it.inactive }
+            val startLine = coursePoints.filter { it.kind == CourseOverlayKind.START }.take(2)
+            val finishLine = coursePoints.filter { it.kind == CourseOverlayKind.FINISH }.take(2)
+            val referenceRoute = buildList {
+                fun midpoint(line: List<CourseOverlayGeoPoint>): Offset? {
+                    if (line.size != 2) return null
+                    val a = coursePoint(line[0]) ?: return null
+                    val b = coursePoint(line[1]) ?: return null
+                    return Offset((a.x + b.x) / 2f, (a.y + b.y) / 2f)
+                }
+                midpoint(startLine)?.let(::add)
+                activeMarks.mapNotNull(::coursePoint).forEach(::add)
+                midpoint(finishLine)?.let(::add)
+            }
+            referenceRoute.zipWithNext().forEach { (from, to) ->
+                drawLine(
+                    color = courseColor.copy(alpha = 0.40f),
+                    start = from,
+                    end = to,
+                    strokeWidth = (min(size.width, size.height) * 0.004f).coerceIn(2f, 5f)
+                )
+            }
+
             coursePoints
                 .filter { it.kind == CourseOverlayKind.MARK }
-                .forEach { mark ->
+                .forEachIndexed { index, mark ->
                     coursePoint(mark)?.let { center ->
-                        drawCircle(
-                            color = courseColor.copy(alpha = if (mark.inactive) 0.35f else 0.9f),
-                            radius = 7f,
-                            center = center,
-                            style = Stroke(width = 3f)
+                        val radius = (min(size.width, size.height) * 0.018f).coerceIn(7f, 18f)
+                        val stroke = (min(size.width, size.height) * 0.004f).coerceIn(2f, 5f)
+                        val color = courseColor.copy(alpha = if (mark.inactive) 0.28f else 0.95f)
+                        val buoy = Path().apply {
+                            moveTo(center.x, center.y - radius)
+                            lineTo(center.x + radius * 0.7f, center.y + radius)
+                            lineTo(center.x - radius * 0.7f, center.y + radius)
+                            close()
+                        }
+                        drawPath(buoy, color.copy(alpha = color.alpha * 0.18f))
+                        drawPath(buoy, color, style = Stroke(width = stroke))
+                        drawLine(
+                            color = color,
+                            start = Offset(center.x - radius * 0.9f, center.y + radius),
+                            end = Offset(center.x + radius * 0.9f, center.y + radius),
+                            strokeWidth = stroke
                         )
+                        if (!mark.inactive) {
+                            val badgeCenter = Offset(center.x, center.y - radius * 1.65f)
+                            drawCircle(color = color, radius = radius * 0.62f, center = badgeCenter)
+                            val labelPaint = android.graphics.Paint().apply {
+                                isAntiAlias = true
+                                textAlign = android.graphics.Paint.Align.CENTER
+                                textSize = radius
+                                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                                this.color = android.graphics.Color.WHITE
+                            }
+                            drawContext.canvas.nativeCanvas.drawText(
+                                (index + 1).toString(),
+                                badgeCenter.x,
+                                badgeCenter.y - (labelPaint.ascent() + labelPaint.descent()) / 2f,
+                                labelPaint
+                            )
+                        }
                     }
                 }
 
@@ -530,7 +584,8 @@ private data class ReplayMapProjection(
             points: List<OwnShipGeoPoint>,
             widthPx: Float,
             heightPx: Float,
-            paddingPx: Float
+            paddingFraction: Float,
+            minPaddingPx: Float
         ): ReplayMapProjection? {
             if (points.isEmpty() || widthPx <= 0f || heightPx <= 0f) return null
 
@@ -544,6 +599,7 @@ private data class ReplayMapProjection(
             val spanX = (xValues.maxOrNull()!! - xValues.minOrNull()!!).coerceAtLeast(20.0)
             val spanY = (yValues.maxOrNull()!! - yValues.minOrNull()!!).coerceAtLeast(20.0)
 
+            val paddingPx = max(minPaddingPx, min(widthPx, heightPx) * paddingFraction.coerceIn(0f, 0.25f))
             val availableWidth = (widthPx - 2f * paddingPx).coerceAtLeast(1f)
             val availableHeight = (heightPx - 2f * paddingPx).coerceAtLeast(1f)
             val scale = min(
