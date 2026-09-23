@@ -42,7 +42,7 @@ class SessionReplayFieldsTest {
         assertEquals("regattalink", roll.measurementGroup)
 
         val stw = fields.single { it.id == "measurement:nmea.stw" }
-        assertEquals("Stw", stw.label)
+        assertEquals("STW", stw.label)
         assertEquals("kn", stw.unit)
     }
 
@@ -84,6 +84,25 @@ class SessionReplayFieldsTest {
     }
 
     @Test
+    fun sessionsWithoutSensorSignalDoNotOfferFakeImuFields() {
+        val fields = discoverReplayExtraFields(
+            listOf(
+                sample(
+                    accelX = 0f,
+                    accelY = 0f,
+                    accelZ = 0f,
+                    gyroX = 0f,
+                    gyroY = 0f,
+                    gyroZ = 0f,
+                    measurementsJson = null
+                )
+            )
+        )
+
+        assertTrue(fields.isEmpty())
+    }
+
+    @Test
     fun malformedMeasurementsDoNotBreakReplayFieldDiscovery() {
         val fields = discoverReplayExtraFields(
             listOf(sample(measurementsJson = "{not-json"))
@@ -95,6 +114,10 @@ class SessionReplayFieldsTest {
 
     private fun sample(
         accelX: Float = 0.1f,
+        accelY: Float = 0.2f,
+        accelZ: Float = 9.8f,
+        gyroX: Float = 0.02f,
+        gyroY: Float = 0.03f,
         gyroZ: Float = 0.01f,
         measurementsJson: String? = null
     ): SessionTrackingSample {
@@ -108,10 +131,10 @@ class SessionReplayFieldsTest {
             cog = 90f,
             sog = 4f,
             accelX = accelX,
-            accelY = 0.2f,
-            accelZ = 9.8f,
-            gyroX = 0.02f,
-            gyroY = 0.03f,
+            accelY = accelY,
+            accelZ = accelZ,
+            gyroX = gyroX,
+            gyroY = gyroY,
             gyroZ = gyroZ,
             measurementsJson = measurementsJson
         )
