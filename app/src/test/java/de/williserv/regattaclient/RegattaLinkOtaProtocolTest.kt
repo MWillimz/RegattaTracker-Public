@@ -2,6 +2,7 @@ package de.williserv.regattaclient
 
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -176,6 +177,16 @@ class RegattaLinkOtaProtocolTest {
             ),
             artifact
         )
+    }
+
+    @Test
+    fun otaRevisionOrdering_handlesDuplicatesStaleValuesAndWraparound() {
+        assertTrue(isRegattaLinkOtaRevisionNewer(11u, 10u))
+        assertFalse(isRegattaLinkOtaRevisionNewer(10u, 10u))
+        assertFalse(isRegattaLinkOtaRevisionNewer(9u, 10u))
+
+        assertTrue(isRegattaLinkOtaRevisionNewer(0u, UInt.MAX_VALUE))
+        assertFalse(isRegattaLinkOtaRevisionNewer(UInt.MAX_VALUE, 0u))
     }
 
     @Test

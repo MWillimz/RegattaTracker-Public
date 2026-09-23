@@ -556,6 +556,9 @@ internal class RegattaLinkOtaEngine(
         totalSize: Int
     ): RegattaLinkOtaStatus {
         if (progress.session != session) return current
+        if (!isRegattaLinkOtaRevisionNewer(progress.revision, current.revision)) {
+            return current
+        }
         if (progress.totalSize.toSafeInt() != totalSize) {
             throw IllegalStateException(
                 "Unexpected OTA total size " + progress.totalSize
