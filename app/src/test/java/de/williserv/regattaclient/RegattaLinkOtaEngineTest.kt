@@ -17,18 +17,22 @@ class RegattaLinkOtaEngineTest {
         val deviceInfo = deviceInfo(runningBuild = 22865706uL)
         val transport = StalePreparingTransport(deviceInfo, artifact)
         val states = mutableListOf<RegattaLinkOtaUiState>()
+        var terminalDisconnectCleanupCount = 0
 
         RegattaLinkOtaEngine(
             artifact = artifact,
             initialDeviceInfo = deviceInfo,
             transport = transport,
             cancelled = { false },
-            emit = states::add
+            emit = states::add,
+            onTerminalDisconnect = { terminalDisconnectCleanupCount += 1 }
         ).run()
 
         assertTrue(transport.stalePreparingDelivered)
         assertEquals(RegattaLinkOtaPhase.SUCCESS, states.last().phase)
         assertEquals(image.size, states.last().committedBytes)
+        assertEquals(1, transport.closeCurrentConnectionCount)
+        assertEquals(0, terminalDisconnectCleanupCount)
     }
 
     @Test
@@ -42,13 +46,23 @@ class RegattaLinkOtaEngineTest {
             queuedPreparingRevision = 3u
         )
         val states = mutableListOf<RegattaLinkOtaUiState>()
+        val terminalEvents = mutableListOf<String>()
 
         RegattaLinkOtaEngine(
             artifact = artifact,
             initialDeviceInfo = deviceInfo,
             transport = transport,
             cancelled = { false },
-            emit = states::add
+            emit = { state ->
+                states += state
+                if (state.phase == RegattaLinkOtaPhase.ERROR) {
+                    terminalEvents += "emit-error"
+                }
+            },
+            onTerminalDisconnect = {
+                assertTrue(!transport.isConnected())
+                terminalEvents += "cleanup"
+            }
         ).run()
 
         assertEquals(RegattaLinkOtaPhase.ERROR, states.last().phase)
@@ -57,6 +71,39 @@ class RegattaLinkOtaEngineTest {
                 "Unexpected OTA state during transfer: PREPARING"
             )
         )
+        assertEquals(1, transport.closeCurrentConnectionCount)
+        assertEquals(listOf("cleanup", "emit-error"), terminalEvents)
+    }
+
+    @Test
+    fun cancellationCleansDisconnectedStateBeforeTerminalEmit() {
+        val image = ByteArray(32) { it.toByte() }
+        val artifact = artifact(image, build = 22880000uL)
+        val deviceInfo = deviceInfo(runningBuild = 22865706uL)
+        val transport = StalePreparingTransport(deviceInfo, artifact)
+        val states = mutableListOf<RegattaLinkOtaUiState>()
+        val terminalEvents = mutableListOf<String>()
+
+        RegattaLinkOtaEngine(
+            artifact = artifact,
+            initialDeviceInfo = deviceInfo,
+            transport = transport,
+            cancelled = { true },
+            emit = { state ->
+                states += state
+                if (state.phase == RegattaLinkOtaPhase.CANCELLED) {
+                    terminalEvents += "emit-cancelled"
+                }
+            },
+            onTerminalDisconnect = {
+                assertTrue(!transport.isConnected())
+                terminalEvents += "cleanup"
+            }
+        ).run()
+
+        assertEquals(RegattaLinkOtaPhase.CANCELLED, states.last().phase)
+        assertEquals(1, transport.closeCurrentConnectionCount)
+        assertEquals(listOf("cleanup", "emit-cancelled"), terminalEvents)
     }
 
     private class StalePreparingTransport(
@@ -72,6 +119,9 @@ class RegattaLinkOtaEngineTest {
         private val otaSession = 7u
 
         var stalePreparingDelivered = false
+            private set
+
+        var closeCurrentConnectionCount = 0
             private set
 
         private var status = RegattaLinkOtaStatus(
@@ -193,6 +243,7 @@ class RegattaLinkOtaEngineTest {
         override fun consumeDataTransportError(): String? = null
 
         override fun closeCurrentConnection() {
+            closeCurrentConnectionCount += 1
             connected = false
         }
 
