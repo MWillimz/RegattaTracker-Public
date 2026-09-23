@@ -155,15 +155,6 @@ internal fun replayExtraFieldValue(
     return field.unit?.let { "$formatted $it" } ?: formatted
 }
 
-internal fun replayExtraFieldSourceLabel(field: ReplayExtraField): String {
-    if (field.source == ReplayExtraFieldSource.INTERNAL_IMU) return "Internal IMU"
-    val group = field.measurementGroup?.trim().orEmpty()
-    if (group.equals("regattalink", ignoreCase = true)) return "RegattaLink"
-    return group.takeIf { it.isNotBlank() }
-        ?.let(::prettyIdentifier)
-        ?: "Measurements"
-}
-
 private fun parseMeasurements(raw: String?): JSONObject? {
     if (raw.isNullOrBlank()) return null
     return runCatching { JSONObject(raw) }.getOrNull()
