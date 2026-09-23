@@ -18,6 +18,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
@@ -102,6 +103,7 @@ fun SessionHistoryScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DismissibleSessionSummaryCard(
     session: TrackingSessionSummary,
@@ -109,10 +111,18 @@ private fun DismissibleSessionSummaryCard(
     onDelete: () -> Unit
 ) {
     val canDelete = session.endedAt != null
+    if (!canDelete) {
+        SessionSummaryCard(
+            session = session,
+            onClick = onClick
+        )
+        return
+    }
+
     val deleteLabel = stringResource(R.string.delete)
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
-            if (canDelete && value == SwipeToDismissBoxValue.EndToStart) {
+            if (value == SwipeToDismissBoxValue.EndToStart) {
                 onDelete()
                 true
             } else {
@@ -120,45 +130,38 @@ private fun DismissibleSessionSummaryCard(
             }
         }
     )
-    val accessibilityModifier = if (canDelete) {
-        Modifier.semantics {
-            customActions = listOf(
-                CustomAccessibilityAction(
-                    label = deleteLabel,
-                    action = {
-                        onDelete()
-                        true
-                    }
-                )
+    val accessibilityModifier = Modifier.semantics {
+        customActions = listOf(
+            CustomAccessibilityAction(
+                label = deleteLabel,
+                action = {
+                    onDelete()
+                    true
+                }
             )
-        }
-    } else {
-        Modifier
+        )
     }
 
     SwipeToDismissBox(
         state = dismissState,
         modifier = accessibilityModifier.fillMaxWidth(),
         backgroundContent = {
-            if (canDelete) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.errorContainer)
-                        .padding(horizontal = 20.dp),
-                    contentAlignment = Alignment.CenterEnd
-                ) {
-                    Text(
-                        text = deleteLabel,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.errorContainer)
+                    .padding(horizontal = 20.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Text(
+                    text = deleteLabel,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         },
         enableDismissFromStartToEnd = false,
-        enableDismissFromEndToStart = canDelete,
-        gesturesEnabled = canDelete
+        enableDismissFromEndToStart = true
     ) {
         SessionSummaryCard(
             session = session,
