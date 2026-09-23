@@ -94,10 +94,8 @@ fun SessionReplayScreen(
         } else {
             val safeIndex = selectedIndex.coerceIn(0, samples.lastIndex)
             val selectedSample = samples[safeIndex]
-            val extraFields = remember(detail.session.id, samples.size, extraFieldIds) {
-                discoverReplayExtraFields(samples)
-                    .filter { it.id in extraFieldIds }
-            }
+            val extraFields = detail.replayFields
+                .filter { it.id in extraFieldIds }
 
             ReplayCurrentSampleCard(
                 sample = selectedSample,
