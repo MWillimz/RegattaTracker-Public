@@ -3610,7 +3610,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         session = session,
                         samples = samples
                     ),
-                    samples = samples
+                    samples = samples,
+                    replayFields = discoverReplayExtraFields(samples)
                 )
             }.getOrNull()
 
