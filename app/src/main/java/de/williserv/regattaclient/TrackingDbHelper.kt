@@ -124,7 +124,7 @@ internal fun normalizeAccessContextKey(
 }
 
 class TrackingDbHelper(context: Context) :
-    SQLiteOpenHelper(context, "regatta_tracking.db", null, 12) {
+    SQLiteOpenHelper(context, "regatta_tracking.db", null, 11) {
 
     private val appContext = context.applicationContext
     private var lastBatteryReadAtMs: Long? = null
@@ -168,9 +168,6 @@ class TrackingDbHelper(context: Context) :
         }
         if (oldVersion < 11 && newVersion >= 11) {
             migrateToVersion11(db)
-        }
-        if (oldVersion < 12 && newVersion >= 12) {
-            migrateToVersion12(db)
         }
     }
 
@@ -361,7 +358,6 @@ class TrackingDbHelper(context: Context) :
                 course_map_viewport_json
             FROM tracking_sessions
             WHERE id = ?
-              AND deleted = 0
             LIMIT 1
             """.trimIndent(),
             arrayOf(sessionId.toString())
@@ -407,7 +403,6 @@ class TrackingDbHelper(context: Context) :
                 ON samples.session_id = sessions.id
             LEFT JOIN race_contexts
                 ON race_contexts.id = samples.race_context_id
-            WHERE sessions.deleted = 0
             GROUP BY
                 sessions.id,
                 sessions.started_at,
@@ -445,20 +440,37 @@ class TrackingDbHelper(context: Context) :
 
         db.beginTransaction()
         try {
-            val values = ContentValues().apply {
-                put("deleted", 1)
+            val isFinished = db.rawQuery(
+                """
+                SELECT ended_at
+                FROM tracking_sessions
+                WHERE id = ?
+                LIMIT 1
+                """.trimIndent(),
+                args
+            ).use { cursor ->
+                cursor.moveToFirst() && !cursor.isNull(0)
             }
-            val deletedSessions = db.update(
+            if (!isFinished) {
+                return false
+            }
+
+            db.delete(
+                "tracking_samples",
+                "session_id = ?",
+                args
+            )
+            val deletedSessions = db.delete(
                 "tracking_sessions",
-                values,
-                "id = ? AND ended_at IS NOT NULL AND deleted = 0",
+                "id = ? AND ended_at IS NOT NULL",
                 args
             )
             if (deletedSessions != 1) {
                 return false
             }
 
-            purgeDeletedTrackingSessions(db)
+            deleteOrphanedRaceContexts(db)
+            deleteOrphanedAccessContexts(db)
             db.setTransactionSuccessful()
             return true
         } finally {
@@ -558,7 +570,7 @@ class TrackingDbHelper(context: Context) :
 
     fun countTrackingSessions(): Long {
         readableDatabase.rawQuery(
-            "SELECT COUNT(*) FROM tracking_sessions WHERE deleted = 0",
+            "SELECT COUNT(*) FROM tracking_sessions",
             null
         ).use { cursor ->
             cursor.moveToFirst()
@@ -801,7 +813,16 @@ class TrackingDbHelper(context: Context) :
     }
 
     fun markUploaded(localId: Long) {
-        markUploaded(listOf(localId))
+        val values = ContentValues().apply {
+            put("uploaded", 1)
+        }
+
+        writableDatabase.update(
+            "tracking_samples",
+            values,
+            "id = ?",
+            arrayOf(localId.toString())
+        )
     }
 
     fun markUploaded(localIds: Collection<Long>) {
@@ -814,24 +835,13 @@ class TrackingDbHelper(context: Context) :
 
         db.beginTransaction()
         try {
-            var purgedDeletedSessionSample = false
             localIds.forEach { localId ->
-                val args = arrayOf(localId.toString())
-                val updated = db.update(
+                db.update(
                     "tracking_samples",
                     values,
                     "id = ?",
-                    args
+                    arrayOf(localId.toString())
                 )
-                if (
-                    updated > 0 &&
-                    deleteAcknowledgedSampleFromDeletedSession(db, localId)
-                ) {
-                    purgedDeletedSessionSample = true
-                }
-            }
-            if (purgedDeletedSessionSample) {
-                finalizeDeletedTrackingSessions(db)
             }
             db.setTransactionSuccessful()
         } finally {
@@ -1041,15 +1051,6 @@ class TrackingDbHelper(context: Context) :
         }
     }
 
-    private fun migrateToVersion12(db: SQLiteDatabase) {
-        createTrackingSessionsTable(db)
-        if (!columnExists(db, "tracking_sessions", "deleted")) {
-            db.execSQL(
-                "ALTER TABLE tracking_sessions ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0"
-            )
-        }
-    }
-
     private fun migrateToVersion10(db: SQLiteDatabase) {
         createRaceContextsTable(db)
 
@@ -1132,8 +1133,7 @@ class TrackingDbHelper(context: Context) :
                 display_name TEXT NOT NULL,
                 resolved_event_name TEXT,
                 course_json TEXT,
-                course_map_viewport_json TEXT,
-                deleted INTEGER NOT NULL DEFAULT 0
+                course_map_viewport_json TEXT
             )
             """.trimIndent()
         )
@@ -1224,60 +1224,6 @@ class TrackingDbHelper(context: Context) :
                 """.trimIndent()
             )
         }
-    }
-
-    private fun purgeDeletedTrackingSessions(db: SQLiteDatabase) {
-        db.execSQL(
-            """
-            DELETE FROM tracking_samples
-            WHERE EXISTS (
-                SELECT 1
-                FROM tracking_sessions
-                WHERE tracking_sessions.id = tracking_samples.session_id
-                  AND tracking_sessions.deleted = 1
-                  AND (
-                      tracking_sessions.mode = 'manual'
-                      OR tracking_samples.uploaded = 1
-                  )
-            )
-            """.trimIndent()
-        )
-        finalizeDeletedTrackingSessions(db)
-    }
-
-    private fun deleteAcknowledgedSampleFromDeletedSession(
-        db: SQLiteDatabase,
-        localId: Long
-    ): Boolean {
-        return db.delete(
-            "tracking_samples",
-            """
-            id = ?
-            AND EXISTS (
-                SELECT 1
-                FROM tracking_sessions
-                WHERE tracking_sessions.id = tracking_samples.session_id
-                  AND tracking_sessions.deleted = 1
-            )
-            """.trimIndent(),
-            arrayOf(localId.toString())
-        ) > 0
-    }
-
-    private fun finalizeDeletedTrackingSessions(db: SQLiteDatabase) {
-        db.execSQL(
-            """
-            DELETE FROM tracking_sessions
-            WHERE deleted = 1
-              AND NOT EXISTS (
-                  SELECT 1
-                  FROM tracking_samples
-                  WHERE tracking_samples.session_id = tracking_sessions.id
-              )
-            """.trimIndent()
-        )
-        deleteOrphanedRaceContexts(db)
-        deleteOrphanedAccessContexts(db)
     }
 
     private fun deleteOrphanedRaceContexts(db: SQLiteDatabase) {
