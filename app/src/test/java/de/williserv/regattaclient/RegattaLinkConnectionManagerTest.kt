@@ -1,5 +1,6 @@
 package de.williserv.regattaclient
 
+import android.Manifest
 import android.content.Context
 import android.os.Looper
 import org.junit.After
@@ -30,6 +31,10 @@ class RegattaLinkConnectionManagerTest {
     @Before
     fun setUp() {
         context = RuntimeEnvironment.getApplication()
+        shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(
+            Manifest.permission.BLUETOOTH_SCAN,
+            Manifest.permission.BLUETOOTH_CONNECT
+        )
         context.getSharedPreferences(
             RegattaLinkConfiguredDeviceStore.PREFS_NAME,
             Context.MODE_PRIVATE
