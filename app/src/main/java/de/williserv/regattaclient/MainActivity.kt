@@ -4,10 +4,6 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -72,7 +68,12 @@ private enum class PendingTrackingAction {
     START_MANUAL_TRACKING
 }
 
-class MainActivity : ComponentActivity(), SensorEventListener {
+private enum class PendingRegattaLinkPermissionAction {
+    DISCOVER_NEW,
+    RECONNECT_CONFIGURED
+}
+
+class MainActivity : ComponentActivity() {
 
     private val showTrackingConsentDialog = mutableStateOf(false)
     private var pendingTrackingAction: PendingTrackingAction? = null
@@ -92,14 +93,41 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private val showClearRaceSetupDialog = mutableStateOf(false)
     private lateinit var db: TrackingDbHelper
     private lateinit var locationManager: LocationManager
-    private lateinit var sensorManager: SensorManager
-    private lateinit var regattaLinkClient: RegattaLinkBleClient
+    private lateinit var regattaLinkManager: RegattaLinkConnectionManager
     private val regattaLinkState = mutableStateOf(RegattaLinkClientState())
     private val regattaLinkFirmwareClient = RegattaLinkFirmwareClient()
     private val regattaLinkFirmwareState = mutableStateOf(RegattaLinkFirmwareUiState())
     private var regattaLinkFirmwareArtifact: RegattaLinkFirmwareArtifact? = null
     private val regattaLinkOtaState = mutableStateOf(RegattaLinkOtaUiState())
     private val regattaLinkTelemetryState = mutableStateOf(RegattaLinkTelemetryState())
+    private var pendingRegattaLinkPermissionAction: PendingRegattaLinkPermissionAction? = null
+    private var regattaLinkReturnScreen: Screen = Screen.BOAT_DATA
+
+    private val regattaLinkListener = object : RegattaLinkConnectionListener {
+        override fun onConnectionStateChanged(state: RegattaLinkClientState) {
+            if (asyncLifetime.isActive()) {
+                regattaLinkState.value = state
+            }
+        }
+
+        override fun onOtaStateChanged(state: RegattaLinkOtaUiState) {
+            if (asyncLifetime.isActive()) {
+                regattaLinkOtaState.value = state
+                if (state.phase == RegattaLinkOtaPhase.SUCCESS) {
+                    regattaLinkFirmwareState.value =
+                        regattaLinkFirmwareState.value.copy(
+                            direction = RegattaLinkFirmwareDirection.REINSTALL
+                        )
+                }
+            }
+        }
+
+        override fun onTelemetryStateChanged(state: RegattaLinkTelemetryState) {
+            if (asyncLifetime.isActive()) {
+                regattaLinkTelemetryState.value = state
+            }
+        }
+    }
 
     private val currentScreen = mutableStateOf(Screen.HOME)
 
@@ -210,6 +238,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private val selectedSessionId = mutableStateOf<Long?>(null)
     private val sessionDetail = mutableStateOf<SessionDetailData?>(null)
     private val sessionDetailLoading = mutableStateOf(false)
+    private val selectedReplayFieldIds = mutableStateOf<Set<String>>(emptySet())
     private var sessionLoadGeneration = 0L
 
     private val cogText = mutableStateOf("")
@@ -220,14 +249,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private val appStatePrefsName = "app_state"
 
     private val lastCsvLine = mutableStateOf("")
-
-    private var accelX = 0f
-    private var accelY = 0f
-    private var accelZ = 0f
-
-    private var gyroX = 0f
-    private var gyroY = 0f
-    private var gyroZ = 0f
 
     private val handler = Handler(Looper.getMainLooper())
     private val asyncLifetime = ActivityAsyncLifetime()
@@ -270,20 +291,15 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         currentScreen.value = when (currentScreen.value) {
             Screen.HOME -> Screen.HOME
             Screen.REGATTALINK -> {
-                if (
-                    ::regattaLinkClient.isInitialized &&
-                    regattaLinkOtaState.value.isActive
-                ) {
-                    regattaLinkClient.cancelOta()
+                if (regattaLinkOtaState.value.isActive) {
                     Screen.REGATTALINK
                 } else {
-                    if (::regattaLinkClient.isInitialized) {
-                        regattaLinkClient.disconnect()
-                    }
                     regattaLinkFirmwareArtifact = null
                     regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState()
-                    regattaLinkOtaState.value = RegattaLinkOtaUiState()
-                    Screen.BOAT_DATA
+                    if (::regattaLinkManager.isInitialized) {
+                        regattaLinkManager.resetOtaState()
+                    }
+                    regattaLinkReturnScreen
                 }
             }
             Screen.BOAT_DATA,
@@ -333,6 +349,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private val regattaLinkPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+            val action = pendingRegattaLinkPermissionAction
+            pendingRegattaLinkPermissionAction = null
             val granted = RegattaLinkBleClient.requiredPermissions().all { permission ->
                 ContextCompat.checkSelfPermission(
                     this,
@@ -340,8 +358,16 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 ) == PackageManager.PERMISSION_GRANTED
             }
 
-            if (granted && ::regattaLinkClient.isInitialized) {
-                regattaLinkClient.startDiscovery()
+            if (granted && ::regattaLinkManager.isInitialized) {
+                when (action) {
+                    PendingRegattaLinkPermissionAction.DISCOVER_NEW ->
+                        regattaLinkManager.startDiscovery()
+
+                    PendingRegattaLinkPermissionAction.RECONNECT_CONFIGURED ->
+                        regattaLinkManager.reconnectConfigured()
+
+                    null -> Unit
+                }
             } else {
                 regattaLinkState.value = RegattaLinkClientState(
                     status = RegattaLinkConnectionStatus.ERROR,
@@ -404,31 +430,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
         db = TrackingDbHelper(this)
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        regattaLinkClient = RegattaLinkBleClient(
-            context = this,
-            onStateChanged = { state ->
-                if (asyncLifetime.isActive()) {
-                    regattaLinkState.value = state
-                }
-            },
-            onOtaStateChanged = { state ->
-                if (asyncLifetime.isActive()) {
-                    regattaLinkOtaState.value = state
-                    if (state.phase == RegattaLinkOtaPhase.SUCCESS) {
-                        regattaLinkFirmwareState.value =
-                            regattaLinkFirmwareState.value.copy(
-                                direction = RegattaLinkFirmwareDirection.REINSTALL
-                            )
-                    }
-                }
-            },
-            onTelemetryStateChanged = { state ->
-                if (asyncLifetime.isActive()) {
-                    regattaLinkTelemetryState.value = state
-                }
-            }
-        )
+        regattaLinkManager =
+            (application as RegattaApplication).regattaLinkConnectionManager
+        regattaLinkManager.addListener(regattaLinkListener)
+        regattaLinkManager.requestForegroundStartupReconnectIfPermitted()
         loadBoatSetup()
         loadRaceSetup()
         loadAppState()
@@ -442,6 +447,12 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         setContent {
             RegattaClientTheme {
                 BackHandler(enabled = currentScreen.value != Screen.HOME) {
+                    if (
+                        currentScreen.value == Screen.REGATTALINK &&
+                        regattaLinkOtaState.value.isActive
+                    ) {
+                        return@BackHandler
+                    }
                     if (currentScreen.value == Screen.RACE_LEGAL) {
                         pendingEnterRaceAfterLegal = false
                     }
@@ -496,6 +507,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             sogText = sogText.value,
                             gpsAccuracyText = gpsAccuracyText.value,
                             gpsColor = gpsColor.value,
+                            regattaLinkConnected =
+                                regattaLinkState.value.status ==
+                                    RegattaLinkConnectionStatus.CONNECTED,
                             showClearConfirmDialog = showClearConfirmDialog.value,
                             showAdvanced = showAdvanced.value,
                             modifier = Modifier.padding(innerPadding),
@@ -525,6 +539,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                     currentScreen.value = Screen.RESULTS
                                     fetchEventResults()
                                 }
+                            },
+                            onRegattaLinkReconnect = ::startRegattaLinkReconnect,
+                            onRegattaLinkOpen = {
+                                regattaLinkReturnScreen = Screen.HOME
+                                currentScreen.value = Screen.REGATTALINK
                             },
                             onLegal = {
                                 currentScreen.value = Screen.LEGAL
@@ -565,6 +584,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             onSessionClick = { sessionId ->
                                 selectedSessionId.value = sessionId
                                 sessionDetail.value = null
+                                selectedReplayFieldIds.value = emptySet()
                                 currentScreen.value = Screen.SESSION_DETAIL
                                 loadSessionDetail(sessionId)
                             },
@@ -576,6 +596,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             detail = sessionDetail.value,
                             loading = sessionDetailLoading.value,
                             modifier = Modifier.padding(innerPadding),
+                            selectedReplayFieldIds = selectedReplayFieldIds.value,
+                            onReplayFieldSelectionChange = {
+                                selectedReplayFieldIds.value = it
+                            },
                             onReplay = {
                                 currentScreen.value = Screen.SESSION_REPLAY
                             },
@@ -585,6 +609,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         Screen.SESSION_REPLAY -> SessionReplayScreen(
                             detail = sessionDetail.value,
                             modifier = Modifier.padding(innerPadding),
+                            extraFieldIds = selectedReplayFieldIds.value,
                             onBack = ::navigateBack
                         )
 
@@ -664,6 +689,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                 }
                             },
                             onRegattaLink = {
+                                regattaLinkReturnScreen = Screen.BOAT_DATA
                                 currentScreen.value = Screen.REGATTALINK
                             },
                             onBack = ::navigateBack
@@ -684,14 +710,13 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             onCheckFirmware = ::loadRegattaLinkFirmware,
                             onInstallFirmware = ::installRegattaLinkFirmware,
                             onCancelOta = {
-                                regattaLinkClient.cancelOta()
+                                regattaLinkManager.cancelOta()
                             },
                             onDisconnect = {
-                                regattaLinkClient.disconnect()
+                                regattaLinkManager.disconnect()
                                 regattaLinkFirmwareArtifact = null
                                 regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState()
-                                regattaLinkOtaState.value = RegattaLinkOtaUiState()
-                                regattaLinkTelemetryState.value = RegattaLinkTelemetryState()
+                                regattaLinkManager.resetOtaState()
                             },
                             onBack = ::navigateBack
                         )
@@ -944,7 +969,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
         updateConnectionUiState()
         requestPermissionsForApp()
-        startImuUpdates()
         handler.postDelayed(uiRefreshRunnable, 1000L)
     }
 
@@ -2480,13 +2504,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     put("accuracy", 9999.0)
                     put("cog", 0.0)
                     put("sog", 0.0)
-
-                    put("accel_x", 0.0)
-                    put("accel_y", 0.0)
-                    put("accel_z", 0.0)
-                    put("gyro_x", 0.0)
-                    put("gyro_y", 0.0)
-                    put("gyro_z", 0.0)
                 }
 
                 val connection = URL(url).openConnection() as HttpURLConnection
@@ -2729,12 +2746,12 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             )
             return
         }
-        regattaLinkClient.startOta(artifact)
+        regattaLinkManager.startOta(artifact)
     }
 
     private fun loadRegattaLinkFirmware() {
         if (regattaLinkOtaState.value.isActive) return
-        regattaLinkClient.resetOtaState()
+        regattaLinkManager.resetOtaState()
         regattaLinkOtaState.value = RegattaLinkOtaUiState()
         val deviceInfo = regattaLinkState.value.deviceInfo
         if (deviceInfo == null) {
@@ -2803,10 +2820,22 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         if (regattaLinkOtaState.value.isActive) return
         regattaLinkFirmwareArtifact = null
         regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState()
-        regattaLinkOtaState.value = RegattaLinkOtaUiState()
-        if (::regattaLinkClient.isInitialized) {
-            regattaLinkClient.resetOtaState()
-        }
+        regattaLinkManager.resetOtaState()
+        runRegattaLinkActionWithPermissions(
+            PendingRegattaLinkPermissionAction.DISCOVER_NEW
+        )
+    }
+
+    private fun startRegattaLinkReconnect() {
+        if (regattaLinkOtaState.value.isActive) return
+        runRegattaLinkActionWithPermissions(
+            PendingRegattaLinkPermissionAction.RECONNECT_CONFIGURED
+        )
+    }
+
+    private fun runRegattaLinkActionWithPermissions(
+        action: PendingRegattaLinkPermissionAction
+    ) {
         val permissions = RegattaLinkBleClient.requiredPermissions()
         val missing = permissions.filter { permission ->
             ContextCompat.checkSelfPermission(
@@ -2816,8 +2845,15 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
 
         if (missing.isEmpty()) {
-            regattaLinkClient.startDiscovery()
+            when (action) {
+                PendingRegattaLinkPermissionAction.DISCOVER_NEW ->
+                    regattaLinkManager.startDiscovery()
+
+                PendingRegattaLinkPermissionAction.RECONNECT_CONFIGURED ->
+                    regattaLinkManager.reconnectConfigured()
+            }
         } else {
+            pendingRegattaLinkPermissionAction = action
             regattaLinkPermissionLauncher.launch(missing.toTypedArray())
         }
     }
@@ -2884,12 +2920,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             accuracy = entry.accuracy,
             cog = entry.cog,
             sog = entry.sog,
-            accelX = entry.accelX,
-            accelY = entry.accelY,
-            accelZ = entry.accelZ,
-            gyroX = entry.gyroX,
-            gyroY = entry.gyroY,
-            gyroZ = entry.gyroZ,
             accessContextId = accessContextId,
             raceContextId = raceContextId
         )
@@ -3519,6 +3549,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     selectedSessionId.value = null
                     sessionDetail.value = null
                     sessionDetailLoading.value = false
+                    selectedReplayFieldIds.value = emptySet()
                 }
                 if (deleted) {
                     updateStorageText()
@@ -3538,6 +3569,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         sessionSummaries.value = emptyList()
         selectedSessionId.value = null
         sessionDetail.value = null
+        selectedReplayFieldIds.value = emptySet()
         updateStorageText()
         lastCsvLine.value = getString(R.string.no_csv_line_yet)
         statusText.value = getString(R.string.old_data_deleted)
@@ -3601,7 +3633,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         session = session,
                         samples = samples
                     ),
-                    samples = samples
+                    samples = samples,
+                    replayFields = discoverReplayExtraFields(samples)
                 )
             }.getOrNull()
 
@@ -3658,27 +3691,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
     }
 
-    private fun startImuUpdates() {
-        val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        val gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
-
-        if (accelerometer != null) {
-            sensorManager.registerListener(
-                this,
-                accelerometer,
-                SensorManager.SENSOR_DELAY_GAME
-            )
-        }
-
-        if (gyroscope != null) {
-            sensorManager.registerListener(
-                this,
-                gyroscope,
-                SensorManager.SENSOR_DELAY_GAME
-            )
-        }
-    }
-
     private fun updateStorageText() {
         val total = db.countSamples()
         val pending = db.countPendingSamples()
@@ -3705,31 +3717,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
     }
 
-    override fun onSensorChanged(event: SensorEvent) {
-        when (event.sensor.type) {
-            Sensor.TYPE_ACCELEROMETER -> {
-                accelX = event.values[0]
-                accelY = event.values[1]
-                accelZ = event.values[2]
-            }
-
-            Sensor.TYPE_GYROSCOPE -> {
-                gyroX = event.values[0]
-                gyroY = event.values[1]
-                gyroZ = event.values[2]
-            }
-        }
-    }
-
-    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-        // Display only in this MainActivity.
-    }
-
     override fun onDestroy() {
         asyncLifetime.invalidate()
         cancelEnterRaceServerCheck()
-        if (::regattaLinkClient.isInitialized) {
-            regattaLinkClient.close()
+        if (::regattaLinkManager.isInitialized) {
+            regattaLinkManager.removeListener(regattaLinkListener)
         }
         super.onDestroy()
 
@@ -3740,8 +3732,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             locationManager.removeUpdates(locationListener)
         } catch (_: Exception) {
         }
-
-        sensorManager.unregisterListener(this)
     }
 }
 

@@ -111,12 +111,6 @@ class TelemetryUtcOffsetPersistenceTest {
             accuracy = 5f,
             cog = 90f,
             sog = 3f,
-            accelX = 0.1f,
-            accelY = 0.2f,
-            accelZ = 9.8f,
-            gyroX = 0.01f,
-            gyroY = 0.02f,
-            gyroZ = 0.03f,
             accessContextId = accessContextId,
             utcOffsetMinutes = utcOffsetMinutes
         )

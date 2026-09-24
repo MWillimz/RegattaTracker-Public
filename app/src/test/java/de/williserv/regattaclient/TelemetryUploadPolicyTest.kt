@@ -67,13 +67,7 @@ class TelemetryUploadPolicyTest {
             lon = 10.3,
             accuracy = 3.0f,
             cog = 180.0f,
-            sog = 5.5f,
-            accelX = 0.1f,
-            accelY = 0.2f,
-            accelZ = 0.3f,
-            gyroX = 0.4f,
-            gyroY = 0.5f,
-            gyroZ = 0.6f
+            sog = 5.5f
         )
         val client = ClientBuildIdentity(
             versionCode = 20_871_700,
@@ -97,12 +91,16 @@ class TelemetryUploadPolicyTest {
         assertEquals(3.0, payload.getDouble("accuracy"), 0.0)
         assertEquals(180.0, payload.getDouble("cog"), 0.0)
         assertEquals(5.5, payload.getDouble("sog"), 0.0)
-        assertEquals(0.1, payload.getDouble("accel_x"), 0.000001)
-        assertEquals(0.2, payload.getDouble("accel_y"), 0.000001)
-        assertEquals(0.3, payload.getDouble("accel_z"), 0.000001)
-        assertEquals(0.4, payload.getDouble("gyro_x"), 0.000001)
-        assertEquals(0.5, payload.getDouble("gyro_y"), 0.000001)
-        assertEquals(0.6, payload.getDouble("gyro_z"), 0.000001)
+        listOf(
+            "accel_x",
+            "accel_y",
+            "accel_z",
+            "gyro_x",
+            "gyro_y",
+            "gyro_z"
+        ).forEach { key ->
+            assertFalse(payload.has(key))
+        }
     }
 
     @Test
@@ -235,12 +233,6 @@ class TelemetryUploadPolicyTest {
             accuracy = 5f,
             cog = 0f,
             sog = 0f,
-            accelX = 0f,
-            accelY = 0f,
-            accelZ = 0f,
-            gyroX = 0f,
-            gyroY = 0f,
-            gyroZ = 0f,
             accessContextId = accessContextId
         )
     }

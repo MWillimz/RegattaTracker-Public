@@ -105,13 +105,7 @@ class SessionReplayTest {
             lon = 12.0 + id * 0.0001,
             accuracy = 5f,
             cog = 90f,
-            sog = 4f,
-            accelX = 0f,
-            accelY = 0f,
-            accelZ = 0f,
-            gyroX = 0f,
-            gyroY = 0f,
-            gyroZ = 0f
+            sog = 4f
         )
     }
 }

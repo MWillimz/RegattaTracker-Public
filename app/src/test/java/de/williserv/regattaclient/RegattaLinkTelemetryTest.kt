@@ -208,12 +208,6 @@ class RegattaLinkTelemetryTest {
             .put("accuracy", 5.0)
             .put("cog", 180.0)
             .put("sog", 5.0)
-            .put("accel_x", 0.0)
-            .put("accel_y", 0.0)
-            .put("accel_z", 0.0)
-            .put("gyro_x", 0.0)
-            .put("gyro_y", 0.0)
-            .put("gyro_z", 0.0)
             .put("measurements", measurements)
 
         assertTrue(sample.toString().toByteArray(Charsets.UTF_8).size < 5 * 1024)

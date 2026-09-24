@@ -459,4 +459,7 @@
     <string name="regattalink_contradictions">Contradictions</string>
     <string name="regattalink_mounting_epoch">Époque de montage</string>
     <string name="regattalink_calibration_revision">Révision de calibration</string>
+    <string name="session_replay_fields_title">Données supplémentaires du replay</string>
+    <string name="session_replay_fields_hint">Sélectionnez les valeurs à afficher pendant le parcours du replay. L’heure, le SOG et le COG restent visibles.</string>
+    <string name="session_replay_field_source_measurements">Mesures</string>
 </resources>

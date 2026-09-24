@@ -9,10 +9,6 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -52,7 +48,7 @@ internal fun shouldFinishTrackingServiceStop(
     return handoffGeneration == currentGeneration && !serviceRunning
 }
 
-class RegattaTrackingService : Service(), SensorEventListener {
+class RegattaTrackingService : Service() {
 
     companion object {
         const val ACTION_START = "de.williserv.regattaclient.START_TRACKING_SERVICE"
@@ -96,7 +92,6 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
     private lateinit var db: TrackingDbHelper
     private lateinit var locationManager: LocationManager
-    private lateinit var sensorManager: SensorManager
 
     private val handler = Handler(Looper.getMainLooper())
     private val localStatusPrefsName = "regatta_local_status"
@@ -163,14 +158,6 @@ class RegattaTrackingService : Service(), SensorEventListener {
     private var sequenceId = 0L
     private var lastLocation: Location? = null
 
-    private var accelX = 0f
-    private var accelY = 0f
-    private var accelZ = 0f
-
-    private var gyroX = 0f
-    private var gyroY = 0f
-    private var gyroZ = 0f
-
     private var autoStopAfterFinishScheduled = false
     private var stopHandoffInProgress = false
     private var stopHandoffGeneration = 0L
@@ -227,7 +214,6 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
         db = TrackingDbHelper(this)
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
 
         createNotificationChannel()
     }
@@ -478,6 +464,9 @@ class RegattaTrackingService : Service(), SensorEventListener {
             startTrackingService()
             TrackingServiceRuntimeState.markActive()
             onTelemetryTrackingBecameActive(this)
+            (application as? RegattaApplication)
+                ?.regattaLinkConnectionManager
+                ?.ensureConnectedIfPermitted()
             updateNotification()
             return true
         } catch (e: RuntimeException) {
@@ -747,7 +736,6 @@ class RegattaTrackingService : Service(), SensorEventListener {
         serviceRunning = true
 
         startLocationUpdates()
-        startImuUpdates()
 
         if (!manualRecording) {
             pollEvent()
@@ -815,11 +803,6 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
         try {
             locationManager.removeUpdates(locationListener)
-        } catch (_: Exception) {
-        }
-
-        try {
-            sensorManager.unregisterListener(this)
         } catch (_: Exception) {
         }
 
@@ -990,27 +973,6 @@ class RegattaTrackingService : Service(), SensorEventListener {
                 autoStopAfterFinishScheduled = false
                 handler.removeCallbacks(autoStopAfterFinishRunnable)
             }
-        }
-    }
-
-    private fun startImuUpdates() {
-        val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        val gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
-
-        if (accelerometer != null) {
-            sensorManager.registerListener(
-                this,
-                accelerometer,
-                SensorManager.SENSOR_DELAY_GAME
-            )
-        }
-
-        if (gyroscope != null) {
-            sensorManager.registerListener(
-                this,
-                gyroscope,
-                SensorManager.SENSOR_DELAY_GAME
-            )
         }
     }
 
@@ -1356,12 +1318,6 @@ class RegattaTrackingService : Service(), SensorEventListener {
             accuracy = accuracy,
             cog = cog,
             sog = sog,
-            accelX = accelX,
-            accelY = accelY,
-            accelZ = accelZ,
-            gyroX = gyroX,
-            gyroY = gyroY,
-            gyroZ = gyroZ,
             accessContextId = sampleAccessContextId,
             sessionId = activeSessionId,
             raceContextId = sampleRaceContextId,
@@ -1978,26 +1934,6 @@ class RegattaTrackingService : Service(), SensorEventListener {
         )
     }
 
-    override fun onSensorChanged(event: SensorEvent) {
-        when (event.sensor.type) {
-            Sensor.TYPE_ACCELEROMETER -> {
-                accelX = event.values[0]
-                accelY = event.values[1]
-                accelZ = event.values[2]
-            }
-
-            Sensor.TYPE_GYROSCOPE -> {
-                gyroX = event.values[0]
-                gyroY = event.values[1]
-                gyroZ = event.values[2]
-            }
-        }
-    }
-
-    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-        // Not relevant for this demo.
-    }
-
     override fun onDestroy() {
         TrackingServiceRuntimeState.markStopped()
 
@@ -2013,11 +1949,6 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
         try {
             locationManager.removeUpdates(locationListener)
-        } catch (_: Exception) {
-        }
-
-        try {
-            sensorManager.unregisterListener(this)
         } catch (_: Exception) {
         }
 

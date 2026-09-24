@@ -61,6 +61,30 @@ class TelemetryMetadataPayloadTest {
     }
 
     @Test
+    fun `phone imu fields are absent from telemetry payload`() {
+        val payload = buildTelemetryUploadPayload(
+            sample = sample(
+                batteryPercent = null,
+                batteryCharging = null,
+                trackingProfile = null,
+                utcOffsetMinutes = null
+            ),
+            client = client
+        )
+
+        listOf(
+            "accel_x",
+            "accel_y",
+            "accel_z",
+            "gyro_x",
+            "gyro_y",
+            "gyro_z"
+        ).forEach { key ->
+            assertFalse(payload.has(key))
+        }
+    }
+
+    @Test
     fun `persisted measurements are uploaded from the original sample`() {
         val measurements =
             """{"regattalink.fast.roll_deg":{"value":12.3,"unit":"deg","group":"regattalink"}}"""
@@ -135,12 +159,6 @@ class TelemetryMetadataPayloadTest {
         accuracy = 5f,
         cog = 0f,
         sog = 0f,
-        accelX = 0f,
-        accelY = 0f,
-        accelZ = 0f,
-        gyroX = 0f,
-        gyroY = 0f,
-        gyroZ = 0f,
         batteryPercent = batteryPercent,
         batteryCharging = batteryCharging,
         trackingProfile = trackingProfile,

@@ -410,6 +410,7 @@
     <string name="session_replay_cog_label">COG</string>
     <string name="session_cog_degrees">%1$d°</string>
     <string name="regattalink_title">RegattaLink</string>
+    <string name="regattalink_short_label" translatable="false">RLink</string>
     <string name="regattalink_status_not_connected">Not connected</string>
     <string name="regattalink_status_scanning">Searching for RegattaLink…</string>
     <string name="regattalink_status_pairing">Pairing RegattaLink…</string>
@@ -501,4 +502,7 @@
     <string name="regattalink_contradictions">Contradictions</string>
     <string name="regattalink_mounting_epoch">Mounting epoch</string>
     <string name="regattalink_calibration_revision">Calibration revision</string>
+    <string name="session_replay_fields_title">Additional replay data</string>
+    <string name="session_replay_fields_hint">Select values to show while scrubbing the replay. Time, SOG and COG remain visible.</string>
+    <string name="session_replay_field_source_measurements">Measurements</string>
 </resources>

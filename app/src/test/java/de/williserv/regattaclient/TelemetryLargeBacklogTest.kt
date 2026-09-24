@@ -92,16 +92,10 @@ class TelemetryLargeBacklogTest {
                 accuracy,
                 cog,
                 sog,
-                accel_x,
-                accel_y,
-                accel_z,
-                gyro_x,
-                gyro_y,
-                gyro_z,
                 uploaded,
                 access_context_id,
                 utc_offset_minutes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
             """.trimIndent()
         )
 
@@ -141,14 +135,8 @@ class TelemetryLargeBacklogTest {
         statement.bindDouble(11, 4.0)
         statement.bindDouble(12, 180.0)
         statement.bindDouble(13, 3.5)
-        statement.bindDouble(14, 0.1)
-        statement.bindDouble(15, 0.2)
-        statement.bindDouble(16, 0.3)
-        statement.bindDouble(17, 0.4)
-        statement.bindDouble(18, 0.5)
-        statement.bindDouble(19, 0.6)
-        statement.bindLong(20, accessContextId)
-        statement.bindLong(21, 120)
+        statement.bindLong(14, accessContextId)
+        statement.bindLong(15, 120)
     }
 
     private companion object {

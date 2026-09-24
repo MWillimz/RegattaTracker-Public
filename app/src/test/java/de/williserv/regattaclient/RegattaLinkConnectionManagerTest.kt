@@ -1,0 +1,240 @@
+package de.williserv.regattaclient
+
+import android.content.Context
+import android.os.Looper
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.Config
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35])
+class RegattaLinkConnectionManagerTest {
+    private lateinit var context: Context
+    private lateinit var fakeClient: FakeConnectionClient
+    private lateinit var manager: RegattaLinkConnectionManager
+
+    private val configured = RegattaLinkConfiguredDevice(
+        stableId = "0011223344556677",
+        deviceAddress = "44:B1:76:48:31:B2",
+        deviceName = "RegattaLink-31B2"
+    )
+
+    @Before
+    fun setUp() {
+        context = RuntimeEnvironment.getApplication()
+        context.getSharedPreferences(
+            RegattaLinkConfiguredDeviceStore.PREFS_NAME,
+            Context.MODE_PRIVATE
+        ).edit().clear().commit()
+        RegattaLinkConfiguredDeviceStore(context).save(configured)
+
+        manager = RegattaLinkConnectionManager(
+            context = context,
+            clientFactory = RegattaLinkConnectionClientFactory {
+                    _,
+                    onStateChanged,
+                    onOtaStateChanged,
+                    onTelemetryStateChanged,
+                    onUnexpectedDisconnect ->
+                FakeConnectionClient(
+                    onStateChanged = onStateChanged,
+                    onOtaStateChanged = onOtaStateChanged,
+                    onTelemetryStateChanged = onTelemetryStateChanged,
+                    onUnexpectedDisconnect = onUnexpectedDisconnect
+                ).also { fakeClient = it }
+            }
+        )
+    }
+
+    @After
+    fun tearDown() {
+        context.getSharedPreferences(
+            RegattaLinkConfiguredDeviceStore.PREFS_NAME,
+            Context.MODE_PRIVATE
+        ).edit().clear().commit()
+    }
+
+    @Test
+    fun rejectedDiscoveryDoesNotBlockConfiguredReconnect() {
+        fakeClient.discoveryAccepted = false
+
+        assertFalse(manager.startDiscovery())
+        assertTrue(manager.reconnectConfigured())
+
+        assertEquals(1, fakeClient.discoveryCalls)
+        assertEquals(1, fakeClient.reconnectCalls)
+        assertEquals(configured.deviceAddress, fakeClient.lastReconnectAddress)
+        assertEquals(configured.stableId, fakeClient.lastReconnectStableId)
+    }
+
+    @Test
+    fun activeOtaSuppressesGenericDiscoveryAndReconnect() {
+        fakeClient.emitOta(
+            RegattaLinkOtaUiState(
+                phase = RegattaLinkOtaPhase.TRANSFERRING
+            )
+        )
+
+        assertFalse(manager.startDiscovery())
+        assertFalse(manager.reconnectConfigured())
+
+        assertEquals(0, fakeClient.discoveryCalls)
+        assertEquals(0, fakeClient.reconnectCalls)
+    }
+
+    @Test
+    fun terminalOtaStateReleasesGenericConnectionActions() {
+        fakeClient.emitOta(
+            RegattaLinkOtaUiState(
+                phase = RegattaLinkOtaPhase.TRANSFERRING
+            )
+        )
+        assertFalse(manager.startDiscovery())
+
+        fakeClient.emitOta(
+            RegattaLinkOtaUiState(
+                phase = RegattaLinkOtaPhase.SUCCESS
+            )
+        )
+
+        assertTrue(manager.startDiscovery())
+        assertEquals(1, fakeClient.discoveryCalls)
+    }
+
+    @Test
+    fun unexpectedDisconnectReconnectsOnlyOutsideOtaOwnership() {
+        fakeClient.emitUnexpectedDisconnect()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(1, fakeClient.reconnectCalls)
+
+        fakeClient.emitOta(
+            RegattaLinkOtaUiState(
+                phase = RegattaLinkOtaPhase.RECONNECTING
+            )
+        )
+        fakeClient.emitUnexpectedDisconnect()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(1, fakeClient.reconnectCalls)
+    }
+
+    @Test
+    fun intentionalDisconnectDoesNotStartReconnect() {
+        manager.disconnect()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(1, fakeClient.disconnectCalls)
+        assertEquals(0, fakeClient.reconnectCalls)
+    }
+
+    @Test
+    fun failedExplicitSearchPreservesPreviouslyConfiguredDevice() {
+        assertTrue(manager.startDiscovery())
+
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.ERROR,
+                error = "search failed"
+            )
+        )
+
+        assertEquals(configured, manager.configuredDevice())
+        assertTrue(manager.reconnectConfigured())
+        assertEquals(1, fakeClient.reconnectCalls)
+    }
+
+    @Test
+    fun newlyAttachedListenerReceivesCurrentManagerState() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.SCANNING
+            )
+        )
+        fakeClient.emitOta(
+            RegattaLinkOtaUiState(
+                phase = RegattaLinkOtaPhase.VERIFYING
+            )
+        )
+
+        var connectionStatus: RegattaLinkConnectionStatus? = null
+        var otaPhase: RegattaLinkOtaPhase? = null
+        manager.addListener(
+            object : RegattaLinkConnectionListener {
+                override fun onConnectionStateChanged(state: RegattaLinkClientState) {
+                    connectionStatus = state.status
+                }
+
+                override fun onOtaStateChanged(state: RegattaLinkOtaUiState) {
+                    otaPhase = state.phase
+                }
+            }
+        )
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(RegattaLinkConnectionStatus.SCANNING, connectionStatus)
+        assertEquals(RegattaLinkOtaPhase.VERIFYING, otaPhase)
+    }
+
+    private class FakeConnectionClient(
+        private val onStateChanged: (RegattaLinkClientState) -> Unit,
+        private val onOtaStateChanged: (RegattaLinkOtaUiState) -> Unit,
+        @Suppress("UNUSED_PARAMETER")
+        private val onTelemetryStateChanged: (RegattaLinkTelemetryState) -> Unit,
+        private val onUnexpectedDisconnect: () -> Unit
+    ) : RegattaLinkConnectionClient {
+        var discoveryAccepted = true
+        var reconnectAccepted = true
+        var discoveryCalls = 0
+        var reconnectCalls = 0
+        var disconnectCalls = 0
+        var lastReconnectAddress: String? = null
+        var lastReconnectStableId: String? = null
+
+        override fun startKnownDeviceReconnect(
+            deviceAddress: String,
+            expectedStableId: String,
+            timeoutMs: Long
+        ): Boolean {
+            reconnectCalls += 1
+            lastReconnectAddress = deviceAddress
+            lastReconnectStableId = expectedStableId
+            return reconnectAccepted
+        }
+
+        override fun startDiscovery(): Boolean {
+            discoveryCalls += 1
+            return discoveryAccepted
+        }
+
+        override fun disconnect() {
+            disconnectCalls += 1
+        }
+
+        override fun startOta(artifact: RegattaLinkFirmwareArtifact) = Unit
+
+        override fun cancelOta() = Unit
+
+        override fun resetOtaState() = Unit
+
+        fun emitConnection(state: RegattaLinkClientState) {
+            onStateChanged(state)
+        }
+
+        fun emitOta(state: RegattaLinkOtaUiState) {
+            onOtaStateChanged(state)
+        }
+
+        fun emitUnexpectedDisconnect() {
+            onUnexpectedDisconnect()
+        }
+    }
+}

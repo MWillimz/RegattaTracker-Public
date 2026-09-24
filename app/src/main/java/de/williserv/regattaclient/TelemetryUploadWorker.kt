@@ -222,12 +222,6 @@ internal fun getTelemetryUploadPage(
             samples.accuracy,
             samples.cog,
             samples.sog,
-            samples.accel_x,
-            samples.accel_y,
-            samples.accel_z,
-            samples.gyro_x,
-            samples.gyro_y,
-            samples.gyro_z,
             samples.battery_percent,
             samples.battery_charging,
             samples.tracking_profile,
@@ -251,12 +245,12 @@ internal fun getTelemetryUploadPage(
     ).use { cursor ->
         while (cursor.moveToNext()) {
             val accessContext = AccessContext(
-                id = cursor.getLong(25),
-                serverUrl = cursor.getString(26),
-                accessIdentifier = cursor.getString(27),
-                accessSecret = cursor.getString(28),
-                createdAt = cursor.getLong(29),
-                lastUsedAt = cursor.getLong(30)
+                id = cursor.getLong(19),
+                serverUrl = cursor.getString(20),
+                accessIdentifier = cursor.getString(21),
+                accessSecret = cursor.getString(22),
+                createdAt = cursor.getLong(23),
+                lastUsedAt = cursor.getLong(24)
             )
 
             result += PendingTrackingSample(
@@ -275,17 +269,11 @@ internal fun getTelemetryUploadPage(
                 accuracy = cursor.getFloat(11),
                 cog = cursor.getFloat(12),
                 sog = cursor.getFloat(13),
-                accelX = cursor.getFloat(14),
-                accelY = cursor.getFloat(15),
-                accelZ = cursor.getFloat(16),
-                gyroX = cursor.getFloat(17),
-                gyroY = cursor.getFloat(18),
-                gyroZ = cursor.getFloat(19),
-                batteryPercent = if (cursor.isNull(20)) null else cursor.getInt(20),
-                batteryCharging = if (cursor.isNull(21)) null else cursor.getInt(21) != 0,
-                trackingProfile = if (cursor.isNull(22)) null else cursor.getString(22),
-                utcOffsetMinutes = if (cursor.isNull(23)) null else cursor.getInt(23),
-                measurementsJson = if (cursor.isNull(24)) null else cursor.getString(24)
+                batteryPercent = if (cursor.isNull(14)) null else cursor.getInt(14),
+                batteryCharging = if (cursor.isNull(15)) null else cursor.getInt(15) != 0,
+                trackingProfile = if (cursor.isNull(16)) null else cursor.getString(16),
+                utcOffsetMinutes = if (cursor.isNull(17)) null else cursor.getInt(17),
+                measurementsJson = if (cursor.isNull(18)) null else cursor.getString(18)
             )
         }
     }
@@ -313,12 +301,6 @@ internal fun buildTelemetryUploadPayload(
     put("accuracy", sample.accuracy)
     put("cog", sample.cog)
     put("sog", sample.sog)
-    put("accel_x", sample.accelX)
-    put("accel_y", sample.accelY)
-    put("accel_z", sample.accelZ)
-    put("gyro_x", sample.gyroX)
-    put("gyro_y", sample.gyroY)
-    put("gyro_z", sample.gyroZ)
     sample.batteryPercent?.let { put("battery_percent", it) }
     sample.batteryCharging?.let { put("battery_charging", it) }
     sample.trackingProfile?.let { put("tracking_profile", it) }
