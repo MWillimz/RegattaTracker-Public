@@ -1,5 +1,7 @@
 package de.williserv.regattaclient
 
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Handler
@@ -58,7 +60,7 @@ internal interface RegattaLinkConnectionListener {
 internal interface RegattaLinkConnectionClient {
     fun startKnownDeviceReconnect(
         deviceAddress: String,
-        expectedStableId: String,
+        expectedStableId: String?,
         timeoutMs: Long
     ): Boolean
 
@@ -67,6 +69,26 @@ internal interface RegattaLinkConnectionClient {
     fun startOta(artifact: RegattaLinkFirmwareArtifact)
     fun cancelOta()
     fun resetOtaState()
+}
+
+internal fun findUniqueLegacyBondedRegattaLinkAddress(context: Context): String? {
+    val manager = context.applicationContext
+        .getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+    val adapter = manager.adapter ?: return null
+    val candidates = runCatching {
+        adapter.bondedDevices
+            .asSequence()
+            .filter { it.bondState == BluetoothDevice.BOND_BONDED }
+            .filter {
+                runCatching { it.name }
+                    .getOrNull()
+                    ?.startsWith("RegattaLink-", ignoreCase = true) == true
+            }
+            .map { it.address }
+            .distinct()
+            .toList()
+    }.getOrDefault(emptyList())
+    return candidates.singleOrNull()
 }
 
 internal fun interface RegattaLinkConnectionClientFactory {
@@ -95,7 +117,9 @@ internal class RegattaLinkConnectionManager(
                 onTelemetryStateChanged = onTelemetryStateChanged,
                 onUnexpectedDisconnect = onUnexpectedDisconnect
             )
-        }
+        },
+    legacyBondedAddressProvider: (Context) -> String? =
+        ::findUniqueLegacyBondedRegattaLinkAddress
 ) {
     companion object {
         private const val NORMAL_RECONNECT_TIMEOUT_MS = 60_000L
@@ -118,6 +142,9 @@ internal class RegattaLinkConnectionManager(
 
     @Volatile
     private var explicitDiscoveryRequested = false
+
+    @Volatile
+    private var legacyBootstrapAddress: String? = null
 
     private val client = clientFactory.create(
         context = appContext,
@@ -159,16 +186,34 @@ internal class RegattaLinkConnectionManager(
 
     fun reconnectConfigured(): Boolean {
         if (otaState.isActive || explicitDiscoveryRequested) return false
-        val configured = configuredDeviceStore.load() ?: return false
-        return client.startKnownDeviceReconnect(
-            deviceAddress = configured.deviceAddress,
-            expectedStableId = configured.stableId,
+
+        val configured = configuredDeviceStore.load()
+        if (configured != null) {
+            legacyBootstrapAddress = null
+            return client.startKnownDeviceReconnect(
+                deviceAddress = configured.deviceAddress,
+                expectedStableId = configured.stableId,
+                timeoutMs = NORMAL_RECONNECT_TIMEOUT_MS
+            )
+        }
+
+        if (!hasRequiredPermissions()) return false
+        val legacyAddress = legacyBondedAddressProvider(appContext) ?: return false
+        legacyBootstrapAddress = legacyAddress
+        val accepted = client.startKnownDeviceReconnect(
+            deviceAddress = legacyAddress,
+            expectedStableId = null,
             timeoutMs = NORMAL_RECONNECT_TIMEOUT_MS
         )
+        if (!accepted) {
+            legacyBootstrapAddress = null
+        }
+        return accepted
     }
 
     fun startDiscovery(): Boolean {
         if (otaState.isActive) return false
+        legacyBootstrapAddress = null
         val accepted = client.startDiscovery()
         if (accepted) {
             explicitDiscoveryRequested = true
@@ -178,11 +223,13 @@ internal class RegattaLinkConnectionManager(
 
     fun disconnect() {
         explicitDiscoveryRequested = false
+        legacyBootstrapAddress = null
         client.disconnect()
     }
 
     fun startOta(artifact: RegattaLinkFirmwareArtifact) {
         explicitDiscoveryRequested = false
+        legacyBootstrapAddress = null
         client.startOta(artifact)
     }
 
@@ -209,6 +256,28 @@ internal class RegattaLinkConnectionManager(
         connectionState = state
 
         val info = state.deviceInfo
+        val bootstrapAddress = legacyBootstrapAddress
+        if (
+            state.status == RegattaLinkConnectionStatus.CONNECTED &&
+            info != null &&
+            bootstrapAddress != null &&
+            state.deviceAddress.equals(bootstrapAddress, ignoreCase = true)
+        ) {
+            configuredDeviceStore.save(
+                RegattaLinkConfiguredDevice(
+                    stableId = info.stableId,
+                    deviceAddress = state.deviceAddress,
+                    deviceName = state.deviceName
+                )
+            )
+            legacyBootstrapAddress = null
+        } else if (
+            state.status == RegattaLinkConnectionStatus.ERROR &&
+            bootstrapAddress != null
+        ) {
+            legacyBootstrapAddress = null
+        }
+
         if (
             state.status == RegattaLinkConnectionStatus.CONNECTED &&
             info != null &&
