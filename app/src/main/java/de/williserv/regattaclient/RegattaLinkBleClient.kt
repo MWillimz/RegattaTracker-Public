@@ -1325,12 +1325,12 @@ internal class RegattaLinkBleClient(
     ) {
         if (!optionalFeatureWorkAllowed(activeGatt)) return
 
-        setupConfiguration(activeGatt)
-        if (!optionalFeatureWorkAllowed(activeGatt)) return
-
         if (info.telemetryAvailable) {
             setupTelemetry(activeGatt)
         }
+        if (!optionalFeatureWorkAllowed(activeGatt)) return
+
+        setupConfiguration(activeGatt)
         if (!optionalFeatureWorkAllowed(activeGatt)) return
 
         setupNmea(activeGatt)
