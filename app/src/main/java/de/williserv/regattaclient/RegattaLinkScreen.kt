@@ -604,7 +604,10 @@ fun RegattaLinkScreen(
                         }
                     }
 
-                    if (configurationState.ledBrightnessSupported) {
+                    if (
+                        configurationState.ledBrightnessSupported &&
+                        configurationState.ledBrightnessPct != null
+                    ) {
                         val shownBrightness = brightnessDraft
                             .roundToInt()
                             .coerceIn(0, 100)
@@ -628,7 +631,7 @@ fun RegattaLinkScreen(
                             valueRange = 0f..100f,
                             enabled = configEnabled
                         )
-                    } else {
+                    } else if (!configurationState.ledBrightnessSupported) {
                         Text(
                             text = stringResource(
                                 R.string.regattalink_led_brightness_unavailable
