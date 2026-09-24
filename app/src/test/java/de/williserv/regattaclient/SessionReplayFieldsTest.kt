@@ -27,9 +27,9 @@ class SessionReplayFieldsTest {
                     "unit": "deg",
                     "group": "regattalink"
                   },
-                  "nmea.stw": {
+                  "nmea.stw_mps": {
                     "value": 5.6,
-                    "unit": "kn",
+                    "unit": "m/s",
                     "group": "nmea"
                   },
                   "regattalink.fast.sequence": {
@@ -81,7 +81,7 @@ class SessionReplayFieldsTest {
 
         val stw = fields.single { it.id == "measurement:nmea.stw" }
         assertEquals("STW", stw.label)
-        assertEquals("kn", stw.unit)
+        assertEquals("m/s", stw.unit)
 
         assertTrue(fields.none { it.id.contains("sequence") })
         assertTrue(fields.none { it.id.contains("timestamp") })
