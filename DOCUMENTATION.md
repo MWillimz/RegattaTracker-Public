@@ -125,9 +125,9 @@ Map displays a static PNG loaded from the server.
 
 ## RegattaLink BLE contract
 
-The complete public client-side wire contract for RegattaLink BLE is maintained in [docs/REGATTALINK-BLE-CLIENT-CONTRACT.md](docs/REGATTALINK-BLE-CLIENT-CONTRACT.md). That document is normative for UUIDs, security/bonding, Device Info, NMEA2000 PGN inventory, motion telemetry, OTA transport/state/reconciliation, Android GATT behavior and compatibility rules.
+The complete public client-side wire contract for RegattaLink BLE is maintained in [docs/REGATTALINK-BLE-CLIENT-CONTRACT.md](docs/REGATTALINK-BLE-CLIENT-CONTRACT.md). That document is normative for UUIDs, security/bonding, Device Info, NMEA2000 PGN inventory and raw-CAN diagnostics, LED brightness configuration, IMU/motion telemetry, normalized NMEA2000 Boat State v1, OTA transport/state/reconciliation, Android GATT behavior and compatibility rules.
 
-The current NMEA2000 BLE surface is deliberately limited to the PGN inventory characteristic. Decoded NMEA boat data and raw CAN capture are not part of the current client contract until their wire formats are explicitly defined there.
+The firmware contract is broader than the features currently consumed by RegattaTracker. Optional surfaces such as PGN inventory `0004`, raw CAN FIFO `0005`, LED brightness `0006` and normalized Boat State `0024` must be discovered by UUID and may be documented before their dedicated Android UI/consumption work is implemented.
 
 ## Server API
 
