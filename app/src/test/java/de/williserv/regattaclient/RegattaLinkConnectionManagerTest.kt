@@ -358,6 +358,10 @@ class RegattaLinkConnectionManagerTest {
             RegattaLinkRawCaptureStopReason.INTERRUPTED,
             fakeClient.lastCaptureStopReason
         )
+        assertEquals(
+            RegattaLinkRawCapturePhase.INTERRUPTED,
+            manager.currentRawCaptureState().phase
+        )
         assertEquals(1, fakeClient.disconnectCalls)
     }
 
@@ -483,6 +487,15 @@ class RegattaLinkConnectionManagerTest {
             reason: RegattaLinkRawCaptureStopReason
         ) {
             lastCaptureStopReason = reason
+            captureFinished?.invoke(
+                if (reason == RegattaLinkRawCaptureStopReason.USER) {
+                    RegattaLinkRawCaptureEndReason.USER_STOP
+                } else {
+                    RegattaLinkRawCaptureEndReason.INTERRUPTED
+                },
+                ""
+            )
+            captureFinished = null
         }
 
         fun emitConnection(state: RegattaLinkClientState) {
