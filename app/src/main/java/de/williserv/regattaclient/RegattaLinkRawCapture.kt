@@ -10,7 +10,7 @@ internal const val REGATTALINK_RAW_CAPTURE_FLUSH_READ_LIMIT = REGATTALINK_MAX_RA
 internal const val REGATTALINK_RAW_CAPTURE_CSV_HEADER =
     "timestamp_us_low,can_id,pgn,priority,source,destination,dlc,data_hex"
 
-internal enum class RegattaLinkRawCapturePhase {
+enum class RegattaLinkRawCapturePhase {
     IDLE,
     FLUSHING,
     CAPTURING,
@@ -31,7 +31,7 @@ internal enum class RegattaLinkRawCaptureEndReason {
     ERROR
 }
 
-internal data class RegattaLinkRawCaptureState(
+data class RegattaLinkRawCaptureState(
     val phase: RegattaLinkRawCapturePhase = RegattaLinkRawCapturePhase.IDLE,
     val startedAtElapsedMs: Long? = null,
     val durationMs: Long = REGATTALINK_RAW_CAPTURE_DURATION_MS,
