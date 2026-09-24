@@ -246,6 +246,7 @@ fun SessionDetailScreen(
     selectedReplayFieldIds: Set<String> = emptySet(),
     onReplayFieldSelectionChange: (Set<String>) -> Unit = {},
     onReplay: () -> Unit,
+    onAnalysis: () -> Unit,
     onBack: () -> Unit
 ) {
     Column(
@@ -457,6 +458,13 @@ fun SessionDetailScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         if (detail != null && detail.samples.isNotEmpty()) {
+            Button(
+                onClick = onAnalysis,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.session_analysis_button))
+            }
+            Spacer(modifier = Modifier.height(8.dp))
             Button(
                 onClick = onReplay,
                 modifier = Modifier.fillMaxWidth()

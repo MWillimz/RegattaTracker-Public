@@ -401,6 +401,22 @@
     <string name="session_duration_minutes">%1$d min</string>
     <string name="session_duration_hours_minutes">%1$d h %2$d min</string>
 
+    <string name="session_analysis_button">Analysis</string>
+    <string name="session_analysis_title">Session analysis</string>
+    <string name="session_analysis_empty">No usable samples are available for analysis.</string>
+    <string name="session_analysis_angle">Angle</string>
+    <string name="session_analysis_radius">Radius</string>
+    <string name="session_analysis_color">Color by</string>
+    <string name="session_analysis_none">None</string>
+    <string name="session_analysis_recommended">Recommended</string>
+    <string name="session_analysis_all_sensors">All sensors (%1$d more)</string>
+    <string name="session_analysis_hide_all_sensors">Hide all sensors</string>
+    <string name="session_analysis_filters">Filters</string>
+    <string name="session_analysis_show_filters">Show filters</string>
+    <string name="session_analysis_hide_filters">Hide filters</string>
+    <string name="session_analysis_filter_range">%1$s–%2$s %3$s</string>
+    <string name="session_analysis_color_legend">Color: %1$s</string>
+    <string name="session_analysis_points">%1$d visible points</string>
     <string name="session_replay_button">Replay</string>
     <string name="session_replay_title">Session replay</string>
     <string name="session_replay_empty">No samples available for replay.</string>
