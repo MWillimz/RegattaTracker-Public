@@ -73,7 +73,7 @@ class RegattaLinkNmeaMeasurementsTest {
                 boatState = RegattaLinkBoatState(
                     sequence = 1,
                     timestampMs = 1,
-                    validityBitmap = 1,
+                    validityBitmap = (1L shl 0) or (1L shl 17) or (1L shl 18),
                     headingDeg = 201.0,
                     headingReference = 0,
                     windSpeedMps = 8.0,
@@ -124,7 +124,7 @@ class RegattaLinkNmeaMeasurementsTest {
             boatState = RegattaLinkBoatState(
                 sequence = 1,
                 timestampMs = 1,
-                validityBitmap = 1,
+                validityBitmap = (1L shl 0) or (1L shl 17) or (1L shl 18),
                 headingDeg = 55.0,
                 headingReference = 9,
                 windSpeedMps = 4.0,
@@ -144,7 +144,7 @@ class RegattaLinkNmeaMeasurementsTest {
             boatState = RegattaLinkBoatState(
                 sequence = 1,
                 timestampMs = 1,
-                validityBitmap = 1,
+                validityBitmap = 1L shl 7,
                 speedThroughWaterMps = 2.5
             ),
             boatStateReceivedAtElapsedMs = 1_000L
@@ -177,7 +177,7 @@ class RegattaLinkNmeaMeasurementsTest {
             boatState = RegattaLinkBoatState(
                 sequence = 1,
                 timestampMs = 1,
-                validityBitmap = 1,
+                validityBitmap = 1L shl 7,
                 speedThroughWaterMps = 2.5
             ),
             boatStateReceivedAtElapsedMs = 1_000L
@@ -237,7 +237,7 @@ class RegattaLinkNmeaMeasurementsTest {
             boatState = RegattaLinkBoatState(
                 sequence = 1,
                 timestampMs = 1,
-                validityBitmap = 1,
+                validityBitmap = (1L shl 17) or (1L shl 18),
                 windSpeedMps = 7.5,
                 windAngleDeg = 280.0,
                 windReference = reference
