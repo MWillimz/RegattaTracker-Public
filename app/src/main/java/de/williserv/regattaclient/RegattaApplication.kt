@@ -5,7 +5,7 @@ import android.app.Application
 class RegattaApplication : Application() {
     private lateinit var raceSignalController: RaceSignalController
 
-    lateinit var regattaLinkConnectionManager: RegattaLinkConnectionManager
+    internal lateinit var regattaLinkConnectionManager: RegattaLinkConnectionManager
         private set
 
     override fun onCreate() {
