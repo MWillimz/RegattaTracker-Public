@@ -1,6 +1,5 @@
 package de.williserv.regattaclient
 
-import org.json.JSONObject
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToLong
@@ -85,43 +84,19 @@ private val REPLAY_RECOMMENDED_BY_KEY =
 internal fun discoverReplayExtraFields(
     samples: List<SessionTrackingSample>
 ): List<ReplayExtraField> {
-    if (samples.isEmpty()) return emptyList()
-
-    val discovered = linkedMapOf<String, ReplayExtraField>()
-
-    samples.forEach { sample ->
-        val json = parseMeasurements(sample.measurementsJson) ?: return@forEach
-        val keys = json.keys()
-        while (keys.hasNext()) {
-            val key = keys.next()
-            if (discovered.containsKey(key)) continue
-
-            val measurement = json.optJSONObject(key) ?: continue
-            val value = measurement.opt("value")
-            if (value !is Number || !value.toDouble().isFinite()) continue
-
-            val group = measurement.optString("group")
-                .takeIf { it.isNotBlank() }
-
-            if (isReplayMeasurementBlacklisted(key, group)) continue
-
-            val unit = measurement.optString("unit")
-                .takeIf { it.isNotBlank() }
-            val recommended = REPLAY_RECOMMENDED_BY_KEY[key]
-
-            discovered[key] = ReplayExtraField(
-                id = "measurement:$key",
-                source = ReplayExtraFieldSource.MEASUREMENT,
-                label = recommended?.label ?: prettyMeasurementLabel(key, group, unit),
-                unit = unit,
-                measurementKey = key,
-                measurementGroup = group,
-                recommended = recommended != null
-            )
-        }
-    }
-
-    return discovered.values.sortedWith(
+    val measurements = discoverSessionNumericMeasurements(samples)
+    return measurements.map { measurement ->
+        val recommended = REPLAY_RECOMMENDED_BY_KEY[measurement.key]
+        ReplayExtraField(
+            id = "measurement:${measurement.key}",
+            source = ReplayExtraFieldSource.MEASUREMENT,
+            label = recommended?.label ?: measurement.label,
+            unit = measurement.unit,
+            measurementKey = measurement.key,
+            measurementGroup = measurement.group,
+            recommended = recommended != null
+        )
+    }.sortedWith(
         compareByDescending<ReplayExtraField> { it.recommended }
             .thenBy { it.measurementGroup.orEmpty() }
             .thenBy { it.label }
@@ -129,120 +104,13 @@ internal fun discoverReplayExtraFields(
     )
 }
 
-private fun isReplayMeasurementBlacklisted(
-    key: String,
-    group: String?
-): Boolean {
-    val normalizedKey = key.lowercase(Locale.ROOT)
-    val normalizedGroup = group?.lowercase(Locale.ROOT).orEmpty()
-
-    if (
-        normalizedGroup in setOf(
-            "debug",
-            "diagnostic",
-            "diagnostics",
-            "metadata",
-            "protocol",
-            "transport"
-        )
-    ) {
-        return true
-    }
-
-    return REPLAY_BLACKLIST_KEY_TOKENS.any { token ->
-        normalizedKey.contains(token)
-    }
-}
-
-private val REPLAY_BLACKLIST_KEY_TOKENS = setOf(
-    ".sequence",
-    ".timestamp",
-    ".confidence",
-    ".calibration.",
-    ".learner",
-    ".gyro_bias",
-    ".boat_frame_valid",
-    ".positive_maneuvers",
-    ".negative_maneuvers",
-    ".roll_pair_observations",
-    ".contradictory_maneuvers",
-    ".mounting_epoch",
-    ".calibration_revision",
-    ".build",
-    ".schema",
-    ".protocol",
-    ".transport",
-    ".debug",
-    ".diagnostic"
-)
-
-private fun prettyMeasurementLabel(
-    key: String,
-    group: String?,
-    unit: String?
-): String {
-    var visibleKey = key
-    if (!group.isNullOrBlank()) {
-        val prefix = "$group."
-        if (visibleKey.startsWith(prefix, ignoreCase = true)) {
-            visibleKey = visibleKey.substring(prefix.length)
-        }
-    }
-
-    val unitTokens = when (unit?.lowercase(Locale.ROOT)) {
-        "deg" -> setOf("deg")
-        "deg/s" -> setOf("dps")
-        "g" -> setOf("g")
-        "%" -> setOf("pct", "percent")
-        "ms" -> setOf("ms")
-        else -> emptySet()
-    }
-
-    val parts = visibleKey
-        .split('.', '_')
-        .filter { it.isNotBlank() && it.lowercase(Locale.ROOT) !in unitTokens }
-
-    return parts.joinToString(" ") { prettyIdentifier(it) }
-        .ifBlank { prettyIdentifier(key) }
-}
-
-private fun prettyIdentifier(value: String): String {
-    val normalized = value.lowercase(Locale.ROOT)
-    if (normalized == "regattalink") return "RegattaLink"
-    if (normalized in DISPLAY_ACRONYMS) return normalized.uppercase(Locale.ROOT)
-    if (value.length <= 4 && value.all { it.isUpperCase() || it.isDigit() }) return value
-    return normalized.replaceFirstChar { first ->
-        if (first.isLowerCase()) first.titlecase(Locale.ROOT) else first.toString()
-    }
-}
-
-private val DISPLAY_ACRONYMS = setOf(
-    "awa",
-    "aws",
-    "cog",
-    "gps",
-    "imu",
-    "mag",
-    "nmea",
-    "pgn",
-    "rms",
-    "sog",
-    "stw",
-    "twa",
-    "tws",
-    "vmg"
-)
-
 internal fun replayExtraFieldValues(
     sample: SessionTrackingSample,
     fields: List<ReplayExtraField>
-): Map<String, String> {
-    val measurements = parseMeasurements(sample.measurementsJson)
-    return buildMap {
-        fields.forEach { field ->
-            replayExtraFieldValue(field, measurements)?.let { value ->
-                put(field.id, value)
-            }
+): Map<String, String> = buildMap {
+    fields.forEach { field ->
+        replayExtraFieldValue(field, sample)?.let { value ->
+            put(field.id, value)
         }
     }
 }
@@ -250,37 +118,20 @@ internal fun replayExtraFieldValues(
 internal fun replayExtraFieldValue(
     sample: SessionTrackingSample,
     field: ReplayExtraField
-): String? = replayExtraFieldValue(
-    field = field,
-    measurements = parseMeasurements(sample.measurementsJson)
-)
+): String? = replayExtraFieldValue(field, sample)
 
 private fun replayExtraFieldValue(
     field: ReplayExtraField,
-    measurements: JSONObject?
+    sample: SessionTrackingSample
 ): String? {
     val key = field.measurementKey ?: return null
-    val measurement = measurements?.optJSONObject(key) ?: return null
-    if (!measurement.has("value") || measurement.isNull("value")) return null
-
-    val value = measurement.opt("value")
-    val formatted = when (value) {
-        is Number -> {
-            val number = value.toDouble()
-            if (!number.isFinite()) return null
-            formatReplayNumber(number, decimalsForMeasurement(number), null)
-        }
-        is Boolean -> value.toString()
-        is String -> value.takeIf { it.isNotBlank() }
-        else -> null
-    } ?: return null
-
+    val number = sessionNumericMeasurementValue(sample, key) ?: return null
+    val formatted = formatReplayNumber(
+        number,
+        decimalsForMeasurement(number),
+        null
+    )
     return field.unit?.let { "$formatted $it" } ?: formatted
-}
-
-private fun parseMeasurements(raw: String?): JSONObject? {
-    if (raw.isNullOrBlank()) return null
-    return runCatching { JSONObject(raw) }.getOrNull()
 }
 
 private fun formatReplayNumber(
