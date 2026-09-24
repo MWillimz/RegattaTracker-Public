@@ -286,7 +286,7 @@ internal class RegattaLinkBleClient(
 
         serviceDiscoveryInProgress = true
         handler.removeCallbacks(gattTimeout)
-        handler.postDelayed(gattTimeout, GATT_TIMEOUT_MS)
+        handler.postDelayed(gattTimeout, currentGattTimeoutMs())
         Log.i(LOG_TAG, "RegattaLink service discovery started: $reason")
         return true
     }
@@ -1106,21 +1106,22 @@ internal class RegattaLinkBleClient(
                 emitError(device, "Could not open RegattaLink connection")
             }
         } else {
-            val timeoutMs =
-                if (scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT) {
-                    minOf(
-                        GATT_TIMEOUT_MS,
-                        regattaLinkReconnectRemainingMs(
-                            knownReconnectDeadlineMs,
-                            SystemClock.elapsedRealtime()
-                        ).coerceAtLeast(1L)
-                    )
-                } else {
-                    GATT_TIMEOUT_MS
-                }
-            handler.postDelayed(gattTimeout, timeoutMs)
+            handler.postDelayed(gattTimeout, currentGattTimeoutMs())
         }
     }
+
+    private fun currentGattTimeoutMs(): Long =
+        if (scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT) {
+            minOf(
+                GATT_TIMEOUT_MS,
+                regattaLinkReconnectRemainingMs(
+                    knownReconnectDeadlineMs,
+                    SystemClock.elapsedRealtime()
+                ).coerceAtLeast(1L)
+            )
+        } else {
+            GATT_TIMEOUT_MS
+        }
 
     private fun handleCharacteristicRead(
         callbackGatt: BluetoothGatt,
