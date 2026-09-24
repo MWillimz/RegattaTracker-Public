@@ -1,5 +1,6 @@
 package de.williserv.regattaclient
 
+import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.content.Context
@@ -71,6 +72,7 @@ internal interface RegattaLinkConnectionClient {
     fun resetOtaState()
 }
 
+@SuppressLint("MissingPermission")
 internal fun findUniqueLegacyBondedRegattaLinkAddress(context: Context): String? {
     val manager = context.applicationContext
         .getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
