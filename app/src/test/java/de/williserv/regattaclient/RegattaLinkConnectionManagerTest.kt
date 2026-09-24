@@ -318,7 +318,7 @@ class RegattaLinkConnectionManagerTest {
         val state = manager.currentRawCaptureState()
         assertEquals(RegattaLinkRawCapturePhase.COMPLETED, state.phase)
         assertEquals(1, state.frameCount)
-        val file = requireNotNull(state.filePath).let(::java.io.File)
+        val file = java.io.File(requireNotNull(state.filePath))
         assertTrue(file.exists())
         val lines = file.readLines(Charsets.UTF_8)
         assertEquals(REGATTALINK_RAW_CAPTURE_CSV_HEADER, lines[0])
