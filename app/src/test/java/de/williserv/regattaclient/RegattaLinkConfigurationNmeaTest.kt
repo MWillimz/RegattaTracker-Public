@@ -135,9 +135,9 @@ class RegattaLinkConfigurationNmeaTest {
         raw[62] = 2
         raw[63] = 3
         raw[64] = 11
-        buffer.putShort(66, 85)
-        buffer.putShort(68, 140)
-        buffer.putShort(74, 650)
+        buffer.putShort(66, 85.toShort())
+        buffer.putShort(68, 140.toShort())
+        buffer.putShort(74, 650.toShort())
         buffer.putShort(76, 22500.toShort())
         raw[78] = 4
 
