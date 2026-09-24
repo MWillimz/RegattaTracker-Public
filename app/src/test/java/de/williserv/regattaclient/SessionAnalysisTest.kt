@@ -212,24 +212,39 @@ class SessionAnalysisTest {
     }
 
     @Test
-    fun dynamicRadianSensorIsAvailableAsAngleInDegrees() {
+    fun angleSelectorOnlyIncludesExplicitNavigationAndWindAngles() {
         val samples = listOf(
             sample(
                 measurements = """
                     {
-                      "nmea.fancy_angle":{"value":1.57079632679,"unit":"rad","group":"nmea"}
+                      "nmea.heading_magnetic_deg":{"value":123.0,"unit":"deg","group":"nmea"},
+                      "nmea.awa_deg":{"value":35.0,"unit":"deg","group":"nmea"},
+                      "nmea.twa_deg":{"value":42.0,"unit":"deg","group":"nmea"},
+                      "nmea.latitude_deg":{"value":54.0,"unit":"deg","group":"nmea"},
+                      "nmea.longitude_deg":{"value":10.0,"unit":"deg","group":"nmea"},
+                      "nmea.fancy_angle":{"value":1.57079632679,"unit":"rad","group":"nmea"},
+                      "regattalink.summary.heel_filtered_deg":{"value":-8.0,"unit":"deg","group":"regattalink"}
                     }
                 """.trimIndent()
             )
         )
-        val prepared = prepareAnalysisSamples(samples)
-        val capabilities = discoverSessionAnalysisCapabilities(samples, prepared)
-        val metric = capabilities.angleMetrics.single {
-            it.id == "measurement:nmea.fancy_angle"
-        }
+        val capabilities = discoverSessionAnalysisCapabilities(
+            samples,
+            prepareAnalysisSamples(samples)
+        )
 
-        assertEquals("deg", metric.unit)
-        assertEquals(90.0, metricValue(metric, prepared.single())!!, 0.001)
+        assertEquals(
+            setOf(
+                "gps.cog",
+                "measurement:nmea.heading_magnetic_deg",
+                "measurement:nmea.awa_deg",
+                "measurement:nmea.twa_deg"
+            ),
+            capabilities.angleMetrics.mapTo(mutableSetOf()) { it.id }
+        )
+        assertTrue(capabilities.metrics.any { it.id == "measurement:nmea.latitude_deg" })
+        assertTrue(capabilities.metrics.any { it.id == "measurement:nmea.longitude_deg" })
+        assertTrue(capabilities.metrics.any { it.id == "measurement:nmea.fancy_angle" })
     }
 
     @Test
