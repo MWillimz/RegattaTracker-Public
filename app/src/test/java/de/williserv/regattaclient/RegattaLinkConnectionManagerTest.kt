@@ -170,7 +170,7 @@ class RegattaLinkConnectionManagerTest {
                     stableId = configured.stableId,
                     productId = 1,
                     profileId = 1,
-                    runningBuild = 1u,
+                    runningBuild = 1uL,
                     otaSlotSize = 1u,
                     maxInflightBlocks = 1
                 )
