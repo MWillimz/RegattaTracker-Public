@@ -419,21 +419,16 @@ private fun ReplayFieldSelectionRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
-    val sourceLabel = when (field.source) {
-        ReplayExtraFieldSource.INTERNAL_IMU ->
-            stringResource(R.string.session_replay_field_source_internal_imu)
-        ReplayExtraFieldSource.MEASUREMENT ->
-            field.measurementGroup
-                ?.takeIf { it.isNotBlank() }
-                ?.let { group ->
-                    if (group.equals("regattalink", ignoreCase = true)) {
-                        "RegattaLink"
-                    } else {
-                        group
-                    }
-                }
-                ?: stringResource(R.string.session_replay_field_source_measurements)
-    }
+    val sourceLabel = field.measurementGroup
+        ?.takeIf { it.isNotBlank() }
+        ?.let { group ->
+            if (group.equals("regattalink", ignoreCase = true)) {
+                "RegattaLink"
+            } else {
+                group
+            }
+        }
+        ?: stringResource(R.string.session_replay_field_source_measurements)
     val fieldLabel = field.unit?.let { unit -> "${field.label} ($unit)" } ?: field.label
 
     Row(
