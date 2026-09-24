@@ -63,8 +63,16 @@ internal class RegattaLinkBleClient(
     companion object {
         val CONFIG_SERVICE_UUID: UUID =
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710001")
+        val DEVICE_NAME_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710002")
         val DEVICE_INFO_UUID: UUID =
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710003")
+        val NMEA_PGN_INVENTORY_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710004")
+        val NMEA_RAW_CAN_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710005")
+        val LED_BRIGHTNESS_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710006")
         val TELEMETRY_SERVICE_UUID: UUID =
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710020")
         val TELEMETRY_FAST_UUID: UUID =
@@ -73,6 +81,8 @@ internal class RegattaLinkBleClient(
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710022")
         val TELEMETRY_CALIBRATION_UUID: UUID =
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710023")
+        val TELEMETRY_BOAT_STATE_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710024")
 
         private val CCCD_UUID: UUID =
             UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
