@@ -156,7 +156,7 @@ internal class RegattaLinkConnectionManager(
         onUnexpectedDisconnect = {
             handler.post {
                 if (!otaState.isActive) {
-                    reconnectConfigured()
+                    ensureConnectedIfPermitted()
                 }
             }
         }
