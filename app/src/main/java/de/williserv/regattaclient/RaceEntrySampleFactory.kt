@@ -13,13 +13,7 @@ internal data class RaceEntrySample(
     val lon: Double = 0.0,
     val accuracy: Float = 9999f,
     val cog: Float = 0f,
-    val sog: Float = 0f,
-    val accelX: Float = 0f,
-    val accelY: Float = 0f,
-    val accelZ: Float = 0f,
-    val gyroX: Float = 0f,
-    val gyroY: Float = 0f,
-    val gyroZ: Float = 0f
+    val sog: Float = 0f
 )
 
 internal fun buildRaceEntrySample(
