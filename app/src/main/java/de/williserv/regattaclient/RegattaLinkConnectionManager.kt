@@ -5,9 +5,15 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.core.content.ContextCompat
+import java.io.File
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -64,6 +70,7 @@ internal interface RegattaLinkConnectionListener {
     fun onTelemetryStateChanged(state: RegattaLinkTelemetryState) {}
     fun onConfigurationStateChanged(state: RegattaLinkConfigurationState) {}
     fun onNmeaStateChanged(state: RegattaLinkNmeaState) {}
+    fun onRawCaptureStateChanged(state: RegattaLinkRawCaptureState) {}
 }
 
 internal interface RegattaLinkConnectionClient {
@@ -82,6 +89,16 @@ internal interface RegattaLinkConnectionClient {
     fun setLedBrightness(percent: Int): Boolean
     fun refreshPgnInventory(): Boolean
     fun readRawCanFrames(): Boolean
+
+    fun startRawCanCapture(
+        onRecordingStarted: () -> Unit,
+        onFrame: (RegattaLinkRawCanFrame) -> Unit,
+        onFinished: (RegattaLinkRawCaptureEndReason, String) -> Unit
+    ): Boolean = false
+
+    fun stopRawCanCapture(
+        reason: RegattaLinkRawCaptureStopReason
+    ) = Unit
 }
 
 @SuppressLint("MissingPermission")
@@ -167,6 +184,14 @@ internal class RegattaLinkConnectionManager(
     private var nmeaState = RegattaLinkNmeaState()
 
     @Volatile
+    private var rawCaptureState = RegattaLinkRawCaptureState()
+
+    private val rawCaptureLock = Any()
+    private var rawCaptureFileSession: RegattaLinkRawCaptureFileSession? = null
+    private var rawCaptureFrameCount = 0
+    private var rawCaptureLastUiEmitMs = 0L
+
+    @Volatile
     private var explicitDiscoveryRequested = false
 
     @Volatile
@@ -197,6 +222,7 @@ internal class RegattaLinkConnectionManager(
             listener.onTelemetryStateChanged(telemetryState)
             listener.onConfigurationStateChanged(configurationState)
             listener.onNmeaStateChanged(nmeaState)
+            listener.onRawCaptureStateChanged(rawCaptureState)
         }
     }
 
@@ -253,12 +279,16 @@ internal class RegattaLinkConnectionManager(
     fun disconnect() {
         explicitDiscoveryRequested = false
         legacyBootstrapAddress = null
+        stopRawCanCapture(interrupted = true)
         client.disconnect()
     }
 
     fun startOta(artifact: RegattaLinkFirmwareArtifact) {
         explicitDiscoveryRequested = false
         legacyBootstrapAddress = null
+        if (rawCaptureState.isActive) {
+            stopRawCanCapture(interrupted = true)
+        }
         client.startOta(artifact)
     }
 
@@ -271,24 +301,207 @@ internal class RegattaLinkConnectionManager(
     }
 
     fun setDeviceName(name: String): Boolean {
-        if (otaState.isActive) return false
+        if (otaState.isActive || rawCaptureState.isActive) return false
         return client.setDeviceName(name)
     }
 
     fun setLedBrightness(percent: Int): Boolean {
-        if (otaState.isActive) return false
+        if (otaState.isActive || rawCaptureState.isActive) return false
         return client.setLedBrightness(percent)
     }
 
     fun refreshPgnInventory(): Boolean {
-        if (otaState.isActive) return false
+        if (otaState.isActive || rawCaptureState.isActive) return false
         return client.refreshPgnInventory()
     }
 
     fun readRawCanFrames(): Boolean {
-        if (otaState.isActive) return false
+        if (otaState.isActive || rawCaptureState.isActive) return false
         return client.readRawCanFrames()
     }
+
+    fun startRawCanCapture(): Boolean {
+        if (
+            otaState.isActive ||
+            rawCaptureState.isActive ||
+            rawCaptureState.hasFile ||
+            connectionState.status != RegattaLinkConnectionStatus.CONNECTED ||
+            !nmeaState.rawCanSupported
+        ) {
+            return false
+        }
+
+        val captureDir = File(appContext.cacheDir, "regattalink-captures")
+        if (!captureDir.exists() && !captureDir.mkdirs()) {
+            emitRawCapture(
+                RegattaLinkRawCaptureState(
+                    phase = RegattaLinkRawCapturePhase.ERROR,
+                    error = "Could not create raw CAN capture directory"
+                )
+            )
+            return false
+        }
+
+        val timestamp = DateTimeFormatter
+            .ofPattern("yyyyMMdd-HHmmss", Locale.ROOT)
+            .format(ZonedDateTime.now())
+        val fileName = "regattalink-nmea-capture-$timestamp.csv"
+        val file = File(captureDir, fileName)
+        val session = try {
+            RegattaLinkRawCaptureFileSession(file)
+        } catch (error: Exception) {
+            emitRawCapture(
+                RegattaLinkRawCaptureState(
+                    phase = RegattaLinkRawCapturePhase.ERROR,
+                    error = error.message ?: "Could not create raw CAN capture file"
+                )
+            )
+            return false
+        }
+
+        synchronized(rawCaptureLock) {
+            rawCaptureFileSession = session
+            rawCaptureFrameCount = 0
+            rawCaptureLastUiEmitMs = 0L
+        }
+
+        val startedAt = SystemClock.elapsedRealtime()
+        emitRawCapture(
+            RegattaLinkRawCaptureState(
+                phase = RegattaLinkRawCapturePhase.FLUSHING,
+                startedAtElapsedMs = startedAt,
+                fileName = fileName,
+                filePath = file.absolutePath
+            )
+        )
+
+        val accepted = client.startRawCanCapture(
+            onRecordingStarted = {
+                emitRawCapture(
+                    rawCaptureState.copy(
+                        phase = RegattaLinkRawCapturePhase.CAPTURING,
+                        error = ""
+                    )
+                )
+            },
+            onFrame = { frame ->
+                val frameCount: Int
+                val shouldEmit: Boolean
+                synchronized(rawCaptureLock) {
+                    val activeSession = rawCaptureFileSession
+                        ?: throw IllegalStateException(
+                            "Raw CAN capture file session is unavailable"
+                        )
+                    activeSession.append(frame)
+                    rawCaptureFrameCount += 1
+                    frameCount = rawCaptureFrameCount
+                    val now = SystemClock.elapsedRealtime()
+                    shouldEmit =
+                        now - rawCaptureLastUiEmitMs >= 250L ||
+                            frameCount == 1
+                    if (shouldEmit) {
+                        rawCaptureLastUiEmitMs = now
+                    }
+                }
+                if (shouldEmit) {
+                    emitRawCapture(
+                        rawCaptureState.copy(
+                            phase = RegattaLinkRawCapturePhase.CAPTURING,
+                            frameCount = frameCount,
+                            error = ""
+                        )
+                    )
+                }
+            },
+            onFinished = { reason, error ->
+                val finalCount: Int
+                synchronized(rawCaptureLock) {
+                    finalCount = rawCaptureFrameCount
+                    runCatching { rawCaptureFileSession?.close() }
+                    rawCaptureFileSession = null
+                }
+
+                val phase = when (reason) {
+                    RegattaLinkRawCaptureEndReason.TIMEOUT,
+                    RegattaLinkRawCaptureEndReason.USER_STOP ->
+                        RegattaLinkRawCapturePhase.COMPLETED
+                    RegattaLinkRawCaptureEndReason.INTERRUPTED ->
+                        RegattaLinkRawCapturePhase.INTERRUPTED
+                    RegattaLinkRawCaptureEndReason.ERROR ->
+                        RegattaLinkRawCapturePhase.ERROR
+                }
+                emitRawCapture(
+                    rawCaptureState.copy(
+                        phase = phase,
+                        frameCount = finalCount,
+                        error = error
+                    )
+                )
+            }
+        )
+
+        if (!accepted) {
+            synchronized(rawCaptureLock) {
+                runCatching { rawCaptureFileSession?.close() }
+                rawCaptureFileSession = null
+            }
+            file.delete()
+            emitRawCapture(
+                RegattaLinkRawCaptureState(
+                    phase = RegattaLinkRawCapturePhase.ERROR,
+                    error = "Could not start raw CAN capture"
+                )
+            )
+        }
+        return accepted
+    }
+
+    fun stopRawCanCapture(interrupted: Boolean = false) {
+        if (!rawCaptureState.isActive) return
+        client.stopRawCanCapture(
+            if (interrupted) {
+                RegattaLinkRawCaptureStopReason.INTERRUPTED
+            } else {
+                RegattaLinkRawCaptureStopReason.USER
+            }
+        )
+    }
+
+    fun discardRawCanCapture(): Boolean {
+        if (rawCaptureState.isActive) return false
+        val path = rawCaptureState.filePath
+        val deleted = path.isNullOrBlank() || File(path).let { file ->
+            !file.exists() || file.delete()
+        }
+        if (deleted) {
+            emitRawCapture(RegattaLinkRawCaptureState())
+        }
+        return deleted
+    }
+
+    fun exportRawCanCapture(uri: Uri): Boolean {
+        if (rawCaptureState.isActive) return false
+        val path = rawCaptureState.filePath ?: return false
+        return try {
+            File(path).inputStream().use { input ->
+                appContext.contentResolver.openOutputStream(uri)?.use { output ->
+                    input.copyTo(output)
+                } ?: throw IllegalStateException("Could not open export destination")
+            }
+            emitRawCapture(rawCaptureState.copy(error = ""))
+            true
+        } catch (error: Exception) {
+            emitRawCapture(
+                rawCaptureState.copy(
+                    error = error.message ?: "Could not export raw CAN capture"
+                )
+            )
+            false
+        }
+    }
+
+    internal fun currentRawCaptureState(): RegattaLinkRawCaptureState =
+        rawCaptureState
 
     internal fun configuredDevice(): RegattaLinkConfiguredDevice? =
         configuredDeviceStore.load()
@@ -303,6 +516,15 @@ internal class RegattaLinkConnectionManager(
 
     private fun handleConnectionState(state: RegattaLinkClientState) {
         connectionState = state
+
+        if (
+            rawCaptureState.isActive &&
+            state.status != RegattaLinkConnectionStatus.CONNECTED
+        ) {
+            client.stopRawCanCapture(
+                RegattaLinkRawCaptureStopReason.INTERRUPTED
+            )
+        }
 
         val info = state.deviceInfo
         val bootstrapAddress = legacyBootstrapAddress
@@ -383,5 +605,15 @@ internal class RegattaLinkConnectionManager(
     private fun handleNmeaState(state: RegattaLinkNmeaState) {
         nmeaState = state
         listeners.forEach { it.onNmeaStateChanged(state) }
+    }
+
+    private fun emitRawCapture(state: RegattaLinkRawCaptureState) {
+        rawCaptureState = state
+        handler.post {
+            if (rawCaptureState != state && state.isActive) {
+                return@post
+            }
+            listeners.forEach { it.onRawCaptureStateChanged(state) }
+        }
     }
 }
