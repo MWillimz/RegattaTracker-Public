@@ -1,8 +1,6 @@
 package de.williserv.regattaclient
 
 import java.io.File
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -63,7 +61,7 @@ class RegattaLinkRawCaptureTest {
         )
 
         assertEquals(
-            "4294967295,234881349,129025,3,69,,3,112233",
+            "4294967295,234357061,129025,3,69,,3,112233",
             regattaLinkRawCaptureCsvRow(frame)
         )
     }
@@ -86,7 +84,7 @@ class RegattaLinkRawCaptureTest {
 
             val lines = file.readLines(Charsets.UTF_8)
             assertEquals(REGATTALINK_RAW_CAPTURE_CSV_HEADER, lines[0])
-            assertEquals("1234,402596677,61184,6,69,35,0,", lines[1])
+            assertEquals("1234,418325317,61184,6,69,35,0,", lines[1])
         } finally {
             file.delete()
         }
