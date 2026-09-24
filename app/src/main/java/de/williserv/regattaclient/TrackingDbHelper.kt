@@ -22,12 +22,6 @@ data class PendingTrackingSample(
     val accuracy: Float,
     val cog: Float,
     val sog: Float,
-    val accelX: Float,
-    val accelY: Float,
-    val accelZ: Float,
-    val gyroX: Float,
-    val gyroY: Float,
-    val gyroZ: Float,
     val batteryPercent: Int? = null,
     val batteryCharging: Boolean? = null,
     val trackingProfile: String? = null,
@@ -76,12 +70,6 @@ data class SessionTrackingSample(
     val accuracy: Float,
     val cog: Float,
     val sog: Float,
-    val accelX: Float,
-    val accelY: Float,
-    val accelZ: Float,
-    val gyroX: Float,
-    val gyroY: Float,
-    val gyroZ: Float,
     val measurementsJson: String? = null,
     val raceContextId: Long? = null,
     val resolvedEventName: String? = null,
@@ -125,7 +113,7 @@ internal fun normalizeAccessContextKey(
 }
 
 class TrackingDbHelper(context: Context) :
-    SQLiteOpenHelper(context, "regatta_tracking.db", null, 11) {
+    SQLiteOpenHelper(context, "regatta_tracking.db", null, 12) {
 
     private val appContext = context.applicationContext
     private var lastBatteryReadAtMs: Long? = null
@@ -169,6 +157,9 @@ class TrackingDbHelper(context: Context) :
         }
         if (oldVersion < 11 && newVersion >= 11) {
             migrateToVersion11(db)
+        }
+        if (oldVersion < 12 && newVersion >= 12) {
+            migrateToVersion12(db)
         }
     }
 
@@ -492,12 +483,6 @@ class TrackingDbHelper(context: Context) :
                 samples.accuracy,
                 samples.cog,
                 samples.sog,
-                samples.accel_x,
-                samples.accel_y,
-                samples.accel_z,
-                samples.gyro_x,
-                samples.gyro_y,
-                samples.gyro_z,
                 samples.measurements_json,
                 samples.race_context_id,
                 race_contexts.resolved_event_name,
@@ -522,17 +507,11 @@ class TrackingDbHelper(context: Context) :
                         accuracy = cursor.getFloat(5),
                         cog = cursor.getFloat(6),
                         sog = cursor.getFloat(7),
-                        accelX = cursor.getFloat(8),
-                        accelY = cursor.getFloat(9),
-                        accelZ = cursor.getFloat(10),
-                        gyroX = cursor.getFloat(11),
-                        gyroY = cursor.getFloat(12),
-                        gyroZ = cursor.getFloat(13),
-                        measurementsJson = if (cursor.isNull(14)) null else cursor.getString(14),
-                        raceContextId = if (cursor.isNull(15)) null else cursor.getLong(15),
-                        resolvedEventName = if (cursor.isNull(16)) null else cursor.getString(16),
-                        courseJson = if (cursor.isNull(17)) null else cursor.getString(17),
-                        courseMapViewportJson = if (cursor.isNull(18)) null else cursor.getString(18)
+                        measurementsJson = if (cursor.isNull(8)) null else cursor.getString(8),
+                        raceContextId = if (cursor.isNull(9)) null else cursor.getLong(9),
+                        resolvedEventName = if (cursor.isNull(10)) null else cursor.getString(10),
+                        courseJson = if (cursor.isNull(11)) null else cursor.getString(11),
+                        courseMapViewportJson = if (cursor.isNull(12)) null else cursor.getString(12)
                     )
                 )
             }
@@ -601,12 +580,6 @@ class TrackingDbHelper(context: Context) :
                 samples.accuracy,
                 samples.cog,
                 samples.sog,
-                samples.accel_x,
-                samples.accel_y,
-                samples.accel_z,
-                samples.gyro_x,
-                samples.gyro_y,
-                samples.gyro_z,
                 samples.battery_percent,
                 samples.battery_charging,
                 samples.tracking_profile,
@@ -629,12 +602,12 @@ class TrackingDbHelper(context: Context) :
         ).use { cursor ->
             while (cursor.moveToNext()) {
                 val accessContext = AccessContext(
-                    id = cursor.getLong(25),
-                    serverUrl = cursor.getString(26),
-                    accessIdentifier = cursor.getString(27),
-                    accessSecret = cursor.getString(28),
-                    createdAt = cursor.getLong(29),
-                    lastUsedAt = cursor.getLong(30)
+                    id = cursor.getLong(19),
+                    serverUrl = cursor.getString(20),
+                    accessIdentifier = cursor.getString(21),
+                    accessSecret = cursor.getString(22),
+                    createdAt = cursor.getLong(23),
+                    lastUsedAt = cursor.getLong(24)
                 )
 
                 result.add(
@@ -654,17 +627,11 @@ class TrackingDbHelper(context: Context) :
                         accuracy = cursor.getFloat(11),
                         cog = cursor.getFloat(12),
                         sog = cursor.getFloat(13),
-                        accelX = cursor.getFloat(14),
-                        accelY = cursor.getFloat(15),
-                        accelZ = cursor.getFloat(16),
-                        gyroX = cursor.getFloat(17),
-                        gyroY = cursor.getFloat(18),
-                        gyroZ = cursor.getFloat(19),
-                        batteryPercent = if (cursor.isNull(20)) null else cursor.getInt(20),
-                        batteryCharging = if (cursor.isNull(21)) null else cursor.getInt(21) != 0,
-                        trackingProfile = if (cursor.isNull(22)) null else cursor.getString(22),
-                        utcOffsetMinutes = if (cursor.isNull(23)) null else cursor.getInt(23),
-                        measurementsJson = if (cursor.isNull(24)) null else cursor.getString(24)
+                        batteryPercent = if (cursor.isNull(14)) null else cursor.getInt(14),
+                        batteryCharging = if (cursor.isNull(15)) null else cursor.getInt(15) != 0,
+                        trackingProfile = if (cursor.isNull(16)) null else cursor.getString(16),
+                        utcOffsetMinutes = if (cursor.isNull(17)) null else cursor.getInt(17),
+                        measurementsJson = if (cursor.isNull(18)) null else cursor.getString(18)
                     )
                 )
             }
@@ -687,12 +654,6 @@ class TrackingDbHelper(context: Context) :
         accuracy: Float,
         cog: Float,
         sog: Float,
-        accelX: Float,
-        accelY: Float,
-        accelZ: Float,
-        gyroX: Float,
-        gyroY: Float,
-        gyroZ: Float,
         batteryPercent: Int? = null,
         batteryCharging: Boolean? = null,
         trackingProfile: String? = null,
@@ -742,12 +703,6 @@ class TrackingDbHelper(context: Context) :
             put("accuracy", accuracy)
             put("cog", cog)
             put("sog", sog)
-            put("accel_x", accelX)
-            put("accel_y", accelY)
-            put("accel_z", accelZ)
-            put("gyro_x", gyroX)
-            put("gyro_y", gyroY)
-            put("gyro_z", gyroZ)
 
             val effectiveBatteryPercent = batteryPercent ?: automaticBattery?.percent
             val effectiveBatteryCharging = batteryCharging ?: automaticBattery?.charging
@@ -896,7 +851,7 @@ class TrackingDbHelper(context: Context) :
 
     fun exportAllAsCsv(): String {
         val header =
-            "sequence_id,timestamp,utc_offset_minutes,boat_name,captain_name,hull_color,sail_number,yardstick,boat_type,lat,lon,accuracy,cog,sog,accel_x,accel_y,accel_z,gyro_x,gyro_y,gyro_z\n"
+            "sequence_id,timestamp,utc_offset_minutes,boat_name,captain_name,hull_color,sail_number,yardstick,boat_type,lat,lon,accuracy,cog,sog\n"
 
         val builder = StringBuilder()
         builder.append(header)
@@ -917,13 +872,7 @@ class TrackingDbHelper(context: Context) :
                 lon,
                 accuracy,
                 cog,
-                sog,
-                accel_x,
-                accel_y,
-                accel_z,
-                gyro_x,
-                gyro_y,
-                gyro_z
+                sog
             FROM tracking_samples
             ORDER BY id ASC
             """.trimIndent(),
@@ -934,7 +883,7 @@ class TrackingDbHelper(context: Context) :
                 builder.append(
                     String.format(
                         Locale.US,
-                        "%d,%s,%s,%s,%s,%s,%s,%.2f,%s,%.7f,%.7f,%.2f,%.2f,%.2f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\n",
+                        "%d,%s,%s,%s,%s,%s,%s,%.2f,%s,%.7f,%.7f,%.2f,%.2f,%.2f\n",
                         cursor.getLong(0),
                         csvEscape(cursor.getString(1)),
                         utcOffset,
@@ -948,13 +897,7 @@ class TrackingDbHelper(context: Context) :
                         cursor.getDouble(10),
                         cursor.getDouble(11),
                         cursor.getDouble(12),
-                        cursor.getDouble(13),
-                        cursor.getDouble(14),
-                        cursor.getDouble(15),
-                        cursor.getDouble(16),
-                        cursor.getDouble(17),
-                        cursor.getDouble(18),
-                        cursor.getDouble(19)
+                        cursor.getDouble(13)
                     )
                 )
             }
@@ -1052,6 +995,76 @@ class TrackingDbHelper(context: Context) :
                 "ALTER TABLE tracking_samples ADD COLUMN measurements_json TEXT"
             )
         }
+    }
+
+    private fun migrateToVersion12(db: SQLiteDatabase) {
+        if (!tableExists(db, "tracking_samples")) {
+            createTrackingSamplesTable(db)
+            createTrackingSampleIndexes(db)
+            return
+        }
+
+        db.execSQL("DROP TABLE IF EXISTS tracking_samples_v12")
+        createTrackingSamplesTable(db, "tracking_samples_v12")
+
+        db.execSQL(
+            """
+            INSERT INTO tracking_samples_v12 (
+                id,
+                sequence_id,
+                timestamp,
+                boat_name,
+                captain_name,
+                hull_color,
+                sail_number,
+                yardstick,
+                boat_type,
+                lat,
+                lon,
+                accuracy,
+                cog,
+                sog,
+                uploaded,
+                access_context_id,
+                battery_percent,
+                battery_charging,
+                tracking_profile,
+                utc_offset_minutes,
+                measurements_json,
+                session_id,
+                race_context_id
+            )
+            SELECT
+                id,
+                sequence_id,
+                timestamp,
+                boat_name,
+                captain_name,
+                hull_color,
+                sail_number,
+                yardstick,
+                boat_type,
+                lat,
+                lon,
+                accuracy,
+                cog,
+                sog,
+                uploaded,
+                access_context_id,
+                battery_percent,
+                battery_charging,
+                tracking_profile,
+                utc_offset_minutes,
+                measurements_json,
+                session_id,
+                race_context_id
+            FROM tracking_samples
+            """.trimIndent()
+        )
+
+        db.execSQL("DROP TABLE tracking_samples")
+        db.execSQL("ALTER TABLE tracking_samples_v12 RENAME TO tracking_samples")
+        createTrackingSampleIndexes(db)
     }
 
     private fun migrateToVersion10(db: SQLiteDatabase) {
@@ -1157,10 +1170,15 @@ class TrackingDbHelper(context: Context) :
         )
     }
 
-    private fun createTrackingSamplesTable(db: SQLiteDatabase) {
+    private fun createTrackingSamplesTable(
+        db: SQLiteDatabase,
+        tableName: String = "tracking_samples"
+    ) {
+        require(tableName == "tracking_samples" || tableName == "tracking_samples_v12")
+
         db.execSQL(
             """
-            CREATE TABLE IF NOT EXISTS tracking_samples (
+            CREATE TABLE IF NOT EXISTS $tableName (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 sequence_id INTEGER NOT NULL,
                 timestamp TEXT NOT NULL,
@@ -1175,12 +1193,6 @@ class TrackingDbHelper(context: Context) :
                 accuracy REAL NOT NULL,
                 cog REAL NOT NULL,
                 sog REAL NOT NULL,
-                accel_x REAL NOT NULL,
-                accel_y REAL NOT NULL,
-                accel_z REAL NOT NULL,
-                gyro_x REAL NOT NULL,
-                gyro_y REAL NOT NULL,
-                gyro_z REAL NOT NULL,
                 uploaded INTEGER NOT NULL DEFAULT 0,
                 access_context_id INTEGER,
                 battery_percent INTEGER,

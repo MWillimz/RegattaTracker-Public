@@ -174,12 +174,6 @@ class SessionStatisticsTest {
             lon = lon,
             accuracy = accuracy,
             cog = 90f,
-            sog = sog,
-            accelX = 0f,
-            accelY = 0f,
-            accelZ = 0f,
-            gyroX = 0f,
-            gyroY = 0f,
-            gyroZ = 0f
+            sog = sog
         )
 }

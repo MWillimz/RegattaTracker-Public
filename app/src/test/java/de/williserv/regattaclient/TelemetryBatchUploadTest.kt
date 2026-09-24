@@ -58,6 +58,17 @@ class TelemetryBatchUploadTest {
             samples.getJSONObject(0).getString("client_build_id")
         )
         assertEquals(102L, samples.getJSONObject(1).getLong("sequence_id"))
+        listOf(
+            "accel_x",
+            "accel_y",
+            "accel_z",
+            "gyro_x",
+            "gyro_y",
+            "gyro_z"
+        ).forEach { key ->
+            assertFalse(samples.getJSONObject(0).has(key))
+            assertFalse(samples.getJSONObject(1).has(key))
+        }
     }
 
     @Test
@@ -331,12 +342,6 @@ class TelemetryBatchUploadTest {
             accuracy = 4.0f,
             cog = 180.0f,
             sog = 3.5f,
-            accelX = 0.1f,
-            accelY = 0.2f,
-            accelZ = 0.3f,
-            gyroX = 0.4f,
-            gyroY = 0.5f,
-            gyroZ = 0.6f,
             batteryPercent = 87,
             batteryCharging = false,
             trackingProfile = "normal",

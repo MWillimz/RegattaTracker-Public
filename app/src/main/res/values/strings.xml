@@ -503,6 +503,5 @@
     <string name="regattalink_calibration_revision">Calibration revision</string>
     <string name="session_replay_fields_title">Additional replay data</string>
     <string name="session_replay_fields_hint">Select values to show while scrubbing the replay. Time, SOG and COG remain visible.</string>
-    <string name="session_replay_field_source_internal_imu">Internal IMU</string>
     <string name="session_replay_field_source_measurements">Measurements</string>
 </resources>

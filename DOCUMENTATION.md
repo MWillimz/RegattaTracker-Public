@@ -306,13 +306,7 @@ Payload fields:
   "lon": 10.0020,
   "accuracy": 5.0,
   "cog": 120.0,
-  "sog": 2.4,
-  "accel_x": 0.0,
-  "accel_y": 0.0,
-  "accel_z": 0.0,
-  "gyro_x": 0.0,
-  "gyro_y": 0.0,
-  "gyro_z": 0.0
+  "sog": 2.4
 }
 ```
 
@@ -492,8 +486,7 @@ Stored fields include:
 - GPS position
 - accuracy
 - COG / SOG
-- accelerometer
-- gyroscope
+- optional generic `measurements_json` (for example RegattaLink telemetry)
 - uploaded flag
 
 Pending samples are retried periodically.

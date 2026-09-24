@@ -130,6 +130,16 @@ class TrackingDbHelperTest {
         assertTrue(tableExists(db, "tracking_sessions"))
         assertTrue(columnExists(db, "tracking_samples", "session_id"))
         assertTrue(columnExists(db, "tracking_samples", "measurements_json"))
+        listOf(
+            "accel_x",
+            "accel_y",
+            "accel_z",
+            "gyro_x",
+            "gyro_y",
+            "gyro_z"
+        ).forEach { column ->
+            assertFalse(columnExists(db, "tracking_samples", column))
+        }
         assertTrue(columnExists(db, "tracking_sessions", "resolved_event_name"))
         assertTrue(columnExists(db, "tracking_sessions", "course_json"))
         assertTrue(columnExists(db, "tracking_sessions", "course_map_viewport_json"))
@@ -312,6 +322,78 @@ class TrackingDbHelperTest {
     }
 
     @Test
+    fun version11Upgrade_dropsPhoneImuColumnsAndPreservesRemainingSampleState() {
+        createLegacyVersion11Database()
+
+        val helper = TrackingDbHelper(context)
+        val db = helper.writableDatabase
+
+        listOf(
+            "accel_x",
+            "accel_y",
+            "accel_z",
+            "gyro_x",
+            "gyro_y",
+            "gyro_z"
+        ).forEach { column ->
+            assertFalse(columnExists(db, "tracking_samples", column))
+        }
+
+        db.rawQuery(
+            """
+            SELECT
+                id,
+                sequence_id,
+                uploaded,
+                access_context_id,
+                session_id,
+                race_context_id,
+                measurements_json
+            FROM tracking_samples
+            WHERE id = 111
+            """.trimIndent(),
+            null
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(111L, cursor.getLong(0))
+            assertEquals(11L, cursor.getLong(1))
+            assertEquals(0, cursor.getInt(2))
+            assertEquals(11L, cursor.getLong(3))
+            assertEquals(21L, cursor.getLong(4))
+            assertEquals(31L, cursor.getLong(5))
+            assertEquals(
+                """{"regattalink.fast.roll_deg":{"value":12.3,"group":"regattalink"}}""",
+                cursor.getString(6)
+            )
+            assertFalse(cursor.moveToNext())
+        }
+
+        val pending = helper.getPendingSamples(10).single()
+        assertEquals(111L, pending.localId)
+        assertEquals("Legacy Event", pending.accessContext.accessIdentifier)
+        assertEquals(
+            """{"regattalink.fast.roll_deg":{"value":12.3,"group":"regattalink"}}""",
+            pending.measurementsJson
+        )
+
+        val sessionSample = helper.getTrackingSamplesForSession(21L).single()
+        assertEquals(111L, sessionSample.localId)
+        assertEquals(31L, sessionSample.raceContextId)
+        assertEquals("Legacy Run", sessionSample.resolvedEventName)
+        assertEquals(
+            """{"regattalink.fast.roll_deg":{"value":12.3,"group":"regattalink"}}""",
+            sessionSample.measurementsJson
+        )
+
+        val nextId = insertSample(
+            helper = helper,
+            sequenceId = 12L,
+            accessContextId = 11L
+        )
+        assertTrue(nextId > 111L)
+    }
+
+    @Test
     fun pendingBacklog_keepsOriginalAccessContextAfterAnotherAccessIsCreated() {
         val helper = TrackingDbHelper(context)
         val contextA = createAccessContext(helper, "Series A", "secret-a")
@@ -474,12 +556,6 @@ class TrackingDbHelperTest {
             accuracy = 5f,
             cog = 90f,
             sog = 3f,
-            accelX = 0.1f,
-            accelY = 0.2f,
-            accelZ = 9.8f,
-            gyroX = 0.01f,
-            gyroY = 0.02f,
-            gyroZ = 0.03f,
             accessContextId = accessContextId,
             sessionId = sessionId,
             measurementsJson = measurementsJson
@@ -513,6 +589,154 @@ class TrackingDbHelperTest {
         ).use { cursor ->
             assertTrue(cursor.moveToFirst())
             return cursor.getLong(0)
+        }
+    }
+
+    private fun createLegacyVersion11Database() {
+        val dbFile = context.getDatabasePath(DB_NAME)
+        dbFile.parentFile?.mkdirs()
+
+        SQLiteDatabase.openOrCreateDatabase(dbFile, null).use { db ->
+            db.execSQL(
+                """
+                CREATE TABLE access_contexts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    server_url TEXT NOT NULL,
+                    access_identifier TEXT NOT NULL,
+                    access_secret TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    last_used_at INTEGER NOT NULL,
+                    UNIQUE(server_url, access_identifier, access_secret)
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                INSERT INTO access_contexts (
+                    id, server_url, access_identifier, access_secret, created_at, last_used_at
+                ) VALUES (
+                    11, 'https://raceoffice.example.org', 'Legacy Event', 'legacy-secret', 1, 2
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE TABLE tracking_sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    started_at INTEGER NOT NULL,
+                    ended_at INTEGER,
+                    mode TEXT NOT NULL,
+                    access_context_id INTEGER,
+                    display_name TEXT NOT NULL,
+                    resolved_event_name TEXT,
+                    course_json TEXT,
+                    course_map_viewport_json TEXT
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                INSERT INTO tracking_sessions (
+                    id, started_at, ended_at, mode, access_context_id, display_name,
+                    resolved_event_name, course_json, course_map_viewport_json
+                ) VALUES (
+                    21, 1700000000000, 1700000060000, 'race', 11, 'Legacy Session',
+                    'Legacy Run', '{"marks":[1]}', '{"generation_id":"legacy"}'
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE TABLE race_contexts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    access_context_id INTEGER NOT NULL,
+                    resolved_event_name TEXT NOT NULL,
+                    course_json TEXT,
+                    course_map_viewport_json TEXT,
+                    UNIQUE(access_context_id, resolved_event_name)
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                INSERT INTO race_contexts (
+                    id, access_context_id, resolved_event_name, course_json, course_map_viewport_json
+                ) VALUES (
+                    31, 11, 'Legacy Run', '{"marks":[1]}', '{"generation_id":"legacy"}'
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE TABLE tracking_samples (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    sequence_id INTEGER NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    boat_name TEXT NOT NULL,
+                    captain_name TEXT NOT NULL,
+                    hull_color TEXT NOT NULL,
+                    sail_number TEXT NOT NULL,
+                    yardstick REAL NOT NULL,
+                    boat_type TEXT NOT NULL,
+                    lat REAL NOT NULL,
+                    lon REAL NOT NULL,
+                    accuracy REAL NOT NULL,
+                    cog REAL NOT NULL,
+                    sog REAL NOT NULL,
+                    accel_x REAL NOT NULL,
+                    accel_y REAL NOT NULL,
+                    accel_z REAL NOT NULL,
+                    gyro_x REAL NOT NULL,
+                    gyro_y REAL NOT NULL,
+                    gyro_z REAL NOT NULL,
+                    uploaded INTEGER NOT NULL DEFAULT 0,
+                    access_context_id INTEGER,
+                    battery_percent INTEGER,
+                    battery_charging INTEGER,
+                    tracking_profile TEXT,
+                    utc_offset_minutes INTEGER,
+                    measurements_json TEXT,
+                    session_id INTEGER,
+                    race_context_id INTEGER
+                )
+                """.trimIndent()
+            )
+            val values = ContentValues().apply {
+                put("id", 111L)
+                put("sequence_id", 11L)
+                put("timestamp", "2026-09-23T12:00:00")
+                put("boat_name", "Legacy Boat")
+                put("captain_name", "Legacy Skipper")
+                put("hull_color", "white")
+                put("sail_number", "GER 111")
+                put("yardstick", 100.0)
+                put("boat_type", "Legacy")
+                put("lat", 54.0)
+                put("lon", 10.0)
+                put("accuracy", 5.0)
+                put("cog", 90.0)
+                put("sog", 3.0)
+                put("accel_x", 0.1)
+                put("accel_y", 0.2)
+                put("accel_z", 9.8)
+                put("gyro_x", 0.01)
+                put("gyro_y", 0.02)
+                put("gyro_z", 0.03)
+                put("uploaded", 0)
+                put("access_context_id", 11L)
+                put("battery_percent", 87)
+                put("battery_charging", 0)
+                put("tracking_profile", "normal")
+                put("utc_offset_minutes", 120)
+                put(
+                    "measurements_json",
+                    """{"regattalink.fast.roll_deg":{"value":12.3,"group":"regattalink"}}"""
+                )
+                put("session_id", 21L)
+                put("race_context_id", 31L)
+            }
+            db.insertOrThrow("tracking_samples", null, values)
+            db.version = 11
         }
     }
 

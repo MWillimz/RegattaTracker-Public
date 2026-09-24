@@ -6,17 +6,7 @@ import kotlin.math.abs
 import kotlin.math.roundToLong
 
 enum class ReplayExtraFieldSource {
-    INTERNAL_IMU,
     MEASUREMENT
-}
-
-enum class ReplayBuiltinField {
-    ACCEL_X,
-    ACCEL_Y,
-    ACCEL_Z,
-    GYRO_X,
-    GYRO_Y,
-    GYRO_Z
 }
 
 data class ReplayExtraField(
@@ -24,7 +14,6 @@ data class ReplayExtraField(
     val source: ReplayExtraFieldSource,
     val label: String,
     val unit: String?,
-    val builtin: ReplayBuiltinField? = null,
     val measurementKey: String? = null,
     val measurementGroup: String? = null
 )
@@ -33,69 +22,6 @@ internal fun discoverReplayExtraFields(
     samples: List<SessionTrackingSample>
 ): List<ReplayExtraField> {
     if (samples.isEmpty()) return emptyList()
-
-    val fields = mutableListOf<ReplayExtraField>()
-    val hasAccelData = samples.any { sample ->
-        abs(sample.accelX) > SENSOR_SIGNAL_EPSILON ||
-            abs(sample.accelY) > SENSOR_SIGNAL_EPSILON ||
-            abs(sample.accelZ) > SENSOR_SIGNAL_EPSILON
-    }
-    val hasGyroData = samples.any { sample ->
-        abs(sample.gyroX) > SENSOR_SIGNAL_EPSILON ||
-            abs(sample.gyroY) > SENSOR_SIGNAL_EPSILON ||
-            abs(sample.gyroZ) > SENSOR_SIGNAL_EPSILON
-    }
-
-    if (hasAccelData) {
-        fields += listOf(
-            ReplayExtraField(
-                id = "imu.accel_x",
-                source = ReplayExtraFieldSource.INTERNAL_IMU,
-                label = "Accel X",
-                unit = "m/s²",
-                builtin = ReplayBuiltinField.ACCEL_X
-            ),
-            ReplayExtraField(
-                id = "imu.accel_y",
-                source = ReplayExtraFieldSource.INTERNAL_IMU,
-                label = "Accel Y",
-                unit = "m/s²",
-                builtin = ReplayBuiltinField.ACCEL_Y
-            ),
-            ReplayExtraField(
-                id = "imu.accel_z",
-                source = ReplayExtraFieldSource.INTERNAL_IMU,
-                label = "Accel Z",
-                unit = "m/s²",
-                builtin = ReplayBuiltinField.ACCEL_Z
-            )
-        )
-    }
-    if (hasGyroData) {
-        fields += listOf(
-            ReplayExtraField(
-                id = "imu.gyro_x",
-                source = ReplayExtraFieldSource.INTERNAL_IMU,
-                label = "Gyro X",
-                unit = "rad/s",
-                builtin = ReplayBuiltinField.GYRO_X
-            ),
-            ReplayExtraField(
-                id = "imu.gyro_y",
-                source = ReplayExtraFieldSource.INTERNAL_IMU,
-                label = "Gyro Y",
-                unit = "rad/s",
-                builtin = ReplayBuiltinField.GYRO_Y
-            ),
-            ReplayExtraField(
-                id = "imu.gyro_z",
-                source = ReplayExtraFieldSource.INTERNAL_IMU,
-                label = "Gyro Z",
-                unit = "rad/s",
-                builtin = ReplayBuiltinField.GYRO_Z
-            )
-        )
-    }
 
     val dynamic = linkedMapOf<String, ReplayExtraField>()
     samples.forEach { sample ->
@@ -124,28 +50,23 @@ internal fun discoverReplayExtraFields(
         }
     }
 
-    fields += dynamic.values.sortedWith(
+    return dynamic.values.sortedWith(
         compareBy<ReplayExtraField>(
             { it.measurementGroup.orEmpty() },
             { it.label },
             { it.id }
         )
     )
-    return fields
 }
 
 internal fun replayExtraFieldValues(
     sample: SessionTrackingSample,
     fields: List<ReplayExtraField>
 ): Map<String, String> {
-    val measurements = if (fields.any { it.source == ReplayExtraFieldSource.MEASUREMENT }) {
-        parseMeasurements(sample.measurementsJson)
-    } else {
-        null
-    }
+    val measurements = parseMeasurements(sample.measurementsJson)
     return buildMap {
         fields.forEach { field ->
-            replayExtraFieldValue(sample, field, measurements)?.let { value ->
+            replayExtraFieldValue(field, measurements)?.let { value ->
                 put(field.id, value)
             }
         }
@@ -156,35 +77,14 @@ internal fun replayExtraFieldValue(
     sample: SessionTrackingSample,
     field: ReplayExtraField
 ): String? = replayExtraFieldValue(
-    sample = sample,
     field = field,
-    measurements = if (field.source == ReplayExtraFieldSource.MEASUREMENT) {
-        parseMeasurements(sample.measurementsJson)
-    } else {
-        null
-    }
+    measurements = parseMeasurements(sample.measurementsJson)
 )
 
 private fun replayExtraFieldValue(
-    sample: SessionTrackingSample,
     field: ReplayExtraField,
     measurements: JSONObject?
 ): String? {
-    val builtinValue = when (field.builtin) {
-        ReplayBuiltinField.ACCEL_X -> sample.accelX.toDouble()
-        ReplayBuiltinField.ACCEL_Y -> sample.accelY.toDouble()
-        ReplayBuiltinField.ACCEL_Z -> sample.accelZ.toDouble()
-        ReplayBuiltinField.GYRO_X -> sample.gyroX.toDouble()
-        ReplayBuiltinField.GYRO_Y -> sample.gyroY.toDouble()
-        ReplayBuiltinField.GYRO_Z -> sample.gyroZ.toDouble()
-        null -> null
-    }
-    if (builtinValue != null) {
-        if (!builtinValue.isFinite()) return null
-        val decimals = if (field.builtin?.name?.startsWith("GYRO") == true) 3 else 2
-        return formatReplayNumber(builtinValue, decimals, field.unit)
-    }
-
     val key = field.measurementKey ?: return null
     val measurement = measurements?.optJSONObject(key) ?: return null
     if (!measurement.has("value") || measurement.isNull("value")) return null
@@ -268,8 +168,6 @@ private fun decimalsForMeasurement(value: Double): Int {
     }
 }
 
-
-private const val SENSOR_SIGNAL_EPSILON = 1e-6f
 private val DISPLAY_ACRONYMS = setOf(
     "cog",
     "gps",

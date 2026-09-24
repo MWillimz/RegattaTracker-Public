@@ -4,10 +4,6 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -72,7 +68,7 @@ private enum class PendingTrackingAction {
     START_MANUAL_TRACKING
 }
 
-class MainActivity : ComponentActivity(), SensorEventListener {
+class MainActivity : ComponentActivity() {
 
     private val showTrackingConsentDialog = mutableStateOf(false)
     private var pendingTrackingAction: PendingTrackingAction? = null
@@ -92,7 +88,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private val showClearRaceSetupDialog = mutableStateOf(false)
     private lateinit var db: TrackingDbHelper
     private lateinit var locationManager: LocationManager
-    private lateinit var sensorManager: SensorManager
     private lateinit var regattaLinkClient: RegattaLinkBleClient
     private val regattaLinkState = mutableStateOf(RegattaLinkClientState())
     private val regattaLinkFirmwareClient = RegattaLinkFirmwareClient()
@@ -221,14 +216,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private val appStatePrefsName = "app_state"
 
     private val lastCsvLine = mutableStateOf("")
-
-    private var accelX = 0f
-    private var accelY = 0f
-    private var accelZ = 0f
-
-    private var gyroX = 0f
-    private var gyroY = 0f
-    private var gyroZ = 0f
 
     private val handler = Handler(Looper.getMainLooper())
     private val asyncLifetime = ActivityAsyncLifetime()
@@ -405,7 +392,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
         db = TrackingDbHelper(this)
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         regattaLinkClient = RegattaLinkBleClient(
             context = this,
             onStateChanged = { state ->
@@ -951,7 +937,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
         updateConnectionUiState()
         requestPermissionsForApp()
-        startImuUpdates()
         handler.postDelayed(uiRefreshRunnable, 1000L)
     }
 
@@ -2487,13 +2472,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     put("accuracy", 9999.0)
                     put("cog", 0.0)
                     put("sog", 0.0)
-
-                    put("accel_x", 0.0)
-                    put("accel_y", 0.0)
-                    put("accel_z", 0.0)
-                    put("gyro_x", 0.0)
-                    put("gyro_y", 0.0)
-                    put("gyro_z", 0.0)
                 }
 
                 val connection = URL(url).openConnection() as HttpURLConnection
@@ -2891,12 +2869,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             accuracy = entry.accuracy,
             cog = entry.cog,
             sog = entry.sog,
-            accelX = entry.accelX,
-            accelY = entry.accelY,
-            accelZ = entry.accelZ,
-            gyroX = entry.gyroX,
-            gyroY = entry.gyroY,
-            gyroZ = entry.gyroZ,
             accessContextId = accessContextId,
             raceContextId = raceContextId
         )
@@ -3668,27 +3640,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
     }
 
-    private fun startImuUpdates() {
-        val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        val gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
-
-        if (accelerometer != null) {
-            sensorManager.registerListener(
-                this,
-                accelerometer,
-                SensorManager.SENSOR_DELAY_GAME
-            )
-        }
-
-        if (gyroscope != null) {
-            sensorManager.registerListener(
-                this,
-                gyroscope,
-                SensorManager.SENSOR_DELAY_GAME
-            )
-        }
-    }
-
     private fun updateStorageText() {
         val total = db.countSamples()
         val pending = db.countPendingSamples()
@@ -3715,26 +3666,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
     }
 
-    override fun onSensorChanged(event: SensorEvent) {
-        when (event.sensor.type) {
-            Sensor.TYPE_ACCELEROMETER -> {
-                accelX = event.values[0]
-                accelY = event.values[1]
-                accelZ = event.values[2]
-            }
-
-            Sensor.TYPE_GYROSCOPE -> {
-                gyroX = event.values[0]
-                gyroY = event.values[1]
-                gyroZ = event.values[2]
-            }
-        }
-    }
-
-    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-        // Display only in this MainActivity.
-    }
-
     override fun onDestroy() {
         asyncLifetime.invalidate()
         cancelEnterRaceServerCheck()
@@ -3750,8 +3681,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             locationManager.removeUpdates(locationListener)
         } catch (_: Exception) {
         }
-
-        sensorManager.unregisterListener(this)
     }
 }
 

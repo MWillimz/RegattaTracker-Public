@@ -256,12 +256,6 @@ class TelemetryUploadWorkerHandoffTest {
                 accuracy = 5f,
                 cog = 0f,
                 sog = 0f,
-                accelX = 0f,
-                accelY = 0f,
-                accelZ = 0f,
-                gyroX = 0f,
-                gyroY = 0f,
-                gyroZ = 0f,
                 accessContextId = accessContextId
             )
             assertTrue(insertedId > 0L)
