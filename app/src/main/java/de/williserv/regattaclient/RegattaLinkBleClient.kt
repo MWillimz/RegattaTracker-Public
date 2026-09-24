@@ -134,6 +134,7 @@ internal class RegattaLinkBleClient(
     private val otaExecutor = Executors.newSingleThreadExecutor()
 
     private var scanner: BluetoothLeScanner? = null
+    @Volatile private var scanActive = false
     @Volatile private var gatt: BluetoothGatt? = null
     @Volatile private var connected = false
     private var currentDevice: BluetoothDevice? = null
@@ -328,6 +329,7 @@ internal class RegattaLinkBleClient(
 
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
+            if (!scanActive) return
             val device = result.device
             if (scanPurpose == ScanPurpose.NORMAL && discoveryInProgress) {
                 if (discoveryCandidateInProgress) return
@@ -345,6 +347,8 @@ internal class RegattaLinkBleClient(
         }
 
         override fun onScanFailed(errorCode: Int) {
+            if (!scanActive) return
+            scanActive = false
             handler.removeCallbacks(scanTimeout)
             if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
                 reconnectFuture?.complete(null)
@@ -1049,7 +1053,13 @@ internal class RegattaLinkBleClient(
             .setScanMode(scanMode)
             .build()
 
-        activeScanner.startScan(filters, settings, scanCallback)
+        scanActive = true
+        try {
+            activeScanner.startScan(filters, settings, scanCallback)
+        } catch (error: RuntimeException) {
+            scanActive = false
+            throw error
+        }
         handler.postDelayed(scanTimeout, timeoutMs)
     }
 
@@ -2123,6 +2133,7 @@ internal class RegattaLinkBleClient(
 
     private fun stopScan() {
         handler.removeCallbacks(scanTimeout)
+        scanActive = false
         runCatching { scanner?.stopScan(scanCallback) }
     }
 
