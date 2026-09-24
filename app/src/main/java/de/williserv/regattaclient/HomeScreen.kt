@@ -769,21 +769,22 @@ private fun RegattaLinkStatusIndicator(
             },
             onLongClick = onOpen
         ),
+        horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically
     ) {
+        AutoSizedSingleLineText(
+            text = stringResource(R.string.regattalink_short_label),
+            minFontSize = 9.sp,
+            maxFontSize = 16.sp
+        )
         Box(
             modifier = Modifier
+                .padding(start = 8.dp)
                 .size(16.dp)
                 .background(
                     if (connected) RegattaGreen else RegattaRed,
                     CircleShape
                 )
-        )
-        AutoSizedSingleLineText(
-            text = stringResource(R.string.regattalink_short_label),
-            minFontSize = 9.sp,
-            maxFontSize = 16.sp,
-            modifier = Modifier.padding(start = 8.dp)
         )
     }
 }
