@@ -94,14 +94,11 @@ internal class RegattaLinkConnectionManager(context: Context) {
 
     fun addListener(listener: RegattaLinkConnectionListener) {
         listeners.add(listener)
-        val connectionSnapshot = connectionState
-        val otaSnapshot = otaState
-        val telemetrySnapshot = telemetryState
         handler.post {
             if (!listeners.contains(listener)) return@post
-            listener.onConnectionStateChanged(connectionSnapshot)
-            listener.onOtaStateChanged(otaSnapshot)
-            listener.onTelemetryStateChanged(telemetrySnapshot)
+            listener.onConnectionStateChanged(connectionState)
+            listener.onOtaStateChanged(otaState)
+            listener.onTelemetryStateChanged(telemetryState)
         }
     }
 
