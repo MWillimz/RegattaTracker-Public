@@ -120,7 +120,7 @@ internal class RegattaLinkConnectionManager(context: Context) {
     }
 
     fun reconnectConfigured() {
-        if (otaState.isActive) return
+        if (otaState.isActive || explicitDiscoveryRequested) return
         val configured = configuredDeviceStore.load() ?: return
         explicitDiscoveryRequested = false
         client.startKnownDeviceReconnect(
