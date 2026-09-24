@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -69,7 +70,6 @@ fun SessionAnalysisScreen(
                 text = stringResource(R.string.session_analysis_empty),
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Spacer(modifier = Modifier.weightCompat())
         } else {
             val prepared = remember(detail.session.id, detail.samples) {
                 prepareAnalysisSamples(detail.samples)
@@ -269,7 +269,6 @@ fun SessionAnalysisScreen(
     }
 }
 
-private fun Modifier.weightCompat(): Modifier = this
 
 @Composable
 private fun AnalysisMetricSelector(
