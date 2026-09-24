@@ -13,7 +13,7 @@ import org.robolectric.annotation.Config
 class SessionReplayFieldsTest {
 
     @Test
-    fun discoveryIncludesInternalImuAndStoredMeasurements() {
+    fun discoveryIncludesStoredMeasurements() {
         val sample = sample(
             measurementsJson = """
                 {
@@ -33,8 +33,8 @@ class SessionReplayFieldsTest {
 
         val fields = discoverReplayExtraFields(listOf(sample))
 
-        assertTrue(fields.any { it.id == "imu.accel_x" })
-        assertTrue(fields.any { it.id == "imu.gyro_z" })
+        assertEquals(2, fields.size)
+        assertTrue(fields.all { it.source == ReplayExtraFieldSource.MEASUREMENT })
 
         val roll = fields.single { it.id == "measurement:regattalink.fast.roll_deg" }
         assertEquals("Fast Roll", roll.label)
@@ -49,8 +49,6 @@ class SessionReplayFieldsTest {
     @Test
     fun valuesUseSelectedSampleAndKeepMissingMeasurementsUnknown() {
         val sample = sample(
-            accelX = 1.25f,
-            gyroZ = -0.125f,
             measurementsJson = """
                 {
                   "regattalink.fast.roll_deg": {
@@ -62,15 +60,6 @@ class SessionReplayFieldsTest {
             """.trimIndent()
         )
         val fields = discoverReplayExtraFields(listOf(sample))
-
-        assertEquals(
-            "1.25 m/s²",
-            replayExtraFieldValue(sample, fields.single { it.id == "imu.accel_x" })
-        )
-        assertEquals(
-            "-0.125 rad/s",
-            replayExtraFieldValue(sample, fields.single { it.id == "imu.gyro_z" })
-        )
 
         val roll = fields.single { it.id == "measurement:regattalink.fast.roll_deg" }
         assertTrue(replayExtraFieldValue(sample, roll)?.contains("-14.50") == true)
@@ -84,41 +73,20 @@ class SessionReplayFieldsTest {
     }
 
     @Test
-    fun sessionsWithoutSensorSignalDoNotOfferFakeImuFields() {
-        val fields = discoverReplayExtraFields(
-            listOf(
-                sample(
-                    accelX = 0f,
-                    accelY = 0f,
-                    accelZ = 0f,
-                    gyroX = 0f,
-                    gyroY = 0f,
-                    gyroZ = 0f,
-                    measurementsJson = null
-                )
-            )
-        )
-
-        assertTrue(fields.isEmpty())
+    fun sessionsWithoutMeasurementsOfferNoExtraFields() {
+        assertTrue(discoverReplayExtraFields(listOf(sample(measurementsJson = null))).isEmpty())
     }
 
     @Test
     fun malformedMeasurementsDoNotBreakReplayFieldDiscovery() {
-        val fields = discoverReplayExtraFields(
-            listOf(sample(measurementsJson = "{not-json"))
+        assertTrue(
+            discoverReplayExtraFields(
+                listOf(sample(measurementsJson = "{not-json"))
+            ).isEmpty()
         )
-
-        assertEquals(6, fields.size)
-        assertTrue(fields.all { it.source == ReplayExtraFieldSource.INTERNAL_IMU })
     }
 
     private fun sample(
-        accelX: Float = 0.1f,
-        accelY: Float = 0.2f,
-        accelZ: Float = 9.8f,
-        gyroX: Float = 0.02f,
-        gyroY: Float = 0.03f,
-        gyroZ: Float = 0.01f,
         measurementsJson: String? = null
     ): SessionTrackingSample {
         return SessionTrackingSample(
@@ -130,12 +98,6 @@ class SessionReplayFieldsTest {
             accuracy = 5f,
             cog = 90f,
             sog = 4f,
-            accelX = accelX,
-            accelY = accelY,
-            accelZ = accelZ,
-            gyroX = gyroX,
-            gyroY = gyroY,
-            gyroZ = gyroZ,
             measurementsJson = measurementsJson
         )
     }
