@@ -79,7 +79,7 @@ class SessionReplayFieldsTest {
         assertEquals("deg", roll.unit)
         assertEquals("regattalink", roll.measurementGroup)
 
-        val stw = fields.single { it.id == "measurement:nmea.stw" }
+        val stw = fields.single { it.id == "measurement:nmea.stw_mps" }
         assertEquals("STW", stw.label)
         assertEquals("m/s", stw.unit)
 
