@@ -222,7 +222,7 @@ fun RegattaLinkScreen(
                 telemetryState.calibration?.let { calibration ->
                     telemetryValue(
                         label = stringResource(R.string.regattalink_confidence_overall),
-                        value = "\${calibration.overallConfidencePct} %"
+                        value = "${calibration.overallConfidencePct} %"
                     )
                     telemetryValue(
                         label = stringResource(R.string.regattalink_boat_frame),
@@ -261,11 +261,11 @@ fun RegattaLinkScreen(
                         )
                         telemetryValue(
                             label = stringResource(R.string.regattalink_protocol),
-                            value = "\${info.protocolMajor}.\${info.protocolMinor}"
+                            value = "${info.protocolMajor}.${info.protocolMinor}"
                         )
                         telemetryValue(
                             label = stringResource(R.string.regattalink_product_profile),
-                            value = "\${info.productId} / \${info.profileId}"
+                            value = "${info.productId} / ${info.profileId}"
                         )
                         telemetryValue(
                             label = stringResource(R.string.regattalink_ota_capability),
@@ -338,7 +338,7 @@ fun RegattaLinkScreen(
                         )
                         telemetryValue(
                             label = stringResource(R.string.regattalink_confidence),
-                            value = "\${summary.confidencePct} %"
+                            value = "${summary.confidencePct} %"
                         )
 
                         DetailsToggle(
@@ -470,7 +470,7 @@ fun RegattaLinkScreen(
                             label = stringResource(
                                 R.string.regattalink_confidence_overall
                             ),
-                            value = "\${calibration.overallConfidencePct} %"
+                            value = "${calibration.overallConfidencePct} %"
                         )
                         telemetryValue(
                             label = stringResource(R.string.regattalink_boat_frame),
@@ -502,13 +502,13 @@ fun RegattaLinkScreen(
                                 label = stringResource(
                                     R.string.regattalink_confidence_forward
                                 ),
-                                value = "\${calibration.forwardConfidencePct} %"
+                                value = "${calibration.forwardConfidencePct} %"
                             )
                             telemetryValue(
                                 label = stringResource(
                                     R.string.regattalink_confidence_roll
                                 ),
-                                value = "\${calibration.rollConfidencePct} %"
+                                value = "${calibration.rollConfidencePct} %"
                             )
                             telemetryValue(
                                 label = stringResource(
@@ -769,7 +769,7 @@ fun RegattaLinkScreen(
                                 .sortedBy { it.pgn }
                                 .forEach { entry ->
                                     telemetryValue(
-                                        label = "PGN \${entry.pgn}",
+                                        label = "PGN ${entry.pgn}",
                                         value = stringResource(
                                             R.string.regattalink_last_seen_ms,
                                             entry.lastSeenMs
