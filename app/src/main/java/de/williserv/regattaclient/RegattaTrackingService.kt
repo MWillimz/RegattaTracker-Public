@@ -1322,7 +1322,10 @@ class RegattaTrackingService : Service() {
             sessionId = activeSessionId,
             raceContextId = sampleRaceContextId,
             utcOffsetMinutes = sampleTime.utcOffsetMinutes,
-            measurementsJson = RegattaLinkTelemetrySnapshotStore.measurementsJson()
+            measurementsJson = mergeMeasurementsJson(
+                RegattaLinkTelemetrySnapshotStore.measurementsJson(),
+                RegattaLinkNmeaSnapshotStore.measurementsJson()
+            )
         )
 
         if (insertedId == -1L) return
