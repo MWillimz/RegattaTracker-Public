@@ -1834,12 +1834,12 @@ internal class RegattaLinkBleClient(
                         ambiguous = false
                     )
 
-                repeat(REGATTALINK_MAX_RAW_CAN_READS) {
+                for (readIndex in 0 until REGATTALINK_MAX_RAW_CAN_READS) {
                     if (
                         !optionalFeatureWorkAllowed(activeGatt) ||
                         serviceRediscoveryRequested.get()
                     ) {
-                        return@repeat
+                        break
                     }
 
                     val result = parseRegattaLinkRawCanRead(
@@ -1848,7 +1848,7 @@ internal class RegattaLinkBleClient(
                     result.frame?.let(frames::add)
 
                     if (result.frame == null || result.remainingCount == 0) {
-                        return@repeat
+                        break
                     }
                 }
             } catch (error: Exception) {
