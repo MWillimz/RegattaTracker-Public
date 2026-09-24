@@ -232,21 +232,16 @@ private fun ReplayCurrentSampleCard(
 
 @Composable
 private fun replayExtraFieldReplayLabel(field: ReplayExtraField): String {
-    val source = when (field.source) {
-        ReplayExtraFieldSource.INTERNAL_IMU ->
-            stringResource(R.string.session_replay_field_source_internal_imu)
-        ReplayExtraFieldSource.MEASUREMENT ->
-            field.measurementGroup
-                ?.takeIf { it.isNotBlank() }
-                ?.let { group ->
-                    if (group.equals("regattalink", ignoreCase = true)) {
-                        "RegattaLink"
-                    } else {
-                        group
-                    }
-                }
-                ?: stringResource(R.string.session_replay_field_source_measurements)
-    }
+    val source = field.measurementGroup
+        ?.takeIf { it.isNotBlank() }
+        ?.let { group ->
+            if (group.equals("regattalink", ignoreCase = true)) {
+                "RegattaLink"
+            } else {
+                group
+            }
+        }
+        ?: stringResource(R.string.session_replay_field_source_measurements)
     return "$source · ${field.label}"
 }
 
