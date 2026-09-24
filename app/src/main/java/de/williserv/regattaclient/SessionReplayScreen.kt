@@ -3,6 +3,8 @@ package de.williserv.regattaclient
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -51,6 +53,7 @@ import kotlin.math.min
 fun SessionReplayScreen(
     detail: SessionDetailData?,
     modifier: Modifier = Modifier,
+    extraFieldIds: Set<String> = emptySet(),
     onBack: () -> Unit
 ) {
     val samples = detail?.samples.orEmpty()
@@ -93,10 +96,13 @@ fun SessionReplayScreen(
         } else {
             val safeIndex = selectedIndex.coerceIn(0, samples.lastIndex)
             val selectedSample = samples[safeIndex]
+            val extraFields = detail.replayFields
+                .filter { it.id in extraFieldIds }
 
             ReplayCurrentSampleCard(
                 sample = selectedSample,
-                fallbackEvent = detail.session.eventIdentifier
+                fallbackEvent = detail.session.eventIdentifier,
+                extraFields = extraFields
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -140,7 +146,8 @@ fun SessionReplayScreen(
 @Composable
 private fun ReplayCurrentSampleCard(
     sample: SessionTrackingSample,
-    fallbackEvent: String?
+    fallbackEvent: String?,
+    extraFields: List<ReplayExtraField>
 ) {
     val epochMillis = sample.sampleEpochMillis()
     val timeText = epochMillis?.let {
@@ -158,6 +165,10 @@ private fun ReplayCurrentSampleCard(
     val event = sample.resolvedEventName
         ?.takeIf { it.isNotBlank() }
         ?: fallbackEvent?.takeIf { it.isNotBlank() }
+
+    val extraValues = remember(sample.localId, extraFields) {
+        replayExtraFieldValues(sample, extraFields)
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -187,6 +198,26 @@ private fun ReplayCurrentSampleCard(
                 )
             }
 
+            if (extraFields.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    extraFields.forEach { field ->
+                        val value = extraValues[field.id]
+                            ?: stringResource(R.string.session_unknown_value)
+                        ReplayValue(
+                            label = replayExtraFieldReplayLabel(field),
+                            value = value,
+                            modifier = Modifier.width(150.dp)
+                        )
+                    }
+                }
+            }
+
             event?.let {
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
@@ -197,6 +228,26 @@ private fun ReplayCurrentSampleCard(
             }
         }
     }
+}
+
+@Composable
+private fun replayExtraFieldReplayLabel(field: ReplayExtraField): String {
+    val source = when (field.source) {
+        ReplayExtraFieldSource.INTERNAL_IMU ->
+            stringResource(R.string.session_replay_field_source_internal_imu)
+        ReplayExtraFieldSource.MEASUREMENT ->
+            field.measurementGroup
+                ?.takeIf { it.isNotBlank() }
+                ?.let { group ->
+                    if (group.equals("regattalink", ignoreCase = true)) {
+                        "RegattaLink"
+                    } else {
+                        group
+                    }
+                }
+                ?: stringResource(R.string.session_replay_field_source_measurements)
+    }
+    return "$source · ${field.label}"
 }
 
 @Composable

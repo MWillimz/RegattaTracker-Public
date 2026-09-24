@@ -210,6 +210,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private val selectedSessionId = mutableStateOf<Long?>(null)
     private val sessionDetail = mutableStateOf<SessionDetailData?>(null)
     private val sessionDetailLoading = mutableStateOf(false)
+    private val selectedReplayFieldIds = mutableStateOf<Set<String>>(emptySet())
     private var sessionLoadGeneration = 0L
 
     private val cogText = mutableStateOf("")
@@ -565,6 +566,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             onSessionClick = { sessionId ->
                                 selectedSessionId.value = sessionId
                                 sessionDetail.value = null
+                                selectedReplayFieldIds.value = emptySet()
                                 currentScreen.value = Screen.SESSION_DETAIL
                                 loadSessionDetail(sessionId)
                             },
@@ -576,6 +578,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             detail = sessionDetail.value,
                             loading = sessionDetailLoading.value,
                             modifier = Modifier.padding(innerPadding),
+                            selectedReplayFieldIds = selectedReplayFieldIds.value,
+                            onReplayFieldSelectionChange = {
+                                selectedReplayFieldIds.value = it
+                            },
                             onReplay = {
                                 currentScreen.value = Screen.SESSION_REPLAY
                             },
@@ -585,6 +591,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         Screen.SESSION_REPLAY -> SessionReplayScreen(
                             detail = sessionDetail.value,
                             modifier = Modifier.padding(innerPadding),
+                            extraFieldIds = selectedReplayFieldIds.value,
                             onBack = ::navigateBack
                         )
 
@@ -3519,6 +3526,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     selectedSessionId.value = null
                     sessionDetail.value = null
                     sessionDetailLoading.value = false
+                    selectedReplayFieldIds.value = emptySet()
                 }
                 if (deleted) {
                     updateStorageText()
@@ -3538,6 +3546,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         sessionSummaries.value = emptyList()
         selectedSessionId.value = null
         sessionDetail.value = null
+        selectedReplayFieldIds.value = emptySet()
         updateStorageText()
         lastCsvLine.value = getString(R.string.no_csv_line_yet)
         statusText.value = getString(R.string.old_data_deleted)
@@ -3601,7 +3610,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         session = session,
                         samples = samples
                     ),
-                    samples = samples
+                    samples = samples,
+                    replayFields = discoverReplayExtraFields(samples)
                 )
             }.getOrNull()
 

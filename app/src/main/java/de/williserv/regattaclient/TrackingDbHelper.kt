@@ -82,6 +82,7 @@ data class SessionTrackingSample(
     val gyroX: Float,
     val gyroY: Float,
     val gyroZ: Float,
+    val measurementsJson: String? = null,
     val raceContextId: Long? = null,
     val resolvedEventName: String? = null,
     val courseJson: String? = null,
@@ -497,6 +498,7 @@ class TrackingDbHelper(context: Context) :
                 samples.gyro_x,
                 samples.gyro_y,
                 samples.gyro_z,
+                samples.measurements_json,
                 samples.race_context_id,
                 race_contexts.resolved_event_name,
                 race_contexts.course_json,
@@ -526,10 +528,11 @@ class TrackingDbHelper(context: Context) :
                         gyroX = cursor.getFloat(11),
                         gyroY = cursor.getFloat(12),
                         gyroZ = cursor.getFloat(13),
-                        raceContextId = if (cursor.isNull(14)) null else cursor.getLong(14),
-                        resolvedEventName = if (cursor.isNull(15)) null else cursor.getString(15),
-                        courseJson = if (cursor.isNull(16)) null else cursor.getString(16),
-                        courseMapViewportJson = if (cursor.isNull(17)) null else cursor.getString(17)
+                        measurementsJson = if (cursor.isNull(14)) null else cursor.getString(14),
+                        raceContextId = if (cursor.isNull(15)) null else cursor.getLong(15),
+                        resolvedEventName = if (cursor.isNull(16)) null else cursor.getString(16),
+                        courseJson = if (cursor.isNull(17)) null else cursor.getString(17),
+                        courseMapViewportJson = if (cursor.isNull(18)) null else cursor.getString(18)
                     )
                 )
             }

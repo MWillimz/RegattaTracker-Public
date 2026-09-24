@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -40,7 +41,8 @@ import java.util.Date
 data class SessionDetailData(
     val session: TrackingSessionSummary,
     val statistics: SessionStatistics,
-    val samples: List<SessionTrackingSample> = emptyList()
+    val samples: List<SessionTrackingSample> = emptyList(),
+    val replayFields: List<ReplayExtraField> = emptyList()
 )
 
 @Composable
@@ -236,6 +238,8 @@ fun SessionDetailScreen(
     detail: SessionDetailData?,
     loading: Boolean,
     modifier: Modifier = Modifier,
+    selectedReplayFieldIds: Set<String> = emptySet(),
+    onReplayFieldSelectionChange: (Set<String>) -> Unit = {},
     onReplay: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -348,6 +352,38 @@ fun SessionDetailScreen(
                         } ?: stringResource(R.string.session_unknown_value)
                     )
                 }
+
+                if (detail.replayFields.isNotEmpty()) {
+                    item {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = stringResource(R.string.session_replay_fields_title),
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = stringResource(R.string.session_replay_fields_hint),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 13.sp
+                        )
+                    }
+
+                    items(detail.replayFields, key = { it.id }) { field ->
+                        ReplayFieldSelectionRow(
+                            field = field,
+                            checked = field.id in selectedReplayFieldIds,
+                            onCheckedChange = { checked ->
+                                val updated = if (checked) {
+                                    selectedReplayFieldIds + field.id
+                                } else {
+                                    selectedReplayFieldIds - field.id
+                                }
+                                onReplayFieldSelectionChange(updated)
+                            }
+                        )
+                    }
+                }
             }
         } else {
             Text(
@@ -373,6 +409,54 @@ fun SessionDetailScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(stringResource(R.string.session_back))
+        }
+    }
+}
+
+@Composable
+private fun ReplayFieldSelectionRow(
+    field: ReplayExtraField,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    val sourceLabel = when (field.source) {
+        ReplayExtraFieldSource.INTERNAL_IMU ->
+            stringResource(R.string.session_replay_field_source_internal_imu)
+        ReplayExtraFieldSource.MEASUREMENT ->
+            field.measurementGroup
+                ?.takeIf { it.isNotBlank() }
+                ?.let { group ->
+                    if (group.equals("regattalink", ignoreCase = true)) {
+                        "RegattaLink"
+                    } else {
+                        group
+                    }
+                }
+                ?: stringResource(R.string.session_replay_field_source_measurements)
+    }
+    val fieldLabel = field.unit?.let { unit -> "${field.label} ($unit)" } ?: field.label
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) }
+            .padding(vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(
+            checked = checked,
+            onCheckedChange = null
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = fieldLabel,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = sourceLabel,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp
+            )
         }
     }
 }

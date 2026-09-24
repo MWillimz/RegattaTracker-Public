@@ -459,4 +459,8 @@
     <string name="regattalink_contradictions">Contraddizioni</string>
     <string name="regattalink_mounting_epoch">Epoca montaggio</string>
     <string name="regattalink_calibration_revision">Revisione calibrazione</string>
+    <string name="session_replay_fields_title">Dati aggiuntivi del replay</string>
+    <string name="session_replay_fields_hint">Seleziona i valori da mostrare durante lo scorrimento del replay. Ora, SOG e COG restano visibili.</string>
+    <string name="session_replay_field_source_internal_imu">IMU interna</string>
+    <string name="session_replay_field_source_measurements">Misure</string>
 </resources>
