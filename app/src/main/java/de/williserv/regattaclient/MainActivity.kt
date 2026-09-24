@@ -60,7 +60,8 @@ enum class Screen {
     RESULTS,
     SESSION_HISTORY,
     SESSION_DETAIL,
-    SESSION_REPLAY
+    SESSION_REPLAY,
+    SESSION_ANALYSIS
 }
 
 private enum class PendingTrackingAction {
@@ -327,7 +328,8 @@ class MainActivity : ComponentActivity() {
                 loadSessionHistory()
                 Screen.SESSION_HISTORY
             }
-            Screen.SESSION_REPLAY -> Screen.SESSION_DETAIL
+            Screen.SESSION_REPLAY,
+            Screen.SESSION_ANALYSIS -> Screen.SESSION_DETAIL
             Screen.RACE_LEGAL,
             Screen.QR_SCANNER -> Screen.RACE
             Screen.MAP -> if (selectedCourseMapView.value == null) {
@@ -618,6 +620,9 @@ class MainActivity : ComponentActivity() {
                             onReplay = {
                                 currentScreen.value = Screen.SESSION_REPLAY
                             },
+                            onAnalysis = {
+                                currentScreen.value = Screen.SESSION_ANALYSIS
+                            },
                             onBack = ::navigateBack
                         )
 
@@ -625,6 +630,12 @@ class MainActivity : ComponentActivity() {
                             detail = sessionDetail.value,
                             modifier = Modifier.padding(innerPadding),
                             extraFieldIds = selectedReplayFieldIds.value,
+                            onBack = ::navigateBack
+                        )
+
+                        Screen.SESSION_ANALYSIS -> SessionAnalysisScreen(
+                            detail = sessionDetail.value,
+                            modifier = Modifier.padding(innerPadding),
                             onBack = ::navigateBack
                         )
 

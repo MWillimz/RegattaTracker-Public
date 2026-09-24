@@ -88,6 +88,7 @@ data class RegattaLinkNmeaState(
     val boatStateSubscribed: Boolean = false,
     val boatStateLiveNotifications: Boolean = false,
     val boatState: RegattaLinkBoatState? = null,
+    val boatStateReceivedAtElapsedMs: Long? = null,
     val pausedForOta: Boolean = false,
     val error: String = ""
 )

@@ -359,6 +359,22 @@
     <string name="session_duration_minutes">%1$d min</string>
     <string name="session_duration_hours_minutes">%1$d h %2$d min</string>
 
+    <string name="session_analysis_button">Análisis</string>
+    <string name="session_analysis_title">Análisis de sesión</string>
+    <string name="session_analysis_empty">No hay muestras utilizables para el análisis.</string>
+    <string name="session_analysis_angle">Ángulo</string>
+    <string name="session_analysis_radius">Radio</string>
+    <string name="session_analysis_color">Color por</string>
+    <string name="session_analysis_none">Ninguno</string>
+    <string name="session_analysis_recommended">Recomendado</string>
+    <string name="session_analysis_all_sensors">Todos los sensores (%1$d más)</string>
+    <string name="session_analysis_hide_all_sensors">Ocultar todos los sensores</string>
+    <string name="session_analysis_filters">Filtros</string>
+    <string name="session_analysis_show_filters">Mostrar filtros</string>
+    <string name="session_analysis_hide_filters">Ocultar filtros</string>
+    <string name="session_analysis_filter_range">%1$s–%2$s %3$s</string>
+    <string name="session_analysis_color_legend">Color: %1$s</string>
+    <string name="session_analysis_points">%1$d puntos visibles</string>
     <string name="session_replay_button">Replay</string>
     <string name="session_replay_title">Replay de la sesión</string>
     <string name="session_replay_empty">No hay muestras disponibles para el replay.</string>
@@ -461,6 +477,9 @@
     <string name="regattalink_calibration_revision">Revisión de calibración</string>
     <string name="session_replay_fields_title">Datos adicionales de repetición</string>
     <string name="session_replay_fields_hint">Selecciona valores para mostrar al recorrer la repetición. La hora, SOG y COG siguen visibles.</string>
+    <string name="session_replay_fields_recommended">Recomendado</string>
+    <string name="session_replay_fields_show_all">Todos los sensores (%1$d más)</string>
+    <string name="session_replay_fields_hide_all">Ocultar todos los sensores</string>
     <string name="session_replay_field_source_measurements">Mediciones</string>
 
     <string name="regattalink_change_name">Cambiar nombre de RegattaLink</string>

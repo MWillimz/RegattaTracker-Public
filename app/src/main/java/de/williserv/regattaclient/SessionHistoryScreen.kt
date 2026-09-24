@@ -24,9 +24,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -241,6 +246,7 @@ fun SessionDetailScreen(
     selectedReplayFieldIds: Set<String> = emptySet(),
     onReplayFieldSelectionChange: (Set<String>) -> Unit = {},
     onReplay: () -> Unit,
+    onAnalysis: () -> Unit,
     onBack: () -> Unit
 ) {
     Column(
@@ -259,6 +265,12 @@ fun SessionDetailScreen(
         if (loading) {
             CircularProgressIndicator()
         } else if (detail != null) {
+            val recommendedReplayFields = detail.replayFields.filter { it.recommended }
+            val additionalReplayFields = detail.replayFields.filterNot { it.recommended }
+            var allReplayFieldsExpanded by rememberSaveable(detail.session.id) {
+                mutableStateOf(false)
+            }
+
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -369,19 +381,70 @@ fun SessionDetailScreen(
                         )
                     }
 
-                    items(detail.replayFields, key = { it.id }) { field ->
-                        ReplayFieldSelectionRow(
-                            field = field,
-                            checked = field.id in selectedReplayFieldIds,
-                            onCheckedChange = { checked ->
-                                val updated = if (checked) {
-                                    selectedReplayFieldIds + field.id
-                                } else {
-                                    selectedReplayFieldIds - field.id
+                    if (recommendedReplayFields.isNotEmpty()) {
+                        item {
+                            Text(
+                                text = stringResource(
+                                    R.string.session_replay_fields_recommended
+                                ),
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        items(recommendedReplayFields, key = { it.id }) { field ->
+                            ReplayFieldSelectionRow(
+                                field = field,
+                                checked = field.id in selectedReplayFieldIds,
+                                onCheckedChange = { checked ->
+                                    val updated = if (checked) {
+                                        selectedReplayFieldIds + field.id
+                                    } else {
+                                        selectedReplayFieldIds - field.id
+                                    }
+                                    onReplayFieldSelectionChange(updated)
                                 }
-                                onReplayFieldSelectionChange(updated)
+                            )
+                        }
+                    }
+
+                    if (additionalReplayFields.isNotEmpty()) {
+                        item {
+                            TextButton(
+                                onClick = {
+                                    allReplayFieldsExpanded = !allReplayFieldsExpanded
+                                }
+                            ) {
+                                Text(
+                                    text = if (allReplayFieldsExpanded) {
+                                        stringResource(
+                                            R.string.session_replay_fields_hide_all
+                                        )
+                                    } else {
+                                        stringResource(
+                                            R.string.session_replay_fields_show_all,
+                                            additionalReplayFields.size
+                                        )
+                                    }
+                                )
                             }
-                        )
+                        }
+
+                        if (allReplayFieldsExpanded) {
+                            items(additionalReplayFields, key = { it.id }) { field ->
+                                ReplayFieldSelectionRow(
+                                    field = field,
+                                    checked = field.id in selectedReplayFieldIds,
+                                    onCheckedChange = { checked ->
+                                        val updated = if (checked) {
+                                            selectedReplayFieldIds + field.id
+                                        } else {
+                                            selectedReplayFieldIds - field.id
+                                        }
+                                        onReplayFieldSelectionChange(updated)
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -395,6 +458,13 @@ fun SessionDetailScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         if (detail != null && detail.samples.isNotEmpty()) {
+            Button(
+                onClick = onAnalysis,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.session_analysis_button))
+            }
+            Spacer(modifier = Modifier.height(8.dp))
             Button(
                 onClick = onReplay,
                 modifier = Modifier.fillMaxWidth()

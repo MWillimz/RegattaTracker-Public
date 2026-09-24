@@ -13,7 +13,7 @@ import org.robolectric.annotation.Config
 class SessionReplayFieldsTest {
 
     @Test
-    fun discoveryIncludesStoredMeasurements() {
+    fun discoveryIncludesOnlyReplayRelevantMeasurements() {
         val sample = sample(
             measurementsJson = """
                 {
@@ -22,10 +22,41 @@ class SessionReplayFieldsTest {
                     "unit": "deg",
                     "group": "regattalink"
                   },
-                  "nmea.stw": {
+                  "regattalink.summary.heel_filtered_deg": {
+                    "value": -8.5,
+                    "unit": "deg",
+                    "group": "regattalink"
+                  },
+                  "nmea.stw_mps": {
                     "value": 5.6,
-                    "unit": "kn",
+                    "unit": "m/s",
                     "group": "nmea"
+                  },
+                  "regattalink.fast.sequence": {
+                    "value": 123,
+                    "group": "regattalink"
+                  },
+                  "regattalink.fast.timestamp_ms": {
+                    "value": 456789,
+                    "unit": "ms",
+                    "group": "regattalink"
+                  },
+                  "regattalink.fast.confidence_pct": {
+                    "value": 92,
+                    "unit": "%",
+                    "group": "regattalink"
+                  },
+                  "regattalink.calibration.learner_state": {
+                    "value": 1,
+                    "group": "regattalink"
+                  },
+                  "regattalink.calibration.calibration_revision": {
+                    "value": 7,
+                    "group": "regattalink"
+                  },
+                  "internal.debug_counter": {
+                    "value": 99,
+                    "group": "debug"
                   }
                 }
             """.trimIndent()
@@ -33,17 +64,30 @@ class SessionReplayFieldsTest {
 
         val fields = discoverReplayExtraFields(listOf(sample))
 
-        assertEquals(2, fields.size)
+        assertEquals(3, fields.size)
         assertTrue(fields.all { it.source == ReplayExtraFieldSource.MEASUREMENT })
+        assertTrue(fields.all { it.recommended })
+
+        val heel = fields.single {
+            it.id == "measurement:regattalink.summary.heel_filtered_deg"
+        }
+        assertEquals("Heel", heel.label)
+        assertEquals("deg", heel.unit)
 
         val roll = fields.single { it.id == "measurement:regattalink.fast.roll_deg" }
-        assertEquals("Fast Roll", roll.label)
+        assertEquals("Roll", roll.label)
         assertEquals("deg", roll.unit)
         assertEquals("regattalink", roll.measurementGroup)
 
-        val stw = fields.single { it.id == "measurement:nmea.stw" }
+        val stw = fields.single { it.id == "measurement:nmea.stw_mps" }
         assertEquals("STW", stw.label)
-        assertEquals("kn", stw.unit)
+        assertEquals("m/s", stw.unit)
+
+        assertTrue(fields.none { it.id.contains("sequence") })
+        assertTrue(fields.none { it.id.contains("timestamp") })
+        assertTrue(fields.none { it.id.contains("confidence") })
+        assertTrue(fields.none { it.id.contains("calibration") })
+        assertTrue(fields.none { it.id.contains("debug") })
     }
 
     @Test
@@ -62,6 +106,7 @@ class SessionReplayFieldsTest {
         val fields = discoverReplayExtraFields(listOf(sample))
 
         val roll = fields.single { it.id == "measurement:regattalink.fast.roll_deg" }
+        assertEquals("Roll", roll.label)
         assertTrue(replayExtraFieldValue(sample, roll)?.contains("-14.50") == true)
 
         assertNull(
@@ -70,6 +115,44 @@ class SessionReplayFieldsTest {
                 roll
             )
         )
+    }
+
+    @Test
+    fun allSensorsIncludesUnknownUsefulMeasurementButBlacklistsDiagnostics() {
+        val sample = sample(
+            measurementsJson = """
+                {
+                  "nmea.foil_load": {
+                    "value": 123.4,
+                    "unit": "N",
+                    "group": "nmea"
+                  },
+                  "regattalink.calibration.overall_confidence_pct": {
+                    "value": 80,
+                    "unit": "%",
+                    "group": "regattalink"
+                  },
+                  "regattalink.fast.sequence": {
+                    "value": 42,
+                    "group": "regattalink"
+                  },
+                  "unknown.future.diagnostic": {
+                    "value": 1,
+                    "group": "diagnostic"
+                  }
+                }
+            """.trimIndent()
+        )
+
+        val fields = discoverReplayExtraFields(listOf(sample))
+
+        assertEquals(1, fields.size)
+        val custom = fields.single()
+        assertEquals("measurement:nmea.foil_load", custom.id)
+        assertEquals("Foil Load", custom.label)
+        assertEquals("N", custom.unit)
+        assertEquals("nmea", custom.measurementGroup)
+        assertTrue(!custom.recommended)
     }
 
     @Test
