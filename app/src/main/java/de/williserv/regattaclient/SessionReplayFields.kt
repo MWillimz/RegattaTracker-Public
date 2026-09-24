@@ -42,28 +42,40 @@ private val REPLAY_RECOMMENDED_MEASUREMENTS = listOf(
         label = "Pitch"
     ),
     ReplayMeasurementDefinition(
-        key = "nmea.heading",
-        label = "Heading"
+        key = "nmea.heading_magnetic_deg",
+        label = "Magnetic heading"
     ),
     ReplayMeasurementDefinition(
-        key = "nmea.stw",
+        key = "nmea.heading_true_deg",
+        label = "True heading"
+    ),
+    ReplayMeasurementDefinition(
+        key = "nmea.stw_mps",
         label = "STW"
     ),
     ReplayMeasurementDefinition(
-        key = "nmea.depth",
+        key = "nmea.depth_m",
         label = "Depth"
     ),
     ReplayMeasurementDefinition(
-        key = "nmea.water_temperature",
+        key = "nmea.water_temperature_c",
         label = "Water temperature"
     ),
     ReplayMeasurementDefinition(
-        key = "nmea.wind_speed",
-        label = "Wind speed"
+        key = "nmea.aws_mps",
+        label = "AWS"
     ),
     ReplayMeasurementDefinition(
-        key = "nmea.wind_angle",
-        label = "Wind angle"
+        key = "nmea.awa_deg",
+        label = "AWA"
+    ),
+    ReplayMeasurementDefinition(
+        key = "nmea.tws_mps",
+        label = "TWS"
+    ),
+    ReplayMeasurementDefinition(
+        key = "nmea.twa_deg",
+        label = "TWA"
     )
 )
 
