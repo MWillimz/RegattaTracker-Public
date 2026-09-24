@@ -504,6 +504,9 @@
     <string name="regattalink_calibration_revision">Calibration revision</string>
     <string name="session_replay_fields_title">Additional replay data</string>
     <string name="session_replay_fields_hint">Select values to show while scrubbing the replay. Time, SOG and COG remain visible.</string>
+    <string name="session_replay_fields_recommended">Recommended</string>
+    <string name="session_replay_fields_show_all">All sensors (%1$d more)</string>
+    <string name="session_replay_fields_hide_all">Hide all sensors</string>
     <string name="session_replay_field_source_measurements">Measurements</string>
 
     <string name="regattalink_change_name">Change RegattaLink name</string>

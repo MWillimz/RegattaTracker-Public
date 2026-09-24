@@ -461,6 +461,9 @@
     <string name="regattalink_calibration_revision">Kalibrierungsrevision</string>
     <string name="session_replay_fields_title">Zusätzliche Replay-Daten</string>
     <string name="session_replay_fields_hint">Wähle Werte, die beim Durchlaufen des Replays angezeigt werden. Zeit, SOG und COG bleiben sichtbar.</string>
+    <string name="session_replay_fields_recommended">Empfohlen</string>
+    <string name="session_replay_fields_show_all">Alle Sensoren (%1$d weitere)</string>
+    <string name="session_replay_fields_hide_all">Alle Sensoren ausblenden</string>
     <string name="session_replay_field_source_measurements">Messwerte</string>
 
     <string name="regattalink_change_name">RegattaLink-Namen ändern</string>
