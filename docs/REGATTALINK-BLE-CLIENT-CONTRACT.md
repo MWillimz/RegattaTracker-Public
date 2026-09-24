@@ -540,6 +540,52 @@ Calibration:
 
 Stale records and telemetry paused for OTA are not attached to newly created tracking samples.
 
+Normalized NMEA Boat State 0024 is persisted into the same per-sample measurements object. This does not change tracking or upload frequency. The Android client retains only the latest received complete Boat State snapshot for persistence, rejects it after 60 seconds without a fresh snapshot, clears it across disconnect/reconnect lifecycle boundaries, and never attaches it while NMEA telemetry is paused for OTA. The firmware validity bitmap remains authoritative for individual fields.
+
+Stable NMEA measurement keys currently used by RegattaTracker:
+
+- `nmea.heading_true_deg`
+- `nmea.heading_magnetic_deg`
+- `nmea.heading_deviation_deg`
+- `nmea.heading_variation_deg`
+- `nmea.rate_of_turn_dps`
+- `nmea.yaw_deg`
+- `nmea.pitch_deg`
+- `nmea.roll_deg`
+- `nmea.stw_mps`
+- `nmea.depth_m`
+- `nmea.depth_offset_m`
+- `nmea.depth_range_m`
+- `nmea.water_temperature_c`
+- `nmea.latitude_deg`
+- `nmea.longitude_deg`
+- `nmea.cog_true_deg`
+- `nmea.cog_magnetic_deg`
+- `nmea.sog_mps`
+- `nmea.altitude_m`
+- `nmea.aws_mps`
+- `nmea.awa_deg`
+- `nmea.tws_mps`
+- `nmea.twa_deg`
+- `nmea.wind_speed_true_ground_mps`
+- `nmea.wind_direction_true_deg`
+- `nmea.wind_direction_magnetic_deg`
+
+Each persisted item uses `group: "nmea"` and the engineering unit shown by its key (`deg`, `deg/s`, `m/s`, `m` or `C`).
+
+Reference mapping is semantic rather than positional:
+
+- heading reference 0 is persisted as true heading;
+- heading reference 1 is persisted as magnetic heading;
+- COG reference 0/1 is persisted as true/magnetic COG respectively;
+- wind reference 0 is theoretical ground-referenced wind with direction referenced to True North;
+- wind reference 1 is theoretical ground-referenced wind with direction referenced to Magnetic North;
+- wind reference 2 is apparent wind and maps to AWA/AWS;
+- wind references 3 and 4 are vessel-centerline true/theoretical wind (ground- and water-calculated respectively) and map to TWA/TWS;
+- unsupported or unavailable references are not relabelled as MAG, AWA or TWA.
+
+Transport/debug metadata is intentionally not copied into session measurements: Boat State sequence, Boat State timestamp, validity bitmap, BLE state, PGN inventory and raw CAN FIFO data remain diagnostics only.
+
 ## 6. OTA service 0010
 
 Full service UUID:
