@@ -7,7 +7,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import kotlin.math.sqrt
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -210,6 +209,27 @@ class SessionAnalysisTest {
 
         assertEquals(1, dataset.points.size)
         assertEquals(10.0, dataset.points.single().colorValue!!, 0.001)
+    }
+
+    @Test
+    fun dynamicRadianSensorIsAvailableAsAngleInDegrees() {
+        val samples = listOf(
+            sample(
+                measurements = """
+                    {
+                      "nmea.fancy_angle":{"value":1.57079632679,"unit":"rad","group":"nmea"}
+                    }
+                """.trimIndent()
+            )
+        )
+        val prepared = prepareAnalysisSamples(samples)
+        val capabilities = discoverSessionAnalysisCapabilities(samples, prepared)
+        val metric = capabilities.angleMetrics.single {
+            it.id == "measurement:nmea.fancy_angle"
+        }
+
+        assertEquals("deg", metric.unit)
+        assertEquals(90.0, metricValue(metric, prepared.single())!!, 0.001)
     }
 
     @Test
