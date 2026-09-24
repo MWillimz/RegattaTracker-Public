@@ -75,9 +75,7 @@ fun RegattaLinkScreen(
         RegattaLinkConnectionStatus.ERROR -> stringResource(R.string.regattalink_status_error)
     }
 
-    var deviceDetailsExpanded by rememberSaveable { mutableStateOf(false) }
-    var motionDetailsExpanded by rememberSaveable { mutableStateOf(false) }
-    var orientationDetailsExpanded by rememberSaveable { mutableStateOf(false) }
+    var technicalDetailsExpanded by rememberSaveable { mutableStateOf(false) }
     var nmeaDetailsExpanded by rememberSaveable { mutableStateOf(false) }
     var nameDialogOpen by rememberSaveable { mutableStateOf(false) }
     var nameDraft by rememberSaveable { mutableStateOf("") }
@@ -219,21 +217,6 @@ fun RegattaLinkScreen(
                     )
                 }
 
-                telemetryState.calibration?.let { calibration ->
-                    telemetryValue(
-                        label = stringResource(R.string.regattalink_confidence_overall),
-                        value = "${calibration.overallConfidencePct} %"
-                    )
-                    telemetryValue(
-                        label = stringResource(R.string.regattalink_boat_frame),
-                        value = if (calibration.boatFrameValid) {
-                            stringResource(R.string.regattalink_ready)
-                        } else {
-                            stringResource(R.string.regattalink_learning)
-                        }
-                    )
-                }
-
                 if (state.error.isNotBlank()) {
                     Text(
                         text = state.error,
@@ -243,11 +226,13 @@ fun RegattaLinkScreen(
                 }
 
                 DetailsToggle(
-                    expanded = deviceDetailsExpanded,
-                    onToggle = { deviceDetailsExpanded = !deviceDetailsExpanded }
+                    expanded = technicalDetailsExpanded,
+                    onToggle = {
+                        technicalDetailsExpanded = !technicalDetailsExpanded
+                    }
                 )
 
-                if (deviceDetailsExpanded) {
+                if (technicalDetailsExpanded) {
                     if (state.deviceAddress.isNotBlank()) {
                         telemetryValue(
                             label = stringResource(R.string.regattalink_address),
@@ -341,14 +326,7 @@ fun RegattaLinkScreen(
                             value = "${summary.confidencePct} %"
                         )
 
-                        DetailsToggle(
-                            expanded = motionDetailsExpanded,
-                            onToggle = {
-                                motionDetailsExpanded = !motionDetailsExpanded
-                            }
-                        )
-
-                        if (motionDetailsExpanded) {
+                        if (technicalDetailsExpanded) {
                             telemetryValue(
                                 label = stringResource(R.string.regattalink_roll_rms),
                                 value = formatTelemetry(summary.rollRmsDeg, "°")
@@ -489,15 +467,7 @@ fun RegattaLinkScreen(
                             )
                         }
 
-                        DetailsToggle(
-                            expanded = orientationDetailsExpanded,
-                            onToggle = {
-                                orientationDetailsExpanded =
-                                    !orientationDetailsExpanded
-                            }
-                        )
-
-                        if (orientationDetailsExpanded) {
+                        if (technicalDetailsExpanded) {
                             telemetryValue(
                                 label = stringResource(
                                     R.string.regattalink_confidence_forward
@@ -582,27 +552,6 @@ fun RegattaLinkScreen(
                         fontSize = 18.sp,
                         fontWeight = FontWeight.SemiBold
                     )
-
-                    if (configurationState.deviceNameSupported) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            telemetryValue(
-                                label = stringResource(R.string.regattalink_name),
-                                value = displayedName
-                            )
-                            TextButton(
-                                onClick = {
-                                    nameDraft = displayedName
-                                    nameDialogOpen = true
-                                },
-                                enabled = configEnabled
-                            ) {
-                                Text(stringResource(R.string.regattalink_change))
-                            }
-                        }
-                    }
 
                     if (
                         configurationState.ledBrightnessSupported &&
