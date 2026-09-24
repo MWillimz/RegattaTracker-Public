@@ -162,6 +162,7 @@ internal class RegattaLinkBleClient(
     @Volatile private var serviceDiscoveryInProgress = false
     @Volatile private var deviceInfoReadInProgress = false
     @Volatile private var connectionSetupComplete = false
+    @Volatile private var establishedConnection = false
     private var serviceRediscoveryGatt: BluetoothGatt? = null
     private var reconnectFuture: CompletableFuture<RegattaLinkDeviceInfo?>? = null
     private var selectedDeviceAddress: String? = null
@@ -197,6 +198,7 @@ internal class RegattaLinkBleClient(
 
     private val gattTimeout = Runnable {
         val device = currentDevice
+        val wasEstablishedConnection = establishedConnection
         closeGatt()
         if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
             reconnectFuture?.complete(null)
@@ -207,6 +209,15 @@ internal class RegattaLinkBleClient(
                 retryDiscoveryAfterCandidateFailure()
             } else {
                 emitError(device, "RegattaLink connection timed out")
+                if (
+                    shouldStartRegattaLinkOutageReconnect(
+                        connectionWasReady = wasEstablishedConnection,
+                        otaOwnsConnection = otaRunning.get(),
+                        knownReconnectAlreadyActive = false
+                    )
+                ) {
+                    handler.post { onUnexpectedDisconnect() }
+                }
             }
         }
     }
@@ -400,8 +411,9 @@ internal class RegattaLinkBleClient(
             }
 
             if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                val wasReadyConnection = connectionSetupComplete
+                val wasReadyConnection = establishedConnection
                 connected = false
+                establishedConnection = false
                 resetServiceDiscoveryState()
                 failPendingGattOperation(
                     RegattaLinkOtaTransportException(
@@ -1193,10 +1205,12 @@ internal class RegattaLinkBleClient(
                 return
             }
             connectionSetupComplete = true
+            establishedConnection = true
             selectedDeviceAddress = device.address
             completeKnownDeviceReconnect()
         } else if (scanPurpose == ScanPurpose.NORMAL) {
             connectionSetupComplete = true
+            establishedConnection = true
             selectedDeviceAddress = device.address
             discoveryInProgress = false
             discoveryCandidateInProgress = false
@@ -1248,6 +1262,7 @@ internal class RegattaLinkBleClient(
                         !deviceInfoReadInProgress
                     ) {
                         connectionSetupComplete = true
+                        establishedConnection = true
                         reconnectFuture?.complete(info)
                     }
                 },
@@ -2152,6 +2167,7 @@ internal class RegattaLinkBleClient(
         handler.removeCallbacks(gattTimeout)
         resetServiceDiscoveryState()
         connected = false
+        establishedConnection = false
         val existing = gatt
         gatt = null
         failPendingGattOperation(
@@ -2170,10 +2186,11 @@ internal class RegattaLinkBleClient(
         callbackGatt: BluetoothGatt,
         message: String
     ) {
-        val wasReadyConnection = connectionSetupComplete
+        val wasReadyConnection = establishedConnection
         handler.removeCallbacks(gattTimeout)
         resetServiceDiscoveryState()
         connected = false
+        establishedConnection = false
         callbackGatt.disconnect()
         callbackGatt.close()
         if (gatt === callbackGatt) {
