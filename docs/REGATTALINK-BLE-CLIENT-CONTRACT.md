@@ -12,9 +12,9 @@ The current BLE contract contains three RegattaLink service families. Firmware c
 
 | Area | Service suffix | Firmware contract | Current RegattaTracker consumption |
 | --- | ---: | --- | --- |
-| configuration/device information/diagnostics | 0001 | implemented; 0006 is the additive brightness contract from RegattaLink #135 / PR #136 and is optional by discovery | 0003 Device Info consumed; 0002/0004/0005/0006 not yet consumed |
+| configuration/device information/diagnostics | 0001 | implemented; 0006 is the additive brightness contract from RegattaLink #135 / PR #136 and is optional by discovery | 0002-0006 consumed; optional surfaces remain feature-local |
 | OTA | 0010 | implemented | implemented |
-| telemetry | 0020 | implemented with IMU 0021-0023 and normalized NMEA Boat State 0024 | IMU 0021-0023 consumed; 0024 not yet consumed |
+| telemetry | 0020 | implemented with IMU 0021-0023 and normalized NMEA Boat State 0024 | 0021-0024 consumed; 0024 discovered independently of the IMU capability bit |
 
 The firmware contract currently defines four NMEA2000-facing BLE surfaces/behaviors relevant to clients:
 
@@ -36,11 +36,11 @@ Base UUID:
 | Purpose | Suffix | Access | Firmware contract | Current RegattaTracker consumption |
 | --- | ---: | --- | --- | --- |
 | Configuration service | 0001 | service | implemented | discovery anchor |
-| Device name | 0002 | encrypted/bonded read + write | implemented | not yet consumed |
+| Device name | 0002 | encrypted/bonded read + write | implemented | implemented |
 | Device info | 0003 | encrypted/bonded read | implemented | implemented |
-| NMEA2000 PGN inventory | 0004 | encrypted/bonded read | implemented | not yet consumed (#259) |
-| NMEA2000 raw CAN FIFO | 0005 | encrypted/bonded read | implemented | not yet consumed |
-| Global LED brightness | 0006 | encrypted/bonded read + write | additive contract in RegattaLink #135 / PR #136; optional by discovery | not yet consumed |
+| NMEA2000 PGN inventory | 0004 | encrypted/bonded read | implemented | implemented |
+| NMEA2000 raw CAN FIFO | 0005 | encrypted/bonded read | implemented | implemented as explicit bounded diagnostic read |
+| Global LED brightness | 0006 | encrypted/bonded read + write | additive contract in RegattaLink #135 / PR #136; optional by discovery | implemented when discovered |
 | OTA service | 0010 | service | implemented | implemented |
 | OTA control | 0011 | encrypted/bonded write with response | implemented | implemented |
 | OTA DATA | 0012 | encrypted/bonded write; no-response preferred, response supported | implemented | implemented |
@@ -49,7 +49,7 @@ Base UUID:
 | Fast motion telemetry | 0021 | encrypted/bonded read + notify | implemented | implemented |
 | Motion summary telemetry | 0022 | encrypted/bonded read + notify | implemented | implemented |
 | Calibration diagnostics telemetry | 0023 | encrypted/bonded read + notify | implemented | implemented |
-| Normalized NMEA Boat State v1 | 0024 | encrypted/bonded read + notify | implemented | not yet consumed |
+| Normalized NMEA Boat State v1 | 0024 | encrypted/bonded read + notify | implemented | implemented; UUID-discovered independently of IMU capability |
 
 All multibyte integers in custom RegattaLink records are little-endian unless stated otherwise.
 
@@ -242,7 +242,7 @@ Important semantics:
 - NMEA fast-packet traffic remains individual raw CAN frames on this surface;
 - there is no START/STOP command, notification stream, capture session, rolling overwrite or overflow counter.
 
-RegattaTracker does not currently consume 0005. Presence in this public contract does not imply that the Android app automatically drains the FIFO.
+RegattaTracker consumes 0005 only after an explicit diagnostic user action. Each drain operation is bounded to at most 128 reads and never runs as normal background telemetry.
 
 ### 4.5 Global LED brightness 0006
 
@@ -267,7 +267,7 @@ A successful write persists the value in RegattaLink, applies it to the LED rend
 
 The wire contract is deliberately a percentage only. Low/High choices, fixed steps or sliders are RegattaTracker UI policy and must not be encoded into the BLE value.
 
-RegattaTracker does not yet read or write 0006 in this contract-sync change.
+RegattaTracker reads 0006 when present and writes it only on an explicit completed UI change; absence on older firmware remains non-fatal.
 
 
 ## 5. Telemetry service 0020
@@ -490,7 +490,7 @@ Notifications contain complete snapshots and are change-coalesced, capped at 10 
 
 OTA PREPARING/RECEIVING/VERIFYING pauses 0024 notifications but does not stop NMEA ingestion, source selection or firmware freshness tracking.
 
-RegattaTracker does not currently consume 0024 in this contract-sync change.
+RegattaTracker consumes 0024 independently of IMU capability bit 3. It requests a sufficient MTU best-effort for live 80-byte notifications and retains ordinary long-read snapshot access when the negotiated MTU remains smaller than 83.
 
 ### 5.5 RegattaTracker telemetry persistence mapping
 
@@ -868,10 +868,13 @@ Optional/current compatibility behavior:
 - malformed fixed-size records must be rejected;
 - missing optional services/characteristics must degrade only the feature that uses them.
 
-Current RegattaTracker consumption is intentionally narrower than the firmware contract:
+Current RegattaTracker consumption remains capability/UUID-driven:
 
 - Device Info, OTA and IMU telemetry 0021-0023 are consumed;
-- 0004, 0005, 0006 and 0024 are documented/allocated but are not automatically read, written or subscribed by this contract-sync change.
+- 0002 and 0006 are consumed as optional configuration surfaces;
+- 0004 is read explicitly for PGN inventory diagnostics;
+- 0005 is drained only after explicit user action and with a strict finite bound;
+- 0024 is discovered independently of IMU capability bit 3 and consumed as read + notify Boat State telemetry.
 
 Core connection failure conditions remain:
 
