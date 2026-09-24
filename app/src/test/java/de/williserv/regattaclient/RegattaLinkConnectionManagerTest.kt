@@ -1,5 +1,6 @@
 package de.williserv.regattaclient
 
+import android.Manifest
 import android.content.Context
 import android.os.Looper
 import org.junit.After
@@ -30,13 +31,23 @@ class RegattaLinkConnectionManagerTest {
     @Before
     fun setUp() {
         context = RuntimeEnvironment.getApplication()
+        shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(
+            Manifest.permission.BLUETOOTH_SCAN,
+            Manifest.permission.BLUETOOTH_CONNECT
+        )
         context.getSharedPreferences(
             RegattaLinkConfiguredDeviceStore.PREFS_NAME,
             Context.MODE_PRIVATE
         ).edit().clear().commit()
         RegattaLinkConfiguredDeviceStore(context).save(configured)
 
-        manager = RegattaLinkConnectionManager(
+        manager = createManager()
+    }
+
+    private fun createManager(
+        legacyBondedAddressProvider: (Context) -> String? = { null }
+    ): RegattaLinkConnectionManager =
+        RegattaLinkConnectionManager(
             context = context,
             clientFactory = RegattaLinkConnectionClientFactory {
                     _,
@@ -50,9 +61,9 @@ class RegattaLinkConnectionManagerTest {
                     onTelemetryStateChanged = onTelemetryStateChanged,
                     onUnexpectedDisconnect = onUnexpectedDisconnect
                 ).also { fakeClient = it }
-            }
+            },
+            legacyBondedAddressProvider = legacyBondedAddressProvider
         )
-    }
 
     @After
     fun tearDown() {
@@ -153,6 +164,54 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun legacyBondedDeviceBootstrapsConfiguredIdentityAfterValidatedConnection() {
+        context.getSharedPreferences(
+            RegattaLinkConfiguredDeviceStore.PREFS_NAME,
+            Context.MODE_PRIVATE
+        ).edit().clear().commit()
+        manager = createManager { configured.deviceAddress }
+
+        assertTrue(manager.reconnectConfigured())
+        assertEquals(1, fakeClient.reconnectCalls)
+        assertEquals(configured.deviceAddress, fakeClient.lastReconnectAddress)
+        assertEquals(null, fakeClient.lastReconnectStableId)
+
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceName = configured.deviceName,
+                deviceAddress = configured.deviceAddress,
+                deviceInfo = RegattaLinkDeviceInfo(
+                    protocolMajor = REGATTALINK_PROTOCOL_MAJOR,
+                    protocolMinor = 0,
+                    capabilities = 0u,
+                    stableId = configured.stableId,
+                    productId = REGATTALINK_PRODUCT_ID,
+                    profileId = REGATTALINK_PROFILE_ID,
+                    runningBuild = 1uL,
+                    otaSlotSize = 1u,
+                    maxInflightBlocks = 1
+                )
+            )
+        )
+
+        assertEquals(configured, manager.configuredDevice())
+    }
+
+    @Test
+    fun missingConfiguredDeviceDoesNotGuessWhenLegacyBondIsAmbiguous() {
+        context.getSharedPreferences(
+            RegattaLinkConfiguredDeviceStore.PREFS_NAME,
+            Context.MODE_PRIVATE
+        ).edit().clear().commit()
+        manager = createManager { null }
+
+        assertFalse(manager.reconnectConfigured())
+        assertEquals(0, fakeClient.reconnectCalls)
+        assertEquals(null, manager.configuredDevice())
+    }
+
+    @Test
     fun newlyAttachedListenerReceivesCurrentManagerState() {
         fakeClient.emitConnection(
             RegattaLinkClientState(
@@ -201,7 +260,7 @@ class RegattaLinkConnectionManagerTest {
 
         override fun startKnownDeviceReconnect(
             deviceAddress: String,
-            expectedStableId: String,
+            expectedStableId: String?,
             timeoutMs: Long
         ): Boolean {
             reconnectCalls += 1
