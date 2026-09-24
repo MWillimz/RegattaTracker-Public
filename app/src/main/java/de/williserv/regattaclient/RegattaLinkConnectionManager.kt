@@ -118,7 +118,7 @@ internal class RegattaLinkConnectionManager(
                 onUnexpectedDisconnect = onUnexpectedDisconnect
             )
         },
-    legacyBondedAddressProvider: (Context) -> String? =
+    private val legacyBondedAddressProvider: (Context) -> String? =
         ::findUniqueLegacyBondedRegattaLinkAddress
 ) {
     companion object {
