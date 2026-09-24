@@ -34,6 +34,21 @@ import kotlinx.coroutines.delay
 import java.util.Locale
 import kotlin.math.roundToInt
 
+internal fun shouldAutoRefreshPgnInventory(
+    detailsExpanded: Boolean,
+    inventorySupported: Boolean,
+    inventoryEmpty: Boolean,
+    inventoryLoading: Boolean,
+    otaActive: Boolean,
+    alreadyRequested: Boolean
+): Boolean =
+    detailsExpanded &&
+        inventorySupported &&
+        inventoryEmpty &&
+        !inventoryLoading &&
+        !otaActive &&
+        !alreadyRequested
+
 @Composable
 fun RegattaLinkScreen(
     state: RegattaLinkClientState,
@@ -77,6 +92,9 @@ fun RegattaLinkScreen(
 
     var technicalDetailsExpanded by rememberSaveable { mutableStateOf(false) }
     var nmeaDetailsExpanded by rememberSaveable { mutableStateOf(false) }
+    var pgnInventoryAutoRefreshRequested by remember(state.deviceAddress) {
+        mutableStateOf(false)
+    }
     var nameDialogOpen by rememberSaveable { mutableStateOf(false) }
     var nameDraft by rememberSaveable { mutableStateOf("") }
     var brightnessDraft by remember(configurationState.ledBrightnessPct) {
@@ -97,15 +115,25 @@ fun RegattaLinkScreen(
         nmeaDetailsExpanded,
         nmeaState.pgnInventorySupported,
         nmeaState.pgnInventoryLoading,
-        otaState.isActive
+        otaState.isActive,
+        state.deviceAddress
     ) {
+        if (!nmeaDetailsExpanded) {
+            pgnInventoryAutoRefreshRequested = false
+            return@LaunchedEffect
+        }
+
         if (
-            nmeaDetailsExpanded &&
-            nmeaState.pgnInventorySupported &&
-            nmeaState.pgnInventory.isEmpty() &&
-            !nmeaState.pgnInventoryLoading &&
-            !otaState.isActive
+            shouldAutoRefreshPgnInventory(
+                detailsExpanded = nmeaDetailsExpanded,
+                inventorySupported = nmeaState.pgnInventorySupported,
+                inventoryEmpty = nmeaState.pgnInventory.isEmpty(),
+                inventoryLoading = nmeaState.pgnInventoryLoading,
+                otaActive = otaState.isActive,
+                alreadyRequested = pgnInventoryAutoRefreshRequested
+            )
         ) {
+            pgnInventoryAutoRefreshRequested = true
             onRefreshPgnInventory()
         }
     }
