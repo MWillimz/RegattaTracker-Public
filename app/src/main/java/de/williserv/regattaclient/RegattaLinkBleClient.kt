@@ -450,8 +450,14 @@ internal class RegattaLinkBleClient(
                             pausedForOta = true
                         )
                     }
+                    emitNmea(
+                        RegattaLinkNmeaState(
+                            pausedForOta = true
+                        )
+                    )
                 } else {
                     clearTelemetry()
+                    clearNmea()
                 }
 
                 if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
@@ -1485,12 +1491,14 @@ internal class RegattaLinkBleClient(
         if (!optionalFeatureWorkAllowed(activeGatt)) return
 
         var boatState: RegattaLinkBoatState? = null
+        var boatStateReceivedAtElapsedMs: Long? = null
         runCatching {
             parseRegattaLinkBoatState(
                 readCharacteristicBlocking(activeGatt, boatStateCharacteristic)
             )
         }.onSuccess {
             boatState = it
+            boatStateReceivedAtElapsedMs = SystemClock.elapsedRealtime()
         }.onFailure { error ->
             if (errorMessage.isBlank()) {
                 errorMessage = error.message ?: "Could not read RegattaLink Boat State"
@@ -1505,6 +1513,12 @@ internal class RegattaLinkBleClient(
                     boatStateLiveNotifications =
                         subscribed && mtu >= REGATTALINK_BOAT_STATE_NOTIFICATION_MTU,
                     boatState = boatState ?: it.boatState,
+                    boatStateReceivedAtElapsedMs =
+                        if (boatState != null) {
+                            boatStateReceivedAtElapsedMs
+                        } else {
+                            it.boatStateReceivedAtElapsedMs
+                        },
                     error = errorMessage
                 )
             }
@@ -1625,6 +1639,7 @@ internal class RegattaLinkBleClient(
             runCatching {
                 parseRegattaLinkBoatState(value)
             }.onSuccess { boatState ->
+                val receivedAt = SystemClock.elapsedRealtime()
                 updateNmea {
                     it.copy(
                         boatStateSupported = true,
@@ -1632,6 +1647,7 @@ internal class RegattaLinkBleClient(
                         boatStateLiveNotifications =
                             mtu >= REGATTALINK_BOAT_STATE_NOTIFICATION_MTU,
                         boatState = boatState,
+                        boatStateReceivedAtElapsedMs = receivedAt,
                         error = ""
                     )
                 }
@@ -2822,6 +2838,7 @@ internal class RegattaLinkBleClient(
         val next = synchronized(nmeaLock) {
             transform(lastNmeaState).also {
                 lastNmeaState = it
+                RegattaLinkNmeaSnapshotStore.update(it)
             }
         }
         handler.post {
@@ -2832,6 +2849,7 @@ internal class RegattaLinkBleClient(
     private fun emitNmea(state: RegattaLinkNmeaState) {
         synchronized(nmeaLock) {
             lastNmeaState = state
+            RegattaLinkNmeaSnapshotStore.update(state)
         }
         handler.post {
             onNmeaStateChanged(state)
