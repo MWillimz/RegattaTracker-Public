@@ -197,7 +197,6 @@ internal class RegattaLinkConnectionManager(
             )
         }
 
-        if (!hasRequiredPermissions()) return false
         val legacyAddress = legacyBondedAddressProvider(appContext) ?: return false
         legacyBootstrapAddress = legacyAddress
         val accepted = client.startKnownDeviceReconnect(
