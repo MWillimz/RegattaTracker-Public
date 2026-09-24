@@ -1,0 +1,204 @@
+package de.williserv.regattaclient
+
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Handler
+import android.os.Looper
+import androidx.core.content.ContextCompat
+import java.util.concurrent.CopyOnWriteArraySet
+import java.util.concurrent.atomic.AtomicBoolean
+
+internal data class RegattaLinkConfiguredDevice(
+    val stableId: String,
+    val deviceAddress: String,
+    val deviceName: String
+)
+
+internal class RegattaLinkConfiguredDeviceStore(context: Context) {
+    companion object {
+        internal const val PREFS_NAME = "regattalink_connection"
+        private const val KEY_STABLE_ID = "stable_id"
+        private const val KEY_DEVICE_ADDRESS = "device_address"
+        private const val KEY_DEVICE_NAME = "device_name"
+    }
+
+    private val prefs = context.applicationContext.getSharedPreferences(
+        PREFS_NAME,
+        Context.MODE_PRIVATE
+    )
+
+    fun load(): RegattaLinkConfiguredDevice? {
+        val stableId = prefs.getString(KEY_STABLE_ID, "").orEmpty()
+        val address = prefs.getString(KEY_DEVICE_ADDRESS, "").orEmpty()
+        if (stableId.isBlank() || address.isBlank()) return null
+        return RegattaLinkConfiguredDevice(
+            stableId = stableId,
+            deviceAddress = address,
+            deviceName = prefs.getString(KEY_DEVICE_NAME, "").orEmpty()
+        )
+    }
+
+    fun save(device: RegattaLinkConfiguredDevice) {
+        require(device.stableId.isNotBlank())
+        require(device.deviceAddress.isNotBlank())
+        prefs.edit()
+            .putString(KEY_STABLE_ID, device.stableId)
+            .putString(KEY_DEVICE_ADDRESS, device.deviceAddress)
+            .putString(KEY_DEVICE_NAME, device.deviceName)
+            .apply()
+    }
+}
+
+internal interface RegattaLinkConnectionListener {
+    fun onConnectionStateChanged(state: RegattaLinkClientState) {}
+    fun onOtaStateChanged(state: RegattaLinkOtaUiState) {}
+    fun onTelemetryStateChanged(state: RegattaLinkTelemetryState) {}
+}
+
+internal class RegattaLinkConnectionManager(context: Context) {
+    companion object {
+        private const val NORMAL_RECONNECT_TIMEOUT_MS = 60_000L
+    }
+
+    private val appContext = context.applicationContext
+    private val handler = Handler(Looper.getMainLooper())
+    private val listeners = CopyOnWriteArraySet<RegattaLinkConnectionListener>()
+    private val configuredDeviceStore = RegattaLinkConfiguredDeviceStore(appContext)
+    private val startupReconnectRequested = AtomicBoolean(false)
+
+    @Volatile
+    private var connectionState = RegattaLinkClientState()
+
+    @Volatile
+    private var otaState = RegattaLinkOtaUiState()
+
+    @Volatile
+    private var telemetryState = RegattaLinkTelemetryState()
+
+    @Volatile
+    private var explicitDiscoveryRequested = false
+
+    private val client = RegattaLinkBleClient(
+        context = appContext,
+        onStateChanged = ::handleConnectionState,
+        onOtaStateChanged = ::handleOtaState,
+        onTelemetryStateChanged = ::handleTelemetryState,
+        onUnexpectedDisconnect = {
+            handler.post {
+                if (!otaState.isActive) {
+                    reconnectConfigured()
+                }
+            }
+        }
+    )
+
+    fun addListener(listener: RegattaLinkConnectionListener) {
+        listeners.add(listener)
+        val connectionSnapshot = connectionState
+        val otaSnapshot = otaState
+        val telemetrySnapshot = telemetryState
+        handler.post {
+            if (!listeners.contains(listener)) return@post
+            listener.onConnectionStateChanged(connectionSnapshot)
+            listener.onOtaStateChanged(otaSnapshot)
+            listener.onTelemetryStateChanged(telemetrySnapshot)
+        }
+    }
+
+    fun removeListener(listener: RegattaLinkConnectionListener) {
+        listeners.remove(listener)
+    }
+
+    fun requestForegroundStartupReconnectIfPermitted() {
+        if (!startupReconnectRequested.compareAndSet(false, true)) return
+        ensureConnectedIfPermitted()
+    }
+
+    fun ensureConnectedIfPermitted() {
+        if (!hasRequiredPermissions()) return
+        reconnectConfigured()
+    }
+
+    fun reconnectConfigured() {
+        if (otaState.isActive) return
+        val configured = configuredDeviceStore.load() ?: return
+        explicitDiscoveryRequested = false
+        client.startKnownDeviceReconnect(
+            deviceAddress = configured.deviceAddress,
+            expectedStableId = configured.stableId,
+            timeoutMs = NORMAL_RECONNECT_TIMEOUT_MS
+        )
+    }
+
+    fun startDiscovery() {
+        if (otaState.isActive) return
+        explicitDiscoveryRequested = true
+        client.startDiscovery()
+    }
+
+    fun disconnect() {
+        explicitDiscoveryRequested = false
+        client.disconnect()
+    }
+
+    fun startOta(artifact: RegattaLinkFirmwareArtifact) {
+        explicitDiscoveryRequested = false
+        client.startOta(artifact)
+    }
+
+    fun cancelOta() {
+        client.cancelOta()
+    }
+
+    fun resetOtaState() {
+        client.resetOtaState()
+    }
+
+    internal fun configuredDevice(): RegattaLinkConfiguredDevice? =
+        configuredDeviceStore.load()
+
+    private fun hasRequiredPermissions(): Boolean =
+        RegattaLinkBleClient.requiredPermissions().all { permission ->
+            ContextCompat.checkSelfPermission(
+                appContext,
+                permission
+            ) == PackageManager.PERMISSION_GRANTED
+        }
+
+    private fun handleConnectionState(state: RegattaLinkClientState) {
+        connectionState = state
+
+        val info = state.deviceInfo
+        if (
+            state.status == RegattaLinkConnectionStatus.CONNECTED &&
+            info != null &&
+            explicitDiscoveryRequested
+        ) {
+            configuredDeviceStore.save(
+                RegattaLinkConfiguredDevice(
+                    stableId = info.stableId,
+                    deviceAddress = state.deviceAddress,
+                    deviceName = state.deviceName
+                )
+            )
+            explicitDiscoveryRequested = false
+        } else if (
+            state.status == RegattaLinkConnectionStatus.ERROR &&
+            explicitDiscoveryRequested
+        ) {
+            explicitDiscoveryRequested = false
+        }
+
+        listeners.forEach { it.onConnectionStateChanged(state) }
+    }
+
+    private fun handleOtaState(state: RegattaLinkOtaUiState) {
+        otaState = state
+        listeners.forEach { it.onOtaStateChanged(state) }
+    }
+
+    private fun handleTelemetryState(state: RegattaLinkTelemetryState) {
+        telemetryState = state
+        listeners.forEach { it.onTelemetryStateChanged(state) }
+    }
+}

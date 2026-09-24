@@ -410,6 +410,7 @@
     <string name="session_replay_cog_label">COG</string>
     <string name="session_cog_degrees">%1$d°</string>
     <string name="regattalink_title">RegattaLink</string>
+    <string name="regattalink_short_label">RLink</string>
     <string name="regattalink_status_not_connected">Not connected</string>
     <string name="regattalink_status_scanning">Searching for RegattaLink…</string>
     <string name="regattalink_status_pairing">Pairing RegattaLink…</string>

@@ -1,7 +1,9 @@
 package de.williserv.regattaclient
 
 import android.content.Context
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -132,6 +134,7 @@ fun HomeScreen(
     sogText: String,
     gpsAccuracyText: String,
     gpsColor: Color,
+    regattaLinkConnected: Boolean,
     showClearConfirmDialog: Boolean,
     showAdvanced: Boolean,
     modifier: Modifier = Modifier,
@@ -140,6 +143,8 @@ fun HomeScreen(
     onCourse: () -> Unit,
     onMap: () -> Unit,
     onResults: () -> Unit,
+    onRegattaLinkReconnect: () -> Unit,
+    onRegattaLinkOpen: () -> Unit,
     onLegal: () -> Unit,
     onOcsPanelClick: () -> Unit,
     onToggleManualTracking: () -> Unit,
@@ -298,7 +303,10 @@ fun HomeScreen(
                 okText = stringResource(R.string.ok),
                 noConnectionText = stringResource(R.string.status_no_connection)
             ),
-            uploadColor = uploadColor
+            uploadColor = uploadColor,
+            regattaLinkConnected = regattaLinkConnected,
+            onRegattaLinkReconnect = onRegattaLinkReconnect,
+            onRegattaLinkOpen = onRegattaLinkOpen
         )
 
 
@@ -665,7 +673,10 @@ fun StatusOverviewCard(
     raceStatusText: String,
     raceColor: Color,
     uploadStatusText: String,
-    uploadColor: Color
+    uploadColor: Color,
+    regattaLinkConnected: Boolean,
+    onRegattaLinkReconnect: () -> Unit,
+    onRegattaLinkOpen: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -677,11 +688,25 @@ fun StatusOverviewCard(
         Column(
             modifier = Modifier.padding(18.dp)
         ) {
-            StatusRow(
-                label = stringResource(R.string.gps),
-                value = gpsStatus,
-                color = gpsColor
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CompactStatusIndicator(
+                    label = stringResource(R.string.gps),
+                    value = gpsStatus,
+                    color = gpsColor,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Spacer(modifier = Modifier.weight(1f))
+                RegattaLinkStatusIndicator(
+                    connected = regattaLinkConnected,
+                    onReconnect = onRegattaLinkReconnect,
+                    onOpen = onRegattaLinkOpen,
+                    modifier = Modifier.weight(1f)
+                )
+            }
 
             Spacer(modifier = Modifier.height(HomeGapMedium))
 
@@ -699,6 +724,67 @@ fun StatusOverviewCard(
                 color = uploadColor
             )
         }
+    }
+}
+
+@Composable
+private fun CompactStatusIndicator(
+    label: String,
+    value: String,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(16.dp)
+                .background(color, CircleShape)
+        )
+        AutoSizedSingleLineText(
+            text = if (value.isBlank()) label else "$label  $value",
+            minFontSize = 9.sp,
+            maxFontSize = 16.sp,
+            modifier = Modifier.padding(start = 8.dp)
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun RegattaLinkStatusIndicator(
+    connected: Boolean,
+    onReconnect: () -> Unit,
+    onOpen: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.combinedClickable(
+            onClick = {
+                if (!connected) {
+                    onReconnect()
+                }
+            },
+            onLongClick = onOpen
+        ),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(16.dp)
+                .background(
+                    if (connected) RegattaGreen else RegattaRed,
+                    CircleShape
+                )
+        )
+        AutoSizedSingleLineText(
+            text = stringResource(R.string.regattalink_short_label),
+            minFontSize = 9.sp,
+            maxFontSize = 16.sp,
+            modifier = Modifier.padding(start = 8.dp)
+        )
     }
 }
 
