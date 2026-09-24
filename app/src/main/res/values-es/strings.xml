@@ -461,6 +461,9 @@
     <string name="regattalink_calibration_revision">Revisión de calibración</string>
     <string name="session_replay_fields_title">Datos adicionales de repetición</string>
     <string name="session_replay_fields_hint">Selecciona valores para mostrar al recorrer la repetición. La hora, SOG y COG siguen visibles.</string>
+    <string name="session_replay_fields_recommended">Recomendado</string>
+    <string name="session_replay_fields_show_all">Todos los sensores (%1$d más)</string>
+    <string name="session_replay_fields_hide_all">Ocultar todos los sensores</string>
     <string name="session_replay_field_source_measurements">Mediciones</string>
 
     <string name="regattalink_change_name">Cambiar nombre de RegattaLink</string>
