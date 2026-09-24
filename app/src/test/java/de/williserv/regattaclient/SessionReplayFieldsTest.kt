@@ -66,6 +66,7 @@ class SessionReplayFieldsTest {
 
         assertEquals(3, fields.size)
         assertTrue(fields.all { it.source == ReplayExtraFieldSource.MEASUREMENT })
+        assertTrue(fields.all { it.recommended })
 
         val heel = fields.single {
             it.id == "measurement:regattalink.summary.heel_filtered_deg"
@@ -117,16 +118,21 @@ class SessionReplayFieldsTest {
     }
 
     @Test
-    fun unsupportedMeasurementsNeverBecomeReplayOptions() {
+    fun allSensorsIncludesUnknownUsefulMeasurementButBlacklistsDiagnostics() {
         val sample = sample(
             measurementsJson = """
                 {
+                  "nmea.foil_load": {
+                    "value": 123.4,
+                    "unit": "N",
+                    "group": "nmea"
+                  },
                   "regattalink.calibration.overall_confidence_pct": {
                     "value": 80,
                     "unit": "%",
                     "group": "regattalink"
                   },
-                  "regattalink.summary.motion_intensity": {
+                  "regattalink.fast.sequence": {
                     "value": 42,
                     "group": "regattalink"
                   },
@@ -138,7 +144,15 @@ class SessionReplayFieldsTest {
             """.trimIndent()
         )
 
-        assertTrue(discoverReplayExtraFields(listOf(sample)).isEmpty())
+        val fields = discoverReplayExtraFields(listOf(sample))
+
+        assertEquals(1, fields.size)
+        val custom = fields.single()
+        assertEquals("measurement:nmea.foil_load", custom.id)
+        assertEquals("Foil Load", custom.label)
+        assertEquals("N", custom.unit)
+        assertEquals("nmea", custom.measurementGroup)
+        assertTrue(!custom.recommended)
     }
 
     @Test
