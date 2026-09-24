@@ -193,24 +193,12 @@ internal fun discoverSessionAnalysisCapabilities(
     discovered
         .filterNot { it.key in knownKeys }
         .forEach { measurement ->
-            val normalizedUnit = measurement.unit?.lowercase()
-            val angular = when (normalizedUnit) {
-                "deg", "°" -> AnalysisAngleKind.CIRCULAR
-                "rad" -> AnalysisAngleKind.CIRCULAR
-                else -> null
-            }
             metrics += AnalysisMetric(
                 id = "measurement:${measurement.key}",
                 label = measurement.label,
-                unit = if (normalizedUnit == "rad") "deg" else measurement.unit,
+                unit = measurement.unit,
                 source = AnalysisMetricSource.MEASUREMENT,
-                measurementKey = measurement.key,
-                angleKind = angular,
-                displayScale = if (normalizedUnit == "rad") {
-                    180.0 / PI
-                } else {
-                    1.0
-                }
+                measurementKey = measurement.key
             )
         }
 
