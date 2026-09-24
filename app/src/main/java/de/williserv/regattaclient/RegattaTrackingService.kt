@@ -464,6 +464,9 @@ class RegattaTrackingService : Service() {
             startTrackingService()
             TrackingServiceRuntimeState.markActive()
             onTelemetryTrackingBecameActive(this)
+            (application as? RegattaApplication)
+                ?.regattaLinkConnectionManager
+                ?.ensureConnectedIfPermitted()
             updateNotification()
             return true
         } catch (e: RuntimeException) {
