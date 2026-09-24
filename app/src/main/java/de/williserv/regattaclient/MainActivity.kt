@@ -100,6 +100,9 @@ class MainActivity : ComponentActivity() {
     private var regattaLinkFirmwareArtifact: RegattaLinkFirmwareArtifact? = null
     private val regattaLinkOtaState = mutableStateOf(RegattaLinkOtaUiState())
     private val regattaLinkTelemetryState = mutableStateOf(RegattaLinkTelemetryState())
+    private val regattaLinkConfigurationState =
+        mutableStateOf(RegattaLinkConfigurationState())
+    private val regattaLinkNmeaState = mutableStateOf(RegattaLinkNmeaState())
     private var pendingRegattaLinkPermissionAction: PendingRegattaLinkPermissionAction? = null
     private var regattaLinkReturnScreen: Screen = Screen.BOAT_DATA
 
@@ -125,6 +128,18 @@ class MainActivity : ComponentActivity() {
         override fun onTelemetryStateChanged(state: RegattaLinkTelemetryState) {
             if (asyncLifetime.isActive()) {
                 regattaLinkTelemetryState.value = state
+            }
+        }
+
+        override fun onConfigurationStateChanged(state: RegattaLinkConfigurationState) {
+            if (asyncLifetime.isActive()) {
+                regattaLinkConfigurationState.value = state
+            }
+        }
+
+        override fun onNmeaStateChanged(state: RegattaLinkNmeaState) {
+            if (asyncLifetime.isActive()) {
+                regattaLinkNmeaState.value = state
             }
         }
     }
@@ -700,6 +715,8 @@ class MainActivity : ComponentActivity() {
                             firmwareState = regattaLinkFirmwareState.value,
                             otaState = regattaLinkOtaState.value,
                             telemetryState = regattaLinkTelemetryState.value,
+                            configurationState = regattaLinkConfigurationState.value,
+                            nmeaState = regattaLinkNmeaState.value,
                             firmwareSourceAvailable = raceServer.value.isNotBlank(),
                             installAvailable =
                                 regattaLinkFirmwareArtifact != null &&
@@ -711,6 +728,18 @@ class MainActivity : ComponentActivity() {
                             onInstallFirmware = ::installRegattaLinkFirmware,
                             onCancelOta = {
                                 regattaLinkManager.cancelOta()
+                            },
+                            onChangeName = { name ->
+                                regattaLinkManager.setDeviceName(name)
+                            },
+                            onSetLedBrightness = { percent ->
+                                regattaLinkManager.setLedBrightness(percent)
+                            },
+                            onRefreshPgnInventory = {
+                                regattaLinkManager.refreshPgnInventory()
+                            },
+                            onReadRawFrames = {
+                                regattaLinkManager.readRawCanFrames()
                             },
                             onDisconnect = {
                                 regattaLinkManager.disconnect()
