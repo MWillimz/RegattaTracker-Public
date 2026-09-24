@@ -210,13 +210,6 @@ fun RegattaLinkScreen(
                     }
                 }
 
-                state.deviceInfo?.let { info ->
-                    telemetryValue(
-                        label = stringResource(R.string.regattalink_firmware_build),
-                        value = info.runningBuild.toString()
-                    )
-                }
-
                 if (state.error.isNotBlank()) {
                     Text(
                         text = state.error,
@@ -225,89 +218,40 @@ fun RegattaLinkScreen(
                     )
                 }
 
-                DetailsToggle(
-                    expanded = technicalDetailsExpanded,
-                    onToggle = {
-                        technicalDetailsExpanded = !technicalDetailsExpanded
-                    }
-                )
+                if (telemetryState.supported) {
+                    val fastIsStale = rememberTelemetryStale(
+                        telemetryState.fastReceivedAtElapsedMs,
+                        REGATTALINK_FAST_STALE_MS
+                    )
+                    val summaryIsStale = rememberTelemetryStale(
+                        telemetryState.summaryReceivedAtElapsedMs,
+                        REGATTALINK_SLOW_STALE_MS
+                    )
+                    val calibrationIsStale = rememberTelemetryStale(
+                        telemetryState.calibrationReceivedAtElapsedMs,
+                        REGATTALINK_SLOW_STALE_MS
+                    )
+                    val fastStale = telemetryState.fast != null && fastIsStale
+                    val summaryStale = telemetryState.summary != null && summaryIsStale
+                    val calibrationStale =
+                        telemetryState.calibration != null && calibrationIsStale
 
-                if (technicalDetailsExpanded) {
-                    if (state.deviceAddress.isNotBlank()) {
-                        telemetryValue(
-                            label = stringResource(R.string.regattalink_address),
-                            value = state.deviceAddress
-                        )
-                    }
-                    state.deviceInfo?.let { info ->
-                        telemetryValue(
-                            label = stringResource(R.string.regattalink_stable_id),
-                            value = info.stableId
-                        )
-                        telemetryValue(
-                            label = stringResource(R.string.regattalink_protocol),
-                            value = "${info.protocolMajor}.${info.protocolMinor}"
-                        )
-                        telemetryValue(
-                            label = stringResource(R.string.regattalink_product_profile),
-                            value = "${info.productId} / ${info.profileId}"
-                        )
-                        telemetryValue(
-                            label = stringResource(R.string.regattalink_ota_capability),
-                            value = if (info.otaAvailable) {
-                                stringResource(R.string.regattalink_available)
-                            } else {
-                                stringResource(R.string.regattalink_unavailable)
-                            }
-                        )
-                    }
-                }
-            }
-        }
-
-        if (telemetryState.supported) {
-            val fastIsStale = rememberTelemetryStale(
-                telemetryState.fastReceivedAtElapsedMs,
-                REGATTALINK_FAST_STALE_MS
-            )
-            val summaryIsStale = rememberTelemetryStale(
-                telemetryState.summaryReceivedAtElapsedMs,
-                REGATTALINK_SLOW_STALE_MS
-            )
-            val calibrationIsStale = rememberTelemetryStale(
-                telemetryState.calibrationReceivedAtElapsedMs,
-                REGATTALINK_SLOW_STALE_MS
-            )
-            val fastStale = telemetryState.fast != null && fastIsStale
-            val summaryStale = telemetryState.summary != null && summaryIsStale
-            val calibrationStale =
-                telemetryState.calibration != null && calibrationIsStale
-
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 18.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Column(modifier = Modifier.padding(18.dp)) {
                     Text(
                         text = stringResource(R.string.regattalink_motion_title),
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 12.dp)
                     )
 
                     if (telemetryState.pausedForOta) {
                         Text(
                             text = stringResource(R.string.regattalink_telemetry_paused_ota),
-                            modifier = Modifier.padding(top = 8.dp),
+                            modifier = Modifier.padding(top = 6.dp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     } else if (summaryStale || fastStale) {
                         Text(
                             text = stringResource(R.string.regattalink_telemetry_stale),
-                            modifier = Modifier.padding(top = 8.dp),
+                            modifier = Modifier.padding(top = 6.dp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -356,7 +300,7 @@ fun RegattaLinkScreen(
                                         R.string.regattalink_live_motion
                                     ),
                                     fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.padding(top = 12.dp)
+                                    modifier = Modifier.padding(top = 10.dp)
                                 )
                                 telemetryValue(
                                     label = stringResource(R.string.regattalink_roll),
@@ -405,40 +349,18 @@ fun RegattaLinkScreen(
                                 )
                             }
                         }
-                    } ?: Text(
-                        text = stringResource(R.string.regattalink_telemetry_waiting),
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
-
-                    if (telemetryState.error.isNotBlank()) {
-                        Text(
-                            text = telemetryState.error,
-                            modifier = Modifier.padding(top = 8.dp),
-                            color = MaterialTheme.colorScheme.error
-                        )
                     }
-                }
-            }
 
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 18.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Column(modifier = Modifier.padding(18.dp)) {
                     Text(
                         text = stringResource(R.string.regattalink_calibration_title),
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 12.dp)
                     )
 
                     if (calibrationStale && !telemetryState.pausedForOta) {
                         Text(
                             text = stringResource(R.string.regattalink_telemetry_stale),
-                            modifier = Modifier.padding(top = 8.dp),
+                            modifier = Modifier.padding(top = 6.dp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -529,84 +451,317 @@ fun RegattaLinkScreen(
                                 value = calibration.calibrationRevision.toString()
                             )
                         }
-                    } ?: Text(
-                        text = stringResource(R.string.regattalink_telemetry_waiting),
+                    }
+
+                    if (telemetryState.error.isNotBlank()) {
+                        Text(
+                            text = telemetryState.error,
+                            modifier = Modifier.padding(top = 8.dp),
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+
+                if (
+                    connected &&
+                    configurationState.ledBrightnessSupported &&
+                    configurationState.ledBrightnessPct != null
+                ) {
+                    val shownBrightness = brightnessDraft
+                        .roundToInt()
+                        .coerceIn(0, 100)
+                    telemetryValue(
+                        label = stringResource(
+                            R.string.regattalink_led_brightness
+                        ),
+                        value = "$shownBrightness %"
+                    )
+                    Slider(
+                        value = brightnessDraft.coerceIn(0f, 100f),
+                        onValueChange = { brightnessDraft = it },
+                        onValueChangeFinished = {
+                            val value = brightnessDraft
+                                .roundToInt()
+                                .coerceIn(0, 100)
+                            if (value != configurationState.ledBrightnessPct) {
+                                onSetLedBrightness(value)
+                            }
+                        },
+                        valueRange = 0f..100f,
+                        enabled = configEnabled
+                    )
+                }
+
+                if (configurationState.busy) {
+                    Text(
+                        text = stringResource(R.string.regattalink_saving),
+                        modifier = Modifier.padding(top = 6.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (configurationState.error.isNotBlank()) {
+                    Text(
+                        text = configurationState.error,
+                        color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(top = 8.dp)
                     )
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    DetailsToggle(
+                        expanded = technicalDetailsExpanded,
+                        onToggle = {
+                            technicalDetailsExpanded = !technicalDetailsExpanded
+                        }
+                    )
+                    state.deviceInfo?.let { info ->
+                        Text(
+                            text = "${stringResource(R.string.regattalink_firmware_build)} ${info.runningBuild}",
+                            modifier = Modifier.padding(top = 14.dp)
+                        )
+                    }
+                }
+
+                if (technicalDetailsExpanded) {
+                    if (state.deviceAddress.isNotBlank()) {
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_address),
+                            value = state.deviceAddress
+                        )
+                    }
+                    state.deviceInfo?.let { info ->
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_stable_id),
+                            value = info.stableId
+                        )
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_protocol),
+                            value = "${info.protocolMajor}.${info.protocolMinor}"
+                        )
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_product_profile),
+                            value = "${info.productId} / ${info.profileId}"
+                        )
+                        telemetryValue(
+                            label = stringResource(R.string.regattalink_ota_capability),
+                            value = if (info.otaAvailable) {
+                                stringResource(R.string.regattalink_available)
+                            } else {
+                                stringResource(R.string.regattalink_unavailable)
+                            }
+                        )
+                    }
+                }
+
+                Text(
+                    text = stringResource(R.string.regattalink_firmware_title),
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 12.dp)
+                )
+
+                if (!firmwareSourceAvailable) {
+                    Text(
+                        text = stringResource(R.string.regattalink_firmware_server_required),
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                } else {
+                    when (firmwareState.status) {
+                        RegattaLinkFirmwareStatus.IDLE -> {
+                            Text(
+                                text = stringResource(R.string.regattalink_firmware_not_checked),
+                                modifier = Modifier.padding(top = 6.dp)
+                            )
+                        }
+
+                        RegattaLinkFirmwareStatus.LOADING -> {
+                            Text(
+                                text = stringResource(R.string.regattalink_firmware_checking),
+                                modifier = Modifier.padding(top = 6.dp)
+                            )
+                        }
+
+                        RegattaLinkFirmwareStatus.READY -> {
+                            Text(
+                                text = stringResource(
+                                    R.string.regattalink_available_build_value,
+                                    firmwareState.availableBuild
+                                ),
+                                modifier = Modifier.padding(top = 6.dp)
+                            )
+                            Text(
+                                text = when (firmwareState.direction) {
+                                    RegattaLinkFirmwareDirection.UPGRADE ->
+                                        stringResource(R.string.regattalink_direction_upgrade)
+                                    RegattaLinkFirmwareDirection.DOWNGRADE ->
+                                        stringResource(R.string.regattalink_direction_downgrade)
+                                    RegattaLinkFirmwareDirection.REINSTALL ->
+                                        stringResource(R.string.regattalink_direction_reinstall)
+                                    null -> stringResource(R.string.regattalink_firmware_not_checked)
+                                },
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                            Text(
+                                text = if (firmwareState.signed) {
+                                    stringResource(R.string.regattalink_firmware_signed)
+                                } else {
+                                    stringResource(R.string.regattalink_firmware_unsigned)
+                                },
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+
+                        RegattaLinkFirmwareStatus.ERROR -> {
+                            Text(
+                                text = firmwareState.error.ifBlank {
+                                    stringResource(R.string.regattalink_firmware_check_failed)
+                                },
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(top = 6.dp)
+                            )
+                        }
+                    }
+                }
+
+                Button(
+                    onClick = onCheckFirmware,
+                    enabled = firmwareSourceAvailable &&
+                        connected &&
+                        firmwareState.status != RegattaLinkFirmwareStatus.LOADING,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp)
+                ) {
+                    Text(stringResource(R.string.regattalink_check_firmware))
+                }
+
+                if (installAvailable || otaState.phase != RegattaLinkOtaPhase.IDLE) {
+                    Text(
+                        text = stringResource(R.string.regattalink_ota_title),
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
+
+                    if (otaState.phase != RegattaLinkOtaPhase.IDLE) {
+                        Text(
+                            text = regattaLinkOtaPhaseText(otaState.phase),
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+
+                        if (
+                            otaState.installedBuild.isNotBlank() &&
+                            otaState.targetBuild.isNotBlank()
+                        ) {
+                            Text(
+                                text = stringResource(
+                                    R.string.regattalink_ota_builds_value,
+                                    otaState.installedBuild,
+                                    otaState.targetBuild
+                                ),
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+
+                        if (
+                            otaState.phase == RegattaLinkOtaPhase.TRANSFERRING ||
+                            otaState.committedBytes > 0
+                        ) {
+                            LinearProgressIndicator(
+                                progress = { otaState.progress },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 10.dp)
+                            )
+                            Text(
+                                text = stringResource(
+                                    R.string.regattalink_ota_progress_value,
+                                    otaState.committedBytes,
+                                    otaState.totalBytes,
+                                    (otaState.progress * 100f).toInt()
+                                ),
+                                modifier = Modifier.padding(top = 6.dp)
+                            )
+                        }
+
+                        otaState.throughputKibPerSec?.let { throughput ->
+                            Text(
+                                text = stringResource(
+                                    R.string.regattalink_ota_throughput_value,
+                                    throughput
+                                ),
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+
+                        if (otaState.transport.isNotBlank()) {
+                            Text(
+                                text = stringResource(
+                                    R.string.regattalink_ota_transport_value,
+                                    otaState.transport
+                                ),
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+
+                        if (otaState.detail.isNotBlank()) {
+                            Text(
+                                text = otaState.detail,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+
+                        if (otaState.error.isNotBlank()) {
+                            Text(
+                                text = otaState.error,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                        }
+                    }
+
+                    if (
+                        installAvailable &&
+                        !otaState.isActive &&
+                        otaState.phase !in setOf(
+                            RegattaLinkOtaPhase.SUCCESS,
+                            RegattaLinkOtaPhase.CANCELLED
+                        )
+                    ) {
+                        Button(
+                            onClick = onInstallFirmware,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 10.dp)
+                        ) {
+                            Text(stringResource(R.string.regattalink_install_firmware))
+                        }
+                    }
+
+                    if (
+                        otaState.phase in setOf(
+                            RegattaLinkOtaPhase.PREPARING,
+                            RegattaLinkOtaPhase.STARTING,
+                            RegattaLinkOtaPhase.TRANSFERRING
+                        )
+                    ) {
+                        Button(
+                            onClick = onCancelOta,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 10.dp)
+                        ) {
+                            Text(stringResource(R.string.regattalink_cancel_update))
+                        }
+                    }
                 }
             }
         }
 
         if (connected) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 18.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Column(modifier = Modifier.padding(18.dp)) {
-                    Text(
-                        text = stringResource(R.string.regattalink_settings_title),
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-
-                    if (
-                        configurationState.ledBrightnessSupported &&
-                        configurationState.ledBrightnessPct != null
-                    ) {
-                        val shownBrightness = brightnessDraft
-                            .roundToInt()
-                            .coerceIn(0, 100)
-                        telemetryValue(
-                            label = stringResource(
-                                R.string.regattalink_led_brightness
-                            ),
-                            value = "$shownBrightness %"
-                        )
-                        Slider(
-                            value = brightnessDraft.coerceIn(0f, 100f),
-                            onValueChange = { brightnessDraft = it },
-                            onValueChangeFinished = {
-                                val value = brightnessDraft
-                                    .roundToInt()
-                                    .coerceIn(0, 100)
-                                if (value != configurationState.ledBrightnessPct) {
-                                    onSetLedBrightness(value)
-                                }
-                            },
-                            valueRange = 0f..100f,
-                            enabled = configEnabled
-                        )
-                    } else if (!configurationState.ledBrightnessSupported) {
-                        Text(
-                            text = stringResource(
-                                R.string.regattalink_led_brightness_unavailable
-                            ),
-                            modifier = Modifier.padding(top = 8.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    if (configurationState.busy) {
-                        Text(
-                            text = stringResource(R.string.regattalink_saving),
-                            modifier = Modifier.padding(top = 6.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    if (configurationState.error.isNotBlank()) {
-                        Text(
-                            text = configurationState.error,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
-                    }
-                }
-            }
-
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -781,229 +936,6 @@ fun RegattaLinkScreen(
                                 color = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.padding(top = 8.dp)
                             )
-                        }
-                    }
-                }
-            }
-        }
-
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 18.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            )
-        ) {
-            Column(modifier = Modifier.padding(18.dp)) {
-                Text(
-                    text = stringResource(R.string.regattalink_firmware_title),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-
-                if (!firmwareSourceAvailable) {
-                    Text(
-                        text = stringResource(R.string.regattalink_firmware_server_required),
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
-                } else {
-                    when (firmwareState.status) {
-                        RegattaLinkFirmwareStatus.IDLE -> {
-                            Text(
-                                text = stringResource(R.string.regattalink_firmware_not_checked),
-                                modifier = Modifier.padding(top = 8.dp)
-                            )
-                        }
-
-                        RegattaLinkFirmwareStatus.LOADING -> {
-                            Text(
-                                text = stringResource(R.string.regattalink_firmware_checking),
-                                modifier = Modifier.padding(top = 8.dp)
-                            )
-                        }
-
-                        RegattaLinkFirmwareStatus.READY -> {
-                            Text(
-                                text = stringResource(
-                                    R.string.regattalink_available_build_value,
-                                    firmwareState.availableBuild
-                                ),
-                                modifier = Modifier.padding(top = 8.dp)
-                            )
-                            Text(
-                                text = when (firmwareState.direction) {
-                                    RegattaLinkFirmwareDirection.UPGRADE ->
-                                        stringResource(R.string.regattalink_direction_upgrade)
-                                    RegattaLinkFirmwareDirection.DOWNGRADE ->
-                                        stringResource(R.string.regattalink_direction_downgrade)
-                                    RegattaLinkFirmwareDirection.REINSTALL ->
-                                        stringResource(R.string.regattalink_direction_reinstall)
-                                    null -> stringResource(R.string.regattalink_firmware_not_checked)
-                                },
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
-                            Text(
-                                text = if (firmwareState.signed) {
-                                    stringResource(R.string.regattalink_firmware_signed)
-                                } else {
-                                    stringResource(R.string.regattalink_firmware_unsigned)
-                                },
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
-                        }
-
-                        RegattaLinkFirmwareStatus.ERROR -> {
-                            Text(
-                                text = firmwareState.error.ifBlank {
-                                    stringResource(R.string.regattalink_firmware_check_failed)
-                                },
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.padding(top = 8.dp)
-                            )
-                        }
-                    }
-                }
-
-                Button(
-                    onClick = onCheckFirmware,
-                    enabled = firmwareSourceAvailable &&
-                        state.status == RegattaLinkConnectionStatus.CONNECTED &&
-                        firmwareState.status != RegattaLinkFirmwareStatus.LOADING,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp)
-                ) {
-                    Text(stringResource(R.string.regattalink_check_firmware))
-                }
-            }
-        }
-
-        if (installAvailable || otaState.phase != RegattaLinkOtaPhase.IDLE) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 18.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Column(modifier = Modifier.padding(18.dp)) {
-                    Text(
-                        text = stringResource(R.string.regattalink_ota_title),
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-
-                    if (otaState.phase != RegattaLinkOtaPhase.IDLE) {
-                        Text(
-                            text = regattaLinkOtaPhaseText(otaState.phase),
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
-
-                        if (
-                            otaState.installedBuild.isNotBlank() &&
-                            otaState.targetBuild.isNotBlank()
-                        ) {
-                            Text(
-                                text = stringResource(
-                                    R.string.regattalink_ota_builds_value,
-                                    otaState.installedBuild,
-                                    otaState.targetBuild
-                                ),
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
-                        }
-
-                        if (
-                            otaState.phase == RegattaLinkOtaPhase.TRANSFERRING ||
-                            otaState.committedBytes > 0
-                        ) {
-                            LinearProgressIndicator(
-                                progress = { otaState.progress },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 10.dp)
-                            )
-                            Text(
-                                text = stringResource(
-                                    R.string.regattalink_ota_progress_value,
-                                    otaState.committedBytes,
-                                    otaState.totalBytes,
-                                    (otaState.progress * 100f).toInt()
-                                ),
-                                modifier = Modifier.padding(top = 6.dp)
-                            )
-                        }
-
-                        otaState.throughputKibPerSec?.let { throughput ->
-                            Text(
-                                text = stringResource(
-                                    R.string.regattalink_ota_throughput_value,
-                                    throughput
-                                ),
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
-                        }
-
-                        if (otaState.transport.isNotBlank()) {
-                            Text(
-                                text = stringResource(
-                                    R.string.regattalink_ota_transport_value,
-                                    otaState.transport
-                                ),
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
-                        }
-
-                        if (otaState.detail.isNotBlank()) {
-                            Text(
-                                text = otaState.detail,
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
-                        }
-
-                        if (otaState.error.isNotBlank()) {
-                            Text(
-                                text = otaState.error,
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.padding(top = 8.dp)
-                            )
-                        }
-                    }
-
-                    if (
-                        installAvailable &&
-                        !otaState.isActive &&
-                        otaState.phase !in setOf(
-                            RegattaLinkOtaPhase.SUCCESS,
-                            RegattaLinkOtaPhase.CANCELLED
-                        )
-                    ) {
-                        Button(
-                            onClick = onInstallFirmware,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 12.dp)
-                        ) {
-                            Text(stringResource(R.string.regattalink_install_firmware))
-                        }
-                    }
-
-                    if (
-                        otaState.phase in setOf(
-                            RegattaLinkOtaPhase.PREPARING,
-                            RegattaLinkOtaPhase.STARTING,
-                            RegattaLinkOtaPhase.TRANSFERRING
-                        )
-                    ) {
-                        Button(
-                            onClick = onCancelOta,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 12.dp)
-                        ) {
-                            Text(stringResource(R.string.regattalink_cancel_update))
                         }
                     }
                 }
