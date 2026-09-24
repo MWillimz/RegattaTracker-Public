@@ -1582,6 +1582,9 @@ internal class RegattaLinkBleClient(
                 updateNmea {
                     it.copy(
                         boatStateSupported = true,
+                        boatStateSubscribed = true,
+                        boatStateLiveNotifications =
+                            mtu >= REGATTALINK_BOAT_STATE_NOTIFICATION_MTU,
                         boatState = boatState,
                         error = ""
                     )
