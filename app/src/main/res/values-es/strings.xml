@@ -532,4 +532,18 @@
     <string name="regattalink_nmea_altitude">Altitud</string>
     <string name="regattalink_nmea_wind_speed">Velocidad del viento</string>
     <string name="regattalink_nmea_wind_angle">Ángulo del viento</string>
+
+    <string name="regattalink_raw_capture_title">Captura CAN sin procesar</string>
+    <string name="regattalink_raw_capture_best_effort">Mejor esfuerzo: los frames ya presentes en la FIFO se descartan antes de grabar; pueden perderse frames si se llena la FIFO de diagnóstico de 128 frames.</string>
+    <string name="regattalink_raw_capture_flushing">Preparando la captura…</string>
+    <string name="regattalink_raw_capture_active">Capturando frames CAN sin procesar…</string>
+    <string name="regattalink_raw_capture_completed">Captura completada.</string>
+    <string name="regattalink_raw_capture_interrupted">Captura interrumpida; se conservaron las filas ya escritas.</string>
+    <string name="regattalink_raw_capture_failed">La captura falló; se conservaron las filas ya escritas.</string>
+    <string name="regattalink_raw_capture_frames">%1$d frames capturados</string>
+    <string name="regattalink_raw_capture_remaining">Quedan %1$d s</string>
+    <string name="regattalink_raw_capture_start">Iniciar captura de 30 s</string>
+    <string name="regattalink_raw_capture_stop">Detener captura</string>
+    <string name="regattalink_raw_capture_export">Exportar CSV</string>
+    <string name="regattalink_raw_capture_discard">Descartar</string>
 </resources>
