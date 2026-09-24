@@ -1752,15 +1752,20 @@ internal class RegattaLinkBleClient(
                     )
                 }
             } catch (error: Exception) {
-                val reread = runCatching {
-                    val characteristic = activeGatt
-                        .getService(CONFIG_SERVICE_UUID)
-                        ?.getCharacteristic(LED_BRIGHTNESS_UUID)
-                        ?: return@runCatching null
-                    parseRegattaLinkLedBrightness(
-                        readCharacteristicBlocking(activeGatt, characteristic)
-                    )
-                }.getOrNull()
+                val reread =
+                    if (optionalFeatureWorkAllowed(activeGatt)) {
+                        runCatching {
+                            val characteristic = activeGatt
+                                .getService(CONFIG_SERVICE_UUID)
+                                ?.getCharacteristic(LED_BRIGHTNESS_UUID)
+                                ?: return@runCatching null
+                            parseRegattaLinkLedBrightness(
+                                readCharacteristicBlocking(activeGatt, characteristic)
+                            )
+                        }.getOrNull()
+                    } else {
+                        null
+                    }
                 updateConfiguration {
                     it.copy(
                         ledBrightnessPct = reread ?: it.ledBrightnessPct,
