@@ -43,11 +43,15 @@ class RegattaLinkConnectionManagerTest {
                     onStateChanged,
                     onOtaStateChanged,
                     onTelemetryStateChanged,
+                    onConfigurationStateChanged,
+                    onNmeaStateChanged,
                     onUnexpectedDisconnect ->
                 FakeConnectionClient(
                     onStateChanged = onStateChanged,
                     onOtaStateChanged = onOtaStateChanged,
                     onTelemetryStateChanged = onTelemetryStateChanged,
+                    onConfigurationStateChanged = onConfigurationStateChanged,
+                    onNmeaStateChanged = onNmeaStateChanged,
                     onUnexpectedDisconnect = onUnexpectedDisconnect
                 ).also { fakeClient = it }
             }
@@ -153,6 +157,67 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun configurationNameRefreshUpdatesPersistedAndDisplayedName() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceName = configured.deviceName,
+                deviceAddress = configured.deviceAddress,
+                deviceInfo = RegattaLinkDeviceInfo(
+                    protocolMajor = 1,
+                    protocolMinor = 0,
+                    capabilities = 0u,
+                    stableId = configured.stableId,
+                    productId = 1,
+                    profileId = 1,
+                    runningBuild = 1u,
+                    otaSlotSize = 1u,
+                    maxInflightBlocks = 1
+                )
+            )
+        )
+
+        var displayedName = ""
+        manager.addListener(
+            object : RegattaLinkConnectionListener {
+                override fun onConnectionStateChanged(state: RegattaLinkClientState) {
+                    displayedName = state.deviceName
+                }
+            }
+        )
+        shadowOf(Looper.getMainLooper()).idle()
+
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceNameSupported = true,
+                deviceName = "Race-Link"
+            )
+        )
+
+        assertEquals("Race-Link", manager.configuredDevice()?.deviceName)
+        assertEquals("Race-Link", displayedName)
+    }
+
+    @Test
+    fun activeOtaSuppressesConfigurationAndDiagnosticActions() {
+        fakeClient.emitOta(
+            RegattaLinkOtaUiState(
+                phase = RegattaLinkOtaPhase.TRANSFERRING
+            )
+        )
+
+        assertFalse(manager.setDeviceName("Race-Link"))
+        assertFalse(manager.setLedBrightness(75))
+        assertFalse(manager.refreshPgnInventory())
+        assertFalse(manager.readRawCanFrames())
+
+        assertEquals(0, fakeClient.setNameCalls)
+        assertEquals(0, fakeClient.setBrightnessCalls)
+        assertEquals(0, fakeClient.refreshPgnCalls)
+        assertEquals(0, fakeClient.rawReadCalls)
+    }
+
+    @Test
     fun newlyAttachedListenerReceivesCurrentManagerState() {
         fakeClient.emitConnection(
             RegattaLinkClientState(
@@ -189,6 +254,9 @@ class RegattaLinkConnectionManagerTest {
         private val onOtaStateChanged: (RegattaLinkOtaUiState) -> Unit,
         @Suppress("UNUSED_PARAMETER")
         private val onTelemetryStateChanged: (RegattaLinkTelemetryState) -> Unit,
+        private val onConfigurationStateChanged: (RegattaLinkConfigurationState) -> Unit,
+        @Suppress("UNUSED_PARAMETER")
+        private val onNmeaStateChanged: (RegattaLinkNmeaState) -> Unit,
         private val onUnexpectedDisconnect: () -> Unit
     ) : RegattaLinkConnectionClient {
         var discoveryAccepted = true
@@ -196,6 +264,10 @@ class RegattaLinkConnectionManagerTest {
         var discoveryCalls = 0
         var reconnectCalls = 0
         var disconnectCalls = 0
+        var setNameCalls = 0
+        var setBrightnessCalls = 0
+        var refreshPgnCalls = 0
+        var rawReadCalls = 0
         var lastReconnectAddress: String? = null
         var lastReconnectStableId: String? = null
 
@@ -225,12 +297,36 @@ class RegattaLinkConnectionManagerTest {
 
         override fun resetOtaState() = Unit
 
+        override fun setDeviceName(name: String): Boolean {
+            setNameCalls += 1
+            return true
+        }
+
+        override fun setLedBrightness(percent: Int): Boolean {
+            setBrightnessCalls += 1
+            return true
+        }
+
+        override fun refreshPgnInventory(): Boolean {
+            refreshPgnCalls += 1
+            return true
+        }
+
+        override fun readRawCanFrames(): Boolean {
+            rawReadCalls += 1
+            return true
+        }
+
         fun emitConnection(state: RegattaLinkClientState) {
             onStateChanged(state)
         }
 
         fun emitOta(state: RegattaLinkOtaUiState) {
             onOtaStateChanged(state)
+        }
+
+        fun emitConfiguration(state: RegattaLinkConfigurationState) {
+            onConfigurationStateChanged(state)
         }
 
         fun emitUnexpectedDisconnect() {
