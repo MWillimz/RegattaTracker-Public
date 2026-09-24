@@ -59,13 +59,73 @@ class RegattaLinkOtaEngineTest {
             onTerminalDisconnect = { terminalDisconnectCleanupCount += 1 }
         ).run()
 
-        assertEquals(1, transport.reconnectCandidateCount)
-        assertEquals(listOf("reconnect-1"), transport.lifecycleEvents)
+        assertEquals(3, transport.reconnectCandidateCount)
+        assertEquals(
+            listOf("reconnect-1", "reconnect-2", "reconnect-3"),
+            transport.lifecycleEvents
+        )
         assertEquals(0, transport.writeControlCalls)
         assertEquals(RegattaLinkOtaPhase.ERROR, states.last().phase)
         assertTrue(states.last().error.contains("fresh BLE connection"))
         assertEquals(1, transport.closeCurrentConnectionCount)
         assertEquals(1, terminalDisconnectCleanupCount)
+    }
+
+    @Test
+    fun transientFreshReconnectFailureRetriesBeforeOtaStart() {
+        val image = ByteArray(32) { it.toByte() }
+        val artifact = artifact(image, build = 22880000uL)
+        val deviceInfo = deviceInfo(runningBuild = 22865706uL)
+        val transport = StalePreparingTransport(
+            initialDeviceInfo = deviceInfo,
+            artifact = artifact,
+            preTransferReconnectFailures = 1
+        )
+        val states = mutableListOf<RegattaLinkOtaUiState>()
+
+        RegattaLinkOtaEngine(
+            artifact = artifact,
+            initialDeviceInfo = deviceInfo,
+            transport = transport,
+            cancelled = { false },
+            emit = states::add
+        ).run()
+
+        assertEquals(RegattaLinkOtaPhase.SUCCESS, states.last().phase)
+        assertEquals(3, transport.reconnectCandidateCount)
+        assertEquals(
+            listOf("reconnect-1", "reconnect-2", "tune", "reconnect-3", "tune"),
+            transport.lifecycleEvents
+        )
+    }
+
+    @Test
+    fun cancellationDuringFreshReconnectStopsBeforeTuningOrStart() {
+        val image = ByteArray(32) { it.toByte() }
+        val artifact = artifact(image, build = 22880000uL)
+        val deviceInfo = deviceInfo(runningBuild = 22865706uL)
+        var cancelled = false
+        val transport = StalePreparingTransport(
+            initialDeviceInfo = deviceInfo,
+            artifact = artifact,
+            onReconnectAttempt = { attempt ->
+                if (attempt == 1) cancelled = true
+            }
+        )
+        val states = mutableListOf<RegattaLinkOtaUiState>()
+
+        RegattaLinkOtaEngine(
+            artifact = artifact,
+            initialDeviceInfo = deviceInfo,
+            transport = transport,
+            cancelled = { cancelled },
+            emit = states::add
+        ).run()
+
+        assertEquals(RegattaLinkOtaPhase.CANCELLED, states.last().phase)
+        assertEquals(1, transport.reconnectCandidateCount)
+        assertEquals(listOf("reconnect-1"), transport.lifecycleEvents)
+        assertEquals(0, transport.writeControlCalls)
     }
 
     @Test
@@ -143,7 +203,9 @@ class RegattaLinkOtaEngineTest {
         private val initialDeviceInfo: RegattaLinkDeviceInfo,
         private val artifact: RegattaLinkFirmwareArtifact,
         private val queuedPreparingRevision: UInt = 1u,
-        private val failPreTransferReconnect: Boolean = false
+        private val failPreTransferReconnect: Boolean = false,
+        private val preTransferReconnectFailures: Int = 0,
+        private val onReconnectAttempt: (Int) -> Unit = {}
     ) : RegattaLinkOtaTransport {
         override val mtu: Int = 247
 
@@ -298,10 +360,16 @@ class RegattaLinkOtaEngineTest {
         ): RegattaLinkDeviceInfo? {
             reconnectCandidateCount += 1
             lifecycleEvents += "reconnect-$reconnectCandidateCount"
+            onReconnectAttempt(reconnectCandidateCount)
             connected = true
 
-            if (reconnectCandidateCount == 1) {
-                if (failPreTransferReconnect) {
+            val preTransferAttemptCount =
+                if (failPreTransferReconnect) 3 else preTransferReconnectFailures + 1
+            if (reconnectCandidateCount <= preTransferAttemptCount) {
+                val shouldFail =
+                    failPreTransferReconnect ||
+                        reconnectCandidateCount <= preTransferReconnectFailures
+                if (shouldFail) {
                     connected = false
                     return null
                 }
