@@ -1010,8 +1010,8 @@ fun RegattaLinkScreen(
                             }
 
                             if (
-                                rawCaptureState.isActive ||
-                                rawCaptureState.frameCount > 0
+                                rawCaptureState.phase !=
+                                RegattaLinkRawCapturePhase.IDLE
                             ) {
                                 Text(
                                     text = stringResource(
