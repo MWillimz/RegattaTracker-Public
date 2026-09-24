@@ -55,7 +55,48 @@ internal interface RegattaLinkConnectionListener {
     fun onTelemetryStateChanged(state: RegattaLinkTelemetryState) {}
 }
 
-internal class RegattaLinkConnectionManager(context: Context) {
+internal interface RegattaLinkConnectionClient {
+    fun startKnownDeviceReconnect(
+        deviceAddress: String,
+        expectedStableId: String,
+        timeoutMs: Long
+    ): Boolean
+
+    fun startDiscovery(): Boolean
+    fun disconnect()
+    fun startOta(artifact: RegattaLinkFirmwareArtifact)
+    fun cancelOta()
+    fun resetOtaState()
+}
+
+internal fun interface RegattaLinkConnectionClientFactory {
+    fun create(
+        context: Context,
+        onStateChanged: (RegattaLinkClientState) -> Unit,
+        onOtaStateChanged: (RegattaLinkOtaUiState) -> Unit,
+        onTelemetryStateChanged: (RegattaLinkTelemetryState) -> Unit,
+        onUnexpectedDisconnect: () -> Unit
+    ): RegattaLinkConnectionClient
+}
+
+internal class RegattaLinkConnectionManager(
+    context: Context,
+    clientFactory: RegattaLinkConnectionClientFactory =
+        RegattaLinkConnectionClientFactory {
+                clientContext,
+                onStateChanged,
+                onOtaStateChanged,
+                onTelemetryStateChanged,
+                onUnexpectedDisconnect ->
+            RegattaLinkBleClient(
+                context = clientContext,
+                onStateChanged = onStateChanged,
+                onOtaStateChanged = onOtaStateChanged,
+                onTelemetryStateChanged = onTelemetryStateChanged,
+                onUnexpectedDisconnect = onUnexpectedDisconnect
+            )
+        }
+) {
     companion object {
         private const val NORMAL_RECONNECT_TIMEOUT_MS = 60_000L
     }
@@ -78,7 +119,7 @@ internal class RegattaLinkConnectionManager(context: Context) {
     @Volatile
     private var explicitDiscoveryRequested = false
 
-    private val client = RegattaLinkBleClient(
+    private val client = clientFactory.create(
         context = appContext,
         onStateChanged = ::handleConnectionState,
         onOtaStateChanged = ::handleOtaState,
@@ -116,21 +157,23 @@ internal class RegattaLinkConnectionManager(context: Context) {
         reconnectConfigured()
     }
 
-    fun reconnectConfigured() {
-        if (otaState.isActive || explicitDiscoveryRequested) return
-        val configured = configuredDeviceStore.load() ?: return
-        explicitDiscoveryRequested = false
-        client.startKnownDeviceReconnect(
+    fun reconnectConfigured(): Boolean {
+        if (otaState.isActive || explicitDiscoveryRequested) return false
+        val configured = configuredDeviceStore.load() ?: return false
+        return client.startKnownDeviceReconnect(
             deviceAddress = configured.deviceAddress,
             expectedStableId = configured.stableId,
             timeoutMs = NORMAL_RECONNECT_TIMEOUT_MS
         )
     }
 
-    fun startDiscovery() {
-        if (otaState.isActive) return
-        explicitDiscoveryRequested = true
-        client.startDiscovery()
+    fun startDiscovery(): Boolean {
+        if (otaState.isActive) return false
+        val accepted = client.startDiscovery()
+        if (accepted) {
+            explicitDiscoveryRequested = true
+        }
+        return accepted
     }
 
     fun disconnect() {

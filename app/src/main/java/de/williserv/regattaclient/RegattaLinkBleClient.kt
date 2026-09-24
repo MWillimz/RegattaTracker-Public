@@ -59,7 +59,7 @@ internal class RegattaLinkBleClient(
     private val onOtaStateChanged: (RegattaLinkOtaUiState) -> Unit = {},
     private val onTelemetryStateChanged: (RegattaLinkTelemetryState) -> Unit = {},
     private val onUnexpectedDisconnect: () -> Unit = {}
-) : RegattaLinkOtaTransport {
+) : RegattaLinkOtaTransport, RegattaLinkConnectionClient {
     companion object {
         val CONFIG_SERVICE_UUID: UUID =
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710001")
@@ -154,6 +154,8 @@ internal class RegattaLinkBleClient(
     private val otaDataTransportError = AtomicReference<String?>(null)
     @Volatile private var lastState = RegattaLinkClientState()
     @Volatile private var lastOtaState = RegattaLinkOtaUiState()
+    private val deferredTerminalOtaState =
+        AtomicReference<RegattaLinkOtaUiState?>(null)
     @Volatile private var lastTelemetryState = RegattaLinkTelemetryState()
     private val telemetryLock = Any()
     private val serviceRediscoveryPending = AtomicBoolean(false)
@@ -651,8 +653,8 @@ internal class RegattaLinkBleClient(
         }
     }
 
-    fun startDiscovery() {
-        if (otaRunning.get()) return
+    override fun startDiscovery(): Boolean {
+        if (otaRunning.get()) return false
         cancelKnownDeviceReconnect()
         clearTelemetry()
         selectedDeviceAddress = null
@@ -673,7 +675,7 @@ internal class RegattaLinkBleClient(
                     error = "Bluetooth is disabled"
                 )
             )
-            return
+            return true
         }
 
         scanner = adapter.bluetoothLeScanner
@@ -685,7 +687,7 @@ internal class RegattaLinkBleClient(
                     error = "Bluetooth LE is unavailable"
                 )
             )
-            return
+            return true
         }
 
         emit(
@@ -694,9 +696,10 @@ internal class RegattaLinkBleClient(
             )
         )
         startFilteredScan(activeScanner)
+        return true
     }
 
-    fun startOta(artifact: RegattaLinkFirmwareArtifact) {
+    override fun startOta(artifact: RegattaLinkFirmwareArtifact) {
         if (!otaRunning.compareAndSet(false, true)) return
 
         val info = lastState.deviceInfo
@@ -741,6 +744,7 @@ internal class RegattaLinkBleClient(
         otaCancelled.set(false)
         otaProgressQueue.clear()
         otaDataTransportError.set(null)
+        deferredTerminalOtaState.set(null)
 
         otaExecutor.execute {
             try {
@@ -769,11 +773,13 @@ internal class RegattaLinkBleClient(
                         }
                     }
                 }
+
+                flushDeferredTerminalOtaState()
             }
         }
     }
 
-    fun cancelOta() {
+    override fun cancelOta() {
         if (!otaRunning.get()) return
         if (
             lastOtaState.phase !in setOf(
@@ -793,12 +799,12 @@ internal class RegattaLinkBleClient(
         )
     }
 
-    fun resetOtaState() {
+    override fun resetOtaState() {
         if (otaRunning.get()) return
         emitOta(RegattaLinkOtaUiState())
     }
 
-    fun disconnect() {
+    override fun disconnect() {
         if (otaRunning.get()) {
             cancelOta()
             return
@@ -831,18 +837,18 @@ internal class RegattaLinkBleClient(
         otaExecutor.shutdownNow()
     }
 
-    fun startKnownDeviceReconnect(
+    override fun startKnownDeviceReconnect(
         deviceAddress: String,
         expectedStableId: String,
-        timeoutMs: Long = 60_000L
-    ) {
+        timeoutMs: Long
+    ): Boolean {
         if (
             otaRunning.get() ||
             deviceAddress.isBlank() ||
             expectedStableId.isBlank() ||
             timeoutMs <= 0L
         ) {
-            return
+            return false
         }
 
         if (
@@ -850,7 +856,7 @@ internal class RegattaLinkBleClient(
             lastState.status == RegattaLinkConnectionStatus.CONNECTED &&
             lastState.deviceInfo?.stableId == expectedStableId
         ) {
-            return
+            return true
         }
 
         if (
@@ -859,7 +865,7 @@ internal class RegattaLinkBleClient(
             knownReconnectExpectedStableId == expectedStableId &&
             SystemClock.elapsedRealtime() < knownReconnectDeadlineMs
         ) {
-            return
+            return true
         }
 
         stopScan()
@@ -879,6 +885,7 @@ internal class RegattaLinkBleClient(
         knownReconnectLastError = "Configured RegattaLink was not found"
 
         handler.post(knownReconnectRetry)
+        return true
     }
 
     private fun beginKnownDeviceReconnectScan() {
@@ -2325,6 +2332,23 @@ internal class RegattaLinkBleClient(
 
     private fun emitOta(state: RegattaLinkOtaUiState) {
         lastOtaState = state
+        if (
+            shouldDeferRegattaLinkTerminalOtaState(
+                otaOwnsConnection = otaRunning.get(),
+                phase = state.phase
+            )
+        ) {
+            deferredTerminalOtaState.set(state)
+            return
+        }
+        publishOtaState(state)
+    }
+
+    private fun flushDeferredTerminalOtaState() {
+        deferredTerminalOtaState.getAndSet(null)?.let(::publishOtaState)
+    }
+
+    private fun publishOtaState(state: RegattaLinkOtaUiState) {
         val paused = state.isActive
         if (lastTelemetryState.pausedForOta != paused) {
             updateTelemetry { it.copy(pausedForOta = paused) }
