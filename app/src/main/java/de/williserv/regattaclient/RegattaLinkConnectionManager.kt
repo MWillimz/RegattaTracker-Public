@@ -47,12 +47,20 @@ internal class RegattaLinkConfiguredDeviceStore(context: Context) {
             .putString(KEY_DEVICE_NAME, device.deviceName)
             .apply()
     }
+
+    fun updateName(stableId: String, deviceName: String) {
+        val current = load() ?: return
+        if (current.stableId != stableId) return
+        save(current.copy(deviceName = deviceName))
+    }
 }
 
 internal interface RegattaLinkConnectionListener {
     fun onConnectionStateChanged(state: RegattaLinkClientState) {}
     fun onOtaStateChanged(state: RegattaLinkOtaUiState) {}
     fun onTelemetryStateChanged(state: RegattaLinkTelemetryState) {}
+    fun onConfigurationStateChanged(state: RegattaLinkConfigurationState) {}
+    fun onNmeaStateChanged(state: RegattaLinkNmeaState) {}
 }
 
 internal interface RegattaLinkConnectionClient {
@@ -67,6 +75,10 @@ internal interface RegattaLinkConnectionClient {
     fun startOta(artifact: RegattaLinkFirmwareArtifact)
     fun cancelOta()
     fun resetOtaState()
+    fun setDeviceName(name: String): Boolean
+    fun setLedBrightness(percent: Int): Boolean
+    fun refreshPgnInventory(): Boolean
+    fun readRawCanFrames(): Boolean
 }
 
 internal fun interface RegattaLinkConnectionClientFactory {
@@ -75,6 +87,8 @@ internal fun interface RegattaLinkConnectionClientFactory {
         onStateChanged: (RegattaLinkClientState) -> Unit,
         onOtaStateChanged: (RegattaLinkOtaUiState) -> Unit,
         onTelemetryStateChanged: (RegattaLinkTelemetryState) -> Unit,
+        onConfigurationStateChanged: (RegattaLinkConfigurationState) -> Unit,
+        onNmeaStateChanged: (RegattaLinkNmeaState) -> Unit,
         onUnexpectedDisconnect: () -> Unit
     ): RegattaLinkConnectionClient
 }
@@ -87,12 +101,16 @@ internal class RegattaLinkConnectionManager(
                 onStateChanged,
                 onOtaStateChanged,
                 onTelemetryStateChanged,
+                onConfigurationStateChanged,
+                onNmeaStateChanged,
                 onUnexpectedDisconnect ->
             RegattaLinkBleClient(
                 context = clientContext,
                 onStateChanged = onStateChanged,
                 onOtaStateChanged = onOtaStateChanged,
                 onTelemetryStateChanged = onTelemetryStateChanged,
+                onConfigurationStateChanged = onConfigurationStateChanged,
+                onNmeaStateChanged = onNmeaStateChanged,
                 onUnexpectedDisconnect = onUnexpectedDisconnect
             )
         }
@@ -117,6 +135,12 @@ internal class RegattaLinkConnectionManager(
     private var telemetryState = RegattaLinkTelemetryState()
 
     @Volatile
+    private var configurationState = RegattaLinkConfigurationState()
+
+    @Volatile
+    private var nmeaState = RegattaLinkNmeaState()
+
+    @Volatile
     private var explicitDiscoveryRequested = false
 
     private val client = clientFactory.create(
@@ -124,6 +148,8 @@ internal class RegattaLinkConnectionManager(
         onStateChanged = ::handleConnectionState,
         onOtaStateChanged = ::handleOtaState,
         onTelemetryStateChanged = ::handleTelemetryState,
+        onConfigurationStateChanged = ::handleConfigurationState,
+        onNmeaStateChanged = ::handleNmeaState,
         onUnexpectedDisconnect = {
             handler.post {
                 if (!otaState.isActive) {
@@ -140,6 +166,8 @@ internal class RegattaLinkConnectionManager(
             listener.onConnectionStateChanged(connectionState)
             listener.onOtaStateChanged(otaState)
             listener.onTelemetryStateChanged(telemetryState)
+            listener.onConfigurationStateChanged(configurationState)
+            listener.onNmeaStateChanged(nmeaState)
         }
     }
 
@@ -194,6 +222,26 @@ internal class RegattaLinkConnectionManager(
         client.resetOtaState()
     }
 
+    fun setDeviceName(name: String): Boolean {
+        if (otaState.isActive) return false
+        return client.setDeviceName(name)
+    }
+
+    fun setLedBrightness(percent: Int): Boolean {
+        if (otaState.isActive) return false
+        return client.setLedBrightness(percent)
+    }
+
+    fun refreshPgnInventory(): Boolean {
+        if (otaState.isActive) return false
+        return client.refreshPgnInventory()
+    }
+
+    fun readRawCanFrames(): Boolean {
+        if (otaState.isActive) return false
+        return client.readRawCanFrames()
+    }
+
     internal fun configuredDevice(): RegattaLinkConfiguredDevice? =
         configuredDeviceStore.load()
 
@@ -240,5 +288,30 @@ internal class RegattaLinkConnectionManager(
     private fun handleTelemetryState(state: RegattaLinkTelemetryState) {
         telemetryState = state
         listeners.forEach { it.onTelemetryStateChanged(state) }
+    }
+
+    private fun handleConfigurationState(state: RegattaLinkConfigurationState) {
+        configurationState = state
+
+        val stableId = connectionState.deviceInfo?.stableId
+        if (
+            connectionState.status == RegattaLinkConnectionStatus.CONNECTED &&
+            stableId != null &&
+            state.deviceNameSupported &&
+            state.deviceName.isNotBlank()
+        ) {
+            configuredDeviceStore.updateName(stableId, state.deviceName)
+            if (connectionState.deviceName != state.deviceName) {
+                connectionState = connectionState.copy(deviceName = state.deviceName)
+                listeners.forEach { it.onConnectionStateChanged(connectionState) }
+            }
+        }
+
+        listeners.forEach { it.onConfigurationStateChanged(state) }
+    }
+
+    private fun handleNmeaState(state: RegattaLinkNmeaState) {
+        nmeaState = state
+        listeners.forEach { it.onNmeaStateChanged(state) }
     }
 }
