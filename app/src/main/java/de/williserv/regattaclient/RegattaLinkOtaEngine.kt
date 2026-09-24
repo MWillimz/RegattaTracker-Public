@@ -52,6 +52,7 @@ internal class RegattaLinkOtaEngine(
         private const val OPERATION_TIMEOUT_MS = 65_000L
         private const val AMBIGUOUS_STATUS_TIMEOUT_MS = 5_000L
         private const val DATA_NOTIFICATION_TIMEOUT_MS = 1_000L
+        private const val PRE_TRANSFER_RECONNECT_TIMEOUT_MS = 10_000L
         private const val RECONNECT_TIMEOUT_MS = 60_000L
         private const val POST_BOOT_CANDIDATE_TIMEOUT_MS = 10_000L
         private const val POST_BOOT_VALIDATION_SLICE_MS = 5_000L
@@ -67,11 +68,16 @@ internal class RegattaLinkOtaEngine(
             validateRegattaLinkOtaDevice(initialDeviceInfo, artifact)
             emitState(
                 phase = RegattaLinkOtaPhase.PREPARING,
-                detail = "Preparing secured BLE OTA"
+                detail = "Refreshing BLE connection for firmware transfer"
             )
             checkCancelled()
 
-            transport.tuneConnection(initialDeviceInfo)
+            val transferDeviceInfo = prepareFreshTransferConnection()
+            emitState(
+                phase = RegattaLinkOtaPhase.PREPARING,
+                detail = "Preparing secured BLE OTA"
+            )
+            transport.tuneConnection(transferDeviceInfo)
             transport.enableStatusNotifications()
             var status = transport.snapshot()
             if (status.state !in setOf(
@@ -90,11 +96,11 @@ internal class RegattaLinkOtaEngine(
             }
 
             var dataTransport = when {
-                initialDeviceInfo.otaDataWriteWithoutResponse &&
+                transferDeviceInfo.otaDataWriteWithoutResponse &&
                     transport.canWriteDataWithoutResponse(requiredDataValueSize) ->
                     RegattaLinkOtaDataTransport.WRITE_WITHOUT_RESPONSE
 
-                initialDeviceInfo.otaDataWriteWithResponse &&
+                transferDeviceInfo.otaDataWriteWithResponse &&
                     transport.canWriteDataWithResponse(requiredDataValueSize) ->
                     RegattaLinkOtaDataTransport.WRITE_WITH_RESPONSE
 
@@ -119,7 +125,11 @@ internal class RegattaLinkOtaEngine(
                 detail = "Transferring firmware",
                 transport = dataTransport.label()
             )
-            val transferResult = transfer(status, dataTransport)
+            val transferResult = transfer(
+                status,
+                dataTransport,
+                transferDeviceInfo
+            )
             status = transferResult.status
             dataTransport = transferResult.transport
 
@@ -234,6 +244,30 @@ internal class RegattaLinkOtaEngine(
         return status
     }
 
+    private fun prepareFreshTransferConnection(): RegattaLinkDeviceInfo {
+        /*
+         * reconnectCandidate() deliberately closes the current GATT connection
+         * before scanning/reconnecting. OTA must not inherit a long-lived
+         * persistent connection whose Android link parameters may have fallen
+         * back to a low-power state.
+         */
+        val freshInfo = transport.reconnectCandidate(
+            expectedStableId = initialDeviceInfo.stableId,
+            timeoutMs = PRE_TRANSFER_RECONNECT_TIMEOUT_MS
+        ) ?: throw IllegalStateException(
+            "Could not establish a fresh BLE connection for OTA"
+        )
+
+        require(freshInfo.stableId == initialDeviceInfo.stableId) {
+            "Fresh OTA connection returned a different RegattaLink identity"
+        }
+        require(freshInfo.runningBuild == initialDeviceInfo.runningBuild) {
+            "RegattaLink build changed before OTA start"
+        }
+        validateRegattaLinkOtaDevice(freshInfo, artifact)
+        return freshInfo
+    }
+
     private data class TransferResult(
         val status: RegattaLinkOtaStatus,
         val transport: RegattaLinkOtaDataTransport
@@ -246,10 +280,11 @@ internal class RegattaLinkOtaEngine(
 
     private fun transfer(
         initialStatus: RegattaLinkOtaStatus,
-        initialTransport: RegattaLinkOtaDataTransport
+        initialTransport: RegattaLinkOtaDataTransport,
+        transferDeviceInfo: RegattaLinkDeviceInfo
     ): TransferResult {
         val totalSize = artifact.image.size
-        val maxWindow = initialDeviceInfo.maxInflightBlocks
+        val maxWindow = transferDeviceInfo.maxInflightBlocks
         var activeTransport = initialTransport
         var status = initialStatus
         var nextOffset = status.acceptedOffset.toSafeInt()
@@ -331,7 +366,7 @@ internal class RegattaLinkOtaEngine(
 
             if (
                 activeTransport == RegattaLinkOtaDataTransport.WRITE_WITHOUT_RESPONSE &&
-                initialDeviceInfo.otaDataWriteWithResponse &&
+                transferDeviceInfo.otaDataWriteWithResponse &&
                 transport.canWriteDataWithResponse(status.maxDataPayload + 8)
             ) {
                 pendingAdaptation = Adaptation.SWITCH_TO_RESPONSE
@@ -429,7 +464,7 @@ internal class RegattaLinkOtaEngine(
                                     if (window > 2) {
                                         Adaptation.REDUCE_WINDOW
                                     } else if (
-                                        initialDeviceInfo.otaDataWriteWithResponse &&
+                                        transferDeviceInfo.otaDataWriteWithResponse &&
                                         transport.canWriteDataWithResponse(value.size)
                                     ) {
                                         Adaptation.SWITCH_TO_RESPONSE
