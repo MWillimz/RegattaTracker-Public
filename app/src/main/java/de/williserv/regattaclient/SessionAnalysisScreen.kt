@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -562,7 +561,7 @@ private fun SessionPolarPlot(
                 )
                 paint.textAlign = Paint.Align.RIGHT
                 drawContext.canvas.nativeCanvas.drawText(
-                    "270°",
+                    if (angleMetric.angleKind == AnalysisAngleKind.RELATIVE) "-90°" else "270°",
                     center.x - plotRadius - 4.dp.toPx(),
                     center.y + 4.dp.toPx(),
                     paint
