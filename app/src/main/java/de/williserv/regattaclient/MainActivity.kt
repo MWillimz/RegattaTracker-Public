@@ -93,6 +93,7 @@ class MainActivity : ComponentActivity() {
 
     private val showClearRaceSetupDialog = mutableStateOf(false)
     private lateinit var db: TrackingDbHelper
+    private lateinit var raceLegalAcceptanceStore: RaceLegalAcceptanceStore
     private lateinit var locationManager: LocationManager
     private lateinit var regattaLinkManager: RegattaLinkConnectionManager
     private val regattaLinkState = mutableStateOf(RegattaLinkClientState())
@@ -446,6 +447,7 @@ class MainActivity : ComponentActivity() {
         initializeLocalizedUiText()
 
         db = TrackingDbHelper(this)
+        raceLegalAcceptanceStore = RaceLegalAcceptanceStore(this)
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
         regattaLinkManager =
             (application as RegattaApplication).regattaLinkConnectionManager
@@ -2127,7 +2129,11 @@ class MainActivity : ComponentActivity() {
                                     currentLegalHash = previousLegalHash,
                                     nextLegalEventIdentity = legalResolvedEventName,
                                     nextLegalHash = legalHash
-                                )
+                                ) ||
+                                    raceLegalAcceptanceStore.matches(
+                                        resolvedEventName = legalResolvedEventName,
+                                        legalTextHash = legalHash
+                                    )
 
                             raceLegalResolvedEventName = legalResolvedEventName
                             raceLegalText.value = legalText
@@ -2322,6 +2328,10 @@ class MainActivity : ComponentActivity() {
                             currentScreen.value = Screen.RACE
                             fetchRaceLegalText()
                         } else {
+                            raceLegalAcceptanceStore.save(
+                                resolvedEventName = expectedResolvedEventName,
+                                legalTextHash = acceptedLegalHash
+                            )
                             raceLegalAccepted.value = true
                             raceLegalAcceptStatusText.value = getString(R.string.race_notice_accepted)
                             fetchRaceDataForDisplay()
