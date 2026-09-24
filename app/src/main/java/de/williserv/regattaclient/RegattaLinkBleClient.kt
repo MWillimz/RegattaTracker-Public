@@ -2934,7 +2934,17 @@ internal class RegattaLinkBleClient(
             updateTelemetry { it.copy(pausedForOta = paused) }
         }
         if (lastNmeaState.pausedForOta != paused) {
-            updateNmea { it.copy(pausedForOta = paused) }
+            updateNmea {
+                if (paused) {
+                    it.copy(
+                        boatState = null,
+                        boatStateReceivedAtElapsedMs = null,
+                        pausedForOta = true
+                    )
+                } else {
+                    it.copy(pausedForOta = false)
+                }
+            }
         }
         handler.post {
             onOtaStateChanged(state)
