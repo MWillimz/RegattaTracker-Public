@@ -31,8 +31,41 @@ class RegattaLinkOtaEngineTest {
         assertTrue(transport.stalePreparingDelivered)
         assertEquals(RegattaLinkOtaPhase.SUCCESS, states.last().phase)
         assertEquals(image.size, states.last().committedBytes)
+        assertEquals(2, transport.reconnectCandidateCount)
+        assertEquals(listOf("reconnect-1", "tune", "reconnect-2", "tune"), transport.lifecycleEvents)
         assertEquals(1, transport.closeCurrentConnectionCount)
         assertEquals(0, terminalDisconnectCleanupCount)
+    }
+
+    @Test
+    fun freshReconnectFailureStopsBeforeOtaStart() {
+        val image = ByteArray(32) { it.toByte() }
+        val artifact = artifact(image, build = 22880000uL)
+        val deviceInfo = deviceInfo(runningBuild = 22865706uL)
+        val transport = StalePreparingTransport(
+            initialDeviceInfo = deviceInfo,
+            artifact = artifact,
+            failPreTransferReconnect = true
+        )
+        val states = mutableListOf<RegattaLinkOtaUiState>()
+        var terminalDisconnectCleanupCount = 0
+
+        RegattaLinkOtaEngine(
+            artifact = artifact,
+            initialDeviceInfo = deviceInfo,
+            transport = transport,
+            cancelled = { false },
+            emit = states::add,
+            onTerminalDisconnect = { terminalDisconnectCleanupCount += 1 }
+        ).run()
+
+        assertEquals(1, transport.reconnectCandidateCount)
+        assertEquals(listOf("reconnect-1"), transport.lifecycleEvents)
+        assertEquals(0, transport.writeControlCalls)
+        assertEquals(RegattaLinkOtaPhase.ERROR, states.last().phase)
+        assertTrue(states.last().error.contains("fresh BLE connection"))
+        assertEquals(1, transport.closeCurrentConnectionCount)
+        assertEquals(1, terminalDisconnectCleanupCount)
     }
 
     @Test
@@ -109,7 +142,8 @@ class RegattaLinkOtaEngineTest {
     private class StalePreparingTransport(
         private val initialDeviceInfo: RegattaLinkDeviceInfo,
         private val artifact: RegattaLinkFirmwareArtifact,
-        private val queuedPreparingRevision: UInt = 1u
+        private val queuedPreparingRevision: UInt = 1u,
+        private val failPreTransferReconnect: Boolean = false
     ) : RegattaLinkOtaTransport {
         override val mtu: Int = 247
 
@@ -120,6 +154,14 @@ class RegattaLinkOtaEngineTest {
 
         var stalePreparingDelivered = false
             private set
+
+        var reconnectCandidateCount = 0
+            private set
+
+        var writeControlCalls = 0
+            private set
+
+        val lifecycleEvents = mutableListOf<String>()
 
         var closeCurrentConnectionCount = 0
             private set
@@ -142,13 +184,16 @@ class RegattaLinkOtaEngineTest {
 
         override fun isConnected(): Boolean = connected
 
-        override fun tuneConnection(info: RegattaLinkDeviceInfo) = Unit
+        override fun tuneConnection(info: RegattaLinkDeviceInfo) {
+            lifecycleEvents += "tune"
+        }
 
         override fun enableStatusNotifications() = Unit
 
         override fun snapshot(): RegattaLinkOtaStatus = status
 
         override fun writeControl(value: ByteArray) {
+            writeControlCalls += 1
             val buffer = ByteBuffer.wrap(value).order(ByteOrder.LITTLE_ENDIAN)
             when (value[0].toInt() and 0xff) {
                 0x01 -> {
@@ -250,8 +295,19 @@ class RegattaLinkOtaEngineTest {
         override fun reconnectCandidate(
             expectedStableId: String,
             timeoutMs: Long
-        ): RegattaLinkDeviceInfo {
+        ): RegattaLinkDeviceInfo? {
+            reconnectCandidateCount += 1
+            lifecycleEvents += "reconnect-$reconnectCandidateCount"
             connected = true
+
+            if (reconnectCandidateCount == 1) {
+                if (failPreTransferReconnect) {
+                    connected = false
+                    return null
+                }
+                return initialDeviceInfo.copy(stableId = expectedStableId)
+            }
+
             status = RegattaLinkOtaStatus(
                 revision = 1u,
                 session = 0u,
