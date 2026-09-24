@@ -108,10 +108,7 @@ internal fun discoverSessionAnalysisCapabilities(
         label = "SOG",
         unit = "kn",
         source = AnalysisMetricSource.GPS_SOG,
-        recommendedUses = setOf(
-            AnalysisMetricUse.RADIUS,
-            AnalysisMetricUse.FILTER
-        ),
+        recommendedUses = setOf(AnalysisMetricUse.RADIUS),
         displayScale = MPS_TO_KNOTS
     )
 
@@ -141,10 +138,7 @@ internal fun discoverSessionAnalysisCapabilities(
             key = "nmea.stw_mps",
             label = "STW",
             unit = "kn",
-            recommended = setOf(
-                AnalysisMetricUse.RADIUS,
-                AnalysisMetricUse.FILTER
-            ),
+            recommended = setOf(AnalysisMetricUse.RADIUS),
             displayScale = MPS_TO_KNOTS
         ),
         knownMetric(
@@ -191,7 +185,9 @@ internal fun discoverSessionAnalysisCapabilities(
         )
     )
 
-    known.filterTo(metrics) { it.measurementKey in presentKeys }
+    known.filterTo(metrics) { metric ->
+        metric.measurementKey?.let(presentKeys::contains) == true
+    }
 
     val knownKeys = known.mapNotNullTo(mutableSetOf()) { it.measurementKey }
     discovered
