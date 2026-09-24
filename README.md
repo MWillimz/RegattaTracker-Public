@@ -52,7 +52,7 @@ The current protocol and endpoint details are documented in [DOCUMENTATION.md](D
 
 ### RegattaLink BLE client contract
 
-The complete public RegattaLink ↔ RegattaTracker BLE wire contract is documented in [docs/REGATTALINK-BLE-CLIENT-CONTRACT.md](docs/REGATTALINK-BLE-CLIENT-CONTRACT.md). It covers security/bonding, all current service and characteristic UUIDs, Device Info capabilities, NMEA2000 PGN inventory, IMU telemetry records, OTA framing/state/reconciliation, Android GATT rules, compatibility behavior and explicitly undefined future NMEA surfaces.
+The complete public RegattaLink ↔ RegattaTracker BLE wire contract is documented in [docs/REGATTALINK-BLE-CLIENT-CONTRACT.md](docs/REGATTALINK-BLE-CLIENT-CONTRACT.md). It covers security/bonding, all current service and characteristic UUIDs, Device Info capabilities, NMEA2000 PGN inventory and raw-CAN diagnostics, persistent LED brightness, IMU telemetry, normalized NMEA2000 Boat State v1, OTA framing/state/reconciliation, Android GATT rules, compatibility behavior and the remaining explicitly undefined surfaces.
 
 ## Privacy and data handling
 

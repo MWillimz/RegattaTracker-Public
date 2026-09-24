@@ -1,5 +1,6 @@
 package de.williserv.regattaclient
 
+import android.Manifest
 import android.content.Context
 import android.os.Looper
 import org.junit.After
@@ -30,29 +31,43 @@ class RegattaLinkConnectionManagerTest {
     @Before
     fun setUp() {
         context = RuntimeEnvironment.getApplication()
+        shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(
+            Manifest.permission.BLUETOOTH_SCAN,
+            Manifest.permission.BLUETOOTH_CONNECT
+        )
         context.getSharedPreferences(
             RegattaLinkConfiguredDeviceStore.PREFS_NAME,
             Context.MODE_PRIVATE
         ).edit().clear().commit()
         RegattaLinkConfiguredDeviceStore(context).save(configured)
 
-        manager = RegattaLinkConnectionManager(
+        manager = createManager()
+    }
+
+    private fun createManager(
+        legacyBondedAddressProvider: (Context) -> String? = { null }
+    ): RegattaLinkConnectionManager =
+        RegattaLinkConnectionManager(
             context = context,
             clientFactory = RegattaLinkConnectionClientFactory {
                     _,
                     onStateChanged,
                     onOtaStateChanged,
                     onTelemetryStateChanged,
+                    onConfigurationStateChanged,
+                    onNmeaStateChanged,
                     onUnexpectedDisconnect ->
                 FakeConnectionClient(
                     onStateChanged = onStateChanged,
                     onOtaStateChanged = onOtaStateChanged,
                     onTelemetryStateChanged = onTelemetryStateChanged,
+                    onConfigurationStateChanged = onConfigurationStateChanged,
+                    onNmeaStateChanged = onNmeaStateChanged,
                     onUnexpectedDisconnect = onUnexpectedDisconnect
                 ).also { fakeClient = it }
-            }
+            },
+            legacyBondedAddressProvider = legacyBondedAddressProvider
         )
-    }
 
     @After
     fun tearDown() {
@@ -153,6 +168,115 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun legacyBondedDeviceBootstrapsConfiguredIdentityAfterValidatedConnection() {
+        context.getSharedPreferences(
+            RegattaLinkConfiguredDeviceStore.PREFS_NAME,
+            Context.MODE_PRIVATE
+        ).edit().clear().commit()
+        manager = createManager { configured.deviceAddress }
+
+        assertTrue(manager.reconnectConfigured())
+        assertEquals(1, fakeClient.reconnectCalls)
+        assertEquals(configured.deviceAddress, fakeClient.lastReconnectAddress)
+        assertEquals(null, fakeClient.lastReconnectStableId)
+
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceName = configured.deviceName,
+                deviceAddress = configured.deviceAddress,
+                deviceInfo = RegattaLinkDeviceInfo(
+                    protocolMajor = REGATTALINK_PROTOCOL_MAJOR,
+                    protocolMinor = 0,
+                    capabilities = 0u,
+                    stableId = configured.stableId,
+                    productId = REGATTALINK_PRODUCT_ID,
+                    profileId = REGATTALINK_PROFILE_ID,
+                    runningBuild = 1uL,
+                    otaSlotSize = 1u,
+                    maxInflightBlocks = 1
+                )
+            )
+        )
+
+        assertEquals(configured, manager.configuredDevice())
+    }
+
+    @Test
+    fun missingConfiguredDeviceDoesNotGuessWhenLegacyBondIsAmbiguous() {
+        context.getSharedPreferences(
+            RegattaLinkConfiguredDeviceStore.PREFS_NAME,
+            Context.MODE_PRIVATE
+        ).edit().clear().commit()
+        manager = createManager { null }
+
+        assertFalse(manager.reconnectConfigured())
+        assertEquals(0, fakeClient.reconnectCalls)
+        assertEquals(null, manager.configuredDevice())
+    }
+
+    @Test
+    fun configurationNameRefreshUpdatesPersistedAndDisplayedName() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceName = configured.deviceName,
+                deviceAddress = configured.deviceAddress,
+                deviceInfo = RegattaLinkDeviceInfo(
+                    protocolMajor = REGATTALINK_PROTOCOL_MAJOR,
+                    protocolMinor = 0,
+                    capabilities = 0u,
+                    stableId = configured.stableId,
+                    productId = REGATTALINK_PRODUCT_ID,
+                    profileId = REGATTALINK_PROFILE_ID,
+                    runningBuild = 1uL,
+                    otaSlotSize = 1u,
+                    maxInflightBlocks = 1
+                )
+            )
+        )
+
+        var displayedName = ""
+        manager.addListener(
+            object : RegattaLinkConnectionListener {
+                override fun onConnectionStateChanged(state: RegattaLinkClientState) {
+                    displayedName = state.deviceName
+                }
+            }
+        )
+        shadowOf(Looper.getMainLooper()).idle()
+
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceNameSupported = true,
+                deviceName = "Race-Link"
+            )
+        )
+
+        assertEquals("Race-Link", manager.configuredDevice()?.deviceName)
+        assertEquals("Race-Link", displayedName)
+    }
+
+    @Test
+    fun activeOtaSuppressesConfigurationAndDiagnosticActions() {
+        fakeClient.emitOta(
+            RegattaLinkOtaUiState(
+                phase = RegattaLinkOtaPhase.TRANSFERRING
+            )
+        )
+
+        assertFalse(manager.setDeviceName("Race-Link"))
+        assertFalse(manager.setLedBrightness(75))
+        assertFalse(manager.refreshPgnInventory())
+        assertFalse(manager.readRawCanFrames())
+
+        assertEquals(0, fakeClient.setNameCalls)
+        assertEquals(0, fakeClient.setBrightnessCalls)
+        assertEquals(0, fakeClient.refreshPgnCalls)
+        assertEquals(0, fakeClient.rawReadCalls)
+    }
+
+    @Test
     fun newlyAttachedListenerReceivesCurrentManagerState() {
         fakeClient.emitConnection(
             RegattaLinkClientState(
@@ -189,6 +313,9 @@ class RegattaLinkConnectionManagerTest {
         private val onOtaStateChanged: (RegattaLinkOtaUiState) -> Unit,
         @Suppress("UNUSED_PARAMETER")
         private val onTelemetryStateChanged: (RegattaLinkTelemetryState) -> Unit,
+        private val onConfigurationStateChanged: (RegattaLinkConfigurationState) -> Unit,
+        @Suppress("UNUSED_PARAMETER")
+        private val onNmeaStateChanged: (RegattaLinkNmeaState) -> Unit,
         private val onUnexpectedDisconnect: () -> Unit
     ) : RegattaLinkConnectionClient {
         var discoveryAccepted = true
@@ -196,12 +323,16 @@ class RegattaLinkConnectionManagerTest {
         var discoveryCalls = 0
         var reconnectCalls = 0
         var disconnectCalls = 0
+        var setNameCalls = 0
+        var setBrightnessCalls = 0
+        var refreshPgnCalls = 0
+        var rawReadCalls = 0
         var lastReconnectAddress: String? = null
         var lastReconnectStableId: String? = null
 
         override fun startKnownDeviceReconnect(
             deviceAddress: String,
-            expectedStableId: String,
+            expectedStableId: String?,
             timeoutMs: Long
         ): Boolean {
             reconnectCalls += 1
@@ -225,12 +356,36 @@ class RegattaLinkConnectionManagerTest {
 
         override fun resetOtaState() = Unit
 
+        override fun setDeviceName(name: String): Boolean {
+            setNameCalls += 1
+            return true
+        }
+
+        override fun setLedBrightness(percent: Int): Boolean {
+            setBrightnessCalls += 1
+            return true
+        }
+
+        override fun refreshPgnInventory(): Boolean {
+            refreshPgnCalls += 1
+            return true
+        }
+
+        override fun readRawCanFrames(): Boolean {
+            rawReadCalls += 1
+            return true
+        }
+
         fun emitConnection(state: RegattaLinkClientState) {
             onStateChanged(state)
         }
 
         fun emitOta(state: RegattaLinkOtaUiState) {
             onOtaStateChanged(state)
+        }
+
+        fun emitConfiguration(state: RegattaLinkConfigurationState) {
+            onConfigurationStateChanged(state)
         }
 
         fun emitUnexpectedDisconnect() {
