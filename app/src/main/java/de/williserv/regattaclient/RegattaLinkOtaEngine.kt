@@ -52,7 +52,8 @@ internal class RegattaLinkOtaEngine(
         private const val OPERATION_TIMEOUT_MS = 65_000L
         private const val AMBIGUOUS_STATUS_TIMEOUT_MS = 5_000L
         private const val DATA_NOTIFICATION_TIMEOUT_MS = 1_000L
-        private const val PRE_TRANSFER_RECONNECT_TIMEOUT_MS = 10_000L
+        private const val PRE_TRANSFER_RECONNECT_ATTEMPTS = 3
+        private const val PRE_TRANSFER_RECONNECT_SLICE_MS = 10_000L
         private const val RECONNECT_TIMEOUT_MS = 60_000L
         private const val POST_BOOT_CANDIDATE_TIMEOUT_MS = 10_000L
         private const val POST_BOOT_VALIDATION_SLICE_MS = 5_000L
@@ -73,6 +74,7 @@ internal class RegattaLinkOtaEngine(
             checkCancelled()
 
             val transferDeviceInfo = prepareFreshTransferConnection()
+            checkCancelled()
             emitState(
                 phase = RegattaLinkOtaPhase.PREPARING,
                 detail = "Preparing secured BLE OTA"
@@ -251,21 +253,29 @@ internal class RegattaLinkOtaEngine(
          * persistent connection whose Android link parameters may have fallen
          * back to a low-power state.
          */
-        val freshInfo = transport.reconnectCandidate(
-            expectedStableId = initialDeviceInfo.stableId,
-            timeoutMs = PRE_TRANSFER_RECONNECT_TIMEOUT_MS
-        ) ?: throw IllegalStateException(
+        repeat(PRE_TRANSFER_RECONNECT_ATTEMPTS) {
+            checkCancelled()
+            val freshInfo = transport.reconnectCandidate(
+                expectedStableId = initialDeviceInfo.stableId,
+                timeoutMs = PRE_TRANSFER_RECONNECT_SLICE_MS
+            )
+            checkCancelled()
+
+            if (freshInfo != null) {
+                require(freshInfo.stableId == initialDeviceInfo.stableId) {
+                    "Fresh OTA connection returned a different RegattaLink identity"
+                }
+                require(freshInfo.runningBuild == initialDeviceInfo.runningBuild) {
+                    "RegattaLink build changed before OTA start"
+                }
+                validateRegattaLinkOtaDevice(freshInfo, artifact)
+                return freshInfo
+            }
+        }
+
+        throw IllegalStateException(
             "Could not establish a fresh BLE connection for OTA"
         )
-
-        require(freshInfo.stableId == initialDeviceInfo.stableId) {
-            "Fresh OTA connection returned a different RegattaLink identity"
-        }
-        require(freshInfo.runningBuild == initialDeviceInfo.runningBuild) {
-            "RegattaLink build changed before OTA start"
-        }
-        validateRegattaLinkOtaDevice(freshInfo, artifact)
-        return freshInfo
     }
 
     private data class TransferResult(
