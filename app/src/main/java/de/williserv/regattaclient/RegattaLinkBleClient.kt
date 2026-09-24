@@ -907,13 +907,13 @@ internal class RegattaLinkBleClient(
 
         val adapter = bluetoothManager.adapter
         if (adapter == null || !adapter.isEnabled) {
-            finishKnownDeviceReconnect("Bluetooth is disabled")
+            retryKnownDeviceReconnect("Bluetooth is disabled")
             return
         }
 
         val activeScanner = adapter.bluetoothLeScanner
         if (activeScanner == null) {
-            finishKnownDeviceReconnect("Bluetooth LE is unavailable")
+            retryKnownDeviceReconnect("Bluetooth LE is unavailable")
             return
         }
 
@@ -924,12 +924,18 @@ internal class RegattaLinkBleClient(
                 deviceAddress = address
             )
         )
-        startFilteredScan(
-            activeScanner = activeScanner,
-            deviceAddress = address,
-            scanMode = ScanSettings.SCAN_MODE_LOW_POWER,
-            timeoutMs = minOf(KNOWN_RECONNECT_SCAN_SLICE_MS, remaining)
-        )
+        try {
+            startFilteredScan(
+                activeScanner = activeScanner,
+                deviceAddress = address,
+                scanMode = ScanSettings.SCAN_MODE_LOW_POWER,
+                timeoutMs = minOf(KNOWN_RECONNECT_SCAN_SLICE_MS, remaining)
+            )
+        } catch (error: RuntimeException) {
+            retryKnownDeviceReconnect(
+                error.message ?: "Could not scan for configured RegattaLink"
+            )
+        }
     }
 
     private fun retryKnownDeviceReconnect(message: String) {
