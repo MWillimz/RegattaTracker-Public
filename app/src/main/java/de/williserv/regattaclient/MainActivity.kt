@@ -791,9 +791,10 @@ class MainActivity : ComponentActivity() {
                             onExportRawCapture = {
                                 regattaLinkRawCaptureState.value.fileName
                                     .takeIf { it.isNotBlank() }
-                                    ?.let(
-                                        regattaLinkRawCaptureExportLauncher::launch
-                                    )
+                                    ?.let { fileName ->
+                                        regattaLinkRawCaptureExportLauncher
+                                            .launch(fileName)
+                                    }
                             },
                             onDiscardRawCapture = {
                                 regattaLinkManager.discardRawCanCapture()
