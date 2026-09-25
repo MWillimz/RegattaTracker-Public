@@ -496,8 +496,7 @@ private fun SessionPolarPlot(
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
     val pointColor = MaterialTheme.colorScheme.primary
     val neutralColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
-    val lowColor = MaterialTheme.colorScheme.tertiary
-    val highColor = MaterialTheme.colorScheme.primary
+    val colorScale = analysisColorScale()
 
     Column(modifier = modifier) {
         Box(
@@ -598,7 +597,7 @@ private fun SessionPolarPlot(
                         } else {
                             0.5f
                         }
-                        interpolateAnalysisColor(lowColor, highColor, t)
+                        sampleAnalysisColor(colorScale, t)
                     } else if (colorMetric != null) {
                         neutralColor
                     } else {
@@ -636,8 +635,7 @@ private fun AnalysisColorLegend(
     minValue: Double,
     maxValue: Double
 ) {
-    val lowColor = MaterialTheme.colorScheme.tertiary
-    val highColor = MaterialTheme.colorScheme.primary
+    val colorScale = analysisColorScale()
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
@@ -653,9 +651,7 @@ private fun AnalysisColorLegend(
                 .fillMaxWidth()
                 .height(8.dp)
                 .background(
-                    Brush.horizontalGradient(
-                        colors = listOf(lowColor, highColor)
-                    )
+                    Brush.horizontalGradient(colors = colorScale)
                 )
         )
         Row(
@@ -682,16 +678,33 @@ private fun analysisMetricDisplayName(metric: AnalysisMetric): String =
 private fun formatAnalysisNumber(value: Double): String =
     String.format(Locale.getDefault(), "%.1f", value)
 
-private fun interpolateAnalysisColor(
-    start: Color,
-    end: Color,
+private fun analysisColorScale(): List<Color> = listOf(
+    Color(0xFF440154),
+    Color(0xFF3B528B),
+    Color(0xFF21918C),
+    Color(0xFF5EC962),
+    Color(0xFFFDE725)
+)
+
+private fun sampleAnalysisColor(
+    scale: List<Color>,
     fraction: Float
 ): Color {
+    if (scale.isEmpty()) return Color.Unspecified
+    if (scale.size == 1) return scale.first()
+
     val t = fraction.coerceIn(0f, 1f)
+    val scaled = t * (scale.size - 1)
+    val lowerIndex = scaled.toInt().coerceIn(0, scale.lastIndex)
+    val upperIndex = (lowerIndex + 1).coerceAtMost(scale.lastIndex)
+    val localT = scaled - lowerIndex
+
+    val start = scale[lowerIndex]
+    val end = scale[upperIndex]
     return Color(
-        red = start.red + (end.red - start.red) * t,
-        green = start.green + (end.green - start.green) * t,
-        blue = start.blue + (end.blue - start.blue) * t,
-        alpha = start.alpha + (end.alpha - start.alpha) * t
+        red = start.red + (end.red - start.red) * localT,
+        green = start.green + (end.green - start.green) * localT,
+        blue = start.blue + (end.blue - start.blue) * localT,
+        alpha = start.alpha + (end.alpha - start.alpha) * localT
     )
 }
