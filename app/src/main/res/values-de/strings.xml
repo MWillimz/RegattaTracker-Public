@@ -475,6 +475,10 @@
     <string name="regattalink_contradictions">Widersprüche</string>
     <string name="regattalink_mounting_epoch">Mounting Epoch</string>
     <string name="regattalink_calibration_revision">Kalibrierungsrevision</string>
+    <string name="session_replay_fields_show_config">Replay-Werte konfigurieren</string>
+    <string name="session_replay_fields_hide_config">Replay-Werte ausblenden</string>
+    <string name="session_replay_play">Abspielen</string>
+    <string name="session_replay_pause">Pause</string>
     <string name="session_replay_fields_title">Zusätzliche Replay-Daten</string>
     <string name="session_replay_fields_hint">Wähle Werte, die beim Durchlaufen des Replays angezeigt werden. Zeit, SOG und COG bleiben sichtbar.</string>
     <string name="session_replay_fields_recommended">Empfohlen</string>
