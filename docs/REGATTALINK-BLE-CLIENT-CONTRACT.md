@@ -4,7 +4,7 @@ This document is the public, client-facing wire contract between RegattaTracker 
 
 It is intended to be sufficient to implement a compatible BLE client without access to the private RegattaLink repository. Any RegattaLink BLE schema or behavioral change that affects clients must update this document together with the corresponding RegattaTracker implementation/tests.
 
-Contract snapshot: 2026-09-24.
+Contract snapshot: 2026-09-25.
 
 ## 1. Scope and current implementation status
 
@@ -12,7 +12,7 @@ The current BLE contract contains three RegattaLink service families. Firmware c
 
 | Area | Service suffix | Firmware contract | Current RegattaTracker consumption |
 | --- | ---: | --- | --- |
-| configuration/device information/diagnostics | 0001 | implemented; 0006 is the additive brightness contract from RegattaLink #135 / PR #136 and is optional by discovery | 0002-0006 consumed; optional surfaces remain feature-local |
+| configuration/device information/diagnostics/control | 0001 | implemented; 0006 brightness plus 0007 diagnostic log and 0008 Device Control are additive and optional by UUID discovery | 0002-0006 consumed; 0007/0008 contract published for RegattaTracker #298, client behavior still pending there |
 | OTA | 0010 | implemented | implemented |
 | telemetry | 0020 | implemented with IMU 0021-0023 and normalized NMEA Boat State 0024 | 0021-0024 consumed; 0024 discovered independently of the IMU capability bit |
 
@@ -41,6 +41,8 @@ Base UUID:
 | NMEA2000 PGN inventory | 0004 | encrypted/bonded read | implemented | implemented |
 | NMEA2000 raw CAN FIFO | 0005 | encrypted/bonded read | implemented | implemented as explicit bounded diagnostic read |
 | Global LED brightness | 0006 | encrypted/bonded read + write | additive contract in RegattaLink #135 / PR #136; optional by discovery | implemented when discovered |
+| Diagnostic log FIFO | 0007 | encrypted/bonded read | implemented; optional by discovery | pending RegattaTracker #298 |
+| Device Control | 0008 | encrypted/bonded read + write with response | implemented; optional by discovery | pending RegattaTracker #298 |
 | OTA service | 0010 | service | implemented | implemented |
 | OTA control | 0011 | encrypted/bonded write with response | implemented | implemented |
 | OTA DATA | 0012 | encrypted/bonded write; no-response preferred, response supported | implemented | implemented |
@@ -270,6 +272,186 @@ The wire contract is deliberately a percentage only. Low/High choices, fixed ste
 RegattaTracker reads 0006 when present and writes it only on an explicit completed UI change; absence on older firmware remains non-fatal.
 
 
+### 4.6 Diagnostic log FIFO 0007
+
+Full UUID:
+
+7f2c4b10-6f63-4a8d-9a3e-2e5d6b710007
+
+Properties:
+
+- read only;
+- encrypted/bonded access required;
+- optional by UUID discovery;
+- destructive read-to-drain diagnostic surface;
+- no notifications and no background polling.
+
+Firmware keeps a fixed RAM-only FIFO of 20 records. When full, new records are
+dropped and old queued boot/diagnostic records are preserved.
+
+A non-empty read returns exactly 22 bytes:
+
+| Offset | Width | Type | Meaning |
+| ---: | ---: | --- | --- |
+| 0 | 2 | u16 | monotonic uptime in 10 ms units, naturally wrapping |
+| 2 | 20 | ASCII bytes | fixed diagnostic message, zero padded or deterministically truncated |
+
+An empty FIFO returns a zero-length characteristic value. Clients stop draining on
+that empty response. A successful non-empty read removes exactly the oldest record.
+
+Client rules:
+
+- drain only after an explicit user action;
+- perform at most 20 reads per drain;
+- trim trailing 0x00 bytes from the message;
+- do not interpret the timestamp as wall-clock time;
+- do not read 0007 while OTA is active;
+- disconnect or Service Changed aborts the current drain cleanly;
+- absence on older firmware is non-fatal.
+
+### 4.7 Device Control 0008
+
+Full UUID:
+
+7f2c4b10-6f63-4a8d-9a3e-2e5d6b710008
+
+Properties:
+
+- read;
+- write with response;
+- encrypted/bonded access required;
+- optional by UUID discovery;
+- no notifications.
+
+#### Request v1
+
+Every write is exactly 8 bytes, little-endian:
+
+| Offset | Width | Type | Meaning |
+| ---: | ---: | --- | --- |
+| 0 | 1 | u8 | version = 1 |
+| 1 | 1 | u8 | opcode |
+| 2 | 4 | u32 | non-zero request_id |
+| 6 | 2 | i16 | signed value in degrees |
+
+Opcodes:
+
+| Value | Command | Value semantics |
+| ---: | --- | --- |
+| 1 | SET_UPRIGHT | must be 0 |
+| 2 | ADJUST_FORWARD | signed delta; positive = Starboard |
+| 3 | ADJUST_HEEL | signed delta; positive = Port |
+| 4 | ADJUST_PITCH | signed delta; positive = Front |
+| 5 | FACTORY_RESET | must be 0 |
+
+The firmware accepts the write only as an asynchronous request. ATT write success is
+not calibration success. RegattaTracker must poll 0008 and only complete an operation
+from a status record carrying its own request_id.
+
+#### Status v1
+
+Every successful read returns exactly 20 bytes:
+
+| Offset | Width | Type | Meaning |
+| ---: | ---: | --- | --- |
+| 0 | 1 | u8 | version = 1 |
+| 1 | 1 | u8 | last accepted opcode |
+| 2 | 1 | u8 | state |
+| 3 | 1 | u8 | result |
+| 4 | 4 | u32 | request_id |
+| 8 | 2 | i16 | Forward/Yaw trim, degrees |
+| 10 | 2 | i16 | Heel/Roll trim, degrees |
+| 12 | 2 | i16 | Pitch trim, degrees |
+| 14 | 1 | u8 | flags |
+| 15 | 1 | u8 | reserved = 0 |
+| 16 | 4 | u32 | mounting_epoch |
+
+States:
+
+| Value | Meaning |
+| ---: | --- |
+| 0 | IDLE |
+| 1 | PENDING |
+| 2 | CAPTURING |
+| 3 | PERSISTING |
+| 4 | SUCCESS |
+| 5 | ERROR |
+
+Results:
+
+| Value | Meaning |
+| ---: | --- |
+| 0 | NONE |
+| 1 | OK |
+| 2 | BUSY, reserved for status; synchronous BUSY writes do not replace prior status |
+| 3 | INVALID, reserved for status; invalid writes do not replace prior status |
+| 4 | MOTION_REJECT |
+| 5 | ORIENTATION_REJECT |
+| 6 | PERSIST_ERROR |
+| 7 | CONFIG_ERROR |
+| 8 | BOND_RESET_ERROR |
+| 9 | INTERNAL_ERROR |
+| 10 | TIMEOUT |
+
+Flags:
+
+- bit 0: Boat Frame valid;
+- bit 1: Gyro Bias valid.
+
+A terminal status remains readable until the next accepted request.
+
+Accepted sample-driven commands have a firmware-side 10-second monotonic deadline.
+A stalled/no-sample Upright terminates as TIMEOUT and releases Device Control
+ownership rather than blocking future OTA indefinitely.
+
+Normal SET_UPRIGHT preserves a valid existing Gyro Bias and applies that bias before
+the stationary gyro gates. FACTORY_RESET deliberately invalidates the old Gyro Bias
+first and does not reuse it.
+
+#### Device Control / OTA mutual exclusion
+
+OTA START and Device Control share an atomic firmware operation owner:
+
+- active Device Control makes a new OTA START return BUSY before OTA protocol/session mutation;
+- OTA START assembly or an active OTA backend makes Device Control return BUSY before calibration mutation;
+- OTA DATA/FINISH/verification retain their existing OTA-owned flow;
+- Device Control never aborts an OTA transaction;
+- Device Control UI and diagnostic-log reads must be disabled locally while RegattaTracker OTA is active.
+
+#### Factory Reset lifecycle
+
+FACTORY_RESET is destructive. It resets user device name, LED brightness, Boat Frame,
+all three trims and Gyro Bias, erases the persisted motion calibration, then invokes
+the same Upright capture as SET_UPRIGHT.
+
+If Upright succeeds, the new full Boat Frame is persisted. MOTION_REJECT or
+ORIENTATION_REJECT leaves the destructive reset valid with Boat Frame invalid and
+still proceeds to bond reset. PERSIST_ERROR, CONFIG_ERROR, INTERNAL_ERROR or TIMEOUT
+does not delete the initiating bond.
+
+For a reset that proceeds to bond deletion, the ordering is:
+
+1. publish the terminal 0008 result;
+2. keep the existing secured+bonded initiating connection readable for a bounded
+   1000 ms terminal-status grace;
+3. if the client disconnects during that grace, skip the remaining delay;
+4. delete all firmware-side bonds, with the initiating peer deleted last;
+5. reopen the five-minute pairing window under the default RegattaLink name;
+6. intentionally terminate the initiating link if it is still connected.
+
+There is no encrypted-but-unbonded read exception. The terminal grace happens while
+the initiating bond still exists.
+
+RegattaTracker must treat the resulting disconnect as the expected Factory Reset
+lifecycle, not as an ordinary outage and not as an OTA reconnect. Android may retain
+a stale OS-side bond after the peripheral deletes its bond. The production client
+must use the normal Android pairing/security lifecycle and, on bounded stale-bond
+failure, instruct the user to remove RegattaLink from Android Bluetooth settings and
+retry. Reflection-based removeBond() is not a required production mechanism.
+
+FACTORY_RESET is rejected before destructive mutation while firmware boot validation
+is PENDING_VERIFY/ROLLBACK or while OTA owns the device.
+
 ## 5. Telemetry service 0020
 
 Full service UUID:
@@ -371,13 +553,16 @@ Full UUID:
 | 16 | 2 | u16 | mounting epoch |
 | 18 | 2 | u16 | calibration revision |
 
-Learner states:
+Learner-state/counter fields are retained only for wire compatibility after removal
+of the automatic mounting learner. On current firmware:
 
-| Value | Meaning |
-| ---: | --- |
-| 0 | idle |
-| 1 | turn/maneuver active |
-| 2 | waiting for post-maneuver attitude |
+- learner state is always 0 (idle);
+- positive/negative maneuver counts, roll-pair observations and contradictory
+  maneuver counts are always 0;
+- overall, forward and roll confidence are all 100 when an explicit Boat Frame is
+  valid, otherwise all are 0;
+- old firmware that still publishes real learner values must continue to parse
+  without crashing.
 
 Flags:
 
@@ -902,6 +1087,8 @@ Optional/current compatibility behavior:
 - 0004 PGN inventory may be absent on older firmware;
 - 0005 raw CAN FIFO may be absent on older firmware and must never be required for ordinary NMEA/Boat State operation;
 - 0006 LED brightness may be absent on firmware predating the additive brightness contract;
+- 0007 Diagnostic Log may be absent on older firmware;
+- 0008 Device Control may be absent on older firmware; its absence must not break ordinary connection/OTA;
 - 0024 normalized Boat State may be absent on older firmware and is not implied by the IMU telemetry capability bit;
 - the telemetry service or individual optional telemetry characteristics may be absent/unavailable without breaking Device Info or OTA;
 - NMEA bus availability must not be inferred from Device Info capability bit 3;
@@ -920,6 +1107,7 @@ Current RegattaTracker consumption remains capability/UUID-driven:
 - 0002 and 0006 are consumed as optional configuration surfaces;
 - 0004 is read explicitly for PGN inventory diagnostics;
 - 0005 is drained only after explicit user action and with a strict finite bound;
+- 0007/0008 are published in the client contract and UUID registry but remain pending feature consumption in RegattaTracker #298;
 - 0024 is discovered independently of IMU capability bit 3 and consumed as read + notify Boat State telemetry.
 
 Core connection failure conditions remain:
@@ -960,6 +1148,9 @@ A RegattaTracker change affecting RegattaLink BLE should verify, as applicable:
 - unknown PGNs survive 0004 parsing;
 - 0005 reads are treated as destructive read-to-drain operations and a 21-byte empty record is valid when consumed;
 - 0006 is exactly one byte in range 0..100 and BUSY during OTA is handled as a feature-local write failure when consumed;
+- optional 0007 is a bounded 20-record/22-byte read-to-drain FIFO and is never background-polled;
+- optional 0008 requires exact 8-byte request / 20-byte status parsing, matching request_id completion and explicit TIMEOUT handling;
+- Factory Reset terminal status is read during the pre-bond-delete grace and its intentional disconnect is not treated as outage/OTA reconnect;
 - IMU telemetry fixed-size/schema validation works;
 - IMU telemetry subscription/read and stale handling work;
 - 0024 requires exact v1/80-byte validation, honors validity bits, and is discovered independently of IMU capability when consumed;
