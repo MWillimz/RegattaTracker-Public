@@ -301,6 +301,7 @@
     <string name="gps_tracking_consent">Consentement au suivi GPS</string>
     <string name="gps_tracking_consent_message">Cette application traite les données de localisation pour le suivi de régate, le contrôle de la ligne de départ, la détection OCS, la progression du parcours et la détection d’arrivée.\n\nPendant une course, les données de localisation peuvent être transmises au serveur de régate configuré.\n\nPendant un entraînement manuel, les données sont stockées localement et ne sont pas envoyées automatiquement au serveur.\n\nL’autorisation de localisation Android est également requise.</string>
     <string name="i_agree">J’accepte</string>
+    <string name="exit_race">Quitter</string>
     <string name="leave_race">Quitter la course</string>
     <string name="leave_race_choice_message">Que voulez-vous faire ?</string>
     <string name="retire">Abandonner</string>
