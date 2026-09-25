@@ -8,6 +8,11 @@ import org.junit.Test
 class RegattaLinkDiscoveryPolicyTest {
 
     @Test
+    fun manualDiscoveryBudgetIsTwoMinutes() {
+        assertEquals(120_000L, REGATTALINK_MANUAL_DISCOVERY_TIMEOUT_MS)
+    }
+
+    @Test
     fun remainingBudgetNeverGoesNegative() {
         assertEquals(40_000L, regattaLinkDiscoveryRemainingMs(60_000L, 20_000L))
         assertEquals(0L, regattaLinkDiscoveryRemainingMs(60_000L, 60_000L))
