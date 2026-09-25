@@ -162,6 +162,9 @@ internal class RegattaLinkBleClient(
 
     private val otaRunning = AtomicBoolean(false)
     private val otaCancelled = AtomicBoolean(false)
+    private val rawCaptureRunning = AtomicBoolean(false)
+    private val rawCaptureStopReason =
+        AtomicReference<RegattaLinkRawCaptureStopReason?>(null)
     private val otaProgressQueue = LinkedBlockingQueue<RegattaLinkOtaProgress>()
     private val otaDataTransportError = AtomicReference<String?>(null)
     @Volatile private var lastState = RegattaLinkClientState()
@@ -726,6 +729,9 @@ internal class RegattaLinkBleClient(
     }
 
     override fun startOta(artifact: RegattaLinkFirmwareArtifact) {
+        if (rawCaptureRunning.get()) {
+            stopRawCanCapture(RegattaLinkRawCaptureStopReason.INTERRUPTED)
+        }
         if (!otaRunning.compareAndSet(false, true)) return
 
         val info = lastState.deviceInfo
@@ -831,6 +837,7 @@ internal class RegattaLinkBleClient(
     }
 
     override fun disconnect() {
+        stopRawCanCapture(RegattaLinkRawCaptureStopReason.INTERRUPTED)
         if (otaRunning.get()) {
             cancelOta()
             return
@@ -853,6 +860,7 @@ internal class RegattaLinkBleClient(
     }
 
     fun close() {
+        stopRawCanCapture(RegattaLinkRawCaptureStopReason.INTERRUPTED)
         otaCancelled.set(true)
         cancelKnownDeviceReconnect()
         stopScan()
@@ -1959,7 +1967,7 @@ internal class RegattaLinkBleClient(
     }
 
     override fun readRawCanFrames(): Boolean {
-        if (otaRunning.get() || !isConnected()) return false
+        if (otaRunning.get() || rawCaptureRunning.get() || !isConnected()) return false
         val activeGatt = gatt ?: return false
 
         otaExecutor.execute {
@@ -2016,6 +2024,147 @@ internal class RegattaLinkBleClient(
             }
         }
         return true
+    }
+
+    override fun startRawCanCapture(
+        onRecordingStarted: () -> Unit,
+        onFrame: (RegattaLinkRawCanFrame) -> Unit,
+        onFinished: (RegattaLinkRawCaptureEndReason, String) -> Unit
+    ): Boolean {
+        if (
+            otaRunning.get() ||
+            !isConnected() ||
+            !rawCaptureRunning.compareAndSet(false, true)
+        ) {
+            return false
+        }
+        val activeGatt = gatt
+        if (activeGatt == null) {
+            rawCaptureRunning.set(false)
+            return false
+        }
+        rawCaptureStopReason.set(null)
+
+        otaExecutor.execute {
+            var endReason = RegattaLinkRawCaptureEndReason.TIMEOUT
+            var errorMessage = ""
+            val deadline =
+                SystemClock.elapsedRealtime() + REGATTALINK_RAW_CAPTURE_DURATION_MS
+
+            try {
+                if (!optionalFeatureWorkAllowed(activeGatt)) {
+                    throw RegattaLinkOtaTransportException(
+                        "RegattaLink raw CAN diagnostics are unavailable",
+                        ambiguous = false
+                    )
+                }
+                val characteristic = activeGatt
+                    .getService(CONFIG_SERVICE_UUID)
+                    ?.getCharacteristic(NMEA_RAW_CAN_UUID)
+                    ?: throw RegattaLinkOtaTransportException(
+                        "RegattaLink raw CAN diagnostics are unavailable",
+                        ambiguous = false
+                    )
+
+                var flushReads = 0
+                while (
+                    rawCaptureRunning.get() &&
+                    gatt === activeGatt &&
+                    connected &&
+                    SystemClock.elapsedRealtime() < deadline &&
+                    flushReads < REGATTALINK_RAW_CAPTURE_FLUSH_READ_LIMIT
+                ) {
+                    if (serviceRediscoveryRequested.get()) {
+                        throw RegattaLinkOtaTransportException(
+                            "RegattaLink services changed during raw CAN capture",
+                            ambiguous = false
+                        )
+                    }
+                    val result = parseRegattaLinkRawCanRead(
+                        readCharacteristicBlocking(activeGatt, characteristic)
+                    )
+                    flushReads += 1
+                    if (!shouldContinueRawCaptureFlush(flushReads, result)) {
+                        break
+                    }
+                }
+
+                if (
+                    rawCaptureRunning.get() &&
+                    gatt === activeGatt &&
+                    connected &&
+                    SystemClock.elapsedRealtime() < deadline
+                ) {
+                    onRecordingStarted()
+
+                    while (
+                        rawCaptureRunning.get() &&
+                        gatt === activeGatt &&
+                        connected &&
+                        SystemClock.elapsedRealtime() < deadline
+                    ) {
+                        if (serviceRediscoveryRequested.get()) {
+                            throw RegattaLinkOtaTransportException(
+                                "RegattaLink services changed during raw CAN capture",
+                                ambiguous = false
+                            )
+                        }
+
+                        val result = parseRegattaLinkRawCanRead(
+                            readCharacteristicBlocking(activeGatt, characteristic)
+                        )
+                        result.frame?.let(onFrame)
+
+                        val delayMs = rawCapturePollDelayMs(result)
+                        if (delayMs > 0L) {
+                            val remaining =
+                                (deadline - SystemClock.elapsedRealtime())
+                                    .coerceAtLeast(0L)
+                            if (remaining > 0L) {
+                                Thread.sleep(minOf(delayMs, remaining))
+                            }
+                        }
+                    }
+                }
+
+                if (gatt !== activeGatt || !connected) {
+                    endReason = RegattaLinkRawCaptureEndReason.INTERRUPTED
+                }
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                endReason = RegattaLinkRawCaptureEndReason.INTERRUPTED
+            } catch (error: Exception) {
+                val requested = rawCaptureStopReason.get()
+                if (
+                    requested == RegattaLinkRawCaptureStopReason.INTERRUPTED ||
+                    gatt !== activeGatt ||
+                    !connected
+                ) {
+                    endReason = RegattaLinkRawCaptureEndReason.INTERRUPTED
+                } else {
+                    endReason = RegattaLinkRawCaptureEndReason.ERROR
+                    errorMessage =
+                        error.message ?: "Raw CAN capture failed"
+                }
+            } finally {
+                when (rawCaptureStopReason.getAndSet(null)) {
+                    RegattaLinkRawCaptureStopReason.USER ->
+                        endReason = RegattaLinkRawCaptureEndReason.USER_STOP
+                    RegattaLinkRawCaptureStopReason.INTERRUPTED ->
+                        endReason = RegattaLinkRawCaptureEndReason.INTERRUPTED
+                    null -> Unit
+                }
+                rawCaptureRunning.set(false)
+                runCatching { onFinished(endReason, errorMessage) }
+            }
+        }
+        return true
+    }
+
+    override fun stopRawCanCapture(reason: RegattaLinkRawCaptureStopReason) {
+        if (!rawCaptureRunning.get()) return
+        rawCaptureStopReason.compareAndSet(null, reason)
+        rawCaptureRunning.set(false)
     }
 
     override fun isConnected(): Boolean = connected && gatt != null

@@ -532,4 +532,18 @@
     <string name="regattalink_nmea_altitude">Altitudine</string>
     <string name="regattalink_nmea_wind_speed">Velocità vento</string>
     <string name="regattalink_nmea_wind_angle">Angolo vento</string>
+
+    <string name="regattalink_raw_capture_title">Acquisizione CAN grezza</string>
+    <string name="regattalink_raw_capture_best_effort">Best effort: i frame già presenti nella FIFO vengono scartati prima della registrazione; alcuni frame possono andare persi se la FIFO diagnostica da 128 frame si riempie.</string>
+    <string name="regattalink_raw_capture_flushing">Preparazione dell’acquisizione…</string>
+    <string name="regattalink_raw_capture_active">Acquisizione dei frame CAN grezzi…</string>
+    <string name="regattalink_raw_capture_completed">Acquisizione completata.</string>
+    <string name="regattalink_raw_capture_interrupted">Acquisizione interrotta; le righe già scritte sono state conservate.</string>
+    <string name="regattalink_raw_capture_failed">Acquisizione non riuscita; le righe già scritte sono state conservate.</string>
+    <string name="regattalink_raw_capture_frames">%1$d frame acquisiti</string>
+    <string name="regattalink_raw_capture_remaining">%1$d s rimanenti</string>
+    <string name="regattalink_raw_capture_start">Avvia acquisizione di 30 s</string>
+    <string name="regattalink_raw_capture_stop">Interrompi acquisizione</string>
+    <string name="regattalink_raw_capture_export">Esporta CSV</string>
+    <string name="regattalink_raw_capture_discard">Elimina</string>
 </resources>

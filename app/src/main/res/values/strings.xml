@@ -575,4 +575,18 @@
     <string name="regattalink_nmea_altitude">Altitude</string>
     <string name="regattalink_nmea_wind_speed">Wind speed</string>
     <string name="regattalink_nmea_wind_angle">Wind angle</string>
+
+    <string name="regattalink_raw_capture_title">Raw CAN capture</string>
+    <string name="regattalink_raw_capture_best_effort">Best effort: existing FIFO frames are discarded before recording; frames can be lost if the 128-frame diagnostic FIFO fills.</string>
+    <string name="regattalink_raw_capture_flushing">Preparing capture…</string>
+    <string name="regattalink_raw_capture_active">Capturing raw CAN frames…</string>
+    <string name="regattalink_raw_capture_completed">Capture completed.</string>
+    <string name="regattalink_raw_capture_interrupted">Capture interrupted; recorded rows were kept.</string>
+    <string name="regattalink_raw_capture_failed">Capture failed; recorded rows were kept.</string>
+    <string name="regattalink_raw_capture_frames">%1$d frames captured</string>
+    <string name="regattalink_raw_capture_remaining">%1$d s remaining</string>
+    <string name="regattalink_raw_capture_start">Start 30 s capture</string>
+    <string name="regattalink_raw_capture_stop">Stop capture</string>
+    <string name="regattalink_raw_capture_export">Export CSV</string>
+    <string name="regattalink_raw_capture_discard">Discard</string>
 </resources>

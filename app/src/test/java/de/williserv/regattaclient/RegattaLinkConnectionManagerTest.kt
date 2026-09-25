@@ -75,6 +75,9 @@ class RegattaLinkConnectionManagerTest {
             RegattaLinkConfiguredDeviceStore.PREFS_NAME,
             Context.MODE_PRIVATE
         ).edit().clear().commit()
+        context.cacheDir
+            .resolve("regattalink-captures")
+            .deleteRecursively()
     }
 
     @Test
@@ -277,6 +280,92 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun rawCaptureStreamsFramesAndFinalizesCsv() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED
+            )
+        )
+        fakeClient.emitNmea(
+            RegattaLinkNmeaState(rawCanSupported = true)
+        )
+
+        assertTrue(manager.startRawCanCapture())
+        assertEquals(
+            RegattaLinkRawCapturePhase.FLUSHING,
+            manager.currentRawCaptureState().phase
+        )
+
+        fakeClient.captureRecordingStarted?.invoke()
+        assertEquals(
+            RegattaLinkRawCapturePhase.CAPTURING,
+            manager.currentRawCaptureState().phase
+        )
+
+        fakeClient.captureFrame?.invoke(
+            RegattaLinkRawCanFrame(
+                timestampUsLow = 42L,
+                canId = (3L shl 26) or (129025L shl 8) or 0x45L,
+                dlc = 2,
+                data = byteArrayOf(0x12, 0x34, 0, 0, 0, 0, 0, 0)
+            )
+        )
+        fakeClient.captureFinished?.invoke(
+            RegattaLinkRawCaptureEndReason.USER_STOP,
+            ""
+        )
+
+        val state = manager.currentRawCaptureState()
+        assertEquals(RegattaLinkRawCapturePhase.COMPLETED, state.phase)
+        assertEquals(1, state.frameCount)
+        val file = java.io.File(requireNotNull(state.filePath))
+        assertTrue(file.exists())
+        val lines = file.readLines(Charsets.UTF_8)
+        assertEquals(REGATTALINK_RAW_CAPTURE_CSV_HEADER, lines[0])
+        assertEquals(
+            "42,234357061,129025,3,69,,2,1234",
+            lines[1]
+        )
+
+        assertTrue(manager.discardRawCanCapture())
+        assertFalse(file.exists())
+        assertEquals(
+            RegattaLinkRawCapturePhase.IDLE,
+            manager.currentRawCaptureState().phase
+        )
+    }
+
+    @Test
+    fun activeRawCaptureBlocksOtherOptionalGattActionsAndDisconnectInterrupts() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED
+            )
+        )
+        fakeClient.emitNmea(
+            RegattaLinkNmeaState(rawCanSupported = true)
+        )
+
+        assertTrue(manager.startRawCanCapture())
+        assertFalse(manager.setDeviceName("Race-Link"))
+        assertFalse(manager.setLedBrightness(75))
+        assertFalse(manager.refreshPgnInventory())
+        assertFalse(manager.readRawCanFrames())
+
+        manager.disconnect()
+
+        assertEquals(
+            RegattaLinkRawCaptureStopReason.INTERRUPTED,
+            fakeClient.lastCaptureStopReason
+        )
+        assertEquals(
+            RegattaLinkRawCapturePhase.INTERRUPTED,
+            manager.currentRawCaptureState().phase
+        )
+        assertEquals(1, fakeClient.disconnectCalls)
+    }
+
+    @Test
     fun newlyAttachedListenerReceivesCurrentManagerState() {
         fakeClient.emitConnection(
             RegattaLinkClientState(
@@ -327,6 +416,12 @@ class RegattaLinkConnectionManagerTest {
         var setBrightnessCalls = 0
         var refreshPgnCalls = 0
         var rawReadCalls = 0
+        var captureStartCalls = 0
+        var captureRecordingStarted: (() -> Unit)? = null
+        var captureFrame: ((RegattaLinkRawCanFrame) -> Unit)? = null
+        var captureFinished:
+            ((RegattaLinkRawCaptureEndReason, String) -> Unit)? = null
+        var lastCaptureStopReason: RegattaLinkRawCaptureStopReason? = null
         var lastReconnectAddress: String? = null
         var lastReconnectStableId: String? = null
 
@@ -376,6 +471,33 @@ class RegattaLinkConnectionManagerTest {
             return true
         }
 
+        override fun startRawCanCapture(
+            onRecordingStarted: () -> Unit,
+            onFrame: (RegattaLinkRawCanFrame) -> Unit,
+            onFinished: (RegattaLinkRawCaptureEndReason, String) -> Unit
+        ): Boolean {
+            captureStartCalls += 1
+            captureRecordingStarted = onRecordingStarted
+            captureFrame = onFrame
+            captureFinished = onFinished
+            return true
+        }
+
+        override fun stopRawCanCapture(
+            reason: RegattaLinkRawCaptureStopReason
+        ) {
+            lastCaptureStopReason = reason
+            captureFinished?.invoke(
+                if (reason == RegattaLinkRawCaptureStopReason.USER) {
+                    RegattaLinkRawCaptureEndReason.USER_STOP
+                } else {
+                    RegattaLinkRawCaptureEndReason.INTERRUPTED
+                },
+                ""
+            )
+            captureFinished = null
+        }
+
         fun emitConnection(state: RegattaLinkClientState) {
             onStateChanged(state)
         }
@@ -386,6 +508,10 @@ class RegattaLinkConnectionManagerTest {
 
         fun emitConfiguration(state: RegattaLinkConfigurationState) {
             onConfigurationStateChanged(state)
+        }
+
+        fun emitNmea(state: RegattaLinkNmeaState) {
+            onNmeaStateChanged(state)
         }
 
         fun emitUnexpectedDisconnect() {

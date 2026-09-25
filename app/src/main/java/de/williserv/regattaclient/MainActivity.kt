@@ -105,6 +105,8 @@ class MainActivity : ComponentActivity() {
     private val regattaLinkConfigurationState =
         mutableStateOf(RegattaLinkConfigurationState())
     private val regattaLinkNmeaState = mutableStateOf(RegattaLinkNmeaState())
+    private val regattaLinkRawCaptureState =
+        mutableStateOf(RegattaLinkRawCaptureState())
     private var pendingRegattaLinkPermissionAction: PendingRegattaLinkPermissionAction? = null
     private var regattaLinkReturnScreen: Screen = Screen.BOAT_DATA
 
@@ -142,6 +144,14 @@ class MainActivity : ComponentActivity() {
         override fun onNmeaStateChanged(state: RegattaLinkNmeaState) {
             if (asyncLifetime.isActive()) {
                 regattaLinkNmeaState.value = state
+            }
+        }
+
+        override fun onRawCaptureStateChanged(
+            state: RegattaLinkRawCaptureState
+        ) {
+            if (asyncLifetime.isActive()) {
+                regattaLinkRawCaptureState.value = state
             }
         }
     }
@@ -311,6 +321,14 @@ class MainActivity : ComponentActivity() {
                 if (regattaLinkOtaState.value.isActive) {
                     Screen.REGATTALINK
                 } else {
+                    if (
+                        regattaLinkRawCaptureState.value.isActive &&
+                        ::regattaLinkManager.isInitialized
+                    ) {
+                        regattaLinkManager.stopRawCanCapture(
+                            interrupted = true
+                        )
+                    }
                     regattaLinkFirmwareArtifact = null
                     regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState()
                     if (::regattaLinkManager.isInitialized) {
@@ -398,6 +416,15 @@ class MainActivity : ComponentActivity() {
         registerForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri: Uri? ->
             if (uri != null) {
                 exportCsvToUri(uri)
+            }
+        }
+
+    private val regattaLinkRawCaptureExportLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.CreateDocument("text/csv")
+        ) { uri: Uri? ->
+            if (uri != null && ::regattaLinkManager.isInitialized) {
+                regattaLinkManager.exportRawCanCapture(uri)
             }
         }
 
@@ -730,6 +757,7 @@ class MainActivity : ComponentActivity() {
                             telemetryState = regattaLinkTelemetryState.value,
                             configurationState = regattaLinkConfigurationState.value,
                             nmeaState = regattaLinkNmeaState.value,
+                            rawCaptureState = regattaLinkRawCaptureState.value,
                             firmwareSourceAvailable = raceServer.value.isNotBlank(),
                             installAvailable =
                                 regattaLinkFirmwareArtifact != null &&
@@ -753,6 +781,23 @@ class MainActivity : ComponentActivity() {
                             },
                             onReadRawFrames = {
                                 regattaLinkManager.readRawCanFrames()
+                            },
+                            onStartRawCapture = {
+                                regattaLinkManager.startRawCanCapture()
+                            },
+                            onStopRawCapture = {
+                                regattaLinkManager.stopRawCanCapture()
+                            },
+                            onExportRawCapture = {
+                                regattaLinkRawCaptureState.value.fileName
+                                    .takeIf { it.isNotBlank() }
+                                    ?.let { fileName ->
+                                        regattaLinkRawCaptureExportLauncher
+                                            .launch(fileName)
+                                    }
+                            },
+                            onDiscardRawCapture = {
+                                regattaLinkManager.discardRawCanCapture()
                             },
                             onDisconnect = {
                                 regattaLinkManager.disconnect()
@@ -3765,6 +3810,16 @@ class MainActivity : ComponentActivity() {
         } catch (e: Exception) {
             statusText.value = getString(R.string.csv_export_failed, e.message ?: "")
         }
+    }
+
+    override fun onStop() {
+        if (
+            ::regattaLinkManager.isInitialized &&
+            regattaLinkRawCaptureState.value.isActive
+        ) {
+            regattaLinkManager.stopRawCanCapture(interrupted = true)
+        }
+        super.onStop()
     }
 
     override fun onDestroy() {
