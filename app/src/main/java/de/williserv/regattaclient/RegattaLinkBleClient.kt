@@ -162,6 +162,9 @@ internal class RegattaLinkBleClient(
 
     private val otaRunning = AtomicBoolean(false)
     private val otaCancelled = AtomicBoolean(false)
+    private val rawCaptureRunning = AtomicBoolean(false)
+    private val rawCaptureStopReason =
+        AtomicReference<RegattaLinkRawCaptureStopReason?>(null)
     private val otaProgressQueue = LinkedBlockingQueue<RegattaLinkOtaProgress>()
     private val otaDataTransportError = AtomicReference<String?>(null)
     @Volatile private var lastState = RegattaLinkClientState()
@@ -187,6 +190,8 @@ internal class RegattaLinkBleClient(
     private val attemptedDiscoveryAddresses = mutableSetOf<String>()
     private var discoveryInProgress = false
     private var discoveryCandidateInProgress = false
+    private var discoveryCandidateBondingObserved = false
+    private var discoveryDeadlineMs = 0L
     private var knownReconnectAddress: String? = null
     private var knownReconnectExpectedStableId: String? = null
     private var knownReconnectDeadlineMs = 0L
@@ -203,14 +208,7 @@ internal class RegattaLinkBleClient(
         } else if (scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT) {
             retryKnownDeviceReconnect("Configured RegattaLink was not found")
         } else {
-            discoveryInProgress = false
-            discoveryCandidateInProgress = false
-            emit(
-                RegattaLinkClientState(
-                    status = RegattaLinkConnectionStatus.ERROR,
-                    error = "No available RegattaLink found"
-                )
-            )
+            finishManualDiscovery("No available RegattaLink found")
         }
     }
 
@@ -337,21 +335,36 @@ internal class RegattaLinkBleClient(
     private val bondPoll = object : Runnable {
         override fun run() {
             val device = currentDevice ?: return
-            when (device.bondState) {
-                BluetoothDevice.BOND_BONDED -> connectGatt(device)
-                else -> {
-                    if (SystemClock.elapsedRealtime() >= bondDeadline) {
-                        if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
-                            reconnectFuture?.complete(null)
-                        } else if (discoveryInProgress) {
-                            retryDiscoveryAfterCandidateFailure()
-                        } else {
-                            emitError(device, "RegattaLink pairing timed out")
-                        }
+            val bondState = device.bondState
+
+            if (
+                scanPurpose == ScanPurpose.NORMAL &&
+                discoveryInProgress &&
+                bondState == BluetoothDevice.BOND_BONDING
+            ) {
+                discoveryCandidateBondingObserved = true
+            }
+
+            when {
+                bondState == BluetoothDevice.BOND_BONDED -> connectGatt(device)
+                scanPurpose == ScanPurpose.NORMAL &&
+                    discoveryInProgress &&
+                    shouldSkipRejectedRegattaLinkDiscoveryCandidate(
+                        bondingObserved = discoveryCandidateBondingObserved,
+                        currentlyUnbonded = bondState == BluetoothDevice.BOND_NONE
+                    ) -> {
+                    retryDiscoveryAfterCandidateFailure()
+                }
+                SystemClock.elapsedRealtime() >= bondDeadline -> {
+                    if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
+                        reconnectFuture?.complete(null)
+                    } else if (discoveryInProgress) {
+                        retryDiscoveryAfterCandidateFailure()
                     } else {
-                        handler.postDelayed(this, BOND_POLL_MS)
+                        emitError(device, "RegattaLink pairing timed out")
                     }
                 }
+                else -> handler.postDelayed(this, BOND_POLL_MS)
             }
         }
     }
@@ -384,14 +397,7 @@ internal class RegattaLinkBleClient(
             } else if (scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT) {
                 retryKnownDeviceReconnect("Bluetooth scan failed ($errorCode)")
             } else {
-                discoveryInProgress = false
-                discoveryCandidateInProgress = false
-                emit(
-                    RegattaLinkClientState(
-                        status = RegattaLinkConnectionStatus.ERROR,
-                        error = "Bluetooth scan failed ($errorCode)"
-                    )
-                )
+                finishManualDiscovery("Bluetooth scan failed ($errorCode)")
             }
         }
     }
@@ -685,6 +691,9 @@ internal class RegattaLinkBleClient(
         attemptedDiscoveryAddresses.clear()
         discoveryInProgress = true
         discoveryCandidateInProgress = false
+        discoveryCandidateBondingObserved = false
+        discoveryDeadlineMs =
+            SystemClock.elapsedRealtime() + REGATTALINK_MANUAL_DISCOVERY_TIMEOUT_MS
         stopScan()
         handler.removeCallbacks(bondPoll)
         closeGatt()
@@ -693,24 +702,14 @@ internal class RegattaLinkBleClient(
 
         val adapter = bluetoothManager.adapter
         if (adapter == null || !adapter.isEnabled) {
-            emit(
-                RegattaLinkClientState(
-                    status = RegattaLinkConnectionStatus.ERROR,
-                    error = "Bluetooth is disabled"
-                )
-            )
+            finishManualDiscovery("Bluetooth is disabled")
             return true
         }
 
         scanner = adapter.bluetoothLeScanner
         val activeScanner = scanner
         if (activeScanner == null) {
-            emit(
-                RegattaLinkClientState(
-                    status = RegattaLinkConnectionStatus.ERROR,
-                    error = "Bluetooth LE is unavailable"
-                )
-            )
+            finishManualDiscovery("Bluetooth LE is unavailable")
             return true
         }
 
@@ -719,11 +718,20 @@ internal class RegattaLinkBleClient(
                 status = RegattaLinkConnectionStatus.SCANNING
             )
         )
-        startFilteredScan(activeScanner)
+        startFilteredScan(
+            activeScanner = activeScanner,
+            timeoutMs = regattaLinkDiscoveryRemainingMs(
+                discoveryDeadlineMs,
+                SystemClock.elapsedRealtime()
+            ).coerceAtLeast(1L)
+        )
         return true
     }
 
     override fun startOta(artifact: RegattaLinkFirmwareArtifact) {
+        if (rawCaptureRunning.get()) {
+            stopRawCanCapture(RegattaLinkRawCaptureStopReason.INTERRUPTED)
+        }
         if (!otaRunning.compareAndSet(false, true)) return
 
         val info = lastState.deviceInfo
@@ -829,6 +837,7 @@ internal class RegattaLinkBleClient(
     }
 
     override fun disconnect() {
+        stopRawCanCapture(RegattaLinkRawCaptureStopReason.INTERRUPTED)
         if (otaRunning.get()) {
             cancelOta()
             return
@@ -844,11 +853,14 @@ internal class RegattaLinkBleClient(
         currentDevice = null
         discoveryInProgress = false
         discoveryCandidateInProgress = false
+        discoveryCandidateBondingObserved = false
+        discoveryDeadlineMs = 0L
         attemptedDiscoveryAddresses.clear()
         emit(RegattaLinkClientState())
     }
 
     fun close() {
+        stopRawCanCapture(RegattaLinkRawCaptureStopReason.INTERRUPTED)
         otaCancelled.set(true)
         cancelKnownDeviceReconnect()
         stopScan()
@@ -861,6 +873,8 @@ internal class RegattaLinkBleClient(
         currentDevice = null
         discoveryInProgress = false
         discoveryCandidateInProgress = false
+        discoveryCandidateBondingObserved = false
+        discoveryDeadlineMs = 0L
         attemptedDiscoveryAddresses.clear()
         otaExecutor.shutdownNow()
     }
@@ -907,6 +921,8 @@ internal class RegattaLinkBleClient(
         currentDevice = null
         discoveryInProgress = false
         discoveryCandidateInProgress = false
+        discoveryCandidateBondingObserved = false
+        discoveryDeadlineMs = 0L
         attemptedDiscoveryAddresses.clear()
         scanPurpose = ScanPurpose.KNOWN_DEVICE_RECONNECT
         knownReconnectAddress = deviceAddress
@@ -1087,6 +1103,25 @@ internal class RegattaLinkBleClient(
         }
     }
 
+    private fun finishManualDiscovery(message: String) {
+        stopScan()
+        handler.removeCallbacks(bondPoll)
+        handler.removeCallbacks(gattTimeout)
+        closeGatt()
+        currentDevice = null
+        discoveryInProgress = false
+        discoveryCandidateInProgress = false
+        discoveryCandidateBondingObserved = false
+        discoveryDeadlineMs = 0L
+        attemptedDiscoveryAddresses.clear()
+        emit(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.ERROR,
+                error = message
+            )
+        )
+    }
+
     private fun retryDiscoveryAfterCandidateFailure() {
         if (
             scanPurpose != ScanPurpose.NORMAL ||
@@ -1097,9 +1132,19 @@ internal class RegattaLinkBleClient(
         }
 
         discoveryCandidateInProgress = false
+        discoveryCandidateBondingObserved = false
         handler.removeCallbacks(bondPoll)
         handler.removeCallbacks(gattTimeout)
         currentDevice = null
+
+        val remaining = regattaLinkDiscoveryRemainingMs(
+            discoveryDeadlineMs,
+            SystemClock.elapsedRealtime()
+        )
+        if (remaining <= 0L) {
+            finishManualDiscovery("No available RegattaLink found")
+            return
+        }
 
         handler.post {
             if (
@@ -1107,6 +1152,15 @@ internal class RegattaLinkBleClient(
                 !discoveryInProgress ||
                 discoveryCandidateInProgress
             ) {
+                return@post
+            }
+
+            val retryRemaining = regattaLinkDiscoveryRemainingMs(
+                discoveryDeadlineMs,
+                SystemClock.elapsedRealtime()
+            )
+            if (retryRemaining <= 0L) {
+                finishManualDiscovery("No available RegattaLink found")
                 return@post
             }
 
@@ -1118,13 +1172,7 @@ internal class RegattaLinkBleClient(
                     null
                 }
             if (activeScanner == null) {
-                discoveryInProgress = false
-                emit(
-                    RegattaLinkClientState(
-                        status = RegattaLinkConnectionStatus.ERROR,
-                        error = "Bluetooth LE is unavailable"
-                    )
-                )
+                finishManualDiscovery("Bluetooth LE is unavailable")
                 return@post
             }
 
@@ -1134,7 +1182,10 @@ internal class RegattaLinkBleClient(
                     status = RegattaLinkConnectionStatus.SCANNING
                 )
             )
-            startFilteredScan(activeScanner)
+            startFilteredScan(
+                activeScanner = activeScanner,
+                timeoutMs = retryRemaining
+            )
         }
     }
 
@@ -1181,7 +1232,26 @@ internal class RegattaLinkBleClient(
         }
 
         emitForDevice(device, RegattaLinkConnectionStatus.BONDING)
-        bondDeadline = SystemClock.elapsedRealtime() + BOND_TIMEOUT_MS
+        val now = SystemClock.elapsedRealtime()
+        val bondTimeoutMs =
+            if (scanPurpose == ScanPurpose.NORMAL && discoveryInProgress) {
+                regattaLinkDiscoveryStageTimeoutMs(
+                    stageTimeoutMs = BOND_TIMEOUT_MS,
+                    deadlineElapsedMs = discoveryDeadlineMs,
+                    nowElapsedMs = now
+                )
+            } else {
+                BOND_TIMEOUT_MS
+            }
+        if (bondTimeoutMs <= 0L) {
+            retryDiscoveryAfterCandidateFailure()
+            return
+        }
+        bondDeadline = now + bondTimeoutMs
+        discoveryCandidateBondingObserved =
+            scanPurpose == ScanPurpose.NORMAL &&
+                discoveryInProgress &&
+                device.bondState == BluetoothDevice.BOND_BONDING
         if (!device.createBond()) {
             if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
                 reconnectFuture?.complete(null)
@@ -1191,6 +1261,13 @@ internal class RegattaLinkBleClient(
                 emitError(device, "Could not start RegattaLink pairing")
             }
             return
+        }
+        if (
+            scanPurpose == ScanPurpose.NORMAL &&
+            discoveryInProgress &&
+            device.bondState == BluetoothDevice.BOND_BONDING
+        ) {
+            discoveryCandidateBondingObserved = true
         }
         handler.post(bondPoll)
     }
@@ -1222,16 +1299,24 @@ internal class RegattaLinkBleClient(
     }
 
     private fun currentGattTimeoutMs(): Long =
-        if (scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT) {
-            minOf(
-                GATT_TIMEOUT_MS,
-                regattaLinkReconnectRemainingMs(
-                    knownReconnectDeadlineMs,
-                    SystemClock.elapsedRealtime()
+        when {
+            scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT -> {
+                minOf(
+                    GATT_TIMEOUT_MS,
+                    regattaLinkReconnectRemainingMs(
+                        knownReconnectDeadlineMs,
+                        SystemClock.elapsedRealtime()
+                    ).coerceAtLeast(1L)
+                )
+            }
+            scanPurpose == ScanPurpose.NORMAL && discoveryInProgress -> {
+                regattaLinkDiscoveryStageTimeoutMs(
+                    stageTimeoutMs = GATT_TIMEOUT_MS,
+                    deadlineElapsedMs = discoveryDeadlineMs,
+                    nowElapsedMs = SystemClock.elapsedRealtime()
                 ).coerceAtLeast(1L)
-            )
-        } else {
-            GATT_TIMEOUT_MS
+            }
+            else -> GATT_TIMEOUT_MS
         }
 
     private fun handleCharacteristicRead(
@@ -1303,6 +1388,8 @@ internal class RegattaLinkBleClient(
             selectedDeviceAddress = device.address
             discoveryInProgress = false
             discoveryCandidateInProgress = false
+            discoveryCandidateBondingObserved = false
+            discoveryDeadlineMs = 0L
             attemptedDiscoveryAddresses.clear()
         }
 
@@ -1880,7 +1967,7 @@ internal class RegattaLinkBleClient(
     }
 
     override fun readRawCanFrames(): Boolean {
-        if (otaRunning.get() || !isConnected()) return false
+        if (otaRunning.get() || rawCaptureRunning.get() || !isConnected()) return false
         val activeGatt = gatt ?: return false
 
         otaExecutor.execute {
@@ -1937,6 +2024,147 @@ internal class RegattaLinkBleClient(
             }
         }
         return true
+    }
+
+    override fun startRawCanCapture(
+        onRecordingStarted: () -> Unit,
+        onFrame: (RegattaLinkRawCanFrame) -> Unit,
+        onFinished: (RegattaLinkRawCaptureEndReason, String) -> Unit
+    ): Boolean {
+        if (
+            otaRunning.get() ||
+            !isConnected() ||
+            !rawCaptureRunning.compareAndSet(false, true)
+        ) {
+            return false
+        }
+        val activeGatt = gatt
+        if (activeGatt == null) {
+            rawCaptureRunning.set(false)
+            return false
+        }
+        rawCaptureStopReason.set(null)
+
+        otaExecutor.execute {
+            var endReason = RegattaLinkRawCaptureEndReason.TIMEOUT
+            var errorMessage = ""
+            val deadline =
+                SystemClock.elapsedRealtime() + REGATTALINK_RAW_CAPTURE_DURATION_MS
+
+            try {
+                if (!optionalFeatureWorkAllowed(activeGatt)) {
+                    throw RegattaLinkOtaTransportException(
+                        "RegattaLink raw CAN diagnostics are unavailable",
+                        ambiguous = false
+                    )
+                }
+                val characteristic = activeGatt
+                    .getService(CONFIG_SERVICE_UUID)
+                    ?.getCharacteristic(NMEA_RAW_CAN_UUID)
+                    ?: throw RegattaLinkOtaTransportException(
+                        "RegattaLink raw CAN diagnostics are unavailable",
+                        ambiguous = false
+                    )
+
+                var flushReads = 0
+                while (
+                    rawCaptureRunning.get() &&
+                    gatt === activeGatt &&
+                    connected &&
+                    SystemClock.elapsedRealtime() < deadline &&
+                    flushReads < REGATTALINK_RAW_CAPTURE_FLUSH_READ_LIMIT
+                ) {
+                    if (serviceRediscoveryRequested.get()) {
+                        throw RegattaLinkOtaTransportException(
+                            "RegattaLink services changed during raw CAN capture",
+                            ambiguous = false
+                        )
+                    }
+                    val result = parseRegattaLinkRawCanRead(
+                        readCharacteristicBlocking(activeGatt, characteristic)
+                    )
+                    flushReads += 1
+                    if (!shouldContinueRawCaptureFlush(flushReads, result)) {
+                        break
+                    }
+                }
+
+                if (
+                    rawCaptureRunning.get() &&
+                    gatt === activeGatt &&
+                    connected &&
+                    SystemClock.elapsedRealtime() < deadline
+                ) {
+                    onRecordingStarted()
+
+                    while (
+                        rawCaptureRunning.get() &&
+                        gatt === activeGatt &&
+                        connected &&
+                        SystemClock.elapsedRealtime() < deadline
+                    ) {
+                        if (serviceRediscoveryRequested.get()) {
+                            throw RegattaLinkOtaTransportException(
+                                "RegattaLink services changed during raw CAN capture",
+                                ambiguous = false
+                            )
+                        }
+
+                        val result = parseRegattaLinkRawCanRead(
+                            readCharacteristicBlocking(activeGatt, characteristic)
+                        )
+                        result.frame?.let(onFrame)
+
+                        val delayMs = rawCapturePollDelayMs(result)
+                        if (delayMs > 0L) {
+                            val remaining =
+                                (deadline - SystemClock.elapsedRealtime())
+                                    .coerceAtLeast(0L)
+                            if (remaining > 0L) {
+                                Thread.sleep(minOf(delayMs, remaining))
+                            }
+                        }
+                    }
+                }
+
+                if (gatt !== activeGatt || !connected) {
+                    endReason = RegattaLinkRawCaptureEndReason.INTERRUPTED
+                }
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                endReason = RegattaLinkRawCaptureEndReason.INTERRUPTED
+            } catch (error: Exception) {
+                val requested = rawCaptureStopReason.get()
+                if (
+                    requested == RegattaLinkRawCaptureStopReason.INTERRUPTED ||
+                    gatt !== activeGatt ||
+                    !connected
+                ) {
+                    endReason = RegattaLinkRawCaptureEndReason.INTERRUPTED
+                } else {
+                    endReason = RegattaLinkRawCaptureEndReason.ERROR
+                    errorMessage =
+                        error.message ?: "Raw CAN capture failed"
+                }
+            } finally {
+                when (rawCaptureStopReason.getAndSet(null)) {
+                    RegattaLinkRawCaptureStopReason.USER ->
+                        endReason = RegattaLinkRawCaptureEndReason.USER_STOP
+                    RegattaLinkRawCaptureStopReason.INTERRUPTED ->
+                        endReason = RegattaLinkRawCaptureEndReason.INTERRUPTED
+                    null -> Unit
+                }
+                rawCaptureRunning.set(false)
+                runCatching { onFinished(endReason, errorMessage) }
+            }
+        }
+        return true
+    }
+
+    override fun stopRawCanCapture(reason: RegattaLinkRawCaptureStopReason) {
+        if (!rawCaptureRunning.get()) return
+        rawCaptureStopReason.compareAndSet(null, reason)
+        rawCaptureRunning.set(false)
     }
 
     override fun isConnected(): Boolean = connected && gatt != null

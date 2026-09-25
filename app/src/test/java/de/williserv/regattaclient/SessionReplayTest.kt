@@ -43,6 +43,33 @@ class SessionReplayTest {
     }
 
     @Test
+    fun playbackOffsets_followRecordedSessionTime() {
+        val samples = listOf(
+            sample(id = 1, seconds = 0),
+            sample(id = 2, seconds = 10),
+            sample(id = 3, seconds = 100)
+        )
+
+        assertEquals(
+            listOf(0L, 10_000L, 100_000L),
+            replayPlaybackOffsetsMs(samples)
+        )
+    }
+
+    @Test
+    fun playbackIndex_usesLatestSampleAtOrBeforePlaybackTime() {
+        val offsets = listOf(0L, 10_000L, 90_000L, 100_000L)
+
+        assertEquals(0, replayPlaybackIndexForOffset(offsets, 0L))
+        assertEquals(0, replayPlaybackIndexForOffset(offsets, 9_999L))
+        assertEquals(1, replayPlaybackIndexForOffset(offsets, 10_000L))
+        assertEquals(1, replayPlaybackIndexForOffset(offsets, 50_000L))
+        assertEquals(2, replayPlaybackIndexForOffset(offsets, 99_999L))
+        assertEquals(3, replayPlaybackIndexForOffset(offsets, 100_000L))
+        assertEquals(3, replayPlaybackIndexForOffset(offsets, 999_000L))
+    }
+
+    @Test
     fun speedFraction_isRelativeToSessionMaximumAndClamped() {
         assertEquals(0f, replaySpeedFraction(0.0, 10.0), 0.0001f)
         assertEquals(0.5f, replaySpeedFraction(5.0, 10.0), 0.0001f)

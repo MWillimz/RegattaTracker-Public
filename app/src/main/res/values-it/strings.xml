@@ -475,6 +475,10 @@
     <string name="regattalink_contradictions">Contraddizioni</string>
     <string name="regattalink_mounting_epoch">Epoca montaggio</string>
     <string name="regattalink_calibration_revision">Revisione calibrazione</string>
+    <string name="session_replay_fields_show_config">Configura valori replay</string>
+    <string name="session_replay_fields_hide_config">Nascondi valori replay</string>
+    <string name="session_replay_play">Riproduci</string>
+    <string name="session_replay_pause">Pausa</string>
     <string name="session_replay_fields_title">Dati aggiuntivi del replay</string>
     <string name="session_replay_fields_hint">Seleziona i valori da mostrare durante lo scorrimento del replay. Ora, SOG e COG restano visibili.</string>
     <string name="session_replay_fields_recommended">Consigliati</string>
@@ -532,4 +536,18 @@
     <string name="regattalink_nmea_altitude">Altitudine</string>
     <string name="regattalink_nmea_wind_speed">Velocità vento</string>
     <string name="regattalink_nmea_wind_angle">Angolo vento</string>
+
+    <string name="regattalink_raw_capture_title">Acquisizione CAN grezza</string>
+    <string name="regattalink_raw_capture_best_effort">Best effort: i frame già presenti nella FIFO vengono scartati prima della registrazione; alcuni frame possono andare persi se la FIFO diagnostica da 128 frame si riempie.</string>
+    <string name="regattalink_raw_capture_flushing">Preparazione dell’acquisizione…</string>
+    <string name="regattalink_raw_capture_active">Acquisizione dei frame CAN grezzi…</string>
+    <string name="regattalink_raw_capture_completed">Acquisizione completata.</string>
+    <string name="regattalink_raw_capture_interrupted">Acquisizione interrotta; le righe già scritte sono state conservate.</string>
+    <string name="regattalink_raw_capture_failed">Acquisizione non riuscita; le righe già scritte sono state conservate.</string>
+    <string name="regattalink_raw_capture_frames">%1$d frame acquisiti</string>
+    <string name="regattalink_raw_capture_remaining">%1$d s rimanenti</string>
+    <string name="regattalink_raw_capture_start">Avvia acquisizione di 30 s</string>
+    <string name="regattalink_raw_capture_stop">Interrompi acquisizione</string>
+    <string name="regattalink_raw_capture_export">Esporta CSV</string>
+    <string name="regattalink_raw_capture_discard">Elimina</string>
 </resources>

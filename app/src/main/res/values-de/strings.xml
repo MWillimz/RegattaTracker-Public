@@ -475,6 +475,10 @@
     <string name="regattalink_contradictions">Widersprüche</string>
     <string name="regattalink_mounting_epoch">Mounting Epoch</string>
     <string name="regattalink_calibration_revision">Kalibrierungsrevision</string>
+    <string name="session_replay_fields_show_config">Replay-Werte konfigurieren</string>
+    <string name="session_replay_fields_hide_config">Replay-Werte ausblenden</string>
+    <string name="session_replay_play">Abspielen</string>
+    <string name="session_replay_pause">Pause</string>
     <string name="session_replay_fields_title">Zusätzliche Replay-Daten</string>
     <string name="session_replay_fields_hint">Wähle Werte, die beim Durchlaufen des Replays angezeigt werden. Zeit, SOG und COG bleiben sichtbar.</string>
     <string name="session_replay_fields_recommended">Empfohlen</string>
@@ -532,4 +536,18 @@
     <string name="regattalink_nmea_altitude">Höhe</string>
     <string name="regattalink_nmea_wind_speed">Windgeschwindigkeit</string>
     <string name="regattalink_nmea_wind_angle">Windwinkel</string>
+
+    <string name="regattalink_raw_capture_title">Raw-CAN-Aufzeichnung</string>
+    <string name="regattalink_raw_capture_best_effort">Best Effort: Vorhandene FIFO-Frames werden vor der Aufzeichnung verworfen; bei vollem 128-Frame-Diagnose-FIFO können Frames verloren gehen.</string>
+    <string name="regattalink_raw_capture_flushing">Aufzeichnung wird vorbereitet…</string>
+    <string name="regattalink_raw_capture_active">Raw-CAN-Frames werden aufgezeichnet…</string>
+    <string name="regattalink_raw_capture_completed">Aufzeichnung abgeschlossen.</string>
+    <string name="regattalink_raw_capture_interrupted">Aufzeichnung unterbrochen; bereits geschriebene Zeilen wurden behalten.</string>
+    <string name="regattalink_raw_capture_failed">Aufzeichnung fehlgeschlagen; bereits geschriebene Zeilen wurden behalten.</string>
+    <string name="regattalink_raw_capture_frames">%1$d Frames aufgezeichnet</string>
+    <string name="regattalink_raw_capture_remaining">Noch %1$d s</string>
+    <string name="regattalink_raw_capture_start">30-s-Aufzeichnung starten</string>
+    <string name="regattalink_raw_capture_stop">Aufzeichnung stoppen</string>
+    <string name="regattalink_raw_capture_export">CSV exportieren</string>
+    <string name="regattalink_raw_capture_discard">Verwerfen</string>
 </resources>

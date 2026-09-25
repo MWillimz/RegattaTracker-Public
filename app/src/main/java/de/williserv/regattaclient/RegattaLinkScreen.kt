@@ -34,6 +34,21 @@ import kotlinx.coroutines.delay
 import java.util.Locale
 import kotlin.math.roundToInt
 
+internal fun shouldAutoRefreshPgnInventory(
+    detailsExpanded: Boolean,
+    inventorySupported: Boolean,
+    inventoryEmpty: Boolean,
+    inventoryLoading: Boolean,
+    otaActive: Boolean,
+    alreadyRequested: Boolean
+): Boolean =
+    detailsExpanded &&
+        inventorySupported &&
+        inventoryEmpty &&
+        !inventoryLoading &&
+        !otaActive &&
+        !alreadyRequested
+
 @Composable
 fun RegattaLinkScreen(
     state: RegattaLinkClientState,
@@ -42,6 +57,7 @@ fun RegattaLinkScreen(
     telemetryState: RegattaLinkTelemetryState,
     configurationState: RegattaLinkConfigurationState,
     nmeaState: RegattaLinkNmeaState,
+    rawCaptureState: RegattaLinkRawCaptureState,
     firmwareSourceAvailable: Boolean,
     installAvailable: Boolean,
     modifier: Modifier = Modifier,
@@ -53,6 +69,10 @@ fun RegattaLinkScreen(
     onSetLedBrightness: (Int) -> Unit,
     onRefreshPgnInventory: () -> Unit,
     onReadRawFrames: () -> Unit,
+    onStartRawCapture: () -> Unit,
+    onStopRawCapture: () -> Unit,
+    onExportRawCapture: () -> Unit,
+    onDiscardRawCapture: () -> Unit,
     onDisconnect: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -77,15 +97,46 @@ fun RegattaLinkScreen(
 
     var technicalDetailsExpanded by rememberSaveable { mutableStateOf(false) }
     var nmeaDetailsExpanded by rememberSaveable { mutableStateOf(false) }
+    var pgnInventoryAutoRefreshRequested by remember(state.deviceAddress) {
+        mutableStateOf(false)
+    }
     var nameDialogOpen by rememberSaveable { mutableStateOf(false) }
     var nameDraft by rememberSaveable { mutableStateOf("") }
     var brightnessDraft by remember(configurationState.ledBrightnessPct) {
         mutableStateOf((configurationState.ledBrightnessPct ?: 0).toFloat())
     }
+    var rawCaptureNowElapsedMs by remember {
+        mutableStateOf(SystemClock.elapsedRealtime())
+    }
+
+    LaunchedEffect(
+        rawCaptureState.isActive,
+        rawCaptureState.startedAtElapsedMs
+    ) {
+        while (rawCaptureState.isActive) {
+            rawCaptureNowElapsedMs = SystemClock.elapsedRealtime()
+            delay(250L)
+        }
+        rawCaptureNowElapsedMs = SystemClock.elapsedRealtime()
+    }
+
+    val rawCaptureRemainingSeconds =
+        rawCaptureState.startedAtElapsedMs
+            ?.takeIf { rawCaptureState.isActive }
+            ?.let { startedAt ->
+                val elapsed =
+                    (rawCaptureNowElapsedMs - startedAt).coerceAtLeast(0L)
+                ((rawCaptureState.durationMs - elapsed)
+                    .coerceAtLeast(0L) + 999L) / 1000L
+            }
 
     val connected = state.status == RegattaLinkConnectionStatus.CONNECTED
     val displayedName = configurationState.deviceName.ifBlank { state.deviceName }
-    val configEnabled = connected && !otaState.isActive && !configurationState.busy
+    val configEnabled =
+        connected &&
+            !otaState.isActive &&
+            !rawCaptureState.isActive &&
+            !configurationState.busy
     val nameValidationError =
         if (nameDraft.isBlank()) {
             stringResource(R.string.regattalink_name_required)
@@ -97,15 +148,25 @@ fun RegattaLinkScreen(
         nmeaDetailsExpanded,
         nmeaState.pgnInventorySupported,
         nmeaState.pgnInventoryLoading,
-        otaState.isActive
+        otaState.isActive,
+        state.deviceAddress
     ) {
+        if (!nmeaDetailsExpanded) {
+            pgnInventoryAutoRefreshRequested = false
+            return@LaunchedEffect
+        }
+
         if (
-            nmeaDetailsExpanded &&
-            nmeaState.pgnInventorySupported &&
-            nmeaState.pgnInventory.isEmpty() &&
-            !nmeaState.pgnInventoryLoading &&
-            !otaState.isActive
+            shouldAutoRefreshPgnInventory(
+                detailsExpanded = nmeaDetailsExpanded,
+                inventorySupported = nmeaState.pgnInventorySupported,
+                inventoryEmpty = nmeaState.pgnInventory.isEmpty(),
+                inventoryLoading = nmeaState.pgnInventoryLoading,
+                otaActive = otaState.isActive,
+                alreadyRequested = pgnInventoryAutoRefreshRequested
+            )
         ) {
+            pgnInventoryAutoRefreshRequested = true
             onRefreshPgnInventory()
         }
     }
@@ -726,6 +787,7 @@ fun RegattaLinkScreen(
                     if (
                         installAvailable &&
                         !otaState.isActive &&
+                        !rawCaptureState.isActive &&
                         otaState.phase !in setOf(
                             RegattaLinkOtaPhase.SUCCESS,
                             RegattaLinkOtaPhase.CANCELLED
@@ -857,6 +919,7 @@ fun RegattaLinkScreen(
                             Button(
                                 onClick = onRefreshPgnInventory,
                                 enabled = !otaState.isActive &&
+                                    !rawCaptureState.isActive &&
                                     !nmeaState.pgnInventoryLoading,
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -886,9 +949,165 @@ fun RegattaLinkScreen(
                         }
 
                         if (nmeaState.rawCanSupported) {
+                            Text(
+                                text = stringResource(
+                                    R.string.regattalink_raw_capture_title
+                                ),
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(top = 14.dp)
+                            )
+                            Text(
+                                text = stringResource(
+                                    R.string.regattalink_raw_capture_best_effort
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+
+                            when (rawCaptureState.phase) {
+                                RegattaLinkRawCapturePhase.FLUSHING -> {
+                                    Text(
+                                        text = stringResource(
+                                            R.string.regattalink_raw_capture_flushing
+                                        ),
+                                        modifier = Modifier.padding(top = 8.dp)
+                                    )
+                                }
+                                RegattaLinkRawCapturePhase.CAPTURING -> {
+                                    Text(
+                                        text = stringResource(
+                                            R.string.regattalink_raw_capture_active
+                                        ),
+                                        modifier = Modifier.padding(top = 8.dp)
+                                    )
+                                }
+                                RegattaLinkRawCapturePhase.COMPLETED -> {
+                                    Text(
+                                        text = stringResource(
+                                            R.string.regattalink_raw_capture_completed
+                                        ),
+                                        modifier = Modifier.padding(top = 8.dp)
+                                    )
+                                }
+                                RegattaLinkRawCapturePhase.INTERRUPTED -> {
+                                    Text(
+                                        text = stringResource(
+                                            R.string.regattalink_raw_capture_interrupted
+                                        ),
+                                        modifier = Modifier.padding(top = 8.dp)
+                                    )
+                                }
+                                RegattaLinkRawCapturePhase.ERROR -> {
+                                    Text(
+                                        text = stringResource(
+                                            R.string.regattalink_raw_capture_failed
+                                        ),
+                                        color = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.padding(top = 8.dp)
+                                    )
+                                }
+                                RegattaLinkRawCapturePhase.IDLE -> Unit
+                            }
+
+                            if (
+                                rawCaptureState.phase !=
+                                RegattaLinkRawCapturePhase.IDLE
+                            ) {
+                                Text(
+                                    text = stringResource(
+                                        R.string.regattalink_raw_capture_frames,
+                                        rawCaptureState.frameCount
+                                    ),
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                            rawCaptureRemainingSeconds?.let { seconds ->
+                                Text(
+                                    text = stringResource(
+                                        R.string.regattalink_raw_capture_remaining,
+                                        seconds
+                                    ),
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+
+                            if (rawCaptureState.isActive) {
+                                Button(
+                                    onClick = onStopRawCapture,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 10.dp)
+                                ) {
+                                    Text(
+                                        stringResource(
+                                            R.string.regattalink_raw_capture_stop
+                                        )
+                                    )
+                                }
+                            } else if (!rawCaptureState.hasFile) {
+                                Button(
+                                    onClick = onStartRawCapture,
+                                    enabled = connected &&
+                                        !otaState.isActive &&
+                                        !nmeaState.rawCanReading,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 10.dp)
+                                ) {
+                                    Text(
+                                        stringResource(
+                                            R.string.regattalink_raw_capture_start
+                                        )
+                                    )
+                                }
+                            }
+
+                            if (
+                                rawCaptureState.hasFile &&
+                                !rawCaptureState.isActive
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 10.dp),
+                                    horizontalArrangement =
+                                        Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Button(
+                                        onClick = onExportRawCapture,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text(
+                                            stringResource(
+                                                R.string.regattalink_raw_capture_export
+                                            )
+                                        )
+                                    }
+                                    Button(
+                                        onClick = onDiscardRawCapture,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text(
+                                            stringResource(
+                                                R.string.regattalink_raw_capture_discard
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (rawCaptureState.error.isNotBlank()) {
+                                Text(
+                                    text = rawCaptureState.error,
+                                    color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.padding(top = 6.dp)
+                                )
+                            }
+
                             Button(
                                 onClick = onReadRawFrames,
                                 enabled = !otaState.isActive &&
+                                    !rawCaptureState.isActive &&
                                     !nmeaState.rawCanReading,
                                 modifier = Modifier
                                     .fillMaxWidth()

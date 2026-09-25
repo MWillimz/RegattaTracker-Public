@@ -93,6 +93,7 @@ class MainActivity : ComponentActivity() {
 
     private val showClearRaceSetupDialog = mutableStateOf(false)
     private lateinit var db: TrackingDbHelper
+    private lateinit var raceLegalAcceptanceStore: RaceLegalAcceptanceStore
     private lateinit var locationManager: LocationManager
     private lateinit var regattaLinkManager: RegattaLinkConnectionManager
     private val regattaLinkState = mutableStateOf(RegattaLinkClientState())
@@ -104,6 +105,8 @@ class MainActivity : ComponentActivity() {
     private val regattaLinkConfigurationState =
         mutableStateOf(RegattaLinkConfigurationState())
     private val regattaLinkNmeaState = mutableStateOf(RegattaLinkNmeaState())
+    private val regattaLinkRawCaptureState =
+        mutableStateOf(RegattaLinkRawCaptureState())
     private var pendingRegattaLinkPermissionAction: PendingRegattaLinkPermissionAction? = null
     private var regattaLinkReturnScreen: Screen = Screen.BOAT_DATA
 
@@ -141,6 +144,14 @@ class MainActivity : ComponentActivity() {
         override fun onNmeaStateChanged(state: RegattaLinkNmeaState) {
             if (asyncLifetime.isActive()) {
                 regattaLinkNmeaState.value = state
+            }
+        }
+
+        override fun onRawCaptureStateChanged(
+            state: RegattaLinkRawCaptureState
+        ) {
+            if (asyncLifetime.isActive()) {
+                regattaLinkRawCaptureState.value = state
             }
         }
     }
@@ -310,6 +321,14 @@ class MainActivity : ComponentActivity() {
                 if (regattaLinkOtaState.value.isActive) {
                     Screen.REGATTALINK
                 } else {
+                    if (
+                        regattaLinkRawCaptureState.value.isActive &&
+                        ::regattaLinkManager.isInitialized
+                    ) {
+                        regattaLinkManager.stopRawCanCapture(
+                            interrupted = true
+                        )
+                    }
                     regattaLinkFirmwareArtifact = null
                     regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState()
                     if (::regattaLinkManager.isInitialized) {
@@ -400,6 +419,15 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+    private val regattaLinkRawCaptureExportLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.CreateDocument("text/csv")
+        ) { uri: Uri? ->
+            if (uri != null && ::regattaLinkManager.isInitialized) {
+                regattaLinkManager.exportRawCanCapture(uri)
+            }
+        }
+
     private val locationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
             updateGpsDisplay(location)
@@ -446,6 +474,7 @@ class MainActivity : ComponentActivity() {
         initializeLocalizedUiText()
 
         db = TrackingDbHelper(this)
+        raceLegalAcceptanceStore = RaceLegalAcceptanceStore(this)
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
         regattaLinkManager =
             (application as RegattaApplication).regattaLinkConnectionManager
@@ -613,10 +642,6 @@ class MainActivity : ComponentActivity() {
                             detail = sessionDetail.value,
                             loading = sessionDetailLoading.value,
                             modifier = Modifier.padding(innerPadding),
-                            selectedReplayFieldIds = selectedReplayFieldIds.value,
-                            onReplayFieldSelectionChange = {
-                                selectedReplayFieldIds.value = it
-                            },
                             onReplay = {
                                 currentScreen.value = Screen.SESSION_REPLAY
                             },
@@ -630,6 +655,9 @@ class MainActivity : ComponentActivity() {
                             detail = sessionDetail.value,
                             modifier = Modifier.padding(innerPadding),
                             extraFieldIds = selectedReplayFieldIds.value,
+                            onExtraFieldIdsChange = {
+                                selectedReplayFieldIds.value = it
+                            },
                             onBack = ::navigateBack
                         )
 
@@ -728,6 +756,7 @@ class MainActivity : ComponentActivity() {
                             telemetryState = regattaLinkTelemetryState.value,
                             configurationState = regattaLinkConfigurationState.value,
                             nmeaState = regattaLinkNmeaState.value,
+                            rawCaptureState = regattaLinkRawCaptureState.value,
                             firmwareSourceAvailable = raceServer.value.isNotBlank(),
                             installAvailable =
                                 regattaLinkFirmwareArtifact != null &&
@@ -751,6 +780,23 @@ class MainActivity : ComponentActivity() {
                             },
                             onReadRawFrames = {
                                 regattaLinkManager.readRawCanFrames()
+                            },
+                            onStartRawCapture = {
+                                regattaLinkManager.startRawCanCapture()
+                            },
+                            onStopRawCapture = {
+                                regattaLinkManager.stopRawCanCapture()
+                            },
+                            onExportRawCapture = {
+                                regattaLinkRawCaptureState.value.fileName
+                                    .takeIf { it.isNotBlank() }
+                                    ?.let { fileName ->
+                                        regattaLinkRawCaptureExportLauncher
+                                            .launch(fileName)
+                                    }
+                            },
+                            onDiscardRawCapture = {
+                                regattaLinkManager.discardRawCanCapture()
                             },
                             onDisconnect = {
                                 regattaLinkManager.disconnect()
@@ -2127,7 +2173,11 @@ class MainActivity : ComponentActivity() {
                                     currentLegalHash = previousLegalHash,
                                     nextLegalEventIdentity = legalResolvedEventName,
                                     nextLegalHash = legalHash
-                                )
+                                ) ||
+                                    raceLegalAcceptanceStore.matches(
+                                        resolvedEventName = legalResolvedEventName,
+                                        legalTextHash = legalHash
+                                    )
 
                             raceLegalResolvedEventName = legalResolvedEventName
                             raceLegalText.value = legalText
@@ -2322,6 +2372,10 @@ class MainActivity : ComponentActivity() {
                             currentScreen.value = Screen.RACE
                             fetchRaceLegalText()
                         } else {
+                            raceLegalAcceptanceStore.save(
+                                resolvedEventName = expectedResolvedEventName,
+                                legalTextHash = acceptedLegalHash
+                            )
                             raceLegalAccepted.value = true
                             raceLegalAcceptStatusText.value = getString(R.string.race_notice_accepted)
                             fetchRaceDataForDisplay()
@@ -3755,6 +3809,16 @@ class MainActivity : ComponentActivity() {
         } catch (e: Exception) {
             statusText.value = getString(R.string.csv_export_failed, e.message ?: "")
         }
+    }
+
+    override fun onStop() {
+        if (
+            ::regattaLinkManager.isInitialized &&
+            regattaLinkRawCaptureState.value.isActive
+        ) {
+            regattaLinkManager.stopRawCanCapture(interrupted = true)
+        }
+        super.onStop()
     }
 
     override fun onDestroy() {

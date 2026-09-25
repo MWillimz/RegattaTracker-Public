@@ -1,10 +1,12 @@
 package de.williserv.regattaclient
 
+import android.os.SystemClock
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,17 +16,24 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.text.DateFormat
 import java.util.Date
+import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
@@ -54,11 +64,57 @@ fun SessionReplayScreen(
     detail: SessionDetailData?,
     modifier: Modifier = Modifier,
     extraFieldIds: Set<String> = emptySet(),
+    onExtraFieldIdsChange: (Set<String>) -> Unit = {},
     onBack: () -> Unit
 ) {
     val samples = detail?.samples.orEmpty()
     var selectedIndex by remember(detail?.session?.id, samples.size) {
         mutableIntStateOf(replayInitialSampleIndex(samples.size))
+    }
+    var isPlaying by rememberSaveable(detail?.session?.id) {
+        mutableStateOf(false)
+    }
+    var playbackSpeed by rememberSaveable(detail?.session?.id) {
+        mutableIntStateOf(1)
+    }
+    var fieldsExpanded by rememberSaveable(detail?.session?.id) {
+        mutableStateOf(false)
+    }
+
+    LaunchedEffect(isPlaying, playbackSpeed, detail?.session?.id, samples.size) {
+        if (!isPlaying || samples.isEmpty()) return@LaunchedEffect
+
+        var startIndex = selectedIndex.coerceIn(0, samples.lastIndex)
+        if (startIndex >= samples.lastIndex) {
+            startIndex = 0
+            selectedIndex = 0
+        }
+
+        val offsets = replayPlaybackOffsetsMs(samples)
+        val startOffset = offsets.getOrElse(startIndex) { 0L }
+        val startedAt = SystemClock.elapsedRealtime()
+
+        while (isPlaying) {
+            val elapsedRealMs = SystemClock.elapsedRealtime() - startedAt
+            val targetOffset = startOffset +
+                (elapsedRealMs * playbackSpeed.toLong())
+            val nextIndex = replayPlaybackIndexForOffset(offsets, targetOffset)
+
+            if (nextIndex >= 0) {
+                selectedIndex = nextIndex
+            }
+
+            if (
+                offsets.isNotEmpty() &&
+                targetOffset >= offsets.last()
+            ) {
+                selectedIndex = samples.lastIndex
+                isPlaying = false
+                break
+            }
+
+            delay(REPLAY_PLAYBACK_TICK_MS)
+        }
     }
 
     Column(
@@ -105,7 +161,42 @@ fun SessionReplayScreen(
                 extraFields = extraFields
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+
+            ReplayPlaybackControls(
+                isPlaying = isPlaying,
+                speed = playbackSpeed,
+                onPlayPause = {
+                    isPlaying = !isPlaying
+                },
+                onSpeedChange = { newSpeed ->
+                    playbackSpeed = newSpeed
+                }
+            )
+
+            if (detail.replayFields.isNotEmpty()) {
+                TextButton(
+                    onClick = { fieldsExpanded = !fieldsExpanded }
+                ) {
+                    Text(
+                        if (fieldsExpanded) {
+                            stringResource(R.string.session_replay_fields_hide_config)
+                        } else {
+                            stringResource(R.string.session_replay_fields_show_config)
+                        }
+                    )
+                }
+
+                if (fieldsExpanded) {
+                    ReplayFieldConfiguration(
+                        fields = detail.replayFields,
+                        selectedIds = extraFieldIds,
+                        onSelectionChange = onExtraFieldIdsChange
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
 
             Row(
                 modifier = Modifier
@@ -124,7 +215,10 @@ fun SessionReplayScreen(
                 ReplayTimeline(
                     samples = samples,
                     selectedIndex = safeIndex,
-                    onSelectedIndex = { selectedIndex = it },
+                    onSelectedIndex = {
+                        isPlaying = false
+                        selectedIndex = it
+                    },
                     modifier = Modifier
                         .width(52.dp)
                         .fillMaxHeight()
@@ -135,10 +229,181 @@ fun SessionReplayScreen(
         Spacer(modifier = Modifier.height(12.dp))
 
         Button(
-            onClick = onBack,
+            onClick = {
+                isPlaying = false
+                onBack()
+            },
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(stringResource(R.string.session_back))
+        }
+    }
+}
+
+@Composable
+private fun ReplayPlaybackControls(
+    isPlaying: Boolean,
+    speed: Int,
+    onPlayPause: () -> Unit,
+    onSpeedChange: (Int) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Button(
+            onClick = onPlayPause,
+            modifier = Modifier.weight(1f)
+        ) {
+            Text(
+                if (isPlaying) {
+                    stringResource(R.string.session_replay_pause)
+                } else {
+                    stringResource(R.string.session_replay_play)
+                }
+            )
+        }
+
+        listOf(1, 5, 20).forEach { candidate ->
+            OutlinedButton(
+                onClick = { onSpeedChange(candidate) }
+            ) {
+                Text(
+                    if (candidate == speed) {
+                        "• ${candidate}×"
+                    } else {
+                        "${candidate}×"
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReplayFieldConfiguration(
+    fields: List<ReplayExtraField>,
+    selectedIds: Set<String>,
+    onSelectionChange: (Set<String>) -> Unit
+) {
+    var allExpanded by rememberSaveable { mutableStateOf(false) }
+    val recommended = fields.filter { it.recommended }
+    val additional = fields.filterNot { it.recommended }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .heightIn(max = 220.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(10.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.session_replay_fields_title),
+                fontWeight = FontWeight.SemiBold
+            )
+
+            if (recommended.isNotEmpty()) {
+                Text(
+                    text = stringResource(R.string.session_replay_fields_recommended),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp
+                )
+                recommended.forEach { field ->
+                    ReplayFieldConfigRow(
+                        field = field,
+                        checked = field.id in selectedIds,
+                        onCheckedChange = { checked ->
+                            onSelectionChange(
+                                if (checked) {
+                                    selectedIds + field.id
+                                } else {
+                                    selectedIds - field.id
+                                }
+                            )
+                        }
+                    )
+                }
+            }
+
+            if (additional.isNotEmpty()) {
+                TextButton(
+                    onClick = { allExpanded = !allExpanded }
+                ) {
+                    Text(
+                        if (allExpanded) {
+                            stringResource(R.string.session_replay_fields_hide_all)
+                        } else {
+                            stringResource(
+                                R.string.session_replay_fields_show_all,
+                                additional.size
+                            )
+                        }
+                    )
+                }
+
+                if (allExpanded) {
+                    additional.forEach { field ->
+                        ReplayFieldConfigRow(
+                            field = field,
+                            checked = field.id in selectedIds,
+                            onCheckedChange = { checked ->
+                                onSelectionChange(
+                                    if (checked) {
+                                        selectedIds + field.id
+                                    } else {
+                                        selectedIds - field.id
+                                    }
+                                )
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReplayFieldConfigRow(
+    field: ReplayExtraField,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    val source = field.measurementGroup
+        ?.takeIf { it.isNotBlank() }
+        ?.let { group ->
+            if (group.equals("regattalink", ignoreCase = true)) {
+                "RegattaLink"
+            } else {
+                group
+            }
+        }
+        ?: stringResource(R.string.session_replay_field_source_measurements)
+    val label = field.unit?.let { "${field.label} ($it)" } ?: field.label
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(
+            checked = checked,
+            onCheckedChange = onCheckedChange
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(label, fontWeight = FontWeight.Medium)
+            Text(
+                source,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 11.sp
+            )
         }
     }
 }
@@ -599,6 +864,54 @@ internal fun replaySampleIndexForFraction(
     }
 }
 
+
+internal fun replayPlaybackOffsetsMs(
+    samples: List<SessionTrackingSample>
+): List<Long> {
+    if (samples.isEmpty()) return emptyList()
+    if (samples.size == 1) return listOf(0L)
+
+    val fractions = replaySampleFractions(samples)
+    val validTimes = samples.mapNotNull { it.sampleEpochMillis() }
+    val firstTime = validTimes.firstOrNull()
+    val lastTime = validTimes.lastOrNull()
+    val spanMs = if (
+        firstTime != null &&
+        lastTime != null &&
+        lastTime > firstTime
+    ) {
+        lastTime - firstTime
+    } else {
+        (samples.lastIndex * REPLAY_FALLBACK_SAMPLE_INTERVAL_MS)
+            .coerceAtLeast(REPLAY_FALLBACK_SAMPLE_INTERVAL_MS)
+    }
+
+    return fractions.map { fraction ->
+        (fraction.coerceIn(0f, 1f) * spanMs.toDouble()).toLong()
+    }
+}
+
+internal fun replayPlaybackIndexForOffset(
+    offsetsMs: List<Long>,
+    targetOffsetMs: Long
+): Int {
+    if (offsetsMs.isEmpty()) return -1
+    if (targetOffsetMs <= offsetsMs.first()) return 0
+    if (targetOffsetMs >= offsetsMs.last()) return offsetsMs.lastIndex
+
+    var low = 0
+    var high = offsetsMs.lastIndex
+    while (low < high) {
+        val mid = (low + high + 1) / 2
+        if (offsetsMs[mid] <= targetOffsetMs) {
+            low = mid
+        } else {
+            high = mid - 1
+        }
+    }
+    return low
+}
+
 internal data class ReplayCanvasSizing(
     val sailedTrackWidthPx: Float,
     val futureTrackWidthPx: Float,
@@ -750,4 +1063,6 @@ private fun DrawScope.drawReplayBoat(
     }
 }
 
+private const val REPLAY_PLAYBACK_TICK_MS = 50L
+private const val REPLAY_FALLBACK_SAMPLE_INTERVAL_MS = 1_000L
 private const val METERS_PER_LAT_DEGREE = 111_320.0
