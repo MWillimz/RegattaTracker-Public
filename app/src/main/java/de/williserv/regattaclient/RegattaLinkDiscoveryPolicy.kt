@@ -1,6 +1,6 @@
 package de.williserv.regattaclient
 
-internal const val REGATTALINK_MANUAL_DISCOVERY_TIMEOUT_MS = 60_000L
+internal const val REGATTALINK_MANUAL_DISCOVERY_TIMEOUT_MS = 120_000L
 
 internal fun regattaLinkDiscoveryRemainingMs(
     deadlineElapsedMs: Long,
