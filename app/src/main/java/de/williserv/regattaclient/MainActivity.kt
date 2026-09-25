@@ -615,10 +615,6 @@ class MainActivity : ComponentActivity() {
                             detail = sessionDetail.value,
                             loading = sessionDetailLoading.value,
                             modifier = Modifier.padding(innerPadding),
-                            selectedReplayFieldIds = selectedReplayFieldIds.value,
-                            onReplayFieldSelectionChange = {
-                                selectedReplayFieldIds.value = it
-                            },
                             onReplay = {
                                 currentScreen.value = Screen.SESSION_REPLAY
                             },
@@ -632,6 +628,9 @@ class MainActivity : ComponentActivity() {
                             detail = sessionDetail.value,
                             modifier = Modifier.padding(innerPadding),
                             extraFieldIds = selectedReplayFieldIds.value,
+                            onExtraFieldIdsChange = {
+                                selectedReplayFieldIds.value = it
+                            },
                             onBack = ::navigateBack
                         )
 
