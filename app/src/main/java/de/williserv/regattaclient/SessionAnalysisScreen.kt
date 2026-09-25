@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
@@ -619,6 +621,21 @@ private fun SessionPolarPlot(
                     paint
                 )
             }
+
+            if (
+                colorMetric != null &&
+                dataset.colorMin != null &&
+                dataset.colorMax != null
+            ) {
+                PlotColorLegend(
+                    metric = colorMetric,
+                    minValue = dataset.colorMin,
+                    maxValue = dataset.colorMax,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(8.dp)
+                )
+            }
         }
 
         Text(
@@ -626,6 +643,56 @@ private fun SessionPolarPlot(
             modifier = Modifier.align(Alignment.CenterHorizontally),
             fontWeight = FontWeight.Medium
         )
+    }
+}
+
+@Composable
+private fun PlotColorLegend(
+    metric: AnalysisMetric,
+    minValue: Double,
+    maxValue: Double,
+    modifier: Modifier = Modifier
+) {
+    val colorScale = analysisColorScale()
+
+    Column(
+        modifier = modifier
+            .background(
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+                shape = RoundedCornerShape(6.dp)
+            )
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+    ) {
+        Text(
+            text = analysisMetricDisplayName(metric),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium
+        )
+        Spacer(modifier = Modifier.height(3.dp))
+        Box(
+            modifier = Modifier
+                .width(112.dp)
+                .height(6.dp)
+                .background(
+                    brush = Brush.horizontalGradient(colors = colorScale),
+                    shape = RoundedCornerShape(3.dp)
+                )
+        )
+        Row(
+            modifier = Modifier.width(112.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = formatAnalysisNumber(minValue),
+                fontSize = 9.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = formatAnalysisNumber(maxValue),
+                fontSize = 9.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 
