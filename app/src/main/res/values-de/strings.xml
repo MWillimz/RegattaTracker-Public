@@ -301,6 +301,7 @@
     <string name="gps_tracking_consent">Zustimmung zur GPS-Ortung</string>
     <string name="gps_tracking_consent_message">Diese App verarbeitet Standortdaten für die Regatta-Aufzeichnung, Startlinienprüfung, OCS-Erkennung, Kursfortschritt und Zieleinlauferkennung.\n\nWährend einer Regatta können Standortdaten an den konfigurierten Regatta-Server übertragen werden.\n\nBeim manuellen Training werden Daten lokal gespeichert und nicht automatisch an den Server übertragen.\n\nDie Android-Standortberechtigung ist ebenfalls erforderlich.</string>
     <string name="i_agree">Ich stimme zu</string>
+    <string name="exit_race">Verlassen</string>
     <string name="leave_race">Wettfahrt verlassen</string>
     <string name="leave_race_choice_message">Was möchtest du tun?</string>
     <string name="retire">Retire</string>

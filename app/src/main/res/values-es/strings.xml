@@ -301,6 +301,7 @@
     <string name="gps_tracking_consent">Consentimiento de seguimiento GPS</string>
     <string name="gps_tracking_consent_message">Esta aplicación procesa datos de ubicación para el seguimiento de regata, comprobaciones de la línea de salida, detección OCS, progreso del recorrido y detección de llegada.\n\nDurante una regata, los datos de ubicación pueden transmitirse al servidor de regata configurado.\n\nDurante el entrenamiento manual, los datos se guardan localmente y no se transmiten automáticamente al servidor.\n\nTambién se requiere el permiso de ubicación de Android.</string>
     <string name="i_agree">Acepto</string>
+    <string name="exit_race">Salir</string>
     <string name="leave_race">Salir de la regata</string>
     <string name="leave_race_choice_message">¿Qué quieres hacer?</string>
     <string name="retire">Retirarse</string>

@@ -253,7 +253,6 @@ class MainActivity : ComponentActivity() {
 
     private val showClearConfirmDialog = mutableStateOf(false)
     private val showOcsDecisionDialog = mutableStateOf(false)
-    private val showLeaveRaceOptionsDialog = mutableStateOf(false)
     private val showRetireConfirmDialog = mutableStateOf(false)
     private val retirementReported = mutableStateOf(false)
     private val retirementStatusText = mutableStateOf("")
@@ -838,18 +837,15 @@ class MainActivity : ComponentActivity() {
                             raceShortened = rawRaceCourseShortened,
                             seriesDisplayMetadata = raceSeriesDisplayMetadata.value,
                             modifier = Modifier.padding(innerPadding),
+                            retireEnabled = !retirementRequestInFlight.value,
                             onClearRaceSetupClick = {
                                 showClearRaceSetupDialog.value = true
                             },
                             onShowRaceLegal = {
+                                currentScreen.value = Screen.RACE_LEGAL
                                 if (raceLegalText.value.isBlank()) {
                                     fetchRaceLegalText()
-                                } else {
-                                    currentScreen.value = Screen.RACE_LEGAL
                                 }
-                            },
-                            onRefreshRaceData = {
-                                fetchRaceDataForDisplay()
                             },
                             onScanQr = {
                                 currentScreen.value = Screen.QR_SCANNER
@@ -857,8 +853,11 @@ class MainActivity : ComponentActivity() {
                             onEnterRace = {
                                 requestEnterRaceAfterLocalChecks()
                             },
-                            onLeaveRace = {
-                                showLeaveRaceOptionsDialog.value = true
+                            onRetire = {
+                                showRetireConfirmDialog.value = true
+                            },
+                            onExitRace = {
+                                leaveRace()
                             },
                             onRegisterRace = {
                                 registerForRace()
@@ -946,23 +945,6 @@ class MainActivity : ComponentActivity() {
                                 passedMarks = 0,
                                 raceStarted = true
                             )
-                        }
-                    )
-                }
-
-                if (showLeaveRaceOptionsDialog.value) {
-                    LeaveRaceOptionsDialog(
-                        retireEnabled = !retirementRequestInFlight.value,
-                        onRetire = {
-                            showLeaveRaceOptionsDialog.value = false
-                            showRetireConfirmDialog.value = true
-                        },
-                        onLeaveRace = {
-                            showLeaveRaceOptionsDialog.value = false
-                            leaveRace()
-                        },
-                        onCancel = {
-                            showLeaveRaceOptionsDialog.value = false
                         }
                     )
                 }
@@ -2209,8 +2191,6 @@ class MainActivity : ComponentActivity() {
                                 EnterRaceLegalGateDecision.CONTINUE -> {
                                     if (pendingEnterRaceAfterLegal) {
                                         continuePendingEnterRaceAfterLegal()
-                                    } else {
-                                        currentScreen.value = Screen.RACE_LEGAL
                                     }
                                 }
 
@@ -3918,35 +3898,6 @@ fun TrackingConsentDialog(
         dismissButton = {
             TextButton(onClick = onCancel) {
                 Text(stringResource(R.string.cancel))
-            }
-        }
-    )
-}
-
-@Composable
-fun LeaveRaceOptionsDialog(
-    retireEnabled: Boolean,
-    onRetire: () -> Unit,
-    onLeaveRace: () -> Unit,
-    onCancel: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onCancel,
-        title = { Text(stringResource(R.string.leave_race)) },
-        text = { Text(stringResource(R.string.leave_race_choice_message)) },
-        confirmButton = {
-            TextButton(onClick = onRetire, enabled = retireEnabled) {
-                Text(stringResource(R.string.retire))
-            }
-        },
-        dismissButton = {
-            Row {
-                TextButton(onClick = onLeaveRace) {
-                    Text(stringResource(R.string.leave_race))
-                }
-                TextButton(onClick = onCancel) {
-                    Text(stringResource(R.string.cancel))
-                }
             }
         }
     )
