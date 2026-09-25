@@ -518,6 +518,10 @@
     <string name="regattalink_contradictions">Contradictions</string>
     <string name="regattalink_mounting_epoch">Mounting epoch</string>
     <string name="regattalink_calibration_revision">Calibration revision</string>
+    <string name="session_replay_fields_show_config">Configure replay values</string>
+    <string name="session_replay_fields_hide_config">Hide replay values</string>
+    <string name="session_replay_play">Play</string>
+    <string name="session_replay_pause">Pause</string>
     <string name="session_replay_fields_title">Additional replay data</string>
     <string name="session_replay_fields_hint">Select values to show while scrubbing the replay. Time, SOG and COG remain visible.</string>
     <string name="session_replay_fields_recommended">Recommended</string>
