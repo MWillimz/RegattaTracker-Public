@@ -842,10 +842,9 @@ class MainActivity : ComponentActivity() {
                                 showClearRaceSetupDialog.value = true
                             },
                             onShowRaceLegal = {
+                                currentScreen.value = Screen.RACE_LEGAL
                                 if (raceLegalText.value.isBlank()) {
                                     fetchRaceLegalText()
-                                } else {
-                                    currentScreen.value = Screen.RACE_LEGAL
                                 }
                             },
                             onScanQr = {
@@ -2192,8 +2191,6 @@ class MainActivity : ComponentActivity() {
                                 EnterRaceLegalGateDecision.CONTINUE -> {
                                     if (pendingEnterRaceAfterLegal) {
                                         continuePendingEnterRaceAfterLegal()
-                                    } else {
-                                        currentScreen.value = Screen.RACE_LEGAL
                                     }
                                 }
 
