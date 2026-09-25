@@ -343,6 +343,7 @@
     <string name="gps_tracking_consent">GPS Tracking Consent</string>
     <string name="gps_tracking_consent_message">This app processes location data to enable regatta tracking, start line checks, OCS detection, course progress, and finish detection.\n\nDuring a race session, location data may be transmitted to the configured regatta server.\n\nDuring manual training, data is stored locally and is not automatically transmitted to the server.\n\nThe Android location permission is also required.</string>
     <string name="i_agree">I agree</string>
+    <string name="exit_race">Exit</string>
     <string name="leave_race">Leave race</string>
     <string name="leave_race_choice_message">What do you want to do?</string>
     <string name="retire">Retire</string>
