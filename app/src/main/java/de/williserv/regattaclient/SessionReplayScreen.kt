@@ -857,6 +857,54 @@ internal fun replaySampleIndexForFraction(
     }
 }
 
+
+internal fun replayPlaybackOffsetsMs(
+    samples: List<SessionTrackingSample>
+): List<Long> {
+    if (samples.isEmpty()) return emptyList()
+    if (samples.size == 1) return listOf(0L)
+
+    val fractions = replaySampleFractions(samples)
+    val validTimes = samples.mapNotNull { it.sampleEpochMillis() }
+    val firstTime = validTimes.firstOrNull()
+    val lastTime = validTimes.lastOrNull()
+    val spanMs = if (
+        firstTime != null &&
+        lastTime != null &&
+        lastTime > firstTime
+    ) {
+        lastTime - firstTime
+    } else {
+        (samples.lastIndex * REPLAY_FALLBACK_SAMPLE_INTERVAL_MS)
+            .coerceAtLeast(REPLAY_FALLBACK_SAMPLE_INTERVAL_MS)
+    }
+
+    return fractions.map { fraction ->
+        (fraction.coerceIn(0f, 1f) * spanMs.toDouble()).toLong()
+    }
+}
+
+internal fun replayPlaybackIndexForOffset(
+    offsetsMs: List<Long>,
+    targetOffsetMs: Long
+): Int {
+    if (offsetsMs.isEmpty()) return -1
+    if (targetOffsetMs <= offsetsMs.first()) return 0
+    if (targetOffsetMs >= offsetsMs.last()) return offsetsMs.lastIndex
+
+    var low = 0
+    var high = offsetsMs.lastIndex
+    while (low < high) {
+        val mid = (low + high + 1) / 2
+        if (offsetsMs[mid] <= targetOffsetMs) {
+            low = mid
+        } else {
+            high = mid - 1
+        }
+    }
+    return low
+}
+
 internal data class ReplayCanvasSizing(
     val sailedTrackWidthPx: Float,
     val futureTrackWidthPx: Float,
@@ -1008,4 +1056,6 @@ private fun DrawScope.drawReplayBoat(
     }
 }
 
+private const val REPLAY_PLAYBACK_TICK_MS = 50L
+private const val REPLAY_FALLBACK_SAMPLE_INTERVAL_MS = 1_000L
 private const val METERS_PER_LAT_DEGREE = 111_320.0
