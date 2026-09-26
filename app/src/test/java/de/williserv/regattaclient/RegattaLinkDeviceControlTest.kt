@@ -127,6 +127,30 @@ class RegattaLinkDeviceControlTest {
         assertFalse(parsed.gyroBiasValid)
     }
 
+    @Test(expected = IllegalArgumentException::class)
+    fun bondsClearedFlagRejectsNonFactoryStatus() {
+        val raw = ByteArray(REGATTALINK_DEVICE_CONTROL_STATUS_SIZE)
+        raw[0] = 1
+        raw[1] = RegattaLinkDeviceControlOpcode.SET_UPRIGHT.wireValue.toByte()
+        raw[2] = RegattaLinkDeviceControlPhase.SUCCESS.wireValue.toByte()
+        raw[3] = RegattaLinkDeviceControlResult.OK.wireValue.toByte()
+        raw[14] = 0x04
+
+        parseRegattaLinkDeviceControlStatus(raw)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun bondsClearedFlagRejectsNonTerminalFactoryStatus() {
+        val raw = ByteArray(REGATTALINK_DEVICE_CONTROL_STATUS_SIZE)
+        raw[0] = 1
+        raw[1] = RegattaLinkDeviceControlOpcode.FACTORY_RESET.wireValue.toByte()
+        raw[2] = RegattaLinkDeviceControlPhase.PENDING.wireValue.toByte()
+        raw[3] = RegattaLinkDeviceControlResult.NONE.wireValue.toByte()
+        raw[14] = 0x04
+
+        parseRegattaLinkDeviceControlStatus(raw)
+    }
+
     @Test
     fun deviceControlRejectionDetailIsDecodedFrom0008Status() {
         fun status(result: RegattaLinkDeviceControlResult, errorCode: Int):
