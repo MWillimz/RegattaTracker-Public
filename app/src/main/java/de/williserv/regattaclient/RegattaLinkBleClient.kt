@@ -2183,19 +2183,8 @@ internal class RegattaLinkBleClient(
                     characteristic,
                     request
                 )
-                if (opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET) {
-                    factoryResetDisconnectTracker.markAccepted(
-                        session = activeGatt,
-                        requestId = requestId
-                    )
-                }
-                updateConfiguration {
-                    it.copy(
-                        deviceControlAcceptedOpcode = opcode,
-                        deviceControlAcceptedRequestId = requestId
-                    )
-                }
 
+                var requestAcceptanceObserved = false
                 val commandDeadline =
                     SystemClock.elapsedRealtime() +
                         REGATTALINK_DEVICE_CONTROL_CLIENT_TIMEOUT_MS
@@ -2222,6 +2211,26 @@ internal class RegattaLinkBleClient(
                     val status = parseRegattaLinkDeviceControlStatus(
                         readCharacteristicBlocking(activeGatt, characteristic)
                     )
+
+                    if (
+                        status.requestId == requestId &&
+                        status.applicationErrorCode == null &&
+                        !requestAcceptanceObserved
+                    ) {
+                        requestAcceptanceObserved = true
+                        if (opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET) {
+                            factoryResetDisconnectTracker.markAccepted(
+                                session = activeGatt,
+                                requestId = requestId
+                            )
+                        }
+                        updateConfiguration {
+                            it.copy(
+                                deviceControlAcceptedOpcode = opcode,
+                                deviceControlAcceptedRequestId = requestId
+                            )
+                        }
+                    }
 
                     if (
                         opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
