@@ -31,7 +31,6 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
 enum class RegattaLinkConnectionStatus {
@@ -170,7 +169,7 @@ internal class RegattaLinkBleClient(
     private val rawCaptureRunning = AtomicBoolean(false)
     private val diagnosticLogRunning = AtomicBoolean(false)
     private val deviceControlRunning = AtomicBoolean(false)
-    private val nextDeviceControlRequestId = AtomicInteger(1)
+    private var nextDeviceControlRequestId = 1u
     private val rawCaptureStopReason =
         AtomicReference<RegattaLinkRawCaptureStopReason?>(null)
     private val otaProgressQueue = LinkedBlockingQueue<RegattaLinkOtaProgress>()
@@ -2051,6 +2050,7 @@ internal class RegattaLinkBleClient(
         value: Int
     ): Boolean {
         if (
+            opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET ||
             otaRunning.get() ||
             rawCaptureRunning.get() ||
             !isConnected() ||
@@ -2195,10 +2195,10 @@ internal class RegattaLinkBleClient(
     }
 
     private fun nextDeviceControlRequestId(): UInt {
-        val value = nextDeviceControlRequestId.getAndUpdate { current ->
-            if (current == Int.MAX_VALUE) 1 else current + 1
-        }
-        return value.toUInt()
+        val value = nextDeviceControlRequestId
+        nextDeviceControlRequestId =
+            if (value == UInt.MAX_VALUE) 1u else value + 1u
+        return value
     }
 
     override fun refreshPgnInventory(): Boolean {
@@ -2306,6 +2306,8 @@ internal class RegattaLinkBleClient(
     ): Boolean {
         if (
             otaRunning.get() ||
+            diagnosticLogRunning.get() ||
+            deviceControlRunning.get() ||
             !isConnected() ||
             !rawCaptureRunning.compareAndSet(false, true)
         ) {
