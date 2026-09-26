@@ -2091,9 +2091,6 @@ internal class RegattaLinkBleClient(
         otaExecutor.execute {
             if (!optionalFeatureWorkAllowed(activeGatt)) {
                 deviceControlRunning.set(false)
-                if (opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET) {
-                    factoryResetExpected = false
-                }
                 return@execute
             }
 

@@ -551,4 +551,11 @@
     <string name="regattalink_raw_capture_stop">Interrompi acquisizione</string>
     <string name="regattalink_raw_capture_export">Esporta CSV</string>
     <string name="regattalink_raw_capture_discard">Elimina</string>
+    <string name="regattalink_device_control">Calibrazione</string>
+    <string name="regattalink_set_upright">Imposta posizione verticale</string>
+    <string name="regattalink_forward_trim">Regolazione longitudinale</string>
+    <string name="regattalink_factory_reset">Ripristino di fabbrica</string>
+    <string name="regattalink_factory_reset_warning">Questa operazione cancella la calibrazione e gli abbinamenti Bluetooth del RegattaLink. La connessione verrà chiusa. Rimuovi il vecchio abbinamento nelle impostazioni Android prima di abbinarlo di nuovo.</string>
+    <string name="regattalink_read_diagnostic_log">Leggi registro diagnostico</string>
+    <string name="regattalink_loading_diagnostic_log">Lettura del registro diagnostico…</string>
 </resources>
