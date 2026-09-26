@@ -128,20 +128,38 @@ class RegattaLinkDeviceControlTest {
     }
 
     @Test
-    fun documentedGattApplicationErrorsHaveSemanticText() {
+    fun deviceControlRejectionDetailIsDecodedFrom0008Status() {
+        fun status(result: RegattaLinkDeviceControlResult, errorCode: Int):
+            RegattaLinkDeviceControlStatus {
+            val raw = ByteArray(REGATTALINK_DEVICE_CONTROL_STATUS_SIZE)
+            val buffer = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
+            raw[0] = 1
+            raw[1] = RegattaLinkDeviceControlOpcode.FACTORY_RESET.wireValue.toByte()
+            raw[2] = RegattaLinkDeviceControlPhase.ERROR.wireValue.toByte()
+            raw[3] = result.wireValue.toByte()
+            buffer.putInt(4, 88)
+            raw[15] = errorCode.toByte()
+            return parseRegattaLinkDeviceControlStatus(raw)
+        }
+
+        val busy = status(RegattaLinkDeviceControlResult.BUSY, 3)
+        assertEquals(3, busy.applicationErrorCode)
         assertEquals(
-            "RegattaLink rejected the request: busy",
-            regattaLinkGattApplicationFailureText(0x83)
+            "RegattaLink Device Control is busy",
+            regattaLinkDeviceControlFailureText(busy)
         )
+
+        val badState = status(RegattaLinkDeviceControlResult.INVALID, 4)
         assertEquals(
-            "RegattaLink rejected the request: bad state",
-            regattaLinkGattApplicationFailureText(0x84)
+            "RegattaLink is not ready for this Device Control request",
+            regattaLinkDeviceControlFailureText(badState)
         )
+
+        val badRequest = status(RegattaLinkDeviceControlResult.INVALID, 5)
         assertEquals(
-            "RegattaLink rejected the request: bad request",
-            regattaLinkGattApplicationFailureText(0x85)
+            "RegattaLink rejected the Device Control request",
+            regattaLinkDeviceControlFailureText(badRequest)
         )
-        assertNull(regattaLinkGattApplicationFailureText(133))
     }
 
     @Test
