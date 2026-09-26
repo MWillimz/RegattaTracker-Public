@@ -773,6 +773,19 @@ internal class RegattaLinkBleClient(
     }
 
     override fun startOta(artifact: RegattaLinkFirmwareArtifact) {
+        val activeGatt = gatt
+        if (
+            activeGatt != null &&
+            factoryResetDisconnectTracker.ownsLifecycle(activeGatt)
+        ) {
+            emitOta(
+                RegattaLinkOtaUiState(
+                    phase = RegattaLinkOtaPhase.ERROR,
+                    error = "Wait for Factory Reset to finish before OTA"
+                )
+            )
+            return
+        }
         if (rawCaptureRunning.get()) {
             stopRawCanCapture(RegattaLinkRawCaptureStopReason.INTERRUPTED)
         }
