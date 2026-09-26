@@ -20,3 +20,17 @@ internal fun shouldSkipRejectedRegattaLinkDiscoveryCandidate(
     bondingObserved: Boolean,
     currentlyUnbonded: Boolean
 ): Boolean = bondingObserved && currentlyUnbonded
+
+
+internal const val REGATTALINK_STALE_ANDROID_BOND_ERROR =
+    "Android still reports this RegattaLink as paired, but the secured connection failed. " +
+        "Remove RegattaLink in Android Bluetooth settings, then tap Search again."
+
+internal fun regattaLinkManualDiscoveryExhaustedMessage(
+    staleBondFailureObserved: Boolean
+): String =
+    if (staleBondFailureObserved) {
+        REGATTALINK_STALE_ANDROID_BOND_ERROR
+    } else {
+        "No available RegattaLink found"
+    }
