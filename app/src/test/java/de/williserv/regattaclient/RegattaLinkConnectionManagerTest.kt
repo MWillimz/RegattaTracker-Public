@@ -262,6 +262,12 @@ class RegattaLinkConnectionManagerTest {
 
     @Test
     fun activeOtaSuppressesConfigurationAndDiagnosticActions() {
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                diagnosticLogSupported = true,
+                deviceControlSupported = true
+            )
+        )
         fakeClient.emitOta(
             RegattaLinkOtaUiState(
                 phase = RegattaLinkOtaPhase.TRANSFERRING
@@ -312,6 +318,32 @@ class RegattaLinkConnectionManagerTest {
             fakeClient.lastDeviceControlOpcode
         )
         assertEquals(0, fakeClient.lastDeviceControlValue)
+    }
+
+    @Test
+    fun diagnosticAndDeviceControlBusyStatesAreMutuallyExclusiveAtManager() {
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                diagnosticLogSupported = true,
+                deviceControlSupported = true,
+                deviceControlBusy = true
+            )
+        )
+        assertFalse(manager.drainDiagnosticLog())
+
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                diagnosticLogSupported = true,
+                deviceControlSupported = true,
+                diagnosticLogLoading = true
+            )
+        )
+        assertFalse(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
+                1
+            )
+        )
     }
 
     @Test
@@ -396,6 +428,12 @@ class RegattaLinkConnectionManagerTest {
 
     @Test
     fun activeRawCaptureBlocksOtherOptionalGattActionsAndDisconnectInterrupts() {
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                diagnosticLogSupported = true,
+                deviceControlSupported = true
+            )
+        )
         fakeClient.emitConnection(
             RegattaLinkClientState(
                 status = RegattaLinkConnectionStatus.CONNECTED
