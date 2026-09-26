@@ -211,6 +211,30 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun queuedButUnacceptedFactoryResetStillAllowsManualDisconnect() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+
+        manager.disconnect()
+
+        assertEquals(1, fakeClient.disconnectCalls)
+        assertEquals(configured, manager.configuredDevice())
+    }
+
+    @Test
     fun acceptedFactoryResetBlocksManualDisconnectUntilFirmwareDisconnects() {
         fakeClient.emitConnection(
             RegattaLinkClientState(
