@@ -11,7 +11,7 @@ internal const val REGATTALINK_DEVICE_CONTROL_STATUS_SIZE = 20
 internal const val REGATTALINK_DEVICE_CONTROL_VERSION = 1
 internal const val REGATTALINK_DEVICE_CONTROL_POLL_MS = 100L
 internal const val REGATTALINK_DEVICE_CONTROL_CLIENT_TIMEOUT_MS = 12_000L
-internal const val REGATTALINK_FACTORY_RESET_DISCONNECT_GRACE_MS = 3_000L
+internal const val REGATTALINK_FACTORY_RESET_DISCONNECT_WAIT_MS = 3_000L
 
 data class RegattaLinkDiagnosticLogEntry(
     val timestamp10ms: Int,
