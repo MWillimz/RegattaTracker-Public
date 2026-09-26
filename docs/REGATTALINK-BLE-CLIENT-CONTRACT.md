@@ -12,7 +12,7 @@ The current BLE contract contains three RegattaLink service families. Firmware c
 
 | Area | Service suffix | Firmware contract | Current RegattaTracker consumption |
 | --- | ---: | --- | --- |
-| configuration/device information/diagnostics/control | 0001 | implemented; 0006 brightness plus 0007 diagnostic log and 0008 Device Control are additive and optional by UUID discovery | 0002-0006 consumed; 0007/0008 contract published for RegattaTracker #298, client behavior still pending there |
+| configuration/device information/diagnostics/control | 0001 | implemented; 0006 brightness plus 0007 diagnostic log and 0008 Device Control are additive and optional by UUID discovery | 0002-0008 discovered; 0007 bounded drain and non-destructive 0008 command engine implemented; #298 UI/Factory Reset lifecycle still pending |
 | OTA | 0010 | implemented | implemented |
 | telemetry | 0020 | implemented with IMU 0021-0023 and normalized NMEA Boat State 0024 | 0021-0024 consumed; 0024 discovered independently of the IMU capability bit |
 
@@ -41,8 +41,8 @@ Base UUID:
 | NMEA2000 PGN inventory | 0004 | encrypted/bonded read | implemented | implemented |
 | NMEA2000 raw CAN FIFO | 0005 | encrypted/bonded read | implemented | implemented as explicit bounded diagnostic read |
 | Global LED brightness | 0006 | encrypted/bonded read + write | additive contract in RegattaLink #135 / PR #136; optional by discovery | implemented when discovered |
-| Diagnostic log FIFO | 0007 | encrypted/bonded read | implemented; optional by discovery | pending RegattaTracker #298 |
-| Device Control | 0008 | encrypted/bonded read + write with response | implemented; optional by discovery | pending RegattaTracker #298 |
+| Diagnostic log FIFO | 0007 | encrypted/bonded read | implemented; optional by discovery | implemented as explicit bounded 20-read drain; UI presentation pending #298 |
+| Device Control | 0008 | encrypted/bonded read + write with response | implemented; optional by discovery | request/status engine and non-destructive commands implemented; Factory Reset lifecycle/UI pending #298 |
 | OTA service | 0010 | service | implemented | implemented |
 | OTA control | 0011 | encrypted/bonded write with response | implemented | implemented |
 | OTA DATA | 0012 | encrypted/bonded write; no-response preferred, response supported | implemented | implemented |
@@ -1107,7 +1107,7 @@ Current RegattaTracker consumption remains capability/UUID-driven:
 - 0002 and 0006 are consumed as optional configuration surfaces;
 - 0004 is read explicitly for PGN inventory diagnostics;
 - 0005 is drained only after explicit user action and with a strict finite bound;
-- 0007/0008 are published in the client contract and UUID registry but remain pending feature consumption in RegattaTracker #298;
+- 0007 is consumed only by explicit bounded drain; 0008 has a request-id-matched polling engine for non-destructive commands; Factory Reset execution and UI remain pending RegattaTracker #298;
 - 0024 is discovered independently of IMU capability bit 3 and consumed as read + notify Boat State telemetry.
 
 Core connection failure conditions remain:
