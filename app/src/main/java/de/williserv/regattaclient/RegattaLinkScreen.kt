@@ -450,67 +450,21 @@ fun RegattaLinkScreen(
 
                     telemetryState.calibration?.let { calibration ->
                         telemetryValue(
-                            label = stringResource(
-                                R.string.regattalink_confidence_overall
-                            ),
-                            value = "${calibration.overallConfidencePct} %"
-                        )
-                        telemetryValue(
                             label = stringResource(R.string.regattalink_boat_frame),
                             value = if (calibration.boatFrameValid) {
                                 stringResource(R.string.regattalink_ready)
                             } else {
-                                stringResource(R.string.regattalink_learning)
+                                stringResource(R.string.regattalink_not_set)
                             }
                         )
                         if (technicalDetailsExpanded) {
-                            telemetryValue(
-                                label = stringResource(
-                                    R.string.regattalink_confidence_forward
-                                ),
-                                value = "${calibration.forwardConfidencePct} %"
-                            )
-                            telemetryValue(
-                                label = stringResource(
-                                    R.string.regattalink_confidence_roll
-                                ),
-                                value = "${calibration.rollConfidencePct} %"
-                            )
-                            telemetryValue(
-                                label = stringResource(
-                                    R.string.regattalink_learner_state
-                                ),
-                                value = learnerStateText(calibration.learnerState)
-                            )
                             telemetryValue(
                                 label = stringResource(R.string.regattalink_gyro_bias),
                                 value = if (calibration.gyroBiasValid) {
                                     stringResource(R.string.regattalink_valid)
                                 } else {
-                                    stringResource(R.string.regattalink_learning)
+                                    stringResource(R.string.regattalink_not_valid)
                                 }
-                            )
-                            telemetryValue(
-                                label = stringResource(
-                                    R.string.regattalink_positive_maneuvers
-                                ),
-                                value = calibration.positiveManeuvers.toString()
-                            )
-                            telemetryValue(
-                                label = stringResource(
-                                    R.string.regattalink_negative_maneuvers
-                                ),
-                                value = calibration.negativeManeuvers.toString()
-                            )
-                            telemetryValue(
-                                label = stringResource(R.string.regattalink_roll_pairs),
-                                value = calibration.rollPairObservations.toString()
-                            )
-                            telemetryValue(
-                                label = stringResource(
-                                    R.string.regattalink_contradictions
-                                ),
-                                value = calibration.contradictoryManeuvers.toString()
                             )
                             telemetryValue(
                                 label = stringResource(
@@ -578,33 +532,77 @@ fun RegattaLinkScreen(
                         !configurationState.deviceControlBusy &&
                         !configurationState.diagnosticLogLoading &&
                         !nmeaState.rawCanReading
+                    val controlStatus = configurationState.deviceControlStatus
+                    val boatFrameValid =
+                        controlStatus?.boatFrameValid
+                            ?: telemetryState.calibration?.boatFrameValid
+                            ?: false
+                    val trimEnabled = controlEnabled && boatFrameValid
                     Text(
                         stringResource(R.string.regattalink_device_control),
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(top = 12.dp)
                     )
+                    Text(
+                        text = stringResource(
+                            R.string.regattalink_set_upright_instruction
+                        ),
+                        modifier = Modifier.padding(top = 6.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     Button(
                         onClick = { onDeviceControl(RegattaLinkDeviceControlOpcode.SET_UPRIGHT, 0) },
                         enabled = controlEnabled
                     ) { Text(stringResource(R.string.regattalink_set_upright)) }
-                    listOf(
-                        RegattaLinkDeviceControlOpcode.ADJUST_FORWARD to R.string.regattalink_forward_trim,
-                        RegattaLinkDeviceControlOpcode.ADJUST_HEEL to R.string.regattalink_heel,
-                        RegattaLinkDeviceControlOpcode.ADJUST_PITCH to R.string.regattalink_pitch
-                    ).forEach { (opcode, label) ->
-                        Text(stringResource(label))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = { onDeviceControl(opcode, -1) }, enabled = controlEnabled) {
-                                Text("−1°")
-                            }
-                            Button(onClick = { onDeviceControl(opcode, 1) }, enabled = controlEnabled) {
-                                Text("+1°")
-                            }
+
+                    RegattaLinkTrimControl(
+                        label = stringResource(R.string.regattalink_forward_trim),
+                        value = controlStatus?.forwardTrimDeg,
+                        leftLabel = stringResource(R.string.regattalink_one_degree_port),
+                        leftDelta = -1,
+                        rightLabel = stringResource(R.string.regattalink_one_degree_starboard),
+                        rightDelta = 1,
+                        enabled = trimEnabled,
+                        onAdjust = {
+                            onDeviceControl(
+                                RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
+                                it
+                            )
                         }
-                    }
-                    configurationState.deviceControlStatus?.let { status ->
+                    )
+                    RegattaLinkTrimControl(
+                        label = stringResource(R.string.regattalink_heel),
+                        value = controlStatus?.heelTrimDeg,
+                        leftLabel = stringResource(R.string.regattalink_one_degree_port),
+                        leftDelta = 1,
+                        rightLabel = stringResource(R.string.regattalink_one_degree_starboard),
+                        rightDelta = -1,
+                        enabled = trimEnabled,
+                        onAdjust = {
+                            onDeviceControl(
+                                RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
+                                it
+                            )
+                        }
+                    )
+                    RegattaLinkTrimControl(
+                        label = stringResource(R.string.regattalink_pitch),
+                        value = controlStatus?.pitchTrimDeg,
+                        leftLabel = stringResource(R.string.regattalink_one_degree_front),
+                        leftDelta = 1,
+                        rightLabel = stringResource(R.string.regattalink_one_degree_back),
+                        rightDelta = -1,
+                        enabled = trimEnabled,
+                        onAdjust = {
+                            onDeviceControl(
+                                RegattaLinkDeviceControlOpcode.ADJUST_PITCH,
+                                it
+                            )
+                        }
+                    )
+
+                    controlStatus?.let { status ->
                         Text("${status.phase} · ${status.result}")
-                        Text("${status.forwardTrimDeg}° / ${status.heelTrimDeg}° / ${status.pitchTrimDeg}°")
                     }
                     if (configurationState.deviceControlError.isNotBlank()) {
                         Text(configurationState.deviceControlError, color = MaterialTheme.colorScheme.error)
@@ -761,6 +759,8 @@ fun RegattaLinkScreen(
                     onClick = onCheckFirmware,
                     enabled = firmwareSourceAvailable &&
                         connected &&
+                        !configurationState.deviceControlBusy &&
+                        !configurationState.diagnosticLogLoading &&
                         firmwareState.status != RegattaLinkFirmwareStatus.LOADING,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -864,6 +864,8 @@ fun RegattaLinkScreen(
                     ) {
                         Button(
                             onClick = onInstallFirmware,
+                            enabled = !configurationState.deviceControlBusy &&
+                                !configurationState.diagnosticLogLoading,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(top = 10.dp)
@@ -1327,10 +1329,44 @@ private fun DetailsToggle(
 }
 
 @Composable
-private fun learnerStateText(state: Int): String = when (state) {
-    1 -> stringResource(R.string.regattalink_learner_turn)
-    2 -> stringResource(R.string.regattalink_learner_post)
-    else -> stringResource(R.string.regattalink_learner_idle)
+private fun RegattaLinkTrimControl(
+    label: String,
+    value: Int?,
+    leftLabel: String,
+    leftDelta: Int,
+    rightLabel: String,
+    rightDelta: Int,
+    enabled: Boolean,
+    onAdjust: (Int) -> Unit
+) {
+    Text(
+        text = label,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier.padding(top = 10.dp)
+    )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Button(
+            onClick = { onAdjust(leftDelta) },
+            enabled = enabled,
+            modifier = Modifier.weight(1f)
+        ) {
+            Text(leftLabel)
+        }
+        Text(
+            text = value?.let { "${it}°" } ?: "—",
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 12.dp)
+        )
+        Button(
+            onClick = { onAdjust(rightDelta) },
+            enabled = enabled,
+            modifier = Modifier.weight(1f)
+        ) {
+            Text(rightLabel)
+        }
+    }
 }
 
 @Composable
