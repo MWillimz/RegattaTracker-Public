@@ -163,6 +163,46 @@ class RegattaLinkDeviceControlTest {
     }
 
     @Test
+    fun requestAcceptanceRequiresMatchingNonRejected0008Status() {
+        val accepted = RegattaLinkDeviceControlStatus(
+            opcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+            phase = RegattaLinkDeviceControlPhase.PENDING,
+            result = RegattaLinkDeviceControlResult.NONE,
+            requestId = 90u,
+            forwardTrimDeg = 0,
+            heelTrimDeg = 0,
+            pitchTrimDeg = 0,
+            boatFrameValid = false,
+            gyroBiasValid = false,
+            mountingEpoch = 0u
+        )
+        val rejected = accepted.copy(
+            phase = RegattaLinkDeviceControlPhase.ERROR,
+            result = RegattaLinkDeviceControlResult.BUSY,
+            applicationErrorCode = 3
+        )
+
+        assertTrue(
+            regattaLinkDeviceControlStatusConfirmsAcceptance(
+                accepted,
+                90u
+            )
+        )
+        assertFalse(
+            regattaLinkDeviceControlStatusConfirmsAcceptance(
+                rejected,
+                90u
+            )
+        )
+        assertFalse(
+            regattaLinkDeviceControlStatusConfirmsAcceptance(
+                accepted,
+                91u
+            )
+        )
+    }
+
+    @Test
     fun mismatchedRequestIdNeverCompletesCommand() {
         val status = RegattaLinkDeviceControlStatus(
             opcode = RegattaLinkDeviceControlOpcode.SET_UPRIGHT,
