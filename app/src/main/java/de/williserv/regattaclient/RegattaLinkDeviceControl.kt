@@ -92,6 +92,28 @@ data class RegattaLinkDeviceControlState(
     val error: String = ""
 )
 
+internal enum class RegattaLinkDeviceControlPollDecision {
+    IGNORE_OTHER_REQUEST,
+    CONTINUE,
+    SUCCESS,
+    FAILURE
+}
+
+internal fun regattaLinkDeviceControlPollDecision(
+    status: RegattaLinkDeviceControlStatus,
+    requestId: UInt
+): RegattaLinkDeviceControlPollDecision = when {
+    status.requestId != requestId ->
+        RegattaLinkDeviceControlPollDecision.IGNORE_OTHER_REQUEST
+    !status.phase.isTerminal ->
+        RegattaLinkDeviceControlPollDecision.CONTINUE
+    status.phase == RegattaLinkDeviceControlPhase.SUCCESS &&
+        status.result == RegattaLinkDeviceControlResult.OK ->
+        RegattaLinkDeviceControlPollDecision.SUCCESS
+    else ->
+        RegattaLinkDeviceControlPollDecision.FAILURE
+}
+
 internal fun parseRegattaLinkDiagnosticLogEntry(
     raw: ByteArray
 ): RegattaLinkDiagnosticLogEntry? {
