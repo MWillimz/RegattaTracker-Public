@@ -14,40 +14,6 @@ internal const val REGATTALINK_DEVICE_CONTROL_CLIENT_TIMEOUT_MS = 12_000L
 internal const val REGATTALINK_FACTORY_RESET_FINALIZATION_TIMEOUT_MS = 10_000L
 internal const val REGATTALINK_FACTORY_RESET_DISCONNECT_MARGIN_MS = 2_000L
 
-internal enum class RegattaLinkGattApplicationError(
-    val code: Int,
-    val description: String
-) {
-    INVALID_LENGTH(1, "invalid length"),
-    NOT_SUPPORTED(2, "not supported"),
-    BUSY(3, "busy"),
-    BAD_STATE(4, "bad state"),
-    BAD_REQUEST(5, "bad request"),
-    BAD_OFFSET(6, "bad offset"),
-    BAD_SESSION(7, "bad session"),
-    BAD_HARDWARE(8, "bad hardware"),
-    BAD_SIZE(9, "bad size"),
-    TIMEOUT(10, "timeout"),
-    HASH_MISMATCH(11, "hash mismatch"),
-    IMAGE_MISMATCH(12, "image mismatch"),
-    SIGNATURE(13, "signature failure"),
-    FLASH(14, "flash failure"),
-    CANCELLED(15, "cancelled"),
-    ROLLBACK(16, "rollback");
-
-    companion object {
-        fun fromGattStatus(status: Int): RegattaLinkGattApplicationError? {
-            val code = status - 0x80
-            return entries.firstOrNull { it.code == code }
-        }
-    }
-}
-
-internal fun regattaLinkGattApplicationFailureText(status: Int): String? =
-    RegattaLinkGattApplicationError.fromGattStatus(status)?.let { error ->
-        "RegattaLink rejected the request: ${error.description}"
-    }
-
 data class RegattaLinkDiagnosticLogEntry(
     val timestamp10ms: Int,
     val message: String
@@ -142,7 +108,8 @@ data class RegattaLinkDeviceControlStatus(
     val boatFrameValid: Boolean,
     val gyroBiasValid: Boolean,
     val mountingEpoch: UInt,
-    val factoryResetBondsCleared: Boolean = false
+    val factoryResetBondsCleared: Boolean = false,
+    val applicationErrorCode: Int? = null
 )
 
 internal fun regattaLinkFactoryResetContinuesToBondReset(
@@ -323,8 +290,18 @@ internal fun parseRegattaLinkDeviceControlStatus(
     require(flags and 0xf8 == 0) {
         "Unsupported RegattaLink Device Control flags"
     }
-    require(raw[15].toInt() == 0) {
-        "Invalid RegattaLink Device Control reserved byte"
+    val applicationErrorCode =
+        (raw[15].toInt() and 0xff).takeIf { it != 0 }
+    if (applicationErrorCode != null) {
+        require(
+            phase == RegattaLinkDeviceControlPhase.ERROR &&
+                result in setOf(
+                    RegattaLinkDeviceControlResult.BUSY,
+                    RegattaLinkDeviceControlResult.INVALID
+                )
+        ) {
+            "Invalid RegattaLink Device Control rejection detail"
+        }
     }
 
     return RegattaLinkDeviceControlStatus(
@@ -345,8 +322,20 @@ internal fun parseRegattaLinkDeviceControlStatus(
         boatFrameValid = flags and 0x01 != 0,
         gyroBiasValid = flags and 0x02 != 0,
         mountingEpoch = buffer.getInt(16).toUInt(),
-        factoryResetBondsCleared = flags and 0x04 != 0
+        factoryResetBondsCleared = flags and 0x04 != 0,
+        applicationErrorCode = applicationErrorCode
     )
+}
+
+internal fun regattaLinkDeviceControlFailureText(
+    status: RegattaLinkDeviceControlStatus
+): String = when (status.applicationErrorCode) {
+    2 -> "RegattaLink does not support this Device Control request"
+    3 -> "RegattaLink Device Control is busy"
+    4 -> "RegattaLink is not ready for this Device Control request"
+    5 -> "RegattaLink rejected the Device Control request"
+    null -> regattaLinkDeviceControlFailureText(status.result)
+    else -> "RegattaLink rejected Device Control (application error ${status.applicationErrorCode})"
 }
 
 internal fun regattaLinkDeviceControlFailureText(
