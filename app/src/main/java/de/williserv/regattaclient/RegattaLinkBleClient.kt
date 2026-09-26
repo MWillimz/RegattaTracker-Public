@@ -1987,6 +1987,16 @@ internal class RegattaLinkBleClient(
         }
     }
 
+    private fun configurationMutationBlocked(
+        activeGatt: BluetoothGatt
+    ): Boolean =
+        regattaLinkConfigurationMutationBlocked(
+            state = lastConfigurationState,
+            factoryResetOwned =
+                factoryResetDisconnectTracker.ownsLifecycle(activeGatt),
+            deviceControlRunning = deviceControlRunning.get()
+        )
+
     override fun setDeviceName(name: String): Boolean {
         val validationError = validateRegattaLinkDeviceName(name)
         if (validationError != null) {
@@ -1996,8 +2006,14 @@ internal class RegattaLinkBleClient(
         if (otaRunning.get() || !isConnected()) return false
 
         val activeGatt = gatt ?: return false
+        if (configurationMutationBlocked(activeGatt)) return false
         otaExecutor.execute {
-            if (!optionalFeatureWorkAllowed(activeGatt)) return@execute
+            if (
+                !optionalFeatureWorkAllowed(activeGatt) ||
+                configurationMutationBlocked(activeGatt)
+            ) {
+                return@execute
+            }
             updateConfiguration { it.copy(busy = true, error = "") }
             try {
                 val characteristic = activeGatt
@@ -2042,8 +2058,14 @@ internal class RegattaLinkBleClient(
         if (otaRunning.get() || !isConnected()) return false
 
         val activeGatt = gatt ?: return false
+        if (configurationMutationBlocked(activeGatt)) return false
         otaExecutor.execute {
-            if (!optionalFeatureWorkAllowed(activeGatt)) return@execute
+            if (
+                !optionalFeatureWorkAllowed(activeGatt) ||
+                configurationMutationBlocked(activeGatt)
+            ) {
+                return@execute
+            }
             updateConfiguration { it.copy(busy = true, error = "") }
             try {
                 val characteristic = activeGatt
