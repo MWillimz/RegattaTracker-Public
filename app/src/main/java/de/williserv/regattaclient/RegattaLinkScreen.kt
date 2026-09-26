@@ -559,9 +559,15 @@ fun RegattaLinkScreen(
                         label = stringResource(R.string.regattalink_forward_trim),
                         value = controlStatus?.forwardTrimDeg,
                         leftLabel = stringResource(R.string.regattalink_one_degree_port),
-                        leftDelta = -1,
+                        leftDelta = regattaLinkTrimDelta(
+                            RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
+                            RegattaLinkTrimDirection.PORT
+                        ),
                         rightLabel = stringResource(R.string.regattalink_one_degree_starboard),
-                        rightDelta = 1,
+                        rightDelta = regattaLinkTrimDelta(
+                            RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
+                            RegattaLinkTrimDirection.STARBOARD
+                        ),
                         enabled = trimEnabled,
                         onAdjust = {
                             onDeviceControl(
@@ -574,9 +580,15 @@ fun RegattaLinkScreen(
                         label = stringResource(R.string.regattalink_heel),
                         value = controlStatus?.heelTrimDeg,
                         leftLabel = stringResource(R.string.regattalink_one_degree_port),
-                        leftDelta = 1,
+                        leftDelta = regattaLinkTrimDelta(
+                            RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
+                            RegattaLinkTrimDirection.PORT
+                        ),
                         rightLabel = stringResource(R.string.regattalink_one_degree_starboard),
-                        rightDelta = -1,
+                        rightDelta = regattaLinkTrimDelta(
+                            RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
+                            RegattaLinkTrimDirection.STARBOARD
+                        ),
                         enabled = trimEnabled,
                         onAdjust = {
                             onDeviceControl(
@@ -589,9 +601,15 @@ fun RegattaLinkScreen(
                         label = stringResource(R.string.regattalink_pitch),
                         value = controlStatus?.pitchTrimDeg,
                         leftLabel = stringResource(R.string.regattalink_one_degree_front),
-                        leftDelta = 1,
+                        leftDelta = regattaLinkTrimDelta(
+                            RegattaLinkDeviceControlOpcode.ADJUST_PITCH,
+                            RegattaLinkTrimDirection.FRONT
+                        ),
                         rightLabel = stringResource(R.string.regattalink_one_degree_back),
-                        rightDelta = -1,
+                        rightDelta = regattaLinkTrimDelta(
+                            RegattaLinkDeviceControlOpcode.ADJUST_PITCH,
+                            RegattaLinkTrimDirection.BACK
+                        ),
                         enabled = trimEnabled,
                         onAdjust = {
                             onDeviceControl(
