@@ -402,6 +402,45 @@ class RegattaLinkDeviceControlTest {
     }
 
     @Test
+    fun localDisconnectFallbackCompletesOnlyCurrentOwnedResetSession() {
+        val tracker = RegattaLinkFactoryResetDisconnectTracker<Any>(
+            nowElapsedMs = { 1_000L },
+            expectedDisconnectTimeoutMs = 15_000L
+        )
+        val session = Any()
+        val otherSession = Any()
+
+        tracker.markAccepted(session, 33u)
+
+        assertFalse(
+            consumeRegattaLinkFactoryResetFallback(
+                session = session,
+                sessionStillCurrent = false,
+                tracker = tracker
+            )
+        )
+        assertTrue(tracker.isExpected(session, 33u))
+
+        assertFalse(
+            consumeRegattaLinkFactoryResetFallback(
+                session = otherSession,
+                sessionStillCurrent = true,
+                tracker = tracker
+            )
+        )
+        assertTrue(tracker.isExpected(session, 33u))
+
+        assertTrue(
+            consumeRegattaLinkFactoryResetFallback(
+                session = session,
+                sessionStillCurrent = true,
+                tracker = tracker
+            )
+        )
+        assertFalse(tracker.isExpected(session, 33u))
+    }
+
+    @Test
     fun factoryResetDisconnectOwnershipStartsOnlyAfterAcceptedMatchingRequest() {
         var now = 1_000L
         val tracker = RegattaLinkFactoryResetDisconnectTracker<Any>(
