@@ -102,6 +102,20 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun updatingConfiguredNamePreservesResetRecoveryMarker() {
+        val store = RegattaLinkConfiguredDeviceStore(context)
+        store.markResetRecoveryPending()
+
+        store.updateName(configured.stableId, "RegattaLink-Renamed")
+
+        assertTrue(store.requiresNewPairing())
+        assertEquals(
+            "RegattaLink-Renamed",
+            store.load()?.deviceName
+        )
+    }
+
+    @Test
     fun rejectedDiscoveryDoesNotBlockConfiguredReconnect() {
         fakeClient.discoveryAccepted = false
 
