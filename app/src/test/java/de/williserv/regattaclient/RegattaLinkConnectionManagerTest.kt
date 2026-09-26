@@ -138,6 +138,140 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun provisionalFactoryResetDisconnectClearsAssociationWithoutOutageReconnect() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                factoryResetWriteAcceptedRequestId = 41u
+            )
+        )
+
+        val store = RegattaLinkConfiguredDeviceStore(context)
+        assertTrue(store.requiresNewPairing())
+        assertEquals(configured, store.load())
+
+        fakeClient.emitConnection(RegattaLinkClientState())
+
+        assertEquals(null, store.load())
+        assertTrue(store.requiresNewPairing())
+        assertFalse(manager.reconnectConfigured())
+        assertEquals(0, fakeClient.reconnectCalls)
+    }
+
+    @Test
+    fun processRestartDuringProvisionalFactoryResetSuppressesConfiguredReconnect() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                factoryResetWriteAcceptedRequestId = 42u
+            )
+        )
+
+        val store = RegattaLinkConfiguredDeviceStore(context)
+        assertTrue(store.requiresNewPairing())
+        assertEquals(configured, store.load())
+
+        manager = createManager()
+
+        assertFalse(manager.reconnectConfigured())
+        assertEquals(0, fakeClient.reconnectCalls)
+        assertTrue(manager.startDiscovery())
+        assertEquals(1, fakeClient.discoveryCalls)
+    }
+
+    @Test
+    fun rejectedProvisionalFactoryResetReleasesPersistentRecoveryMarker() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress,
+                deviceInfo = RegattaLinkDeviceInfo(
+                    stableId = configured.stableId,
+                    runningBuild = 1u,
+                    otaAvailable = false,
+                    otaPhy2m = false,
+                    telemetryAvailable = false
+                )
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                factoryResetWriteAcceptedRequestId = 43u
+            )
+        )
+        assertTrue(RegattaLinkConfiguredDeviceStore(context).requiresNewPairing())
+
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = false,
+                deviceControlStatus = RegattaLinkDeviceControlStatus(
+                    opcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                    phase = RegattaLinkDeviceControlPhase.ERROR,
+                    result = RegattaLinkDeviceControlResult.BUSY,
+                    requestId = 43u,
+                    forwardTrimDeg = 0,
+                    heelTrimDeg = 0,
+                    pitchTrimDeg = 0,
+                    boatFrameValid = false,
+                    gyroBiasValid = false,
+                    mountingEpoch = 0u,
+                    applicationErrorCode = 3
+                ),
+                deviceControlError = "RegattaLink Device Control is busy"
+            )
+        )
+
+        val store = RegattaLinkConfiguredDeviceStore(context)
+        assertFalse(store.requiresNewPairing())
+        assertEquals(configured, store.load())
+    }
+
+    @Test
     fun factoryResetMotionRejectKeepsExpectedDisconnectOwnership() {
         assertFactoryResetCalibrationRejectKeepsExpectedDisconnectOwnership(
             RegattaLinkDeviceControlResult.MOTION_REJECT
