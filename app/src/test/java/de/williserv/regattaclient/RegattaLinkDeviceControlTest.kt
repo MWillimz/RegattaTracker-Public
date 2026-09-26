@@ -205,6 +205,7 @@ class RegattaLinkDeviceControlTest {
             result = RegattaLinkDeviceControlResult.BUSY,
             applicationErrorCode = 3
         )
+        val rejectedWithoutDetail = rejected.copy(applicationErrorCode = null)
 
         assertTrue(
             regattaLinkDeviceControlStatusConfirmsAcceptance(
@@ -215,6 +216,12 @@ class RegattaLinkDeviceControlTest {
         assertFalse(
             regattaLinkDeviceControlStatusConfirmsAcceptance(
                 rejected,
+                90u
+            )
+        )
+        assertFalse(
+            regattaLinkDeviceControlStatusConfirmsAcceptance(
+                rejectedWithoutDetail,
                 90u
             )
         )
