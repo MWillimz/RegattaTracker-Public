@@ -404,7 +404,9 @@ request. For a well-formed request that firmware can identify by non-zero reques
 application admission failure is returned through 0008 itself: state ERROR, result
 BUSY or INVALID, the rejected request_id, and the exact `RL_*` code in byte 15.
 RegattaTracker uses that request-id-bound status for semantic BUSY/BAD_STATE/
-BAD_REQUEST presentation.
+BAD_REQUEST presentation. A successful ATT write alone is therefore not Device
+Control acceptance: Tracker takes command/reset ownership only after it observes the
+matching request_id in 0008 without rejection detail.
 
 Android GATT callback status numbers in the 0x80 range are not treated as RegattaLink
 application codes because Android's own local GATT status namespace overlaps those
@@ -463,8 +465,11 @@ own terminate request failed.
 
 RegattaTracker must not infer bond-wipe success from a fixed elapsed-time threshold.
 The local 10-second finalization watchdog exists only to detect a stuck firmware
-implementation; a watchdog expiry with bit 2 still clear preserves the configured
-association and is reported as an ambiguous finalization failure.
+implementation. If it expires with bit 2 still clear, Tracker reports an ambiguous
+finalization failure and closes the local GATT link while retaining Factory Reset
+disconnect ownership. The resulting disconnect is handled as reset recovery rather
+than as an ordinary outage; Tracker does not claim that firmware bond deletion
+succeeded merely because the watchdog expired.
 
 Android may retain
 a stale OS-side bond after the peripheral deletes its bond. The production client
