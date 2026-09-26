@@ -141,7 +141,8 @@ data class RegattaLinkDeviceControlStatus(
     val pitchTrimDeg: Int,
     val boatFrameValid: Boolean,
     val gyroBiasValid: Boolean,
-    val mountingEpoch: UInt
+    val mountingEpoch: UInt,
+    val factoryResetBondsCleared: Boolean = false
 )
 
 internal fun regattaLinkFactoryResetContinuesToBondReset(
@@ -319,7 +320,7 @@ internal fun parseRegattaLinkDeviceControlStatus(
         )
     val buffer = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
     val flags = raw[14].toInt() and 0xff
-    require(flags and 0xfc == 0) {
+    require(flags and 0xf8 == 0) {
         "Unsupported RegattaLink Device Control flags"
     }
     require(raw[15].toInt() == 0) {
@@ -343,7 +344,8 @@ internal fun parseRegattaLinkDeviceControlStatus(
         pitchTrimDeg = buffer.getShort(12).toInt(),
         boatFrameValid = flags and 0x01 != 0,
         gyroBiasValid = flags and 0x02 != 0,
-        mountingEpoch = buffer.getInt(16).toUInt()
+        mountingEpoch = buffer.getInt(16).toUInt(),
+        factoryResetBondsCleared = flags and 0x04 != 0
     )
 }
 
