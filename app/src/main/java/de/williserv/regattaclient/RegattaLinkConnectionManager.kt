@@ -696,18 +696,6 @@ internal class RegattaLinkConnectionManager(
     private fun handleConfigurationState(state: RegattaLinkConfigurationState) {
         configurationState = state
 
-        if (state.factoryResetWriteAcceptedRequestId != null) {
-            factoryResetPending = true
-            configuredDeviceStore.markResetRecoveryPending()
-
-            if (connectionState.status == RegattaLinkConnectionStatus.IDLE) {
-                factoryResetPending = false
-                configuredDeviceStore.clear()
-                legacyBootstrapAddress = null
-                explicitDiscoveryRequested = false
-            }
-        }
-
         if (
             state.deviceControlAcceptedOpcode ==
                 RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
@@ -728,12 +716,17 @@ internal class RegattaLinkConnectionManager(
             explicitDiscoveryRequested = false
         }
 
+        val resetStatus = state.deviceControlStatus
         if (
             factoryResetPending &&
             !state.deviceControlBusy &&
             !state.factoryResetAwaitingDisconnect &&
             state.deviceControlError.isNotBlank() &&
-            connectionState.status == RegattaLinkConnectionStatus.CONNECTED
+            connectionState.status == RegattaLinkConnectionStatus.CONNECTED &&
+            resetStatus?.opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
+            resetStatus.phase.isTerminal &&
+            !regattaLinkFactoryResetContinuesToBondReset(resetStatus) &&
+            !resetStatus.factoryResetBondsCleared
         ) {
             factoryResetPending = false
             configuredDeviceStore.clearResetRecoveryPending()
