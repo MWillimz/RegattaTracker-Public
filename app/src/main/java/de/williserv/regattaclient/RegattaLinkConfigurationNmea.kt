@@ -13,9 +13,41 @@ data class RegattaLinkConfigurationState(
     val deviceName: String = "",
     val ledBrightnessSupported: Boolean = false,
     val ledBrightnessPct: Int? = null,
+    val diagnosticLogSupported: Boolean = false,
+    val diagnosticLogLoading: Boolean = false,
+    val diagnosticLogEntries: List<RegattaLinkDiagnosticLogEntry> = emptyList(),
+    val diagnosticLogError: String = "",
+    val deviceControlSupported: Boolean = false,
+    val deviceControlBusy: Boolean = false,
+    val deviceControlAcceptedOpcode: RegattaLinkDeviceControlOpcode? = null,
+    val deviceControlAcceptedRequestId: UInt? = null,
+    val factoryResetWriteAcceptedRequestId: UInt? = null,
+    val factoryResetAwaitingDisconnect: Boolean = false,
+    val deviceControlStatus: RegattaLinkDeviceControlStatus? = null,
+    val deviceControlError: String = "",
     val busy: Boolean = false,
     val error: String = ""
 )
+
+internal fun regattaLinkConfigurationMutationBlocked(
+    state: RegattaLinkConfigurationState,
+    factoryResetOwned: Boolean = false,
+    deviceControlRunning: Boolean = false
+): Boolean =
+    factoryResetOwned ||
+        deviceControlRunning ||
+        state.deviceControlBusy ||
+        state.factoryResetAwaitingDisconnect ||
+        state.factoryResetWriteAcceptedRequestId != null
+
+internal fun regattaLinkFirmwareInstallBlocked(
+    state: RegattaLinkConfigurationState
+): Boolean =
+    state.busy ||
+        state.deviceControlBusy ||
+        state.diagnosticLogLoading ||
+        state.factoryResetAwaitingDisconnect ||
+        state.factoryResetWriteAcceptedRequestId != null
 
 data class RegattaLinkPgnInventoryEntry(
     val pgn: Long,

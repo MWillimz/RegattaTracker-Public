@@ -67,6 +67,8 @@ fun RegattaLinkScreen(
     onCancelOta: () -> Unit,
     onChangeName: (String) -> Unit,
     onSetLedBrightness: (Int) -> Unit,
+    onDrainDiagnosticLog: () -> Unit,
+    onDeviceControl: (RegattaLinkDeviceControlOpcode, Int) -> Unit,
     onRefreshPgnInventory: () -> Unit,
     onReadRawFrames: () -> Unit,
     onStartRawCapture: () -> Unit,
@@ -101,6 +103,7 @@ fun RegattaLinkScreen(
         mutableStateOf(false)
     }
     var nameDialogOpen by rememberSaveable { mutableStateOf(false) }
+    var resetDialogOpen by rememberSaveable { mutableStateOf(false) }
     var nameDraft by rememberSaveable { mutableStateOf("") }
     var brightnessDraft by remember(configurationState.ledBrightnessPct) {
         mutableStateOf((configurationState.ledBrightnessPct ?: 0).toFloat())
@@ -136,7 +139,8 @@ fun RegattaLinkScreen(
         connected &&
             !otaState.isActive &&
             !rawCaptureState.isActive &&
-            !configurationState.busy
+            !configurationState.busy &&
+            !regattaLinkConfigurationMutationBlocked(configurationState)
     val nameValidationError =
         if (nameDraft.isBlank()) {
             stringResource(R.string.regattalink_name_required)
@@ -227,6 +231,25 @@ fun RegattaLinkScreen(
                         onClick = { nameDialogOpen = false },
                         enabled = !configurationState.busy
                     ) {
+                        Text(stringResource(R.string.regattalink_cancel))
+                    }
+                }
+            )
+        }
+
+        if (resetDialogOpen) {
+            AlertDialog(
+                onDismissRequest = { resetDialogOpen = false },
+                title = { Text(stringResource(R.string.regattalink_factory_reset)) },
+                text = { Text(stringResource(R.string.regattalink_factory_reset_warning)) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        resetDialogOpen = false
+                        onDeviceControl(RegattaLinkDeviceControlOpcode.FACTORY_RESET, 0)
+                    }) { Text(stringResource(R.string.regattalink_factory_reset)) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { resetDialogOpen = false }) {
                         Text(stringResource(R.string.regattalink_cancel))
                     }
                 }
@@ -428,76 +451,21 @@ fun RegattaLinkScreen(
 
                     telemetryState.calibration?.let { calibration ->
                         telemetryValue(
-                            label = stringResource(
-                                R.string.regattalink_confidence_overall
-                            ),
-                            value = "${calibration.overallConfidencePct} %"
-                        )
-                        telemetryValue(
                             label = stringResource(R.string.regattalink_boat_frame),
                             value = if (calibration.boatFrameValid) {
                                 stringResource(R.string.regattalink_ready)
                             } else {
-                                stringResource(R.string.regattalink_learning)
+                                stringResource(R.string.regattalink_not_set)
                             }
                         )
-                        if (calibration.learnerState != 0) {
-                            telemetryValue(
-                                label = stringResource(
-                                    R.string.regattalink_learner_state
-                                ),
-                                value = learnerStateText(calibration.learnerState)
-                            )
-                        }
-
                         if (technicalDetailsExpanded) {
-                            telemetryValue(
-                                label = stringResource(
-                                    R.string.regattalink_confidence_forward
-                                ),
-                                value = "${calibration.forwardConfidencePct} %"
-                            )
-                            telemetryValue(
-                                label = stringResource(
-                                    R.string.regattalink_confidence_roll
-                                ),
-                                value = "${calibration.rollConfidencePct} %"
-                            )
-                            telemetryValue(
-                                label = stringResource(
-                                    R.string.regattalink_learner_state
-                                ),
-                                value = learnerStateText(calibration.learnerState)
-                            )
                             telemetryValue(
                                 label = stringResource(R.string.regattalink_gyro_bias),
                                 value = if (calibration.gyroBiasValid) {
                                     stringResource(R.string.regattalink_valid)
                                 } else {
-                                    stringResource(R.string.regattalink_learning)
+                                    stringResource(R.string.regattalink_not_valid)
                                 }
-                            )
-                            telemetryValue(
-                                label = stringResource(
-                                    R.string.regattalink_positive_maneuvers
-                                ),
-                                value = calibration.positiveManeuvers.toString()
-                            )
-                            telemetryValue(
-                                label = stringResource(
-                                    R.string.regattalink_negative_maneuvers
-                                ),
-                                value = calibration.negativeManeuvers.toString()
-                            )
-                            telemetryValue(
-                                label = stringResource(R.string.regattalink_roll_pairs),
-                                value = calibration.rollPairObservations.toString()
-                            )
-                            telemetryValue(
-                                label = stringResource(
-                                    R.string.regattalink_contradictions
-                                ),
-                                value = calibration.contradictoryManeuvers.toString()
                             )
                             telemetryValue(
                                 label = stringResource(
@@ -559,6 +527,121 @@ fun RegattaLinkScreen(
                         modifier = Modifier.padding(top = 6.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+                if (connected && configurationState.deviceControlSupported) {
+                    val controlEnabled = configEnabled &&
+                        !configurationState.deviceControlBusy &&
+                        !configurationState.diagnosticLogLoading &&
+                        !nmeaState.rawCanReading
+                    val controlStatus = configurationState.deviceControlStatus
+                    val boatFrameValid = controlStatus?.boatFrameValid == true
+                    val trimEnabled = controlEnabled && boatFrameValid
+                    Text(
+                        stringResource(R.string.regattalink_device_control),
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.regattalink_set_upright_instruction
+                        ),
+                        modifier = Modifier.padding(top = 6.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Button(
+                        onClick = { onDeviceControl(RegattaLinkDeviceControlOpcode.SET_UPRIGHT, 0) },
+                        enabled = controlEnabled
+                    ) { Text(stringResource(R.string.regattalink_set_upright)) }
+
+                    RegattaLinkTrimControl(
+                        label = stringResource(R.string.regattalink_forward_trim),
+                        value = controlStatus?.forwardTrimDeg,
+                        leftLabel = stringResource(R.string.regattalink_one_degree_port),
+                        leftDelta = regattaLinkTrimDelta(
+                            RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
+                            RegattaLinkTrimDirection.PORT
+                        ),
+                        rightLabel = stringResource(R.string.regattalink_one_degree_starboard),
+                        rightDelta = regattaLinkTrimDelta(
+                            RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
+                            RegattaLinkTrimDirection.STARBOARD
+                        ),
+                        enabled = trimEnabled,
+                        onAdjust = {
+                            onDeviceControl(
+                                RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
+                                it
+                            )
+                        }
+                    )
+                    RegattaLinkTrimControl(
+                        label = stringResource(R.string.regattalink_heel),
+                        value = controlStatus?.heelTrimDeg,
+                        leftLabel = stringResource(R.string.regattalink_one_degree_port),
+                        leftDelta = regattaLinkTrimDelta(
+                            RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
+                            RegattaLinkTrimDirection.PORT
+                        ),
+                        rightLabel = stringResource(R.string.regattalink_one_degree_starboard),
+                        rightDelta = regattaLinkTrimDelta(
+                            RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
+                            RegattaLinkTrimDirection.STARBOARD
+                        ),
+                        enabled = trimEnabled,
+                        onAdjust = {
+                            onDeviceControl(
+                                RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
+                                it
+                            )
+                        }
+                    )
+                    RegattaLinkTrimControl(
+                        label = stringResource(R.string.regattalink_pitch),
+                        value = controlStatus?.pitchTrimDeg,
+                        leftLabel = stringResource(R.string.regattalink_one_degree_front),
+                        leftDelta = regattaLinkTrimDelta(
+                            RegattaLinkDeviceControlOpcode.ADJUST_PITCH,
+                            RegattaLinkTrimDirection.FRONT
+                        ),
+                        rightLabel = stringResource(R.string.regattalink_one_degree_back),
+                        rightDelta = regattaLinkTrimDelta(
+                            RegattaLinkDeviceControlOpcode.ADJUST_PITCH,
+                            RegattaLinkTrimDirection.BACK
+                        ),
+                        enabled = trimEnabled,
+                        onAdjust = {
+                            onDeviceControl(
+                                RegattaLinkDeviceControlOpcode.ADJUST_PITCH,
+                                it
+                            )
+                        }
+                    )
+
+                    controlStatus?.let { status ->
+                        Text("${status.phase} · ${status.result}")
+                    }
+                    if (configurationState.deviceControlError.isNotBlank()) {
+                        Text(configurationState.deviceControlError, color = MaterialTheme.colorScheme.error)
+                    }
+                    TextButton(onClick = { resetDialogOpen = true }, enabled = controlEnabled) {
+                        Text(stringResource(R.string.regattalink_factory_reset))
+                    }
+                }
+                if (connected && configurationState.diagnosticLogSupported) {
+                    Button(
+                        onClick = onDrainDiagnosticLog,
+                        enabled = configEnabled && !configurationState.diagnosticLogLoading &&
+                            !configurationState.deviceControlBusy && !nmeaState.rawCanReading
+                    ) { Text(stringResource(R.string.regattalink_read_diagnostic_log)) }
+                    if (configurationState.diagnosticLogLoading) {
+                        Text(stringResource(R.string.regattalink_loading_diagnostic_log))
+                    }
+                    configurationState.diagnosticLogEntries.forEach { entry ->
+                        Text("${entry.timestamp10ms * 10} ms  ${entry.message}")
+                    }
+                    if (configurationState.diagnosticLogError.isNotBlank()) {
+                        Text(configurationState.diagnosticLogError, color = MaterialTheme.colorScheme.error)
+                    }
                 }
                 if (configurationState.error.isNotBlank()) {
                     Text(
@@ -692,6 +775,8 @@ fun RegattaLinkScreen(
                     onClick = onCheckFirmware,
                     enabled = firmwareSourceAvailable &&
                         connected &&
+                        !configurationState.deviceControlBusy &&
+                        !configurationState.diagnosticLogLoading &&
                         firmwareState.status != RegattaLinkFirmwareStatus.LOADING,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -795,6 +880,10 @@ fun RegattaLinkScreen(
                     ) {
                         Button(
                             onClick = onInstallFirmware,
+                            enabled =
+                                !regattaLinkFirmwareInstallBlocked(
+                                    configurationState
+                                ),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(top = 10.dp)
@@ -1180,6 +1269,8 @@ fun RegattaLinkScreen(
             Button(
                 onClick = onDisconnect,
                 enabled = !otaState.isActive &&
+                    !configurationState.deviceControlBusy &&
+                    !configurationState.factoryResetAwaitingDisconnect &&
                     state.status != RegattaLinkConnectionStatus.IDLE,
                 modifier = Modifier.weight(1f)
             ) {
@@ -1258,10 +1349,44 @@ private fun DetailsToggle(
 }
 
 @Composable
-private fun learnerStateText(state: Int): String = when (state) {
-    1 -> stringResource(R.string.regattalink_learner_turn)
-    2 -> stringResource(R.string.regattalink_learner_post)
-    else -> stringResource(R.string.regattalink_learner_idle)
+private fun RegattaLinkTrimControl(
+    label: String,
+    value: Int?,
+    leftLabel: String,
+    leftDelta: Int,
+    rightLabel: String,
+    rightDelta: Int,
+    enabled: Boolean,
+    onAdjust: (Int) -> Unit
+) {
+    Text(
+        text = label,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier.padding(top = 10.dp)
+    )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Button(
+            onClick = { onAdjust(leftDelta) },
+            enabled = enabled,
+            modifier = Modifier.weight(1f)
+        ) {
+            Text(leftLabel)
+        }
+        Text(
+            text = value?.let { "${it}°" } ?: "—",
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 12.dp)
+        )
+        Button(
+            onClick = { onAdjust(rightDelta) },
+            enabled = enabled,
+            modifier = Modifier.weight(1f)
+        ) {
+            Text(rightLabel)
+        }
+    }
 }
 
 @Composable

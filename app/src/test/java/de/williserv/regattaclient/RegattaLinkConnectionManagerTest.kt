@@ -56,6 +56,7 @@ class RegattaLinkConnectionManagerTest {
                     onTelemetryStateChanged,
                     onConfigurationStateChanged,
                     onNmeaStateChanged,
+                    onFactoryResetRecoveryStateChanged,
                     onUnexpectedDisconnect ->
                 FakeConnectionClient(
                     onStateChanged = onStateChanged,
@@ -63,10 +64,30 @@ class RegattaLinkConnectionManagerTest {
                     onTelemetryStateChanged = onTelemetryStateChanged,
                     onConfigurationStateChanged = onConfigurationStateChanged,
                     onNmeaStateChanged = onNmeaStateChanged,
+                    onFactoryResetRecoveryStateChanged =
+                        onFactoryResetRecoveryStateChanged,
                     onUnexpectedDisconnect = onUnexpectedDisconnect
                 ).also { fakeClient = it }
             },
             legacyBondedAddressProvider = legacyBondedAddressProvider
+        )
+
+    private fun testFirmwareArtifact(): RegattaLinkFirmwareArtifact =
+        RegattaLinkFirmwareArtifact(
+            manifest = RegattaLinkFirmwareManifest(
+                schemaVersion = 1,
+                product = "RegattaLink",
+                target = "esp32c3",
+                hardwareProfile = "esp32c3-wroom02-4mb",
+                buildNumber = 1uL,
+                filename = "regattalink.bin",
+                size = 1,
+                sha256 = "00".repeat(32),
+                signed = false,
+                signingKeySha256 = null,
+                downloadUrl = "/regattalink/firmware"
+            ),
+            image = byteArrayOf(0)
         )
 
     @After
@@ -81,6 +102,20 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun updatingConfiguredNamePreservesResetRecoveryMarker() {
+        val store = RegattaLinkConfiguredDeviceStore(context)
+        store.markResetRecoveryPending()
+
+        store.updateName(configured.stableId, "RegattaLink-Renamed")
+
+        assertTrue(store.requiresNewPairing())
+        assertEquals(
+            "RegattaLink-Renamed",
+            store.load()?.deviceName
+        )
+    }
+
+    @Test
     fun rejectedDiscoveryDoesNotBlockConfiguredReconnect() {
         fakeClient.discoveryAccepted = false
 
@@ -91,6 +126,570 @@ class RegattaLinkConnectionManagerTest {
         assertEquals(1, fakeClient.reconnectCalls)
         assertEquals(configured.deviceAddress, fakeClient.lastReconnectAddress)
         assertEquals(configured.stableId, fakeClient.lastReconnectStableId)
+    }
+
+    @Test
+    fun factoryResetClearsAssociationAndSuppressesLegacyBondReconnect() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+        assertTrue(manager.executeDeviceControl(RegattaLinkDeviceControlOpcode.FACTORY_RESET, 0))
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                deviceControlAcceptedOpcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                deviceControlAcceptedRequestId = 7u
+            )
+        )
+        fakeClient.emitConnection(RegattaLinkClientState())
+
+        assertEquals(null, RegattaLinkConfiguredDeviceStore(context).load())
+        assertFalse(manager.reconnectConfigured())
+    }
+
+    @Test
+    fun provisionalFactoryResetDisconnectClearsAssociationWithoutOutageReconnect() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+
+        fakeClient.emitFactoryResetRecovery(true)
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                factoryResetWriteAcceptedRequestId = 41u
+            )
+        )
+
+        val store = RegattaLinkConfiguredDeviceStore(context)
+        assertTrue(store.requiresNewPairing())
+        assertEquals(configured, store.load())
+
+        fakeClient.emitConnection(RegattaLinkClientState())
+
+        assertEquals(null, store.load())
+        assertTrue(store.requiresNewPairing())
+        assertFalse(manager.reconnectConfigured())
+        assertEquals(0, fakeClient.reconnectCalls)
+    }
+
+    @Test
+    fun processRestartDuringProvisionalFactoryResetSuppressesConfiguredReconnect() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+        fakeClient.emitFactoryResetRecovery(true)
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                factoryResetWriteAcceptedRequestId = 42u
+            )
+        )
+
+        val store = RegattaLinkConfiguredDeviceStore(context)
+        assertTrue(store.requiresNewPairing())
+        assertEquals(configured, store.load())
+
+        manager = createManager()
+
+        assertFalse(manager.reconnectConfigured())
+        assertEquals(0, fakeClient.reconnectCalls)
+        assertTrue(manager.startDiscovery())
+        assertEquals(1, fakeClient.discoveryCalls)
+    }
+
+    @Test
+    fun rejectedProvisionalFactoryResetReleasesPersistentRecoveryMarker() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+        fakeClient.emitFactoryResetRecovery(true)
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                factoryResetWriteAcceptedRequestId = 43u
+            )
+        )
+        assertTrue(RegattaLinkConfiguredDeviceStore(context).requiresNewPairing())
+
+        fakeClient.emitFactoryResetRecovery(false)
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = false,
+                deviceControlStatus = RegattaLinkDeviceControlStatus(
+                    opcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                    phase = RegattaLinkDeviceControlPhase.ERROR,
+                    result = RegattaLinkDeviceControlResult.BUSY,
+                    requestId = 43u,
+                    forwardTrimDeg = 0,
+                    heelTrimDeg = 0,
+                    pitchTrimDeg = 0,
+                    boatFrameValid = false,
+                    gyroBiasValid = false,
+                    mountingEpoch = 0u,
+                    applicationErrorCode = 3
+                ),
+                deviceControlError = "RegattaLink Device Control is busy"
+            )
+        )
+
+        val store = RegattaLinkConfiguredDeviceStore(context)
+        assertFalse(store.requiresNewPairing())
+        assertEquals(configured, store.load())
+    }
+
+    @Test
+    fun factoryResetMotionRejectKeepsExpectedDisconnectOwnership() {
+        assertFactoryResetCalibrationRejectKeepsExpectedDisconnectOwnership(
+            RegattaLinkDeviceControlResult.MOTION_REJECT
+        )
+    }
+
+    @Test
+    fun factoryResetOrientationRejectKeepsExpectedDisconnectOwnership() {
+        assertFactoryResetCalibrationRejectKeepsExpectedDisconnectOwnership(
+            RegattaLinkDeviceControlResult.ORIENTATION_REJECT
+        )
+    }
+
+    private fun assertFactoryResetCalibrationRejectKeepsExpectedDisconnectOwnership(
+        result: RegattaLinkDeviceControlResult
+    ) {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                deviceControlAcceptedOpcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                deviceControlAcceptedRequestId = 55u
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                factoryResetAwaitingDisconnect = true,
+                deviceControlStatus = RegattaLinkDeviceControlStatus(
+                    opcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                    phase = RegattaLinkDeviceControlPhase.ERROR,
+                    result = result,
+                    requestId = 55u,
+                    forwardTrimDeg = 0,
+                    heelTrimDeg = 0,
+                    pitchTrimDeg = 0,
+                    boatFrameValid = false,
+                    gyroBiasValid = false,
+                    mountingEpoch = 9u
+                ),
+                deviceControlError = regattaLinkDeviceControlFailureText(result)
+            )
+        )
+
+        assertEquals(configured, manager.configuredDevice())
+        fakeClient.emitUnexpectedDisconnect()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(0, fakeClient.reconnectCalls)
+
+        fakeClient.emitConnection(RegattaLinkClientState())
+        assertEquals(null, manager.configuredDevice())
+        assertFalse(manager.reconnectConfigured())
+        assertEquals(0, fakeClient.disconnectCalls)
+    }
+
+    @Test
+    fun queuedButUnacceptedFactoryResetStillAllowsManualDisconnect() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+
+        manager.disconnect()
+
+        assertEquals(1, fakeClient.disconnectCalls)
+        assertEquals(configured, manager.configuredDevice())
+    }
+
+    @Test
+    fun acceptedFactoryResetBlocksManualDisconnectUntilFirmwareDisconnects() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                deviceControlAcceptedOpcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                deviceControlAcceptedRequestId = 59u
+            )
+        )
+
+        manager.disconnect()
+
+        assertEquals(0, fakeClient.disconnectCalls)
+        assertEquals(configured, manager.configuredDevice())
+
+        fakeClient.emitConnection(RegattaLinkClientState())
+
+        assertEquals(null, manager.configuredDevice())
+        assertFalse(manager.reconnectConfigured())
+    }
+
+    @Test
+    fun acceptedFactoryResetRediscoveryDoesNotClearConfiguredAssociation() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                deviceControlAcceptedOpcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                deviceControlAcceptedRequestId = 61u
+            )
+        )
+
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.DISCOVERING,
+                deviceAddress = configured.deviceAddress
+            )
+        )
+        assertEquals(configured, manager.configuredDevice())
+
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.READING_DEVICE_INFO,
+                deviceAddress = configured.deviceAddress
+            )
+        )
+        assertEquals(configured, manager.configuredDevice())
+        assertFalse(manager.startDiscovery())
+        assertEquals(0, fakeClient.discoveryCalls)
+        assertEquals(0, fakeClient.disconnectCalls)
+    }
+
+    @Test
+    fun confirmedFactoryResetBondWipeClearsAssociationBeforeDisconnect() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                deviceControlAcceptedOpcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                deviceControlAcceptedRequestId = 71u
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                factoryResetAwaitingDisconnect = true,
+                deviceControlStatus = RegattaLinkDeviceControlStatus(
+                    opcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                    phase = RegattaLinkDeviceControlPhase.SUCCESS,
+                    result = RegattaLinkDeviceControlResult.OK,
+                    requestId = 71u,
+                    forwardTrimDeg = 0,
+                    heelTrimDeg = 0,
+                    pitchTrimDeg = 0,
+                    boatFrameValid = false,
+                    gyroBiasValid = false,
+                    mountingEpoch = 12u,
+                    factoryResetBondsCleared = true
+                )
+            )
+        )
+
+        assertEquals(null, manager.configuredDevice())
+        assertFalse(manager.reconnectConfigured())
+        assertEquals(0, fakeClient.disconnectCalls)
+    }
+
+    @Test
+    fun factoryResetSuccessWaitsForFirmwareDisconnectAndObservesLateBondResetError() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                deviceControlAcceptedOpcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                deviceControlAcceptedRequestId = 73u
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                factoryResetAwaitingDisconnect = true,
+                deviceControlStatus = RegattaLinkDeviceControlStatus(
+                    opcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                    phase = RegattaLinkDeviceControlPhase.SUCCESS,
+                    result = RegattaLinkDeviceControlResult.OK,
+                    requestId = 73u,
+                    forwardTrimDeg = 0,
+                    heelTrimDeg = 0,
+                    pitchTrimDeg = 0,
+                    boatFrameValid = true,
+                    gyroBiasValid = true,
+                    mountingEpoch = 11u
+                )
+            )
+        )
+
+        assertEquals(configured, manager.configuredDevice())
+        assertEquals(0, fakeClient.disconnectCalls)
+
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = false,
+                factoryResetAwaitingDisconnect = false,
+                deviceControlStatus = RegattaLinkDeviceControlStatus(
+                    opcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                    phase = RegattaLinkDeviceControlPhase.ERROR,
+                    result = RegattaLinkDeviceControlResult.BOND_RESET_ERROR,
+                    requestId = 73u,
+                    forwardTrimDeg = 0,
+                    heelTrimDeg = 0,
+                    pitchTrimDeg = 0,
+                    boatFrameValid = true,
+                    gyroBiasValid = true,
+                    mountingEpoch = 11u
+                ),
+                deviceControlError = regattaLinkDeviceControlFailureText(
+                    RegattaLinkDeviceControlResult.BOND_RESET_ERROR
+                )
+            )
+        )
+
+        assertEquals(configured, manager.configuredDevice())
+        assertEquals(0, fakeClient.disconnectCalls)
+
+        fakeClient.emitUnexpectedDisconnect()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(1, fakeClient.reconnectCalls)
+    }
+
+    @Test
+    fun factoryResetQueuedButNotAcceptedDoesNotOwnDisconnectOrClearAssociation() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.DISCOVERING,
+                deviceAddress = configured.deviceAddress
+            )
+        )
+        assertEquals(configured, manager.configuredDevice())
+
+        fakeClient.emitUnexpectedDisconnect()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(1, fakeClient.reconnectCalls)
+        assertEquals(configured, manager.configuredDevice())
+    }
+
+    @Test
+    fun acceptedFactoryResetStillBlocksOtaAfterPollingFinishes() {
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                deviceControlAcceptedOpcode =
+                    RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                deviceControlAcceptedRequestId = 81u
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = false,
+                factoryResetAwaitingDisconnect = true,
+                deviceControlStatus = RegattaLinkDeviceControlStatus(
+                    opcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                    phase = RegattaLinkDeviceControlPhase.SUCCESS,
+                    result = RegattaLinkDeviceControlResult.OK,
+                    requestId = 81u,
+                    forwardTrimDeg = 0,
+                    heelTrimDeg = 0,
+                    pitchTrimDeg = 0,
+                    boatFrameValid = false,
+                    gyroBiasValid = false,
+                    mountingEpoch = 3u,
+                    factoryResetBondsCleared = true
+                )
+            )
+        )
+
+        manager.startOta(testFirmwareArtifact())
+
+        assertEquals(0, fakeClient.otaStartCalls)
+    }
+
+    @Test
+    fun factoryResetQueuedButNotAcceptedDoesNotClaimOtaLifecycle() {
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+        manager.startOta(testFirmwareArtifact())
+
+        assertEquals(1, fakeClient.otaStartCalls)
     }
 
     @Test
@@ -262,6 +861,12 @@ class RegattaLinkConnectionManagerTest {
 
     @Test
     fun activeOtaSuppressesConfigurationAndDiagnosticActions() {
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                diagnosticLogSupported = true,
+                deviceControlSupported = true
+            )
+        )
         fakeClient.emitOta(
             RegattaLinkOtaUiState(
                 phase = RegattaLinkOtaPhase.TRANSFERRING
@@ -270,13 +875,218 @@ class RegattaLinkConnectionManagerTest {
 
         assertFalse(manager.setDeviceName("Race-Link"))
         assertFalse(manager.setLedBrightness(75))
+        assertFalse(manager.drainDiagnosticLog())
+        assertFalse(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.SET_UPRIGHT,
+                0
+            )
+        )
         assertFalse(manager.refreshPgnInventory())
         assertFalse(manager.readRawCanFrames())
 
         assertEquals(0, fakeClient.setNameCalls)
         assertEquals(0, fakeClient.setBrightnessCalls)
+        assertEquals(0, fakeClient.diagnosticDrainCalls)
+        assertEquals(0, fakeClient.deviceControlCalls)
         assertEquals(0, fakeClient.refreshPgnCalls)
         assertEquals(0, fakeClient.rawReadCalls)
+    }
+
+    @Test
+    fun deviceControlAndResetOwnershipBlockMutatingConfigurationWrites() {
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlBusy = true)
+        )
+
+        assertFalse(manager.setDeviceName("Race-Link"))
+        assertFalse(manager.setLedBrightness(75))
+        assertEquals(0, fakeClient.setNameCalls)
+        assertEquals(0, fakeClient.setBrightnessCalls)
+
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlBusy = false,
+                factoryResetAwaitingDisconnect = true
+            )
+        )
+
+        assertFalse(manager.setDeviceName("Race-Link"))
+        assertFalse(manager.setLedBrightness(75))
+        assertEquals(0, fakeClient.setNameCalls)
+        assertEquals(0, fakeClient.setBrightnessCalls)
+
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                factoryResetAwaitingDisconnect = false,
+                factoryResetWriteAcceptedRequestId = 88u
+            )
+        )
+
+        assertFalse(manager.setDeviceName("Race-Link"))
+        assertFalse(manager.setLedBrightness(75))
+        assertEquals(0, fakeClient.setNameCalls)
+        assertEquals(0, fakeClient.setBrightnessCalls)
+
+        fakeClient.emitConfiguration(RegattaLinkConfigurationState())
+
+        assertTrue(manager.setDeviceName("Race-Link"))
+        assertTrue(manager.setLedBrightness(75))
+        assertEquals(1, fakeClient.setNameCalls)
+        assertEquals(1, fakeClient.setBrightnessCalls)
+    }
+
+    @Test
+    fun idleManagerDelegatesDiagnosticAndNonDestructiveDeviceControl() {
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                diagnosticLogSupported = true,
+                deviceControlSupported = true
+            )
+        )
+
+        assertTrue(manager.drainDiagnosticLog())
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.SET_UPRIGHT,
+                0
+            )
+        )
+
+        assertEquals(1, fakeClient.diagnosticDrainCalls)
+        assertEquals(1, fakeClient.deviceControlCalls)
+        assertEquals(
+            RegattaLinkDeviceControlOpcode.SET_UPRIGHT,
+            fakeClient.lastDeviceControlOpcode
+        )
+        assertEquals(0, fakeClient.lastDeviceControlValue)
+    }
+
+    @Test
+    fun diagnosticAndDeviceControlBusyStatesAreMutuallyExclusiveAtManager() {
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                diagnosticLogSupported = true,
+                deviceControlSupported = true,
+                deviceControlBusy = true
+            )
+        )
+        assertFalse(manager.drainDiagnosticLog())
+
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                diagnosticLogSupported = true,
+                deviceControlSupported = true,
+                diagnosticLogLoading = true
+            )
+        )
+        assertFalse(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
+                1
+            )
+        )
+    }
+
+    @Test
+    fun trimCommandsRequireValidBoatFrameAtManagerBoundary() {
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlStatus = RegattaLinkDeviceControlStatus(
+                    opcode = null,
+                    phase = RegattaLinkDeviceControlPhase.IDLE,
+                    result = RegattaLinkDeviceControlResult.NONE,
+                    requestId = 0u,
+                    forwardTrimDeg = 0,
+                    heelTrimDeg = 0,
+                    pitchTrimDeg = 0,
+                    boatFrameValid = false,
+                    gyroBiasValid = true,
+                    mountingEpoch = 1u
+                )
+            )
+        )
+
+        assertFalse(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
+                1
+            )
+        )
+        assertEquals(0, fakeClient.deviceControlCalls)
+
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlStatus = RegattaLinkDeviceControlStatus(
+                    opcode = null,
+                    phase = RegattaLinkDeviceControlPhase.IDLE,
+                    result = RegattaLinkDeviceControlResult.NONE,
+                    requestId = 0u,
+                    forwardTrimDeg = 0,
+                    heelTrimDeg = 0,
+                    pitchTrimDeg = 0,
+                    boatFrameValid = true,
+                    gyroBiasValid = true,
+                    mountingEpoch = 1u
+                )
+            )
+        )
+
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
+                1
+            )
+        )
+        assertEquals(1, fakeClient.deviceControlCalls)
+    }
+
+    @Test
+    fun deviceControlBusyPreventsOtaStartAtManagerBoundary() {
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlBusy = true)
+        )
+
+        manager.startOta(testFirmwareArtifact())
+
+        assertEquals(0, fakeClient.otaStartCalls)
+    }
+
+    @Test
+    fun activeConfigMutationPreventsOtaStartAtManagerBoundary() {
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(busy = true)
+        )
+
+        manager.startOta(testFirmwareArtifact())
+
+        assertEquals(0, fakeClient.otaStartCalls)
+    }
+
+    @Test
+    fun oldFirmwareWithout0007Or0008RejectsOnlyThoseOptionalActions() {
+        assertFalse(manager.drainDiagnosticLog())
+        assertFalse(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.SET_UPRIGHT,
+                0
+            )
+        )
+        assertEquals(0, fakeClient.diagnosticDrainCalls)
+        assertEquals(0, fakeClient.deviceControlCalls)
+    }
+
+    @Test
+    fun firstHalfDoesNotExposeFactoryResetBeforeDisconnectLifecycleExists() {
+        assertFalse(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+        assertEquals(0, fakeClient.deviceControlCalls)
     }
 
     @Test
@@ -337,6 +1147,12 @@ class RegattaLinkConnectionManagerTest {
 
     @Test
     fun activeRawCaptureBlocksOtherOptionalGattActionsAndDisconnectInterrupts() {
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                diagnosticLogSupported = true,
+                deviceControlSupported = true
+            )
+        )
         fakeClient.emitConnection(
             RegattaLinkClientState(
                 status = RegattaLinkConnectionStatus.CONNECTED
@@ -349,6 +1165,13 @@ class RegattaLinkConnectionManagerTest {
         assertTrue(manager.startRawCanCapture())
         assertFalse(manager.setDeviceName("Race-Link"))
         assertFalse(manager.setLedBrightness(75))
+        assertFalse(manager.drainDiagnosticLog())
+        assertFalse(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
+                1
+            )
+        )
         assertFalse(manager.refreshPgnInventory())
         assertFalse(manager.readRawCanFrames())
 
@@ -405,6 +1228,7 @@ class RegattaLinkConnectionManagerTest {
         private val onConfigurationStateChanged: (RegattaLinkConfigurationState) -> Unit,
         @Suppress("UNUSED_PARAMETER")
         private val onNmeaStateChanged: (RegattaLinkNmeaState) -> Unit,
+        private val onFactoryResetRecoveryStateChanged: (Boolean) -> Unit,
         private val onUnexpectedDisconnect: () -> Unit
     ) : RegattaLinkConnectionClient {
         var discoveryAccepted = true
@@ -412,8 +1236,11 @@ class RegattaLinkConnectionManagerTest {
         var discoveryCalls = 0
         var reconnectCalls = 0
         var disconnectCalls = 0
+        var otaStartCalls = 0
         var setNameCalls = 0
         var setBrightnessCalls = 0
+        var diagnosticDrainCalls = 0
+        var deviceControlCalls = 0
         var refreshPgnCalls = 0
         var rawReadCalls = 0
         var captureStartCalls = 0
@@ -422,6 +1249,8 @@ class RegattaLinkConnectionManagerTest {
         var captureFinished:
             ((RegattaLinkRawCaptureEndReason, String) -> Unit)? = null
         var lastCaptureStopReason: RegattaLinkRawCaptureStopReason? = null
+        var lastDeviceControlOpcode: RegattaLinkDeviceControlOpcode? = null
+        var lastDeviceControlValue: Int? = null
         var lastReconnectAddress: String? = null
         var lastReconnectStableId: String? = null
 
@@ -445,7 +1274,9 @@ class RegattaLinkConnectionManagerTest {
             disconnectCalls += 1
         }
 
-        override fun startOta(artifact: RegattaLinkFirmwareArtifact) = Unit
+        override fun startOta(artifact: RegattaLinkFirmwareArtifact) {
+            otaStartCalls += 1
+        }
 
         override fun cancelOta() = Unit
 
@@ -458,6 +1289,21 @@ class RegattaLinkConnectionManagerTest {
 
         override fun setLedBrightness(percent: Int): Boolean {
             setBrightnessCalls += 1
+            return true
+        }
+
+        override fun drainDiagnosticLog(): Boolean {
+            diagnosticDrainCalls += 1
+            return true
+        }
+
+        override fun executeDeviceControl(
+            opcode: RegattaLinkDeviceControlOpcode,
+            value: Int
+        ): Boolean {
+            deviceControlCalls += 1
+            lastDeviceControlOpcode = opcode
+            lastDeviceControlValue = value
             return true
         }
 
@@ -512,6 +1358,10 @@ class RegattaLinkConnectionManagerTest {
 
         fun emitNmea(state: RegattaLinkNmeaState) {
             onNmeaStateChanged(state)
+        }
+
+        fun emitFactoryResetRecovery(pending: Boolean) {
+            onFactoryResetRecoveryStateChanged(pending)
         }
 
         fun emitUnexpectedDisconnect() {
