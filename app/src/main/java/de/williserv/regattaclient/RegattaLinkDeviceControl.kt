@@ -168,6 +168,15 @@ internal class RegattaLinkFactoryResetDisconnectTracker<T : Any>(
         }
     }
 
+    fun ownsLifecycle(session: T): Boolean {
+        while (true) {
+            val current = expected.get() ?: return false
+            if (current.session !== session) return false
+            if (nowElapsedMs() <= current.deadlineElapsedMs) return true
+            if (expected.compareAndSet(current, null)) return false
+        }
+    }
+
     internal fun isExpected(session: T, requestId: UInt): Boolean {
         val current = expected.get() ?: return false
         return current.session === session &&
