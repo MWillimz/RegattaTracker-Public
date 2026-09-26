@@ -21,6 +21,9 @@ internal fun shouldSkipRejectedRegattaLinkDiscoveryCandidate(
     currentlyUnbonded: Boolean
 ): Boolean = bondingObserved && currentlyUnbonded
 
+internal fun isRegattaLinkStaleBondSecurityGattStatus(status: Int): Boolean =
+    status == 0x05 || // insufficient authentication / HCI authentication failure
+        status == 0x0f // insufficient encryption
 
 internal const val REGATTALINK_STALE_ANDROID_BOND_ERROR =
     "Android still reports this RegattaLink as paired, but the secured connection failed. " +
