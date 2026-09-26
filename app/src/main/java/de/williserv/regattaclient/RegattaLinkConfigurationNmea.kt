@@ -19,6 +19,8 @@ data class RegattaLinkConfigurationState(
     val diagnosticLogError: String = "",
     val deviceControlSupported: Boolean = false,
     val deviceControlBusy: Boolean = false,
+    val deviceControlAcceptedOpcode: RegattaLinkDeviceControlOpcode? = null,
+    val deviceControlAcceptedRequestId: UInt? = null,
     val deviceControlStatus: RegattaLinkDeviceControlStatus? = null,
     val deviceControlError: String = "",
     val busy: Boolean = false,
