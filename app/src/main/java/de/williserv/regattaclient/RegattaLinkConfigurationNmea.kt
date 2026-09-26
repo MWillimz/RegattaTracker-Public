@@ -13,6 +13,14 @@ data class RegattaLinkConfigurationState(
     val deviceName: String = "",
     val ledBrightnessSupported: Boolean = false,
     val ledBrightnessPct: Int? = null,
+    val diagnosticLogSupported: Boolean = false,
+    val diagnosticLogLoading: Boolean = false,
+    val diagnosticLogEntries: List<RegattaLinkDiagnosticLogEntry> = emptyList(),
+    val diagnosticLogError: String = "",
+    val deviceControlSupported: Boolean = false,
+    val deviceControlBusy: Boolean = false,
+    val deviceControlStatus: RegattaLinkDeviceControlStatus? = null,
+    val deviceControlError: String = "",
     val busy: Boolean = false,
     val error: String = ""
 )
