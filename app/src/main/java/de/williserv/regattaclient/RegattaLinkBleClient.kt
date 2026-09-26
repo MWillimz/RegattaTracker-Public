@@ -2101,6 +2101,8 @@ internal class RegattaLinkBleClient(
             updateConfiguration {
                 it.copy(
                     deviceControlBusy = true,
+                    deviceControlAcceptedOpcode = null,
+                    deviceControlAcceptedRequestId = null,
                     deviceControlStatus = null,
                     deviceControlError = ""
                 )
@@ -2131,6 +2133,12 @@ internal class RegattaLinkBleClient(
                     factoryResetDisconnectTracker.markAccepted(
                         session = activeGatt,
                         requestId = requestId
+                    )
+                }
+                updateConfiguration {
+                    it.copy(
+                        deviceControlAcceptedOpcode = opcode,
+                        deviceControlAcceptedRequestId = requestId
                     )
                 }
 
@@ -2230,6 +2238,8 @@ internal class RegattaLinkBleClient(
                     it.copy(
                         deviceControlSupported = true,
                         deviceControlBusy = false,
+                        deviceControlAcceptedOpcode = null,
+                        deviceControlAcceptedRequestId = null,
                         deviceControlStatus = finalStatus ?: it.deviceControlStatus,
                         deviceControlError = errorMessage
                     )
