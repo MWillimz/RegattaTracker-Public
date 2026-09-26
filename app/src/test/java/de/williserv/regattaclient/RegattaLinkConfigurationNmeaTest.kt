@@ -31,6 +31,81 @@ class RegattaLinkConfigurationNmeaTest {
     }
 
     @Test
+    fun configurationMutationPolicyBlocksDeviceControlAndResetOwnership() {
+        assertFalse(
+            regattaLinkConfigurationMutationBlocked(
+                RegattaLinkConfigurationState()
+            )
+        )
+        assertTrue(
+            regattaLinkConfigurationMutationBlocked(
+                RegattaLinkConfigurationState(deviceControlBusy = true)
+            )
+        )
+        assertTrue(
+            regattaLinkConfigurationMutationBlocked(
+                RegattaLinkConfigurationState(
+                    factoryResetAwaitingDisconnect = true
+                )
+            )
+        )
+        assertTrue(
+            regattaLinkConfigurationMutationBlocked(
+                RegattaLinkConfigurationState(
+                    factoryResetWriteAcceptedRequestId = 9u
+                )
+            )
+        )
+        assertTrue(
+            regattaLinkConfigurationMutationBlocked(
+                RegattaLinkConfigurationState(),
+                factoryResetOwned = true
+            )
+        )
+        assertTrue(
+            regattaLinkConfigurationMutationBlocked(
+                RegattaLinkConfigurationState(),
+                deviceControlRunning = true
+            )
+        )
+    }
+
+    @Test
+    fun firmwareInstallPolicyStaysBlockedThroughResetDisconnectOwnership() {
+        assertFalse(
+            regattaLinkFirmwareInstallBlocked(
+                RegattaLinkConfigurationState()
+            )
+        )
+        assertTrue(
+            regattaLinkFirmwareInstallBlocked(
+                RegattaLinkConfigurationState(deviceControlBusy = true)
+            )
+        )
+        assertTrue(
+            regattaLinkFirmwareInstallBlocked(
+                RegattaLinkConfigurationState(
+                    diagnosticLogLoading = true
+                )
+            )
+        )
+        assertTrue(
+            regattaLinkFirmwareInstallBlocked(
+                RegattaLinkConfigurationState(
+                    factoryResetAwaitingDisconnect = true
+                )
+            )
+        )
+        assertTrue(
+            regattaLinkFirmwareInstallBlocked(
+                RegattaLinkConfigurationState(
+                    factoryResetWriteAcceptedRequestId = 11u
+                )
+            )
+        )
+    }
+
+    @Test
     fun parsesPgnInventoryAsUnsignedLittleEndianValues() {
         val raw = ByteBuffer.allocate(16)
             .order(ByteOrder.LITTLE_ENDIAN)
