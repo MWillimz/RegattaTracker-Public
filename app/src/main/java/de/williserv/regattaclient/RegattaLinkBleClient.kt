@@ -1208,7 +1208,11 @@ internal class RegattaLinkBleClient(
             SystemClock.elapsedRealtime()
         )
         if (remaining <= 0L) {
-            finishManualDiscovery("No available RegattaLink found")
+            finishManualDiscovery(
+                regattaLinkManualDiscoveryExhaustedMessage(
+                    discoveryStaleBondFailureObserved
+                )
+            )
             return
         }
 
@@ -1226,7 +1230,11 @@ internal class RegattaLinkBleClient(
                 SystemClock.elapsedRealtime()
             )
             if (retryRemaining <= 0L) {
-                finishManualDiscovery("No available RegattaLink found")
+                finishManualDiscovery(
+                regattaLinkManualDiscoveryExhaustedMessage(
+                    discoveryStaleBondFailureObserved
+                )
+            )
                 return@post
             }
 
