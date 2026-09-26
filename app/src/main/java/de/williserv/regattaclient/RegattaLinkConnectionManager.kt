@@ -358,6 +358,16 @@ internal class RegattaLinkConnectionManager(
         ) {
             return false
         }
+        if (
+            opcode in setOf(
+                RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
+                RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
+                RegattaLinkDeviceControlOpcode.ADJUST_PITCH
+            ) &&
+            configurationState.deviceControlStatus?.boatFrameValid != true
+        ) {
+            return false
+        }
         return client.executeDeviceControl(opcode, value)
     }
 
