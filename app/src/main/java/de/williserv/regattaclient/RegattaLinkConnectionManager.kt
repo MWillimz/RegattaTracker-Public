@@ -684,10 +684,7 @@ internal class RegattaLinkConnectionManager(
             return
         }
 
-        if (
-            connectionState.status == RegattaLinkConnectionStatus.CONNECTED &&
-            configuredDeviceStore.load() != null
-        ) {
+        if (configuredDeviceStore.load() != null) {
             factoryResetPending = false
             configuredDeviceStore.clearResetRecoveryPending()
         }
