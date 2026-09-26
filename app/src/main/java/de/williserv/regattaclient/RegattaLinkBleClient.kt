@@ -196,7 +196,7 @@ internal class RegattaLinkBleClient(
             nowElapsedMs = { SystemClock.elapsedRealtime() },
             expectedDisconnectTimeoutMs =
                 REGATTALINK_DEVICE_CONTROL_CLIENT_TIMEOUT_MS +
-                    REGATTALINK_FACTORY_RESET_DISCONNECT_GRACE_MS
+                    REGATTALINK_FACTORY_RESET_DISCONNECT_WAIT_MS
         )
     private var serviceRediscoveryGatt: BluetoothGatt? = null
     private var reconnectFuture: CompletableFuture<RegattaLinkDeviceInfo?>? = null
@@ -2110,6 +2110,8 @@ internal class RegattaLinkBleClient(
 
             var finalStatus: RegattaLinkDeviceControlStatus? = null
             var errorMessage = ""
+            var factoryResetDisconnectDeadline: Long? = null
+            var factoryResetWaitTimedOut = false
             try {
                 val characteristic = activeGatt
                     .getService(CONFIG_SERVICE_UUID)
@@ -2142,11 +2144,23 @@ internal class RegattaLinkBleClient(
                     )
                 }
 
-                val deadline =
+                val commandDeadline =
                     SystemClock.elapsedRealtime() +
                         REGATTALINK_DEVICE_CONTROL_CLIENT_TIMEOUT_MS
-                while (SystemClock.elapsedRealtime() < deadline) {
+                while (true) {
+                    val now = SystemClock.elapsedRealtime()
+                    val activeDeadline =
+                        factoryResetDisconnectDeadline ?: commandDeadline
+                    if (now >= activeDeadline) break
+
                     if (!optionalFeatureWorkAllowed(activeGatt)) {
+                        if (
+                            opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
+                            factoryResetDisconnectDeadline != null &&
+                            (gatt !== activeGatt || !connected)
+                        ) {
+                            break
+                        }
                         throw RegattaLinkOtaTransportException(
                             "RegattaLink Device Control was interrupted",
                             ambiguous = true
@@ -2156,6 +2170,9 @@ internal class RegattaLinkBleClient(
                     val status = parseRegattaLinkDeviceControlStatus(
                         readCharacteristicBlocking(activeGatt, characteristic)
                     )
+                    val resetContinuesToBondReset =
+                        opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
+                            regattaLinkFactoryResetContinuesToBondReset(status)
                     when (
                         regattaLinkDeviceControlPollDecision(
                             status,
@@ -2177,36 +2194,80 @@ internal class RegattaLinkBleClient(
 
                         RegattaLinkDeviceControlPollDecision.SUCCESS -> {
                             finalStatus = status
-                            updateConfiguration {
-                                it.copy(
-                                    deviceControlSupported = true,
-                                    deviceControlStatus = status,
-                                    deviceControlError = ""
-                                )
+                            if (resetContinuesToBondReset) {
+                                if (factoryResetDisconnectDeadline == null) {
+                                    factoryResetDisconnectDeadline =
+                                        now + REGATTALINK_FACTORY_RESET_DISCONNECT_WAIT_MS
+                                }
+                                updateConfiguration {
+                                    it.copy(
+                                        deviceControlSupported = true,
+                                        factoryResetAwaitingDisconnect = true,
+                                        deviceControlStatus = status,
+                                        deviceControlError = ""
+                                    )
+                                }
+                            } else {
+                                updateConfiguration {
+                                    it.copy(
+                                        deviceControlSupported = true,
+                                        deviceControlStatus = status,
+                                        deviceControlError = ""
+                                    )
+                                }
+                                break
                             }
-                            break
                         }
 
                         RegattaLinkDeviceControlPollDecision.FAILURE -> {
                             finalStatus = status
-                            updateConfiguration {
-                                it.copy(
-                                    deviceControlSupported = true,
-                                    deviceControlStatus = status,
-                                    deviceControlError = ""
+                            if (resetContinuesToBondReset) {
+                                if (factoryResetDisconnectDeadline == null) {
+                                    factoryResetDisconnectDeadline =
+                                        now + REGATTALINK_FACTORY_RESET_DISCONNECT_WAIT_MS
+                                }
+                                updateConfiguration {
+                                    it.copy(
+                                        deviceControlSupported = true,
+                                        factoryResetAwaitingDisconnect = true,
+                                        deviceControlStatus = status,
+                                        deviceControlError =
+                                            regattaLinkDeviceControlFailureText(status.result)
+                                    )
+                                }
+                            } else {
+                                updateConfiguration {
+                                    it.copy(
+                                        deviceControlSupported = true,
+                                        factoryResetAwaitingDisconnect = false,
+                                        deviceControlStatus = status,
+                                        deviceControlError = ""
+                                    )
+                                }
+                                throw RegattaLinkOtaTransportException(
+                                    regattaLinkDeviceControlFailureText(status.result)
+                                        .ifBlank {
+                                            "RegattaLink Device Control failed"
+                                        },
+                                    ambiguous = false
                                 )
                             }
-                            throw RegattaLinkOtaTransportException(
-                                regattaLinkDeviceControlFailureText(status.result)
-                                    .ifBlank {
-                                        "RegattaLink Device Control failed"
-                                    },
-                                ambiguous = false
-                            )
                         }
                     }
 
                     Thread.sleep(REGATTALINK_DEVICE_CONTROL_POLL_MS)
+                }
+
+                if (
+                    factoryResetDisconnectDeadline != null &&
+                    gatt === activeGatt &&
+                    connected
+                ) {
+                    factoryResetWaitTimedOut = true
+                    throw RegattaLinkOtaTransportException(
+                        "Factory reset did not disconnect after the bond-reset grace period",
+                        ambiguous = true
+                    )
                 }
 
                 if (finalStatus?.phase?.isTerminal != true) {
@@ -2216,16 +2277,29 @@ internal class RegattaLinkBleClient(
                     )
                 }
             } catch (error: Exception) {
+                val expectedFactoryResetDisconnect =
+                    opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
+                        finalStatus?.let(::regattaLinkFactoryResetContinuesToBondReset) == true &&
+                        (gatt !== activeGatt || !connected)
                 errorMessage =
-                    error.message ?: "RegattaLink Device Control failed"
+                    if (expectedFactoryResetDisconnect) {
+                        ""
+                    } else {
+                        error.message ?: "RegattaLink Device Control failed"
+                    }
             } finally {
                 deviceControlRunning.set(false)
             }
 
             if (
                 opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
-                finalStatus?.phase?.isTerminal == true &&
-                !regattaLinkFactoryResetContinuesToBondReset(finalStatus)
+                (
+                    factoryResetWaitTimedOut ||
+                        (
+                            finalStatus?.phase?.isTerminal == true &&
+                                !regattaLinkFactoryResetContinuesToBondReset(finalStatus)
+                        )
+                    )
             ) {
                 factoryResetDisconnectTracker.clear(
                     session = activeGatt,
@@ -2240,6 +2314,7 @@ internal class RegattaLinkBleClient(
                         deviceControlBusy = false,
                         deviceControlAcceptedOpcode = null,
                         deviceControlAcceptedRequestId = null,
+                        factoryResetAwaitingDisconnect = false,
                         deviceControlStatus = finalStatus ?: it.deviceControlStatus,
                         deviceControlError = errorMessage
                     )
