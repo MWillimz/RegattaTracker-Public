@@ -894,6 +894,49 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun deviceControlAndResetOwnershipBlockMutatingConfigurationWrites() {
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlBusy = true)
+        )
+
+        assertFalse(manager.setDeviceName("Race-Link"))
+        assertFalse(manager.setLedBrightness(75))
+        assertEquals(0, fakeClient.setNameCalls)
+        assertEquals(0, fakeClient.setBrightnessCalls)
+
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlBusy = false,
+                factoryResetAwaitingDisconnect = true
+            )
+        )
+
+        assertFalse(manager.setDeviceName("Race-Link"))
+        assertFalse(manager.setLedBrightness(75))
+        assertEquals(0, fakeClient.setNameCalls)
+        assertEquals(0, fakeClient.setBrightnessCalls)
+
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                factoryResetAwaitingDisconnect = false,
+                factoryResetWriteAcceptedRequestId = 88u
+            )
+        )
+
+        assertFalse(manager.setDeviceName("Race-Link"))
+        assertFalse(manager.setLedBrightness(75))
+        assertEquals(0, fakeClient.setNameCalls)
+        assertEquals(0, fakeClient.setBrightnessCalls)
+
+        fakeClient.emitConfiguration(RegattaLinkConfigurationState())
+
+        assertTrue(manager.setDeviceName("Race-Link"))
+        assertTrue(manager.setLedBrightness(75))
+        assertEquals(1, fakeClient.setNameCalls)
+        assertEquals(1, fakeClient.setBrightnessCalls)
+    }
+
+    @Test
     fun idleManagerDelegatesDiagnosticAndNonDestructiveDeviceControl() {
         fakeClient.emitConfiguration(
             RegattaLinkConfigurationState(
