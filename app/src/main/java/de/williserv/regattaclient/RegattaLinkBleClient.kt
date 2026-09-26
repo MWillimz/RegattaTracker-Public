@@ -191,7 +191,13 @@ internal class RegattaLinkBleClient(
     @Volatile private var deviceInfoReadInProgress = false
     @Volatile private var connectionSetupComplete = false
     @Volatile private var establishedConnection = false
-    @Volatile private var factoryResetExpected = false
+    private val factoryResetDisconnectTracker =
+        RegattaLinkFactoryResetDisconnectTracker<BluetoothGatt>(
+            nowElapsedMs = { SystemClock.elapsedRealtime() },
+            expectedDisconnectTimeoutMs =
+                REGATTALINK_DEVICE_CONTROL_CLIENT_TIMEOUT_MS +
+                    REGATTALINK_FACTORY_RESET_DISCONNECT_GRACE_MS
+        )
     private var serviceRediscoveryGatt: BluetoothGatt? = null
     private var reconnectFuture: CompletableFuture<RegattaLinkDeviceInfo?>? = null
     private var selectedDeviceAddress: String? = null
@@ -443,8 +449,7 @@ internal class RegattaLinkBleClient(
             }
 
             if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                if (factoryResetExpected) {
-                    factoryResetExpected = false
+                if (factoryResetDisconnectTracker.consumeDisconnect(callbackGatt)) {
                     connected = false
                     establishedConnection = false
                     failPendingGattOperation(
@@ -706,6 +711,7 @@ internal class RegattaLinkBleClient(
 
     override fun startDiscovery(): Boolean {
         if (otaRunning.get()) return false
+        factoryResetDisconnectTracker.clearAll()
         cancelKnownDeviceReconnect()
         clearTelemetry()
         clearConfiguration()
@@ -871,7 +877,7 @@ internal class RegattaLinkBleClient(
     }
 
     override fun disconnect() {
-        factoryResetExpected = false
+        factoryResetDisconnectTracker.clearAll()
         stopRawCanCapture(RegattaLinkRawCaptureStopReason.INTERRUPTED)
         if (otaRunning.get()) {
             cancelOta()
@@ -897,6 +903,7 @@ internal class RegattaLinkBleClient(
     }
 
     fun close() {
+        factoryResetDisconnectTracker.clearAll()
         stopRawCanCapture(RegattaLinkRawCaptureStopReason.INTERRUPTED)
         otaCancelled.set(true)
         cancelKnownDeviceReconnect()
@@ -2084,10 +2091,6 @@ internal class RegattaLinkBleClient(
             return false
         }
 
-        if (opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET) {
-            factoryResetExpected = true
-        }
-
         otaExecutor.execute {
             if (!optionalFeatureWorkAllowed(activeGatt)) {
                 deviceControlRunning.set(false)
@@ -2124,6 +2127,12 @@ internal class RegattaLinkBleClient(
                     characteristic,
                     request
                 )
+                if (opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET) {
+                    factoryResetDisconnectTracker.markAccepted(
+                        session = activeGatt,
+                        requestId = requestId
+                    )
+                }
 
                 val deadline =
                     SystemClock.elapsedRealtime() +
@@ -2205,10 +2214,15 @@ internal class RegattaLinkBleClient(
                 deviceControlRunning.set(false)
             }
 
-            if (opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
-                errorMessage.isNotBlank() && connected && gatt === activeGatt
+            if (
+                opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
+                finalStatus?.phase?.isTerminal == true &&
+                !regattaLinkFactoryResetContinuesToBondReset(finalStatus)
             ) {
-                factoryResetExpected = false
+                factoryResetDisconnectTracker.clear(
+                    session = activeGatt,
+                    requestId = requestId
+                )
             }
 
             if (gatt === activeGatt && connected) {
