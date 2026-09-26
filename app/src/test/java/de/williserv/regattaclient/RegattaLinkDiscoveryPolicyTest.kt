@@ -62,6 +62,30 @@ class RegattaLinkDiscoveryPolicyTest {
     }
 
     @Test
+    fun exhaustedDiscoveryExplainsStaleAndroidBondWhenObserved() {
+        assertEquals(
+            "No available RegattaLink found",
+            regattaLinkManualDiscoveryExhaustedMessage(
+                staleBondFailureObserved = false
+            )
+        )
+        assertEquals(
+            REGATTALINK_STALE_ANDROID_BOND_ERROR,
+            regattaLinkManualDiscoveryExhaustedMessage(
+                staleBondFailureObserved = true
+            )
+        )
+        assertTrue(
+            REGATTALINK_STALE_ANDROID_BOND_ERROR.contains(
+                "Android Bluetooth settings"
+            )
+        )
+        assertTrue(
+            REGATTALINK_STALE_ANDROID_BOND_ERROR.contains("Search again")
+        )
+    }
+
+    @Test
     fun tenPromptCandidateRejectionsStillLeaveFullGattAttemptBudget() {
         val startedAt = 1_000_000L
         val deadline = startedAt + REGATTALINK_MANUAL_DISCOVERY_TIMEOUT_MS
