@@ -2114,21 +2114,45 @@ internal class RegattaLinkBleClient(
                     val status = parseRegattaLinkDeviceControlStatus(
                         readCharacteristicBlocking(activeGatt, characteristic)
                     )
-                    if (status.requestId == requestId) {
-                        finalStatus = status
-                        updateConfiguration {
-                            it.copy(
-                                deviceControlSupported = true,
-                                deviceControlStatus = status,
-                                deviceControlError = ""
-                            )
+                    when (
+                        regattaLinkDeviceControlPollDecision(
+                            status,
+                            requestId
+                        )
+                    ) {
+                        RegattaLinkDeviceControlPollDecision.IGNORE_OTHER_REQUEST -> Unit
+
+                        RegattaLinkDeviceControlPollDecision.CONTINUE -> {
+                            finalStatus = status
+                            updateConfiguration {
+                                it.copy(
+                                    deviceControlSupported = true,
+                                    deviceControlStatus = status,
+                                    deviceControlError = ""
+                                )
+                            }
                         }
-                        if (status.phase.isTerminal) {
-                            if (
-                                status.phase == RegattaLinkDeviceControlPhase.SUCCESS &&
-                                status.result == RegattaLinkDeviceControlResult.OK
-                            ) {
-                                break
+
+                        RegattaLinkDeviceControlPollDecision.SUCCESS -> {
+                            finalStatus = status
+                            updateConfiguration {
+                                it.copy(
+                                    deviceControlSupported = true,
+                                    deviceControlStatus = status,
+                                    deviceControlError = ""
+                                )
+                            }
+                            break
+                        }
+
+                        RegattaLinkDeviceControlPollDecision.FAILURE -> {
+                            finalStatus = status
+                            updateConfiguration {
+                                it.copy(
+                                    deviceControlSupported = true,
+                                    deviceControlStatus = status,
+                                    deviceControlError = ""
+                                )
                             }
                             throw RegattaLinkOtaTransportException(
                                 regattaLinkDeviceControlFailureText(status.result)
