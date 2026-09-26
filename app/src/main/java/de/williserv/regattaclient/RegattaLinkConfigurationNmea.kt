@@ -43,7 +43,8 @@ internal fun regattaLinkConfigurationMutationBlocked(
 internal fun regattaLinkFirmwareInstallBlocked(
     state: RegattaLinkConfigurationState
 ): Boolean =
-    state.deviceControlBusy ||
+    state.busy ||
+        state.deviceControlBusy ||
         state.diagnosticLogLoading ||
         state.factoryResetAwaitingDisconnect ||
         state.factoryResetWriteAcceptedRequestId != null
