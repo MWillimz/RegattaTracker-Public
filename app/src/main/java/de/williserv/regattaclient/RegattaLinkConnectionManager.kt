@@ -157,6 +157,7 @@ internal fun interface RegattaLinkConnectionClientFactory {
         onTelemetryStateChanged: (RegattaLinkTelemetryState) -> Unit,
         onConfigurationStateChanged: (RegattaLinkConfigurationState) -> Unit,
         onNmeaStateChanged: (RegattaLinkNmeaState) -> Unit,
+        onFactoryResetRecoveryStateChanged: (Boolean) -> Unit,
         onUnexpectedDisconnect: () -> Unit
     ): RegattaLinkConnectionClient
 }
@@ -171,6 +172,7 @@ internal class RegattaLinkConnectionManager(
                 onTelemetryStateChanged,
                 onConfigurationStateChanged,
                 onNmeaStateChanged,
+                onFactoryResetRecoveryStateChanged,
                 onUnexpectedDisconnect ->
             RegattaLinkBleClient(
                 context = clientContext,
@@ -179,6 +181,8 @@ internal class RegattaLinkConnectionManager(
                 onTelemetryStateChanged = onTelemetryStateChanged,
                 onConfigurationStateChanged = onConfigurationStateChanged,
                 onNmeaStateChanged = onNmeaStateChanged,
+                onFactoryResetRecoveryStateChanged =
+                    onFactoryResetRecoveryStateChanged,
                 onUnexpectedDisconnect = onUnexpectedDisconnect
             )
         },
@@ -234,6 +238,8 @@ internal class RegattaLinkConnectionManager(
         onTelemetryStateChanged = ::handleTelemetryState,
         onConfigurationStateChanged = ::handleConfigurationState,
         onNmeaStateChanged = ::handleNmeaState,
+        onFactoryResetRecoveryStateChanged =
+            ::handleFactoryResetRecoveryStateChanged,
         onUnexpectedDisconnect = {
             handler.post {
                 if (!otaState.isActive && !factoryResetPending) {
@@ -669,6 +675,22 @@ internal class RegattaLinkConnectionManager(
     private fun handleTelemetryState(state: RegattaLinkTelemetryState) {
         telemetryState = state
         listeners.forEach { it.onTelemetryStateChanged(state) }
+    }
+
+    private fun handleFactoryResetRecoveryStateChanged(pending: Boolean) {
+        if (pending) {
+            factoryResetPending = true
+            configuredDeviceStore.markResetRecoveryPending()
+            return
+        }
+
+        if (
+            connectionState.status == RegattaLinkConnectionStatus.CONNECTED &&
+            configuredDeviceStore.load() != null
+        ) {
+            factoryResetPending = false
+            configuredDeviceStore.clearResetRecoveryPending()
+        }
     }
 
     private fun handleConfigurationState(state: RegattaLinkConfigurationState) {
