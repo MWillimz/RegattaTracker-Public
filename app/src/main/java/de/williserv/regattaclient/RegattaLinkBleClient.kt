@@ -1982,6 +1982,7 @@ internal class RegattaLinkBleClient(
             !lastConfigurationState.diagnosticLogSupported ||
             otaRunning.get() ||
             rawCaptureRunning.get() ||
+            deviceControlRunning.get() ||
             !isConnected() ||
             !diagnosticLogRunning.compareAndSet(false, true)
         ) {
@@ -2055,6 +2056,7 @@ internal class RegattaLinkBleClient(
             !lastConfigurationState.deviceControlSupported ||
             otaRunning.get() ||
             rawCaptureRunning.get() ||
+            diagnosticLogRunning.get() ||
             !isConnected() ||
             !deviceControlRunning.compareAndSet(false, true)
         ) {
