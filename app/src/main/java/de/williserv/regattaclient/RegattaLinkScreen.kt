@@ -139,7 +139,8 @@ fun RegattaLinkScreen(
         connected &&
             !otaState.isActive &&
             !rawCaptureState.isActive &&
-            !configurationState.busy
+            !configurationState.busy &&
+            !regattaLinkConfigurationMutationBlocked(configurationState)
     val nameValidationError =
         if (nameDraft.isBlank()) {
             stringResource(R.string.regattalink_name_required)
@@ -879,8 +880,10 @@ fun RegattaLinkScreen(
                     ) {
                         Button(
                             onClick = onInstallFirmware,
-                            enabled = !configurationState.deviceControlBusy &&
-                                !configurationState.diagnosticLogLoading,
+                            enabled =
+                                !regattaLinkFirmwareInstallBlocked(
+                                    configurationState
+                                ),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(top = 10.dp)
