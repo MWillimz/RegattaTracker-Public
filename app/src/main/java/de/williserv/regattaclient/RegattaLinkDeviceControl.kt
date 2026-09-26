@@ -124,6 +124,13 @@ internal fun regattaLinkFactoryResetContinuesToBondReset(
             else -> false
         }
 
+internal fun <T : Any> consumeRegattaLinkFactoryResetFallback(
+    session: T,
+    sessionStillCurrent: Boolean,
+    tracker: RegattaLinkFactoryResetDisconnectTracker<T>
+): Boolean =
+    sessionStillCurrent && tracker.consumeDisconnect(session)
+
 internal class RegattaLinkFactoryResetDisconnectTracker<T : Any>(
     private val nowElapsedMs: () -> Long,
     private val expectedDisconnectTimeoutMs: Long
