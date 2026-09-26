@@ -290,6 +290,13 @@ class RegattaLinkConnectionManagerTest {
 
     @Test
     fun idleManagerDelegatesDiagnosticAndNonDestructiveDeviceControl() {
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                diagnosticLogSupported = true,
+                deviceControlSupported = true
+            )
+        )
+
         assertTrue(manager.drainDiagnosticLog())
         assertTrue(
             manager.executeDeviceControl(
@@ -305,6 +312,19 @@ class RegattaLinkConnectionManagerTest {
             fakeClient.lastDeviceControlOpcode
         )
         assertEquals(0, fakeClient.lastDeviceControlValue)
+    }
+
+    @Test
+    fun oldFirmwareWithout0007Or0008RejectsOnlyThoseOptionalActions() {
+        assertFalse(manager.drainDiagnosticLog())
+        assertFalse(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.SET_UPRIGHT,
+                0
+            )
+        )
+        assertEquals(0, fakeClient.diagnosticDrainCalls)
+        assertEquals(0, fakeClient.deviceControlCalls)
     }
 
     @Test
