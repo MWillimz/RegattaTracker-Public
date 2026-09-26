@@ -217,14 +217,7 @@ class RegattaLinkConnectionManagerTest {
         fakeClient.emitConnection(
             RegattaLinkClientState(
                 status = RegattaLinkConnectionStatus.CONNECTED,
-                deviceAddress = configured.deviceAddress,
-                deviceInfo = RegattaLinkDeviceInfo(
-                    stableId = configured.stableId,
-                    runningBuild = 1u,
-                    otaAvailable = false,
-                    otaPhy2m = false,
-                    telemetryAvailable = false
-                )
+                deviceAddress = configured.deviceAddress
             )
         )
         fakeClient.emitConfiguration(
