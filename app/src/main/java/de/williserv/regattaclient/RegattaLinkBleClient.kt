@@ -242,7 +242,12 @@ internal class RegattaLinkBleClient(
             retryKnownDeviceReconnect("Configured RegattaLink connection timed out")
         } else if (device != null) {
             if (discoveryInProgress) {
-                retryDiscoveryAfterCandidateFailure()
+                retryDiscoveryAfterCandidateFailure(
+                    staleBondSecurityFailure =
+                        gattStatus?.let(
+                            ::isRegattaLinkStaleBondSecurityGattStatus
+                        ) == true
+                )
             } else {
                 emitError(device, "RegattaLink connection timed out")
                 if (
@@ -506,7 +511,10 @@ internal class RegattaLinkBleClient(
                     retryKnownDeviceReconnect("Configured RegattaLink disconnected ($status)")
                 } else if (!otaRunning.get()) {
                     if (discoveryInProgress) {
-                        retryDiscoveryAfterCandidateFailure()
+                        retryDiscoveryAfterCandidateFailure(
+                            staleBondSecurityFailure =
+                                isRegattaLinkStaleBondSecurityGattStatus(status)
+                        )
                     } else {
                         emitError(
                             callbackGatt.device,
@@ -563,7 +571,8 @@ internal class RegattaLinkBleClient(
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 closeGattWithError(
                     callbackGatt,
-                    "RegattaLink service discovery failed ($status)"
+                    "RegattaLink service discovery failed ($status)",
+                    gattStatus = status
                 )
                 return
             }
@@ -1191,7 +1200,9 @@ internal class RegattaLinkBleClient(
         )
     }
 
-    private fun retryDiscoveryAfterCandidateFailure() {
+    private fun retryDiscoveryAfterCandidateFailure(
+        staleBondSecurityFailure: Boolean = false
+    ) {
         if (
             scanPurpose != ScanPurpose.NORMAL ||
             !discoveryInProgress ||
@@ -1200,7 +1211,10 @@ internal class RegattaLinkBleClient(
             return
         }
 
-        if (discoveryCandidateStartedBonded) {
+        if (
+            discoveryCandidateStartedBonded &&
+            staleBondSecurityFailure
+        ) {
             discoveryStaleBondFailureObserved = true
         }
         discoveryCandidateInProgress = false
@@ -1428,7 +1442,8 @@ internal class RegattaLinkBleClient(
         if (status != BluetoothGatt.GATT_SUCCESS) {
             closeGattWithError(
                 callbackGatt,
-                "RegattaLink Device Info read failed ($status)"
+                "RegattaLink Device Info read failed ($status)",
+                gattStatus = status
             )
             return
         }
@@ -3397,7 +3412,8 @@ internal class RegattaLinkBleClient(
 
     private fun closeGattWithError(
         callbackGatt: BluetoothGatt,
-        message: String
+        message: String,
+        gattStatus: Int? = null
     ) {
         val wasReadyConnection = establishedConnection
         handler.removeCallbacks(gattTimeout)
