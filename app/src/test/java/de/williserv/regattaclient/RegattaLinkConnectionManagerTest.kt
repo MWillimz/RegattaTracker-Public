@@ -318,6 +318,57 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun confirmedFactoryResetBondWipeClearsAssociationBeforeDisconnect() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                deviceControlAcceptedOpcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                deviceControlAcceptedRequestId = 71u
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                factoryResetAwaitingDisconnect = true,
+                deviceControlStatus = RegattaLinkDeviceControlStatus(
+                    opcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                    phase = RegattaLinkDeviceControlPhase.SUCCESS,
+                    result = RegattaLinkDeviceControlResult.OK,
+                    requestId = 71u,
+                    forwardTrimDeg = 0,
+                    heelTrimDeg = 0,
+                    pitchTrimDeg = 0,
+                    boatFrameValid = false,
+                    gyroBiasValid = false,
+                    mountingEpoch = 12u,
+                    factoryResetBondsCleared = true
+                )
+            )
+        )
+
+        assertEquals(null, manager.configuredDevice())
+        assertFalse(manager.reconnectConfigured())
+        assertEquals(0, fakeClient.disconnectCalls)
+    }
+
+    @Test
     fun factoryResetSuccessWaitsForFirmwareDisconnectAndObservesLateBondResetError() {
         fakeClient.emitConnection(
             RegattaLinkClientState(
