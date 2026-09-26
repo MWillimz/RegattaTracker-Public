@@ -284,8 +284,7 @@ internal class RegattaLinkConnectionManager(
     }
 
     fun startDiscovery(): Boolean {
-        if (otaState.isActive) return false
-        factoryResetPending = false
+        if (otaState.isActive || factoryResetPending) return false
         legacyBootstrapAddress = null
         val accepted = client.startDiscovery()
         if (accepted) {
