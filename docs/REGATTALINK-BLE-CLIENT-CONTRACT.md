@@ -4,7 +4,7 @@ This document is the public, client-facing wire contract between RegattaTracker 
 
 It is intended to be sufficient to implement a compatible BLE client without access to the private RegattaLink repository. Any RegattaLink BLE schema or behavioral change that affects clients must update this document together with the corresponding RegattaTracker implementation/tests.
 
-Contract snapshot: 2026-09-25.
+Contract snapshot: 2026-09-26.
 
 ## 1. Scope and current implementation status
 
@@ -12,7 +12,7 @@ The current BLE contract contains three RegattaLink service families. Firmware c
 
 | Area | Service suffix | Firmware contract | Current RegattaTracker consumption |
 | --- | ---: | --- | --- |
-| configuration/device information/diagnostics/control | 0001 | implemented; 0006 brightness plus 0007 diagnostic log and 0008 Device Control are additive and optional by UUID discovery | 0002-0008 discovered; 0007 bounded drain and non-destructive 0008 command engine implemented; #298 UI/Factory Reset lifecycle still pending |
+| configuration/device information/diagnostics/control | 0001 | implemented; 0006 brightness plus 0007 diagnostic log and 0008 Device Control are additive and optional by UUID discovery | 0002-0008 discovered and consumed; 0007 bounded user-triggered drain plus complete 0008 Set Upright, trim and Factory Reset lifecycle/UI implemented |
 | OTA | 0010 | implemented | implemented |
 | telemetry | 0020 | implemented with IMU 0021-0023 and normalized NMEA Boat State 0024 | 0021-0024 consumed; 0024 discovered independently of the IMU capability bit |
 
@@ -41,8 +41,8 @@ Base UUID:
 | NMEA2000 PGN inventory | 0004 | encrypted/bonded read | implemented | implemented |
 | NMEA2000 raw CAN FIFO | 0005 | encrypted/bonded read | implemented | implemented as explicit bounded diagnostic read |
 | Global LED brightness | 0006 | encrypted/bonded read + write | additive contract in RegattaLink #135 / PR #136; optional by discovery | implemented when discovered |
-| Diagnostic log FIFO | 0007 | encrypted/bonded read | implemented; optional by discovery | implemented as explicit bounded 20-read drain; UI presentation pending #298 |
-| Device Control | 0008 | encrypted/bonded read + write with response | implemented; optional by discovery | request/status engine and non-destructive commands implemented; Factory Reset lifecycle/UI pending #298 |
+| Diagnostic log FIFO | 0007 | encrypted/bonded read | implemented; optional by discovery | implemented as explicit bounded 20-read drain with UI presentation |
+| Device Control | 0008 | encrypted/bonded read + write with response | implemented; optional by discovery | request/status engine, Set Upright, direction-labelled trims and Factory Reset lifecycle/UI implemented |
 | OTA service | 0010 | service | implemented | implemented |
 | OTA control | 0011 | encrypted/bonded write with response | implemented | implemented |
 | OTA DATA | 0012 | encrypted/bonded write; no-response preferred, response supported | implemented | implemented |
@@ -451,6 +451,14 @@ retry. Reflection-based removeBond() is not a required production mechanism.
 
 FACTORY_RESET is rejected before destructive mutation while firmware boot validation
 is PENDING_VERIFY/ROLLBACK or while OTA owns the device.
+
+RegattaTracker keeps the legacy 0023 learner fields parse-compatible for older firmware,
+but current UI does not present maneuver counters or learner state as active learning.
+Boat Frame validity, Gyro Bias validity and mounting_epoch are the authoritative
+calibration indicators. Trim controls remain disabled until Boat Frame is valid.
+
+Hardware validation of reset/re-pair behavior is still required on the real target
+Android device; that validation status is separate from implementation status.
 
 ## 5. Telemetry service 0020
 
@@ -1107,7 +1115,7 @@ Current RegattaTracker consumption remains capability/UUID-driven:
 - 0002 and 0006 are consumed as optional configuration surfaces;
 - 0004 is read explicitly for PGN inventory diagnostics;
 - 0005 is drained only after explicit user action and with a strict finite bound;
-- 0007 is consumed only by explicit bounded drain; 0008 has a request-id-matched polling engine for non-destructive commands; Factory Reset execution and UI remain pending RegattaTracker #298;
+- 0007 is consumed only by explicit bounded drain; 0008 has request-id-matched polling for Set Upright, direction-labelled trims and Factory Reset, including terminal-grace polling, expected-disconnect ownership and stale-Android-bond recovery guidance;
 - 0024 is discovered independently of IMU capability bit 3 and consumed as read + notify Boat State telemetry.
 
 Core connection failure conditions remain:
@@ -1151,6 +1159,11 @@ A RegattaTracker change affecting RegattaLink BLE should verify, as applicable:
 - optional 0007 is a bounded 20-record/22-byte read-to-drain FIFO and is never background-polled;
 - optional 0008 requires exact 8-byte request / 20-byte status parsing, matching request_id completion and explicit TIMEOUT handling;
 - Factory Reset terminal status is read during the pre-bond-delete grace and its intentional disconnect is not treated as outage/OTA reconnect;
+- Factory Reset does not clear the configured-device association on transient rediscovery states and waits for the firmware-driven disconnect before clearing it;
+- late BOND_RESET_ERROR remains observable and preserves the configured-device association;
+- bounded manual discovery distinguishes an already-bonded candidate that cannot establish the secured link and gives actionable Android stale-bond removal guidance;
+- trim direction/sign mapping follows the wire contract and trim controls are disabled while Boat Frame is invalid;
+- OTA install controls are disabled while Device Control or Diagnostic Log work owns the shared client executor;
 - IMU telemetry fixed-size/schema validation works;
 - IMU telemetry subscription/read and stale handling work;
 - 0024 requires exact v1/80-byte validation, honors validity bits, and is discovered independently of IMU capability when consumed;
