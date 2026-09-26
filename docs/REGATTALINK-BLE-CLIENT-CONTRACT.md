@@ -405,8 +405,11 @@ application admission failure is returned through 0008 itself: state ERROR, resu
 BUSY or INVALID, the rejected request_id, and the exact `RL_*` code in byte 15.
 RegattaTracker uses that request-id-bound status for semantic BUSY/BAD_STATE/
 BAD_REQUEST presentation. A successful ATT write alone is therefore not Device
-Control acceptance: Tracker takes command/reset ownership only after it observes the
-matching request_id in 0008 without rejection detail.
+Control acceptance: Tracker takes manager-level command/reset acceptance only after
+it observes the matching request_id in 0008 without rejection detail. For Factory
+Reset, ATT success creates only provisional, GATT-session-bound disconnect ownership
+so a link loss before the first 0008 read cannot fall into ordinary outage reconnect;
+a matching 0008 rejection clears that provisional ownership.
 
 Android GATT callback status numbers in the 0x80 range are not treated as RegattaLink
 application codes because Android's own local GATT status namespace overlaps those
