@@ -255,6 +255,28 @@ class RegattaLinkDeviceControlTest {
     }
 
     @Test
+    fun acceptedFactoryResetOwnsManualDisconnectUntilConsumedOrExpired() {
+        var now = 2_000L
+        val tracker = RegattaLinkFactoryResetDisconnectTracker<Any>(
+            nowElapsedMs = { now },
+            expectedDisconnectTimeoutMs = 5_000L
+        )
+        val session = Any()
+
+        assertFalse(tracker.ownsLifecycle(session))
+
+        tracker.markAccepted(session, 31u)
+        assertTrue(tracker.ownsLifecycle(session))
+
+        assertTrue(tracker.consumeDisconnect(session))
+        assertFalse(tracker.ownsLifecycle(session))
+
+        tracker.markAccepted(session, 32u)
+        now += 5_001L
+        assertFalse(tracker.ownsLifecycle(session))
+    }
+
+    @Test
     fun factoryResetDisconnectOwnershipStartsOnlyAfterAcceptedMatchingRequest() {
         var now = 1_000L
         val tracker = RegattaLinkFactoryResetDisconnectTracker<Any>(
