@@ -3178,10 +3178,14 @@ internal class RegattaLinkBleClient(
         if (status == BluetoothGatt.GATT_SUCCESS) {
             pending.future.complete(Unit)
         } else {
+            val applicationFailure =
+                regattaLinkGattApplicationFailureText(status)
             pending.future.completeExceptionally(
                 RegattaLinkOtaTransportException(
-                    "GATT write $uuid failed ($status)",
-                    ambiguous = true
+                    message = applicationFailure
+                        ?: "GATT write $uuid failed ($status)",
+                    ambiguous = applicationFailure == null,
+                    gattStatus = status
                 )
             )
         }
