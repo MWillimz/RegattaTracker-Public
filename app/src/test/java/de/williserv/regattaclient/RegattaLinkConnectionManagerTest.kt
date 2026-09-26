@@ -69,6 +69,24 @@ class RegattaLinkConnectionManagerTest {
             legacyBondedAddressProvider = legacyBondedAddressProvider
         )
 
+    private fun testFirmwareArtifact(): RegattaLinkFirmwareArtifact =
+        RegattaLinkFirmwareArtifact(
+            manifest = RegattaLinkFirmwareManifest(
+                schemaVersion = 1,
+                product = "RegattaLink",
+                target = "esp32c3",
+                hardwareProfile = "esp32c3-wroom02-4mb",
+                buildNumber = 1uL,
+                filename = "regattalink.bin",
+                size = 1,
+                sha256 = "00".repeat(32),
+                signed = false,
+                signingKeySha256 = null,
+                downloadUrl = "/regattalink/firmware"
+            ),
+            image = byteArrayOf(0)
+        )
+
     @After
     fun tearDown() {
         context.getSharedPreferences(
@@ -605,6 +623,72 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun trimCommandsRequireValidBoatFrameAtManagerBoundary() {
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlStatus = RegattaLinkDeviceControlStatus(
+                    opcode = null,
+                    phase = RegattaLinkDeviceControlPhase.IDLE,
+                    result = RegattaLinkDeviceControlResult.NONE,
+                    requestId = 0u,
+                    forwardTrimDeg = 0,
+                    heelTrimDeg = 0,
+                    pitchTrimDeg = 0,
+                    boatFrameValid = false,
+                    gyroBiasValid = true,
+                    mountingEpoch = 1u
+                )
+            )
+        )
+
+        assertFalse(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
+                1
+            )
+        )
+        assertEquals(0, fakeClient.deviceControlCalls)
+
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlStatus = RegattaLinkDeviceControlStatus(
+                    opcode = null,
+                    phase = RegattaLinkDeviceControlPhase.IDLE,
+                    result = RegattaLinkDeviceControlResult.NONE,
+                    requestId = 0u,
+                    forwardTrimDeg = 0,
+                    heelTrimDeg = 0,
+                    pitchTrimDeg = 0,
+                    boatFrameValid = true,
+                    gyroBiasValid = true,
+                    mountingEpoch = 1u
+                )
+            )
+        )
+
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
+                1
+            )
+        )
+        assertEquals(1, fakeClient.deviceControlCalls)
+    }
+
+    @Test
+    fun deviceControlBusyPreventsOtaStartAtManagerBoundary() {
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlBusy = true)
+        )
+
+        manager.startOta(testFirmwareArtifact())
+
+        assertEquals(0, fakeClient.otaStartCalls)
+    }
+
+    @Test
     fun oldFirmwareWithout0007Or0008RejectsOnlyThoseOptionalActions() {
         assertFalse(manager.drainDiagnosticLog())
         assertFalse(
@@ -774,6 +858,7 @@ class RegattaLinkConnectionManagerTest {
         var discoveryCalls = 0
         var reconnectCalls = 0
         var disconnectCalls = 0
+        var otaStartCalls = 0
         var setNameCalls = 0
         var setBrightnessCalls = 0
         var diagnosticDrainCalls = 0
@@ -811,7 +896,9 @@ class RegattaLinkConnectionManagerTest {
             disconnectCalls += 1
         }
 
-        override fun startOta(artifact: RegattaLinkFirmwareArtifact) = Unit
+        override fun startOta(artifact: RegattaLinkFirmwareArtifact) {
+            otaStartCalls += 1
+        }
 
         override fun cancelOta() = Unit
 
