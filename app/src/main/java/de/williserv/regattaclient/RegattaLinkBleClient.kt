@@ -170,6 +170,7 @@ internal class RegattaLinkBleClient(
     private val otaCancelled = AtomicBoolean(false)
     private val rawCaptureRunning = AtomicBoolean(false)
     private val diagnosticLogRunning = AtomicBoolean(false)
+    private val configurationMutationRunning = AtomicBoolean(false)
     private val deviceControlRunning = AtomicBoolean(false)
     private var nextDeviceControlRequestId = 1u
     private val rawCaptureStopReason =
@@ -2006,43 +2007,52 @@ internal class RegattaLinkBleClient(
         if (otaRunning.get() || !isConnected()) return false
 
         val activeGatt = gatt ?: return false
-        if (configurationMutationBlocked(activeGatt)) return false
+        if (
+            configurationMutationBlocked(activeGatt) ||
+            !configurationMutationRunning.compareAndSet(false, true)
+        ) {
+            return false
+        }
         otaExecutor.execute {
-            if (
-                !optionalFeatureWorkAllowed(activeGatt) ||
-                configurationMutationBlocked(activeGatt)
-            ) {
-                return@execute
-            }
-            updateConfiguration { it.copy(busy = true, error = "") }
             try {
-                val characteristic = activeGatt
-                    .getService(CONFIG_SERVICE_UUID)
-                    ?.getCharacteristic(DEVICE_NAME_UUID)
-                    ?: throw RegattaLinkOtaTransportException(
-                        "RegattaLink name setting is unavailable",
-                        ambiguous = false
-                    )
-                writeCharacteristicBlockingDirect(
-                    activeGatt,
-                    characteristic,
-                    name.toByteArray(Charsets.UTF_8)
-                )
-                updateConfiguration {
-                    it.copy(
-                        deviceNameSupported = true,
-                        deviceName = name,
-                        busy = false,
-                        error = ""
-                    )
+                if (
+                    !optionalFeatureWorkAllowed(activeGatt) ||
+                    configurationMutationBlocked(activeGatt)
+                ) {
+                    return@execute
                 }
-            } catch (error: Exception) {
-                updateConfiguration {
-                    it.copy(
-                        busy = false,
-                        error = error.message ?: "Could not change RegattaLink name"
+                updateConfiguration { it.copy(busy = true, error = "") }
+                try {
+                    val characteristic = activeGatt
+                        .getService(CONFIG_SERVICE_UUID)
+                        ?.getCharacteristic(DEVICE_NAME_UUID)
+                        ?: throw RegattaLinkOtaTransportException(
+                            "RegattaLink name setting is unavailable",
+                            ambiguous = false
+                        )
+                    writeCharacteristicBlockingDirect(
+                        activeGatt,
+                        characteristic,
+                        name.toByteArray(Charsets.UTF_8)
                     )
+                    updateConfiguration {
+                        it.copy(
+                            deviceNameSupported = true,
+                            deviceName = name,
+                            busy = false,
+                            error = ""
+                        )
+                    }
+                } catch (error: Exception) {
+                    updateConfiguration {
+                        it.copy(
+                            busy = false,
+                            error = error.message ?: "Could not change RegattaLink name"
+                        )
+                    }
                 }
+            } finally {
+                configurationMutationRunning.set(false)
             }
         }
         return true
@@ -2058,59 +2068,68 @@ internal class RegattaLinkBleClient(
         if (otaRunning.get() || !isConnected()) return false
 
         val activeGatt = gatt ?: return false
-        if (configurationMutationBlocked(activeGatt)) return false
+        if (
+            configurationMutationBlocked(activeGatt) ||
+            !configurationMutationRunning.compareAndSet(false, true)
+        ) {
+            return false
+        }
         otaExecutor.execute {
-            if (
-                !optionalFeatureWorkAllowed(activeGatt) ||
-                configurationMutationBlocked(activeGatt)
-            ) {
-                return@execute
-            }
-            updateConfiguration { it.copy(busy = true, error = "") }
             try {
-                val characteristic = activeGatt
-                    .getService(CONFIG_SERVICE_UUID)
-                    ?.getCharacteristic(LED_BRIGHTNESS_UUID)
-                    ?: throw RegattaLinkOtaTransportException(
-                        "RegattaLink LED brightness is unavailable",
-                        ambiguous = false
-                    )
-                writeCharacteristicBlockingDirect(
-                    activeGatt,
-                    characteristic,
-                    byteArrayOf(percent.toByte())
-                )
-                updateConfiguration {
-                    it.copy(
-                        ledBrightnessSupported = true,
-                        ledBrightnessPct = percent,
-                        busy = false,
-                        error = ""
-                    )
+                if (
+                    !optionalFeatureWorkAllowed(activeGatt) ||
+                    configurationMutationBlocked(activeGatt)
+                ) {
+                    return@execute
                 }
-            } catch (error: Exception) {
-                val reread =
-                    if (optionalFeatureWorkAllowed(activeGatt)) {
-                        runCatching {
-                            val characteristic = activeGatt
-                                .getService(CONFIG_SERVICE_UUID)
-                                ?.getCharacteristic(LED_BRIGHTNESS_UUID)
-                                ?: return@runCatching null
-                            parseRegattaLinkLedBrightness(
-                                readCharacteristicBlocking(activeGatt, characteristic)
-                            )
-                        }.getOrNull()
-                    } else {
-                        null
+                updateConfiguration { it.copy(busy = true, error = "") }
+                try {
+                    val characteristic = activeGatt
+                        .getService(CONFIG_SERVICE_UUID)
+                        ?.getCharacteristic(LED_BRIGHTNESS_UUID)
+                        ?: throw RegattaLinkOtaTransportException(
+                            "RegattaLink LED brightness is unavailable",
+                            ambiguous = false
+                        )
+                    writeCharacteristicBlockingDirect(
+                        activeGatt,
+                        characteristic,
+                        byteArrayOf(percent.toByte())
+                    )
+                    updateConfiguration {
+                        it.copy(
+                            ledBrightnessSupported = true,
+                            ledBrightnessPct = percent,
+                            busy = false,
+                            error = ""
+                        )
                     }
-                updateConfiguration {
-                    it.copy(
-                        ledBrightnessPct = reread ?: it.ledBrightnessPct,
-                        busy = false,
-                        error = error.message
-                            ?: "Could not change RegattaLink LED brightness"
-                    )
+                } catch (error: Exception) {
+                    val reread =
+                        if (optionalFeatureWorkAllowed(activeGatt)) {
+                            runCatching {
+                                val characteristic = activeGatt
+                                    .getService(CONFIG_SERVICE_UUID)
+                                    ?.getCharacteristic(LED_BRIGHTNESS_UUID)
+                                    ?: return@runCatching null
+                                parseRegattaLinkLedBrightness(
+                                    readCharacteristicBlocking(activeGatt, characteristic)
+                                )
+                            }.getOrNull()
+                        } else {
+                            null
+                        }
+                    updateConfiguration {
+                        it.copy(
+                            ledBrightnessPct = reread ?: it.ledBrightnessPct,
+                            busy = false,
+                            error = error.message
+                                ?: "Could not change RegattaLink LED brightness"
+                        )
+                    }
                 }
+            } finally {
+                configurationMutationRunning.set(false)
             }
         }
         return true
@@ -2195,6 +2214,7 @@ internal class RegattaLinkBleClient(
             otaRunning.get() ||
             rawCaptureRunning.get() ||
             diagnosticLogRunning.get() ||
+            configurationMutationRunning.get() ||
             !isConnected() ||
             !deviceControlRunning.compareAndSet(false, true)
         ) {
