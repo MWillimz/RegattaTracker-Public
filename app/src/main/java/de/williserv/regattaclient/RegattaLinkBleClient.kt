@@ -733,8 +733,13 @@ internal class RegattaLinkBleClient(
         runCatching { activeGatt.disconnect() }
         handler.postDelayed(
             {
-                if (gatt !== activeGatt) return@postDelayed
-                if (!factoryResetDisconnectTracker.consumeDisconnect(activeGatt)) {
+                if (
+                    !consumeRegattaLinkFactoryResetFallback(
+                        session = activeGatt,
+                        sessionStillCurrent = gatt === activeGatt,
+                        tracker = factoryResetDisconnectTracker
+                    )
+                ) {
                     return@postDelayed
                 }
                 completeFactoryResetDisconnect(activeGatt)
