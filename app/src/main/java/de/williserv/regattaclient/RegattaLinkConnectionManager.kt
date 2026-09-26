@@ -294,7 +294,7 @@ internal class RegattaLinkConnectionManager(
     }
 
     fun disconnect() {
-        factoryResetPending = false
+        if (factoryResetPending) return
         explicitDiscoveryRequested = false
         legacyBootstrapAddress = null
         stopRawCanCapture(interrupted = true)
