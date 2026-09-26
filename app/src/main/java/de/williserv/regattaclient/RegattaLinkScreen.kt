@@ -533,10 +533,7 @@ fun RegattaLinkScreen(
                         !configurationState.diagnosticLogLoading &&
                         !nmeaState.rawCanReading
                     val controlStatus = configurationState.deviceControlStatus
-                    val boatFrameValid =
-                        controlStatus?.boatFrameValid
-                            ?: telemetryState.calibration?.boatFrameValid
-                            ?: false
+                    val boatFrameValid = controlStatus?.boatFrameValid == true
                     val trimEnabled = controlEnabled && boatFrameValid
                     Text(
                         stringResource(R.string.regattalink_device_control),
