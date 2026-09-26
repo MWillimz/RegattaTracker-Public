@@ -233,6 +233,8 @@ class RegattaLinkConnectionManagerTest {
             )
         )
         assertEquals(configured, manager.configuredDevice())
+        assertFalse(manager.startDiscovery())
+        assertEquals(0, fakeClient.discoveryCalls)
         assertEquals(0, fakeClient.disconnectCalls)
     }
 
