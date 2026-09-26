@@ -303,6 +303,8 @@ internal class RegattaLinkConnectionManager(
 
     fun startOta(artifact: RegattaLinkFirmwareArtifact) {
         if (
+            factoryResetPending ||
+            configurationState.factoryResetAwaitingDisconnect ||
             configurationState.deviceControlBusy ||
             configurationState.diagnosticLogLoading
         ) {
