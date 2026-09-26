@@ -482,6 +482,52 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun acceptedFactoryResetStillBlocksOtaAfterPollingFinishes() {
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                deviceControlAcceptedOpcode =
+                    RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                deviceControlAcceptedRequestId = 81u
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = false,
+                factoryResetAwaitingDisconnect = true,
+                deviceControlStatus = RegattaLinkDeviceControlStatus(
+                    opcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                    phase = RegattaLinkDeviceControlPhase.SUCCESS,
+                    result = RegattaLinkDeviceControlResult.OK,
+                    requestId = 81u,
+                    forwardTrimDeg = 0,
+                    heelTrimDeg = 0,
+                    pitchTrimDeg = 0,
+                    boatFrameValid = false,
+                    gyroBiasValid = false,
+                    mountingEpoch = 3u,
+                    factoryResetBondsCleared = true
+                )
+            )
+        )
+
+        manager.startOta(testFirmwareArtifact())
+
+        assertEquals(0, fakeClient.otaStartCalls)
+    }
+
+    @Test
     fun factoryResetQueuedButNotAcceptedDoesNotClaimOtaLifecycle() {
         fakeClient.emitConfiguration(
             RegattaLinkConfigurationState(deviceControlSupported = true)
