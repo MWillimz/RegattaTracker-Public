@@ -347,12 +347,30 @@ internal class RegattaLinkConnectionManager(
     }
 
     fun setDeviceName(name: String): Boolean {
-        if (otaState.isActive || rawCaptureState.isActive) return false
+        if (
+            otaState.isActive ||
+            rawCaptureState.isActive ||
+            regattaLinkConfigurationMutationBlocked(
+                state = configurationState,
+                factoryResetOwned = factoryResetPending
+            )
+        ) {
+            return false
+        }
         return client.setDeviceName(name)
     }
 
     fun setLedBrightness(percent: Int): Boolean {
-        if (otaState.isActive || rawCaptureState.isActive) return false
+        if (
+            otaState.isActive ||
+            rawCaptureState.isActive ||
+            regattaLinkConfigurationMutationBlocked(
+                state = configurationState,
+                factoryResetOwned = factoryResetPending
+            )
+        ) {
+            return false
+        }
         return client.setLedBrightness(percent)
     }
 
