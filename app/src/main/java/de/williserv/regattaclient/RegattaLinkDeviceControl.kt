@@ -193,7 +193,9 @@ internal fun regattaLinkDeviceControlStatusConfirmsAcceptance(
     requestId: UInt
 ): Boolean =
     status.requestId == requestId &&
-        status.applicationErrorCode == null
+        status.applicationErrorCode == null &&
+        status.result != RegattaLinkDeviceControlResult.BUSY &&
+        status.result != RegattaLinkDeviceControlResult.INVALID
 
 internal enum class RegattaLinkDeviceControlPollDecision {
     IGNORE_OTHER_REQUEST,
