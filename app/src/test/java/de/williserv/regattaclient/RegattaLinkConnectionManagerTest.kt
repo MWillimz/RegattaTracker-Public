@@ -1055,6 +1055,17 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun activeConfigMutationPreventsOtaStartAtManagerBoundary() {
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(busy = true)
+        )
+
+        manager.startOta(testFirmwareArtifact())
+
+        assertEquals(0, fakeClient.otaStartCalls)
+    }
+
+    @Test
     fun oldFirmwareWithout0007Or0008RejectsOnlyThoseOptionalActions() {
         assertFalse(manager.drainDiagnosticLog())
         assertFalse(
