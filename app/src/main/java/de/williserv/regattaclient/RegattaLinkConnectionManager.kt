@@ -668,6 +668,17 @@ internal class RegattaLinkConnectionManager(
 
         if (
             factoryResetPending &&
+            state.deviceControlStatus?.opcode ==
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
+            state.deviceControlStatus.factoryResetBondsCleared
+        ) {
+            configuredDeviceStore.clear()
+            legacyBootstrapAddress = null
+            explicitDiscoveryRequested = false
+        }
+
+        if (
+            factoryResetPending &&
             !state.deviceControlBusy &&
             !state.factoryResetAwaitingDisconnect &&
             state.deviceControlError.isNotBlank() &&
