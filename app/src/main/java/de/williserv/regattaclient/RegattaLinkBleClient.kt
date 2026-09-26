@@ -205,6 +205,8 @@ internal class RegattaLinkBleClient(
     private var discoveryInProgress = false
     private var discoveryCandidateInProgress = false
     private var discoveryCandidateBondingObserved = false
+    private var discoveryCandidateStartedBonded = false
+    private var discoveryStaleBondFailureObserved = false
     private var discoveryDeadlineMs = 0L
     private var knownReconnectAddress: String? = null
     private var knownReconnectExpectedStableId: String? = null
@@ -222,7 +224,11 @@ internal class RegattaLinkBleClient(
         } else if (scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT) {
             retryKnownDeviceReconnect("Configured RegattaLink was not found")
         } else {
-            finishManualDiscovery("No available RegattaLink found")
+            finishManualDiscovery(
+                regattaLinkManualDiscoveryExhaustedMessage(
+                    discoveryStaleBondFailureObserved
+                )
+            )
         }
     }
 
@@ -723,6 +729,8 @@ internal class RegattaLinkBleClient(
         discoveryInProgress = true
         discoveryCandidateInProgress = false
         discoveryCandidateBondingObserved = false
+        discoveryCandidateStartedBonded = false
+        discoveryStaleBondFailureObserved = false
         discoveryDeadlineMs =
             SystemClock.elapsedRealtime() + REGATTALINK_MANUAL_DISCOVERY_TIMEOUT_MS
         stopScan()
@@ -897,6 +905,8 @@ internal class RegattaLinkBleClient(
         discoveryInProgress = false
         discoveryCandidateInProgress = false
         discoveryCandidateBondingObserved = false
+        discoveryCandidateStartedBonded = false
+        discoveryStaleBondFailureObserved = false
         discoveryDeadlineMs = 0L
         attemptedDiscoveryAddresses.clear()
         emit(RegattaLinkClientState())
@@ -920,6 +930,8 @@ internal class RegattaLinkBleClient(
         discoveryInProgress = false
         discoveryCandidateInProgress = false
         discoveryCandidateBondingObserved = false
+        discoveryCandidateStartedBonded = false
+        discoveryStaleBondFailureObserved = false
         discoveryDeadlineMs = 0L
         attemptedDiscoveryAddresses.clear()
         otaExecutor.shutdownNow()
@@ -968,6 +980,8 @@ internal class RegattaLinkBleClient(
         discoveryInProgress = false
         discoveryCandidateInProgress = false
         discoveryCandidateBondingObserved = false
+        discoveryCandidateStartedBonded = false
+        discoveryStaleBondFailureObserved = false
         discoveryDeadlineMs = 0L
         attemptedDiscoveryAddresses.clear()
         scanPurpose = ScanPurpose.KNOWN_DEVICE_RECONNECT
@@ -1158,6 +1172,8 @@ internal class RegattaLinkBleClient(
         discoveryInProgress = false
         discoveryCandidateInProgress = false
         discoveryCandidateBondingObserved = false
+        discoveryCandidateStartedBonded = false
+        discoveryStaleBondFailureObserved = false
         discoveryDeadlineMs = 0L
         attemptedDiscoveryAddresses.clear()
         emit(
@@ -1177,8 +1193,12 @@ internal class RegattaLinkBleClient(
             return
         }
 
+        if (discoveryCandidateStartedBonded) {
+            discoveryStaleBondFailureObserved = true
+        }
         discoveryCandidateInProgress = false
         discoveryCandidateBondingObserved = false
+        discoveryCandidateStartedBonded = false
         handler.removeCallbacks(bondPoll)
         handler.removeCallbacks(gattTimeout)
         currentDevice = null
@@ -1263,6 +1283,10 @@ internal class RegattaLinkBleClient(
 
     private fun prepareDevice(device: BluetoothDevice) {
         currentDevice = device
+        if (scanPurpose == ScanPurpose.NORMAL && discoveryInProgress) {
+            discoveryCandidateStartedBonded =
+                device.bondState == BluetoothDevice.BOND_BONDED
+        }
         if (
             scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT &&
             device.bondState != BluetoothDevice.BOND_BONDED
@@ -1435,6 +1459,8 @@ internal class RegattaLinkBleClient(
             discoveryInProgress = false
             discoveryCandidateInProgress = false
             discoveryCandidateBondingObserved = false
+            discoveryCandidateStartedBonded = false
+            discoveryStaleBondFailureObserved = false
             discoveryDeadlineMs = 0L
             attemptedDiscoveryAddresses.clear()
         }
