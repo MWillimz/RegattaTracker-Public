@@ -2213,8 +2213,10 @@ internal class RegattaLinkBleClient(
                     )
 
                     if (
-                        status.requestId == requestId &&
-                        status.applicationErrorCode == null &&
+                        regattaLinkDeviceControlStatusConfirmsAcceptance(
+                            status,
+                            requestId
+                        ) &&
                         !requestAcceptanceObserved
                     ) {
                         requestAcceptanceObserved = true
