@@ -160,6 +160,52 @@ class RegattaLinkDeviceControlTest {
     }
 
     @Test
+    fun trimDirectionsMatchFirmwareWireContract() {
+        assertEquals(
+            -1,
+            regattaLinkTrimDelta(
+                RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
+                RegattaLinkTrimDirection.PORT
+            )
+        )
+        assertEquals(
+            1,
+            regattaLinkTrimDelta(
+                RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
+                RegattaLinkTrimDirection.STARBOARD
+            )
+        )
+        assertEquals(
+            1,
+            regattaLinkTrimDelta(
+                RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
+                RegattaLinkTrimDirection.PORT
+            )
+        )
+        assertEquals(
+            -1,
+            regattaLinkTrimDelta(
+                RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
+                RegattaLinkTrimDirection.STARBOARD
+            )
+        )
+        assertEquals(
+            1,
+            regattaLinkTrimDelta(
+                RegattaLinkDeviceControlOpcode.ADJUST_PITCH,
+                RegattaLinkTrimDirection.FRONT
+            )
+        )
+        assertEquals(
+            -1,
+            regattaLinkTrimDelta(
+                RegattaLinkDeviceControlOpcode.ADJUST_PITCH,
+                RegattaLinkTrimDirection.BACK
+            )
+        )
+    }
+
+    @Test
     fun factoryResetCalibrationRejectsStillContinueToBondReset() {
         listOf(
             RegattaLinkDeviceControlResult.MOTION_REJECT,
