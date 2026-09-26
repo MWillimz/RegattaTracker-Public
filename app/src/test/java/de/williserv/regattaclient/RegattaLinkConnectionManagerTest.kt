@@ -155,9 +155,15 @@ class RegattaLinkConnectionManagerTest {
         fakeClient.emitConfiguration(
             RegattaLinkConfigurationState(
                 deviceControlSupported = true,
-                deviceControlBusy = false,
+                deviceControlBusy = true,
                 deviceControlAcceptedOpcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
-                deviceControlAcceptedRequestId = 55u,
+                deviceControlAcceptedRequestId = 55u
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = false,
                 deviceControlStatus = RegattaLinkDeviceControlStatus(
                     opcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
                     phase = RegattaLinkDeviceControlPhase.ERROR,
