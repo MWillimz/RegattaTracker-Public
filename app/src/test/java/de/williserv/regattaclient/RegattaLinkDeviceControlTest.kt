@@ -160,6 +160,73 @@ class RegattaLinkDeviceControlTest {
     }
 
     @Test
+    fun factoryResetCalibrationRejectsStillContinueToBondReset() {
+        listOf(
+            RegattaLinkDeviceControlResult.MOTION_REJECT,
+            RegattaLinkDeviceControlResult.ORIENTATION_REJECT
+        ).forEach { result ->
+            val status = RegattaLinkDeviceControlStatus(
+                opcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                phase = RegattaLinkDeviceControlPhase.ERROR,
+                result = result,
+                requestId = 17u,
+                forwardTrimDeg = 0,
+                heelTrimDeg = 0,
+                pitchTrimDeg = 0,
+                boatFrameValid = false,
+                gyroBiasValid = false,
+                mountingEpoch = 3u
+            )
+
+            assertEquals(
+                RegattaLinkDeviceControlPollDecision.FAILURE,
+                regattaLinkDeviceControlPollDecision(status, 17u)
+            )
+            assertTrue(regattaLinkFactoryResetContinuesToBondReset(status))
+        }
+    }
+
+    @Test
+    fun factoryResetDisconnectOwnershipStartsOnlyAfterAcceptedMatchingRequest() {
+        var now = 1_000L
+        val tracker = RegattaLinkFactoryResetDisconnectTracker<Any>(
+            nowElapsedMs = { now },
+            expectedDisconnectTimeoutMs = 15_000L
+        )
+        val session = Any()
+        val otherSession = Any()
+
+        assertFalse(tracker.consumeDisconnect(session))
+
+        tracker.markAccepted(session, 23u)
+        assertTrue(tracker.isExpected(session, 23u))
+        assertFalse(tracker.isExpected(otherSession, 23u))
+        assertFalse(tracker.consumeDisconnect(otherSession))
+        assertTrue(tracker.isExpected(session, 23u))
+
+        tracker.clear(session, 22u)
+        assertTrue(tracker.isExpected(session, 23u))
+        tracker.clear(session, 23u)
+        assertFalse(tracker.consumeDisconnect(session))
+    }
+
+    @Test
+    fun factoryResetDisconnectOwnershipExpiresWithinItsAcceptedSession() {
+        var now = 10_000L
+        val tracker = RegattaLinkFactoryResetDisconnectTracker<Any>(
+            nowElapsedMs = { now },
+            expectedDisconnectTimeoutMs = 15_000L
+        )
+        val session = Any()
+
+        tracker.markAccepted(session, 41u)
+        now += 15_001L
+
+        assertFalse(tracker.consumeDisconnect(session))
+        assertFalse(tracker.isExpected(session, 41u))
+    }
+
+    @Test
     fun nonTerminalMatchingStatusContinuesPolling() {
         val status = RegattaLinkDeviceControlStatus(
             opcode = RegattaLinkDeviceControlOpcode.SET_UPRIGHT,
