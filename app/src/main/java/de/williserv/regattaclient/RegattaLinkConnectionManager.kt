@@ -323,6 +323,7 @@ internal class RegattaLinkConnectionManager(
 
     fun drainDiagnosticLog(): Boolean {
         if (
+            !configurationState.diagnosticLogSupported ||
             otaState.isActive ||
             rawCaptureState.isActive ||
             configurationState.deviceControlBusy
@@ -338,6 +339,7 @@ internal class RegattaLinkConnectionManager(
     ): Boolean {
         if (
             opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET ||
+            !configurationState.deviceControlSupported ||
             otaState.isActive ||
             rawCaptureState.isActive ||
             configurationState.diagnosticLogLoading
