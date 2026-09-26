@@ -553,9 +553,16 @@
     <string name="regattalink_raw_capture_discard">Supprimer</string>
     <string name="regattalink_device_control">Étalonnage</string>
     <string name="regattalink_set_upright">Définir la position verticale</string>
-    <string name="regattalink_forward_trim">Réglage longitudinal</string>
+    <string name="regattalink_set_upright_instruction">Maintenez le bateau et le RegattaLink immobiles dans la position neutre souhaitée pendant l’étalonnage.</string>
+    <string name="regattalink_forward_trim">Direction / lacet</string>
+    <string name="regattalink_one_degree_port">1° Bâbord</string>
+    <string name="regattalink_one_degree_starboard">1° Tribord</string>
+    <string name="regattalink_one_degree_front">1° Avant</string>
+    <string name="regattalink_one_degree_back">1° Arrière</string>
+    <string name="regattalink_not_set">Non défini</string>
+    <string name="regattalink_not_valid">Non valide</string>
     <string name="regattalink_factory_reset">Réinitialisation d’usine</string>
-    <string name="regattalink_factory_reset_warning">Cela efface l’étalonnage et les associations Bluetooth du RegattaLink. La connexion sera coupée. Supprimez l’ancienne association dans les paramètres Android avant de réassocier l’appareil.</string>
+    <string name="regattalink_factory_reset_warning">Cela réinitialise le nom du RegattaLink, la luminosité des LED, l’étalonnage et les associations Bluetooth. La connexion sera coupée et l’appareil devra être réassocié. Si Android affiche encore l’ancienne association, supprimez RegattaLink dans les paramètres Bluetooth Android puis relancez la recherche.</string>
     <string name="regattalink_read_diagnostic_log">Lire le journal de diagnostic</string>
     <string name="regattalink_loading_diagnostic_log">Lecture du journal de diagnostic…</string>
 </resources>
