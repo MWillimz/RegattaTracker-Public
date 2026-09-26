@@ -105,6 +105,14 @@ class RegattaLinkConnectionManagerTest {
             RegattaLinkConfigurationState(deviceControlSupported = true)
         )
         assertTrue(manager.executeDeviceControl(RegattaLinkDeviceControlOpcode.FACTORY_RESET, 0))
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                deviceControlAcceptedOpcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                deviceControlAcceptedRequestId = 7u
+            )
+        )
         fakeClient.emitConnection(RegattaLinkClientState())
 
         assertEquals(null, RegattaLinkConfiguredDeviceStore(context).load())
@@ -148,6 +156,8 @@ class RegattaLinkConnectionManagerTest {
             RegattaLinkConfigurationState(
                 deviceControlSupported = true,
                 deviceControlBusy = false,
+                deviceControlAcceptedOpcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                deviceControlAcceptedRequestId = 55u,
                 deviceControlStatus = RegattaLinkDeviceControlStatus(
                     opcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
                     phase = RegattaLinkDeviceControlPhase.ERROR,
@@ -173,6 +183,40 @@ class RegattaLinkConnectionManagerTest {
         assertEquals(null, manager.configuredDevice())
         assertFalse(manager.reconnectConfigured())
         assertEquals(0, fakeClient.disconnectCalls)
+    }
+
+    @Test
+    fun factoryResetQueuedButNotAcceptedDoesNotOwnDisconnectOrClearAssociation() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.DISCOVERING,
+                deviceAddress = configured.deviceAddress
+            )
+        )
+        assertEquals(configured, manager.configuredDevice())
+
+        fakeClient.emitUnexpectedDisconnect()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(1, fakeClient.reconnectCalls)
+        assertEquals(configured, manager.configuredDevice())
     }
 
     @Test
