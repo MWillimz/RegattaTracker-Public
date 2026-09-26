@@ -359,14 +359,7 @@ internal class RegattaLinkConnectionManager(
         ) {
             return false
         }
-        if (opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET) {
-            factoryResetPending = true
-        }
-        val accepted = client.executeDeviceControl(opcode, value)
-        if (!accepted && opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET) {
-            factoryResetPending = false
-        }
-        return accepted
+        return client.executeDeviceControl(opcode, value)
     }
 
     fun refreshPgnInventory(): Boolean {
@@ -651,6 +644,14 @@ internal class RegattaLinkConnectionManager(
 
     private fun handleConfigurationState(state: RegattaLinkConfigurationState) {
         configurationState = state
+
+        if (
+            state.deviceControlAcceptedOpcode ==
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
+            state.deviceControlAcceptedRequestId != null
+        ) {
+            factoryResetPending = true
+        }
 
         val controlStatus = state.deviceControlStatus
         val resetContinuesToBondReset =
