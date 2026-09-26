@@ -158,6 +158,7 @@ class RegattaLinkConnectionManagerTest {
             )
         )
 
+        fakeClient.emitFactoryResetRecovery(true)
         fakeClient.emitConfiguration(
             RegattaLinkConfigurationState(
                 deviceControlSupported = true,
@@ -195,6 +196,7 @@ class RegattaLinkConnectionManagerTest {
                 0
             )
         )
+        fakeClient.emitFactoryResetRecovery(true)
         fakeClient.emitConfiguration(
             RegattaLinkConfigurationState(
                 deviceControlSupported = true,
@@ -232,6 +234,7 @@ class RegattaLinkConnectionManagerTest {
                 0
             )
         )
+        fakeClient.emitFactoryResetRecovery(true)
         fakeClient.emitConfiguration(
             RegattaLinkConfigurationState(
                 deviceControlSupported = true,
@@ -241,6 +244,7 @@ class RegattaLinkConnectionManagerTest {
         )
         assertTrue(RegattaLinkConfiguredDeviceStore(context).requiresNewPairing())
 
+        fakeClient.emitFactoryResetRecovery(false)
         fakeClient.emitConfiguration(
             RegattaLinkConfigurationState(
                 deviceControlSupported = true,
