@@ -362,6 +362,8 @@ internal class RegattaLinkConnectionManager(
             otaState.isActive ||
             rawCaptureState.isActive ||
             rawCaptureState.hasFile ||
+            configurationState.diagnosticLogLoading ||
+            configurationState.deviceControlBusy ||
             connectionState.status != RegattaLinkConnectionStatus.CONNECTED ||
             !nmeaState.rawCanSupported
         ) {
