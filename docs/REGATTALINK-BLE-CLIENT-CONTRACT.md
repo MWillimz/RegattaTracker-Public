@@ -468,8 +468,9 @@ The local 10-second finalization watchdog exists only to detect a stuck firmware
 implementation. If it expires with bit 2 still clear, Tracker reports an ambiguous
 finalization failure and closes the local GATT link while retaining Factory Reset
 disconnect ownership. The resulting disconnect is handled as reset recovery rather
-than as an ordinary outage; Tracker does not claim that firmware bond deletion
-succeeded merely because the watchdog expired.
+than as an ordinary outage; the configured-device association is discarded
+conservatively, but Tracker does not claim that firmware bond deletion succeeded
+merely because the watchdog expired.
 
 Android may retain
 a stale OS-side bond after the peripheral deletes its bond. The production client
