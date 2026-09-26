@@ -29,6 +29,25 @@ data class RegattaLinkConfigurationState(
     val error: String = ""
 )
 
+internal fun regattaLinkConfigurationMutationBlocked(
+    state: RegattaLinkConfigurationState,
+    factoryResetOwned: Boolean = false,
+    deviceControlRunning: Boolean = false
+): Boolean =
+    factoryResetOwned ||
+        deviceControlRunning ||
+        state.deviceControlBusy ||
+        state.factoryResetAwaitingDisconnect ||
+        state.factoryResetWriteAcceptedRequestId != null
+
+internal fun regattaLinkFirmwareInstallBlocked(
+    state: RegattaLinkConfigurationState
+): Boolean =
+    state.deviceControlBusy ||
+        state.diagnosticLogLoading ||
+        state.factoryResetAwaitingDisconnect ||
+        state.factoryResetWriteAcceptedRequestId != null
+
 data class RegattaLinkPgnInventoryEntry(
     val pgn: Long,
     val lastSeenMs: Long
