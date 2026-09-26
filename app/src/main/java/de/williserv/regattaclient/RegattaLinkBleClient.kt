@@ -818,7 +818,11 @@ internal class RegattaLinkBleClient(
         if (rawCaptureRunning.get()) {
             stopRawCanCapture(RegattaLinkRawCaptureStopReason.INTERRUPTED)
         }
-        if (diagnosticLogRunning.get() || deviceControlRunning.get()) {
+        if (
+            diagnosticLogRunning.get() ||
+            configurationMutationRunning.get() ||
+            deviceControlRunning.get()
+        ) {
             emitOta(
                 RegattaLinkOtaUiState(
                     phase = RegattaLinkOtaPhase.ERROR,
