@@ -11,7 +11,42 @@ internal const val REGATTALINK_DEVICE_CONTROL_STATUS_SIZE = 20
 internal const val REGATTALINK_DEVICE_CONTROL_VERSION = 1
 internal const val REGATTALINK_DEVICE_CONTROL_POLL_MS = 100L
 internal const val REGATTALINK_DEVICE_CONTROL_CLIENT_TIMEOUT_MS = 12_000L
-internal const val REGATTALINK_FACTORY_RESET_DISCONNECT_WAIT_MS = 3_000L
+internal const val REGATTALINK_FACTORY_RESET_FINALIZATION_TIMEOUT_MS = 10_000L
+internal const val REGATTALINK_FACTORY_RESET_DISCONNECT_MARGIN_MS = 2_000L
+
+internal enum class RegattaLinkGattApplicationError(
+    val code: Int,
+    val description: String
+) {
+    INVALID_LENGTH(1, "invalid length"),
+    NOT_SUPPORTED(2, "not supported"),
+    BUSY(3, "busy"),
+    BAD_STATE(4, "bad state"),
+    BAD_REQUEST(5, "bad request"),
+    BAD_OFFSET(6, "bad offset"),
+    BAD_SESSION(7, "bad session"),
+    BAD_HARDWARE(8, "bad hardware"),
+    BAD_SIZE(9, "bad size"),
+    TIMEOUT(10, "timeout"),
+    HASH_MISMATCH(11, "hash mismatch"),
+    IMAGE_MISMATCH(12, "image mismatch"),
+    SIGNATURE(13, "signature failure"),
+    FLASH(14, "flash failure"),
+    CANCELLED(15, "cancelled"),
+    ROLLBACK(16, "rollback");
+
+    companion object {
+        fun fromGattStatus(status: Int): RegattaLinkGattApplicationError? {
+            val code = status - 0x80
+            return entries.firstOrNull { it.code == code }
+        }
+    }
+}
+
+internal fun regattaLinkGattApplicationFailureText(status: Int): String? =
+    RegattaLinkGattApplicationError.fromGattStatus(status)?.let { error ->
+        "RegattaLink rejected the request: ${error.description}"
+    }
 
 data class RegattaLinkDiagnosticLogEntry(
     val timestamp10ms: Int,
