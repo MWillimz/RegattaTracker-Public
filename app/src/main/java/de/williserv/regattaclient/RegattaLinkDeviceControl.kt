@@ -31,6 +31,35 @@ enum class RegattaLinkDeviceControlOpcode(val wireValue: Int) {
     }
 }
 
+enum class RegattaLinkTrimDirection {
+    PORT,
+    STARBOARD,
+    FRONT,
+    BACK
+}
+
+internal fun regattaLinkTrimDelta(
+    opcode: RegattaLinkDeviceControlOpcode,
+    direction: RegattaLinkTrimDirection
+): Int = when (opcode) {
+    RegattaLinkDeviceControlOpcode.ADJUST_FORWARD -> when (direction) {
+        RegattaLinkTrimDirection.PORT -> -1
+        RegattaLinkTrimDirection.STARBOARD -> 1
+        else -> error("Forward trim only supports port/starboard")
+    }
+    RegattaLinkDeviceControlOpcode.ADJUST_HEEL -> when (direction) {
+        RegattaLinkTrimDirection.PORT -> 1
+        RegattaLinkTrimDirection.STARBOARD -> -1
+        else -> error("Heel trim only supports port/starboard")
+    }
+    RegattaLinkDeviceControlOpcode.ADJUST_PITCH -> when (direction) {
+        RegattaLinkTrimDirection.FRONT -> 1
+        RegattaLinkTrimDirection.BACK -> -1
+        else -> error("Pitch trim only supports front/back")
+    }
+    else -> error("Opcode $opcode is not a trim command")
+}
+
 enum class RegattaLinkDeviceControlPhase(val wireValue: Int) {
     IDLE(0),
     PENDING(1),
