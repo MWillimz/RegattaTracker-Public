@@ -1267,6 +1267,7 @@ fun RegattaLinkScreen(
                 onClick = onDisconnect,
                 enabled = !otaState.isActive &&
                     !configurationState.deviceControlBusy &&
+                    !configurationState.factoryResetAwaitingDisconnect &&
                     state.status != RegattaLinkConnectionStatus.IDLE,
                 modifier = Modifier.weight(1f)
             ) {
