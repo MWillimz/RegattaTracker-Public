@@ -2195,6 +2195,18 @@ internal class RegattaLinkBleClient(
                     characteristic,
                     request
                 )
+                if (opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET) {
+                    /*
+                     * ATT success is only provisional ownership: firmware may
+                     * still publish a request-id-bound 0008 rejection. Keep a
+                     * disconnect from racing into ordinary outage reconnect
+                     * until 0008 makes acceptance/rejection authoritative.
+                     */
+                    factoryResetDisconnectTracker.markAccepted(
+                        session = activeGatt,
+                        requestId = requestId
+                    )
+                }
 
                 var requestAcceptanceObserved = false
                 val commandDeadline =
@@ -2232,18 +2244,23 @@ internal class RegattaLinkBleClient(
                         !requestAcceptanceObserved
                     ) {
                         requestAcceptanceObserved = true
-                        if (opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET) {
-                            factoryResetDisconnectTracker.markAccepted(
-                                session = activeGatt,
-                                requestId = requestId
-                            )
-                        }
                         updateConfiguration {
                             it.copy(
                                 deviceControlAcceptedOpcode = opcode,
                                 deviceControlAcceptedRequestId = requestId
                             )
                         }
+                    }
+
+                    if (
+                        opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
+                        status.requestId == requestId &&
+                        status.applicationErrorCode != null
+                    ) {
+                        factoryResetDisconnectTracker.clear(
+                            session = activeGatt,
+                            requestId = requestId
+                        )
                     }
 
                     if (
