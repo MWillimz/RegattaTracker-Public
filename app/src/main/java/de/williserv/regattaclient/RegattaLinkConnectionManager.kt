@@ -87,11 +87,11 @@ internal interface RegattaLinkConnectionClient {
     fun resetOtaState()
     fun setDeviceName(name: String): Boolean
     fun setLedBrightness(percent: Int): Boolean
-    fun drainDiagnosticLog(): Boolean
+    fun drainDiagnosticLog(): Boolean = false
     fun executeDeviceControl(
         opcode: RegattaLinkDeviceControlOpcode,
         value: Int
-    ): Boolean
+    ): Boolean = false
     fun refreshPgnInventory(): Boolean
     fun readRawCanFrames(): Boolean
 
