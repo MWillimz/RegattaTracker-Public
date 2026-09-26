@@ -187,6 +187,28 @@ class RegattaLinkDeviceControlTest {
     }
 
     @Test
+    fun bondResetErrorStopsFactoryResetDisconnectWait() {
+        val status = RegattaLinkDeviceControlStatus(
+            opcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+            phase = RegattaLinkDeviceControlPhase.ERROR,
+            result = RegattaLinkDeviceControlResult.BOND_RESET_ERROR,
+            requestId = 19u,
+            forwardTrimDeg = 0,
+            heelTrimDeg = 0,
+            pitchTrimDeg = 0,
+            boatFrameValid = true,
+            gyroBiasValid = true,
+            mountingEpoch = 4u
+        )
+
+        assertFalse(regattaLinkFactoryResetContinuesToBondReset(status))
+        assertEquals(
+            RegattaLinkDeviceControlPollDecision.FAILURE,
+            regattaLinkDeviceControlPollDecision(status, 19u)
+        )
+    }
+
+    @Test
     fun factoryResetDisconnectOwnershipStartsOnlyAfterAcceptedMatchingRequest() {
         var now = 1_000L
         val tracker = RegattaLinkFactoryResetDisconnectTracker<Any>(
