@@ -105,7 +105,43 @@ class RegattaLinkDeviceControlTest {
         assertEquals(-56, parsed.pitchTrimDeg)
         assertTrue(parsed.boatFrameValid)
         assertTrue(parsed.gyroBiasValid)
+        assertFalse(parsed.factoryResetBondsCleared)
         assertEquals(0xfedcba98u, parsed.mountingEpoch)
+    }
+
+    @Test
+    fun deviceControlStatusParsesConfirmedFactoryResetBondWipeFlag() {
+        val raw = ByteArray(REGATTALINK_DEVICE_CONTROL_STATUS_SIZE)
+        val buffer = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
+        raw[0] = 1
+        raw[1] = RegattaLinkDeviceControlOpcode.FACTORY_RESET.wireValue.toByte()
+        raw[2] = RegattaLinkDeviceControlPhase.SUCCESS.wireValue.toByte()
+        raw[3] = RegattaLinkDeviceControlResult.OK.wireValue.toByte()
+        buffer.putInt(4, 77)
+        raw[14] = 0x04
+
+        val parsed = parseRegattaLinkDeviceControlStatus(raw)
+
+        assertTrue(parsed.factoryResetBondsCleared)
+        assertFalse(parsed.boatFrameValid)
+        assertFalse(parsed.gyroBiasValid)
+    }
+
+    @Test
+    fun documentedGattApplicationErrorsHaveSemanticText() {
+        assertEquals(
+            "RegattaLink rejected the request: busy",
+            regattaLinkGattApplicationFailureText(0x83)
+        )
+        assertEquals(
+            "RegattaLink rejected the request: bad state",
+            regattaLinkGattApplicationFailureText(0x84)
+        )
+        assertEquals(
+            "RegattaLink rejected the request: bad request",
+            regattaLinkGattApplicationFailureText(0x85)
+        )
+        assertNull(regattaLinkGattApplicationFailureText(133))
     }
 
     @Test
