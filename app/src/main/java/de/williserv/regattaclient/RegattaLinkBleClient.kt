@@ -98,6 +98,7 @@ internal class RegattaLinkBleClient(
         private const val GATT_TIMEOUT_MS = 20_000L
         private const val BOND_POLL_MS = 250L
         private const val GATT_OPERATION_TIMEOUT_MS = 10_000L
+        private const val FACTORY_RESET_LOCAL_DISCONNECT_FALLBACK_MS = 5_000L
         private const val OTA_RECONNECT_SERVICE_SETTLE_MS = 500L
         private const val KNOWN_RECONNECT_SCAN_SLICE_MS = 6_000L
         private const val KNOWN_RECONNECT_PAUSE_MS = 4_000L
@@ -457,17 +458,7 @@ internal class RegattaLinkBleClient(
 
             if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 if (factoryResetDisconnectTracker.consumeDisconnect(callbackGatt)) {
-                    connected = false
-                    establishedConnection = false
-                    failPendingGattOperation(
-                        RegattaLinkOtaTransportException("Factory reset disconnected RegattaLink")
-                    )
-                    callbackGatt.close()
-                    if (gatt === callbackGatt) gatt = null
-                    clearTelemetry()
-                    clearNmea()
-                    clearConfiguration()
-                    emit(RegattaLinkClientState())
+                    completeFactoryResetDisconnect(callbackGatt)
                     return
                 }
                 val wasReadyConnection = establishedConnection
@@ -718,6 +709,37 @@ internal class RegattaLinkBleClient(
                 "PHY update status=${status} tx=${phyName(txPhy)} rx=${phyName(rxPhy)}"
             )
         }
+    }
+
+    private fun completeFactoryResetDisconnect(activeGatt: BluetoothGatt) {
+        connected = false
+        establishedConnection = false
+        resetServiceDiscoveryState()
+        failPendingGattOperation(
+            RegattaLinkOtaTransportException(
+                "Factory reset disconnected RegattaLink"
+            )
+        )
+        activeGatt.close()
+        if (gatt === activeGatt) gatt = null
+        clearTelemetry()
+        clearNmea()
+        clearConfiguration()
+        emit(RegattaLinkClientState())
+    }
+
+    private fun requestFactoryResetLocalDisconnect(activeGatt: BluetoothGatt) {
+        runCatching { activeGatt.disconnect() }
+        handler.postDelayed(
+            {
+                if (gatt !== activeGatt) return@postDelayed
+                if (!factoryResetDisconnectTracker.consumeDisconnect(activeGatt)) {
+                    return@postDelayed
+                }
+                completeFactoryResetDisconnect(activeGatt)
+            },
+            FACTORY_RESET_LOCAL_DISCONNECT_FALLBACK_MS
+        )
     }
 
     override fun startDiscovery(): Boolean {
@@ -2168,6 +2190,7 @@ internal class RegattaLinkBleClient(
                     deviceControlBusy = true,
                     deviceControlAcceptedOpcode = null,
                     deviceControlAcceptedRequestId = null,
+                    factoryResetWriteAcceptedRequestId = null,
                     deviceControlStatus = null,
                     deviceControlError = ""
                 )
@@ -2206,6 +2229,11 @@ internal class RegattaLinkBleClient(
                         session = activeGatt,
                         requestId = requestId
                     )
+                    updateConfiguration {
+                        it.copy(
+                            factoryResetWriteAcceptedRequestId = requestId
+                        )
+                    }
                 }
 
                 var requestAcceptanceObserved = false
@@ -2261,6 +2289,11 @@ internal class RegattaLinkBleClient(
                             session = activeGatt,
                             requestId = requestId
                         )
+                        updateConfiguration {
+                            it.copy(
+                                factoryResetWriteAcceptedRequestId = null
+                            )
+                        }
                     }
 
                     if (
@@ -2278,7 +2311,7 @@ internal class RegattaLinkBleClient(
                                     regattaLinkDeviceControlFailureText(status)
                             )
                         }
-                        runCatching { activeGatt.disconnect() }
+                        requestFactoryResetLocalDisconnect(activeGatt)
                         break
                     }
 
@@ -2376,7 +2409,7 @@ internal class RegattaLinkBleClient(
                     gatt === activeGatt &&
                     connected
                 ) {
-                    runCatching { activeGatt.disconnect() }
+                    requestFactoryResetLocalDisconnect(activeGatt)
                     throw RegattaLinkOtaTransportException(
                         "Factory reset finalization timed out before bond-wipe completion was confirmed; disconnecting without assuming bond-wipe success",
                         ambiguous = true
@@ -2422,6 +2455,17 @@ internal class RegattaLinkBleClient(
                         deviceControlBusy = false,
                         deviceControlAcceptedOpcode = null,
                         deviceControlAcceptedRequestId = null,
+                        factoryResetWriteAcceptedRequestId =
+                            if (
+                                opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
+                                finalStatus?.let(
+                                    ::regattaLinkFactoryResetContinuesToBondReset
+                                ) == true
+                            ) {
+                                requestId
+                            } else {
+                                null
+                            },
                         factoryResetAwaitingDisconnect =
                             opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
                                 finalStatus?.let(
