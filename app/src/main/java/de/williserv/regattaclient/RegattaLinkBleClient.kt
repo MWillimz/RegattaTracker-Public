@@ -196,7 +196,8 @@ internal class RegattaLinkBleClient(
             nowElapsedMs = { SystemClock.elapsedRealtime() },
             expectedDisconnectTimeoutMs =
                 REGATTALINK_DEVICE_CONTROL_CLIENT_TIMEOUT_MS +
-                    REGATTALINK_FACTORY_RESET_DISCONNECT_WAIT_MS
+                    REGATTALINK_FACTORY_RESET_FINALIZATION_TIMEOUT_MS +
+                    REGATTALINK_FACTORY_RESET_DISCONNECT_MARGIN_MS
         )
     private var serviceRediscoveryGatt: BluetoothGatt? = null
     private var reconnectFuture: CompletableFuture<RegattaLinkDeviceInfo?>? = null
@@ -2166,8 +2167,8 @@ internal class RegattaLinkBleClient(
 
             var finalStatus: RegattaLinkDeviceControlStatus? = null
             var errorMessage = ""
-            var factoryResetDisconnectDeadline: Long? = null
-            var factoryResetWaitTimedOut = false
+            var factoryResetFinalizationDeadline: Long? = null
+            var factoryResetFinalizationTimedOut = false
             try {
                 val characteristic = activeGatt
                     .getService(CONFIG_SERVICE_UUID)
@@ -2206,13 +2207,13 @@ internal class RegattaLinkBleClient(
                 while (true) {
                     val now = SystemClock.elapsedRealtime()
                     val activeDeadline =
-                        factoryResetDisconnectDeadline ?: commandDeadline
+                        factoryResetFinalizationDeadline ?: commandDeadline
                     if (now >= activeDeadline) break
 
                     if (!optionalFeatureWorkAllowed(activeGatt)) {
                         if (
                             opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
-                            factoryResetDisconnectDeadline != null &&
+                            factoryResetFinalizationDeadline != null &&
                             (gatt !== activeGatt || !connected)
                         ) {
                             break
@@ -2226,6 +2227,26 @@ internal class RegattaLinkBleClient(
                     val status = parseRegattaLinkDeviceControlStatus(
                         readCharacteristicBlocking(activeGatt, characteristic)
                     )
+
+                    if (
+                        opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
+                        status.requestId == requestId &&
+                        status.factoryResetBondsCleared
+                    ) {
+                        finalStatus = status
+                        updateConfiguration {
+                            it.copy(
+                                deviceControlSupported = true,
+                                factoryResetAwaitingDisconnect = true,
+                                deviceControlStatus = status,
+                                deviceControlError =
+                                    regattaLinkDeviceControlFailureText(status.result)
+                            )
+                        }
+                        runCatching { activeGatt.disconnect() }
+                        break
+                    }
+
                     val resetContinuesToBondReset =
                         opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
                             regattaLinkFactoryResetContinuesToBondReset(status)
@@ -2251,9 +2272,9 @@ internal class RegattaLinkBleClient(
                         RegattaLinkDeviceControlPollDecision.SUCCESS -> {
                             finalStatus = status
                             if (resetContinuesToBondReset) {
-                                if (factoryResetDisconnectDeadline == null) {
-                                    factoryResetDisconnectDeadline =
-                                        now + REGATTALINK_FACTORY_RESET_DISCONNECT_WAIT_MS
+                                if (factoryResetFinalizationDeadline == null) {
+                                    factoryResetFinalizationDeadline =
+                                        now + REGATTALINK_FACTORY_RESET_FINALIZATION_TIMEOUT_MS
                                 }
                                 updateConfiguration {
                                     it.copy(
@@ -2278,9 +2299,9 @@ internal class RegattaLinkBleClient(
                         RegattaLinkDeviceControlPollDecision.FAILURE -> {
                             finalStatus = status
                             if (resetContinuesToBondReset) {
-                                if (factoryResetDisconnectDeadline == null) {
-                                    factoryResetDisconnectDeadline =
-                                        now + REGATTALINK_FACTORY_RESET_DISCONNECT_WAIT_MS
+                                if (factoryResetFinalizationDeadline == null) {
+                                    factoryResetFinalizationDeadline =
+                                        now + REGATTALINK_FACTORY_RESET_FINALIZATION_TIMEOUT_MS
                                 }
                                 updateConfiguration {
                                     it.copy(
@@ -2315,13 +2336,14 @@ internal class RegattaLinkBleClient(
                 }
 
                 if (
-                    factoryResetDisconnectDeadline != null &&
+                    factoryResetFinalizationDeadline != null &&
+                    finalStatus?.factoryResetBondsCleared != true &&
                     gatt === activeGatt &&
                     connected
                 ) {
-                    factoryResetWaitTimedOut = true
+                    factoryResetFinalizationTimedOut = true
                     throw RegattaLinkOtaTransportException(
-                        "Factory reset did not disconnect after the bond-reset grace period",
+                        "Factory reset finalization timed out before bond-wipe completion was confirmed",
                         ambiguous = true
                     )
                 }
@@ -2350,7 +2372,7 @@ internal class RegattaLinkBleClient(
             if (
                 opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
                 (
-                    factoryResetWaitTimedOut ||
+                    factoryResetFinalizationTimedOut ||
                         (
                             finalStatus?.phase?.isTerminal == true &&
                                 !regattaLinkFactoryResetContinuesToBondReset(finalStatus)
@@ -2370,7 +2392,12 @@ internal class RegattaLinkBleClient(
                         deviceControlBusy = false,
                         deviceControlAcceptedOpcode = null,
                         deviceControlAcceptedRequestId = null,
-                        factoryResetAwaitingDisconnect = false,
+                        factoryResetAwaitingDisconnect =
+                            opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
+                                finalStatus?.let(
+                                    ::regattaLinkFactoryResetContinuesToBondReset
+                                ) == true &&
+                                !factoryResetFinalizationTimedOut,
                         deviceControlStatus = finalStatus ?: it.deviceControlStatus,
                         deviceControlError = errorMessage
                     )
