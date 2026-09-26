@@ -79,6 +79,11 @@ class RegattaLinkConfigurationNmeaTest {
         )
         assertTrue(
             regattaLinkFirmwareInstallBlocked(
+                RegattaLinkConfigurationState(busy = true)
+            )
+        )
+        assertTrue(
+            regattaLinkFirmwareInstallBlocked(
                 RegattaLinkConfigurationState(deviceControlBusy = true)
             )
         )
