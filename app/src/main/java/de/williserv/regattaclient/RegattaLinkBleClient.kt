@@ -885,6 +885,13 @@ internal class RegattaLinkBleClient(
     }
 
     override fun disconnect() {
+        val activeGatt = gatt
+        if (
+            activeGatt != null &&
+            factoryResetDisconnectTracker.ownsLifecycle(activeGatt)
+        ) {
+            return
+        }
         factoryResetDisconnectTracker.clearAll()
         stopRawCanCapture(RegattaLinkRawCaptureStopReason.INTERRUPTED)
         if (otaRunning.get()) {
