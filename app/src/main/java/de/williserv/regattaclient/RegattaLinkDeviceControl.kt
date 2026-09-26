@@ -16,13 +16,6 @@ data class RegattaLinkDiagnosticLogEntry(
     val message: String
 )
 
-data class RegattaLinkDiagnosticLogState(
-    val supported: Boolean = false,
-    val loading: Boolean = false,
-    val entries: List<RegattaLinkDiagnosticLogEntry> = emptyList(),
-    val error: String = ""
-)
-
 enum class RegattaLinkDeviceControlOpcode(val wireValue: Int) {
     SET_UPRIGHT(1),
     ADJUST_FORWARD(2),
@@ -83,13 +76,6 @@ data class RegattaLinkDeviceControlStatus(
     val boatFrameValid: Boolean,
     val gyroBiasValid: Boolean,
     val mountingEpoch: UInt
-)
-
-data class RegattaLinkDeviceControlState(
-    val supported: Boolean = false,
-    val busy: Boolean = false,
-    val status: RegattaLinkDeviceControlStatus? = null,
-    val error: String = ""
 )
 
 internal enum class RegattaLinkDeviceControlPollDecision {
