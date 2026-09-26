@@ -87,6 +87,11 @@ internal interface RegattaLinkConnectionClient {
     fun resetOtaState()
     fun setDeviceName(name: String): Boolean
     fun setLedBrightness(percent: Int): Boolean
+    fun drainDiagnosticLog(): Boolean
+    fun executeDeviceControl(
+        opcode: RegattaLinkDeviceControlOpcode,
+        value: Int
+    ): Boolean
     fun refreshPgnInventory(): Boolean
     fun readRawCanFrames(): Boolean
 
@@ -284,6 +289,12 @@ internal class RegattaLinkConnectionManager(
     }
 
     fun startOta(artifact: RegattaLinkFirmwareArtifact) {
+        if (
+            configurationState.deviceControlBusy ||
+            configurationState.diagnosticLogLoading
+        ) {
+            return
+        }
         explicitDiscoveryRequested = false
         legacyBootstrapAddress = null
         if (rawCaptureState.isActive) {
@@ -308,6 +319,32 @@ internal class RegattaLinkConnectionManager(
     fun setLedBrightness(percent: Int): Boolean {
         if (otaState.isActive || rawCaptureState.isActive) return false
         return client.setLedBrightness(percent)
+    }
+
+    fun drainDiagnosticLog(): Boolean {
+        if (
+            otaState.isActive ||
+            rawCaptureState.isActive ||
+            configurationState.deviceControlBusy
+        ) {
+            return false
+        }
+        return client.drainDiagnosticLog()
+    }
+
+    fun executeDeviceControl(
+        opcode: RegattaLinkDeviceControlOpcode,
+        value: Int
+    ): Boolean {
+        if (
+            opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET ||
+            otaState.isActive ||
+            rawCaptureState.isActive ||
+            configurationState.diagnosticLogLoading
+        ) {
+            return false
+        }
+        return client.executeDeviceControl(opcode, value)
     }
 
     fun refreshPgnInventory(): Boolean {
