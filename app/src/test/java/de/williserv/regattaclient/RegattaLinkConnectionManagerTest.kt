@@ -211,6 +211,43 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun acceptedFactoryResetBlocksManualDisconnectUntilFirmwareDisconnects() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                deviceControlAcceptedOpcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                deviceControlAcceptedRequestId = 59u
+            )
+        )
+
+        manager.disconnect()
+
+        assertEquals(0, fakeClient.disconnectCalls)
+        assertEquals(configured, manager.configuredDevice())
+
+        fakeClient.emitConnection(RegattaLinkClientState())
+
+        assertEquals(null, manager.configuredDevice())
+        assertFalse(manager.reconnectConfigured())
+    }
+
+    @Test
     fun acceptedFactoryResetRediscoveryDoesNotClearConfiguredAssociation() {
         fakeClient.emitConnection(
             RegattaLinkClientState(
