@@ -188,6 +188,13 @@ internal class RegattaLinkFactoryResetDisconnectTracker<T : Any>(
     }
 }
 
+internal fun regattaLinkDeviceControlStatusConfirmsAcceptance(
+    status: RegattaLinkDeviceControlStatus,
+    requestId: UInt
+): Boolean =
+    status.requestId == requestId &&
+        status.applicationErrorCode == null
+
 internal enum class RegattaLinkDeviceControlPollDecision {
     IGNORE_OTHER_REQUEST,
     CONTINUE,
