@@ -163,7 +163,8 @@ class RegattaLinkConnectionManagerTest {
         fakeClient.emitConfiguration(
             RegattaLinkConfigurationState(
                 deviceControlSupported = true,
-                deviceControlBusy = false,
+                deviceControlBusy = true,
+                factoryResetAwaitingDisconnect = true,
                 deviceControlStatus = RegattaLinkDeviceControlStatus(
                     opcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
                     phase = RegattaLinkDeviceControlPhase.ERROR,
@@ -189,6 +190,129 @@ class RegattaLinkConnectionManagerTest {
         assertEquals(null, manager.configuredDevice())
         assertFalse(manager.reconnectConfigured())
         assertEquals(0, fakeClient.disconnectCalls)
+    }
+
+    @Test
+    fun acceptedFactoryResetRediscoveryDoesNotClearConfiguredAssociation() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                deviceControlAcceptedOpcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                deviceControlAcceptedRequestId = 61u
+            )
+        )
+
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.DISCOVERING,
+                deviceAddress = configured.deviceAddress
+            )
+        )
+        assertEquals(configured, manager.configuredDevice())
+
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.READING_DEVICE_INFO,
+                deviceAddress = configured.deviceAddress
+            )
+        )
+        assertEquals(configured, manager.configuredDevice())
+        assertEquals(0, fakeClient.disconnectCalls)
+    }
+
+    @Test
+    fun factoryResetSuccessWaitsForFirmwareDisconnectAndObservesLateBondResetError() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                deviceControlAcceptedOpcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                deviceControlAcceptedRequestId = 73u
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                factoryResetAwaitingDisconnect = true,
+                deviceControlStatus = RegattaLinkDeviceControlStatus(
+                    opcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                    phase = RegattaLinkDeviceControlPhase.SUCCESS,
+                    result = RegattaLinkDeviceControlResult.OK,
+                    requestId = 73u,
+                    forwardTrimDeg = 0,
+                    heelTrimDeg = 0,
+                    pitchTrimDeg = 0,
+                    boatFrameValid = true,
+                    gyroBiasValid = true,
+                    mountingEpoch = 11u
+                )
+            )
+        )
+
+        assertEquals(configured, manager.configuredDevice())
+        assertEquals(0, fakeClient.disconnectCalls)
+
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = false,
+                factoryResetAwaitingDisconnect = false,
+                deviceControlStatus = RegattaLinkDeviceControlStatus(
+                    opcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                    phase = RegattaLinkDeviceControlPhase.ERROR,
+                    result = RegattaLinkDeviceControlResult.BOND_RESET_ERROR,
+                    requestId = 73u,
+                    forwardTrimDeg = 0,
+                    heelTrimDeg = 0,
+                    pitchTrimDeg = 0,
+                    boatFrameValid = true,
+                    gyroBiasValid = true,
+                    mountingEpoch = 11u
+                ),
+                deviceControlError = regattaLinkDeviceControlFailureText(
+                    RegattaLinkDeviceControlResult.BOND_RESET_ERROR
+                )
+            )
+        )
+
+        assertEquals(configured, manager.configuredDevice())
+        assertEquals(0, fakeClient.disconnectCalls)
+
+        fakeClient.emitUnexpectedDisconnect()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(1, fakeClient.reconnectCalls)
     }
 
     @Test
