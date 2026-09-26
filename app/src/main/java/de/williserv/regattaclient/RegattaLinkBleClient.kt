@@ -31,6 +31,7 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
 enum class RegattaLinkConnectionStatus {
@@ -167,6 +168,9 @@ internal class RegattaLinkBleClient(
     private val otaRunning = AtomicBoolean(false)
     private val otaCancelled = AtomicBoolean(false)
     private val rawCaptureRunning = AtomicBoolean(false)
+    private val diagnosticLogRunning = AtomicBoolean(false)
+    private val deviceControlRunning = AtomicBoolean(false)
+    private val nextDeviceControlRequestId = AtomicInteger(1)
     private val rawCaptureStopReason =
         AtomicReference<RegattaLinkRawCaptureStopReason?>(null)
     private val otaProgressQueue = LinkedBlockingQueue<RegattaLinkOtaProgress>()
@@ -691,6 +695,8 @@ internal class RegattaLinkBleClient(
         clearTelemetry()
         clearConfiguration()
         clearNmea()
+        diagnosticLogRunning.set(false)
+        deviceControlRunning.set(false)
         selectedDeviceAddress = null
         attemptedDiscoveryAddresses.clear()
         discoveryInProgress = true
@@ -854,6 +860,8 @@ internal class RegattaLinkBleClient(
         clearTelemetry()
         clearConfiguration()
         clearNmea()
+        diagnosticLogRunning.set(false)
+        deviceControlRunning.set(false)
         currentDevice = null
         discoveryInProgress = false
         discoveryCandidateInProgress = false
@@ -1485,10 +1493,16 @@ internal class RegattaLinkBleClient(
         val service = activeGatt.getService(CONFIG_SERVICE_UUID)
         val nameCharacteristic = service?.getCharacteristic(DEVICE_NAME_UUID)
         val brightnessCharacteristic = service?.getCharacteristic(LED_BRIGHTNESS_UUID)
+        val diagnosticLogCharacteristic =
+            service?.getCharacteristic(DIAGNOSTIC_LOG_UUID)
+        val deviceControlCharacteristic =
+            service?.getCharacteristic(DEVICE_CONTROL_UUID)
 
         var next = RegattaLinkConfigurationState(
             deviceNameSupported = nameCharacteristic != null,
-            ledBrightnessSupported = brightnessCharacteristic != null
+            ledBrightnessSupported = brightnessCharacteristic != null,
+            diagnosticLogSupported = diagnosticLogCharacteristic != null,
+            deviceControlSupported = deviceControlCharacteristic != null
         )
         var errorMessage = ""
 
@@ -1515,6 +1529,27 @@ internal class RegattaLinkBleClient(
                 if (errorMessage.isBlank()) {
                     errorMessage = error.message
                         ?: "Could not read RegattaLink LED brightness"
+                }
+            }
+        }
+
+        if (
+            deviceControlCharacteristic != null &&
+            optionalFeatureWorkAllowed(activeGatt)
+        ) {
+            runCatching {
+                parseRegattaLinkDeviceControlStatus(
+                    readCharacteristicBlocking(
+                        activeGatt,
+                        deviceControlCharacteristic
+                    )
+                )
+            }.onSuccess { status ->
+                next = next.copy(deviceControlStatus = status)
+            }.onFailure { error ->
+                if (errorMessage.isBlank()) {
+                    errorMessage = error.message
+                        ?: "Could not read RegattaLink Device Control status"
                 }
             }
         }
@@ -1930,6 +1965,205 @@ internal class RegattaLinkBleClient(
             }
         }
         return true
+    }
+
+    override fun drainDiagnosticLog(): Boolean {
+        if (
+            otaRunning.get() ||
+            rawCaptureRunning.get() ||
+            !isConnected() ||
+            !diagnosticLogRunning.compareAndSet(false, true)
+        ) {
+            return false
+        }
+
+        val activeGatt = gatt ?: run {
+            diagnosticLogRunning.set(false)
+            return false
+        }
+
+        otaExecutor.execute {
+            if (!optionalFeatureWorkAllowed(activeGatt)) {
+                diagnosticLogRunning.set(false)
+                return@execute
+            }
+
+            updateConfiguration {
+                it.copy(
+                    diagnosticLogLoading = true,
+                    diagnosticLogEntries = emptyList(),
+                    diagnosticLogError = ""
+                )
+            }
+
+            val entries = mutableListOf<RegattaLinkDiagnosticLogEntry>()
+            var errorMessage = ""
+            try {
+                val characteristic = activeGatt
+                    .getService(CONFIG_SERVICE_UUID)
+                    ?.getCharacteristic(DIAGNOSTIC_LOG_UUID)
+                    ?: throw RegattaLinkOtaTransportException(
+                        "RegattaLink diagnostic log is unavailable",
+                        ambiguous = false
+                    )
+
+                for (readIndex in 0 until REGATTALINK_DIAGNOSTIC_LOG_MAX_READS) {
+                    if (!optionalFeatureWorkAllowed(activeGatt)) break
+                    val parsed = parseRegattaLinkDiagnosticLogEntry(
+                        readCharacteristicBlocking(activeGatt, characteristic)
+                    ) ?: break
+                    entries += parsed
+                }
+            } catch (error: Exception) {
+                errorMessage =
+                    error.message ?: "Could not read RegattaLink diagnostic log"
+            } finally {
+                diagnosticLogRunning.set(false)
+            }
+
+            if (gatt === activeGatt && connected) {
+                updateConfiguration {
+                    it.copy(
+                        diagnosticLogSupported = true,
+                        diagnosticLogLoading = false,
+                        diagnosticLogEntries = entries,
+                        diagnosticLogError = errorMessage
+                    )
+                }
+            }
+        }
+        return true
+    }
+
+    override fun executeDeviceControl(
+        opcode: RegattaLinkDeviceControlOpcode,
+        value: Int
+    ): Boolean {
+        if (
+            otaRunning.get() ||
+            rawCaptureRunning.get() ||
+            !isConnected() ||
+            !deviceControlRunning.compareAndSet(false, true)
+        ) {
+            return false
+        }
+
+        val activeGatt = gatt ?: run {
+            deviceControlRunning.set(false)
+            return false
+        }
+
+        otaExecutor.execute {
+            if (!optionalFeatureWorkAllowed(activeGatt)) {
+                deviceControlRunning.set(false)
+                return@execute
+            }
+
+            val requestId = nextDeviceControlRequestId()
+            updateConfiguration {
+                it.copy(
+                    deviceControlBusy = true,
+                    deviceControlError = ""
+                )
+            }
+
+            var finalStatus: RegattaLinkDeviceControlStatus? = null
+            var errorMessage = ""
+            try {
+                val characteristic = activeGatt
+                    .getService(CONFIG_SERVICE_UUID)
+                    ?.getCharacteristic(DEVICE_CONTROL_UUID)
+                    ?: throw RegattaLinkOtaTransportException(
+                        "RegattaLink Device Control is unavailable",
+                        ambiguous = false
+                    )
+
+                val request = buildRegattaLinkDeviceControlRequest(
+                    opcode = opcode,
+                    requestId = requestId,
+                    value = value
+                )
+                writeCharacteristicBlockingDirect(
+                    activeGatt,
+                    characteristic,
+                    request
+                )
+
+                val deadline =
+                    SystemClock.elapsedRealtime() +
+                        REGATTALINK_DEVICE_CONTROL_CLIENT_TIMEOUT_MS
+                while (SystemClock.elapsedRealtime() < deadline) {
+                    if (!optionalFeatureWorkAllowed(activeGatt)) {
+                        throw RegattaLinkOtaTransportException(
+                            "RegattaLink Device Control was interrupted",
+                            ambiguous = true
+                        )
+                    }
+
+                    val status = parseRegattaLinkDeviceControlStatus(
+                        readCharacteristicBlocking(activeGatt, characteristic)
+                    )
+                    if (status.requestId == requestId) {
+                        finalStatus = status
+                        updateConfiguration {
+                            it.copy(
+                                deviceControlSupported = true,
+                                deviceControlStatus = status,
+                                deviceControlError = ""
+                            )
+                        }
+                        if (status.phase.isTerminal) {
+                            if (
+                                status.phase == RegattaLinkDeviceControlPhase.SUCCESS &&
+                                status.result == RegattaLinkDeviceControlResult.OK
+                            ) {
+                                break
+                            }
+                            throw RegattaLinkOtaTransportException(
+                                regattaLinkDeviceControlFailureText(status.result)
+                                    .ifBlank {
+                                        "RegattaLink Device Control failed"
+                                    },
+                                ambiguous = false
+                            )
+                        }
+                    }
+
+                    Thread.sleep(REGATTALINK_DEVICE_CONTROL_POLL_MS)
+                }
+
+                if (finalStatus?.phase?.isTerminal != true) {
+                    throw RegattaLinkOtaTransportException(
+                        "RegattaLink Device Control response timed out",
+                        ambiguous = true
+                    )
+                }
+            } catch (error: Exception) {
+                errorMessage =
+                    error.message ?: "RegattaLink Device Control failed"
+            } finally {
+                deviceControlRunning.set(false)
+            }
+
+            if (gatt === activeGatt && connected) {
+                updateConfiguration {
+                    it.copy(
+                        deviceControlSupported = true,
+                        deviceControlBusy = false,
+                        deviceControlStatus = finalStatus ?: it.deviceControlStatus,
+                        deviceControlError = errorMessage
+                    )
+                }
+            }
+        }
+        return true
+    }
+
+    private fun nextDeviceControlRequestId(): UInt {
+        val value = nextDeviceControlRequestId.getAndUpdate { current ->
+            if (current == Int.MAX_VALUE) 1 else current + 1
+        }
+        return value.toUInt()
     }
 
     override fun refreshPgnInventory(): Boolean {
