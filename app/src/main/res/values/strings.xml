@@ -594,4 +594,11 @@
     <string name="regattalink_raw_capture_stop">Stop capture</string>
     <string name="regattalink_raw_capture_export">Export CSV</string>
     <string name="regattalink_raw_capture_discard">Discard</string>
+    <string name="regattalink_device_control">Calibration</string>
+    <string name="regattalink_set_upright">Set upright</string>
+    <string name="regattalink_forward_trim">Forward trim</string>
+    <string name="regattalink_factory_reset">Factory reset</string>
+    <string name="regattalink_factory_reset_warning">This deletes calibration and Bluetooth pairing on RegattaLink. The connection will close. Remove the old Bluetooth pairing in Android settings before pairing again.</string>
+    <string name="regattalink_read_diagnostic_log">Read diagnostic log</string>
+    <string name="regattalink_loading_diagnostic_log">Reading diagnostic log…</string>
 </resources>

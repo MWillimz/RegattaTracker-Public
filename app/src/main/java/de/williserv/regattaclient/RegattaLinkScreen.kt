@@ -67,6 +67,8 @@ fun RegattaLinkScreen(
     onCancelOta: () -> Unit,
     onChangeName: (String) -> Unit,
     onSetLedBrightness: (Int) -> Unit,
+    onDrainDiagnosticLog: () -> Unit,
+    onDeviceControl: (RegattaLinkDeviceControlOpcode, Int) -> Unit,
     onRefreshPgnInventory: () -> Unit,
     onReadRawFrames: () -> Unit,
     onStartRawCapture: () -> Unit,
@@ -101,6 +103,7 @@ fun RegattaLinkScreen(
         mutableStateOf(false)
     }
     var nameDialogOpen by rememberSaveable { mutableStateOf(false) }
+    var resetDialogOpen by rememberSaveable { mutableStateOf(false) }
     var nameDraft by rememberSaveable { mutableStateOf("") }
     var brightnessDraft by remember(configurationState.ledBrightnessPct) {
         mutableStateOf((configurationState.ledBrightnessPct ?: 0).toFloat())
@@ -227,6 +230,25 @@ fun RegattaLinkScreen(
                         onClick = { nameDialogOpen = false },
                         enabled = !configurationState.busy
                     ) {
+                        Text(stringResource(R.string.regattalink_cancel))
+                    }
+                }
+            )
+        }
+
+        if (resetDialogOpen) {
+            AlertDialog(
+                onDismissRequest = { resetDialogOpen = false },
+                title = { Text(stringResource(R.string.regattalink_factory_reset)) },
+                text = { Text(stringResource(R.string.regattalink_factory_reset_warning)) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        resetDialogOpen = false
+                        onDeviceControl(RegattaLinkDeviceControlOpcode.FACTORY_RESET, 0)
+                    }) { Text(stringResource(R.string.regattalink_factory_reset)) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { resetDialogOpen = false }) {
                         Text(stringResource(R.string.regattalink_cancel))
                     }
                 }
@@ -441,15 +463,6 @@ fun RegattaLinkScreen(
                                 stringResource(R.string.regattalink_learning)
                             }
                         )
-                        if (calibration.learnerState != 0) {
-                            telemetryValue(
-                                label = stringResource(
-                                    R.string.regattalink_learner_state
-                                ),
-                                value = learnerStateText(calibration.learnerState)
-                            )
-                        }
-
                         if (technicalDetailsExpanded) {
                             telemetryValue(
                                 label = stringResource(
@@ -559,6 +572,62 @@ fun RegattaLinkScreen(
                         modifier = Modifier.padding(top = 6.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+                if (connected && configurationState.deviceControlSupported) {
+                    val controlEnabled = configEnabled &&
+                        !configurationState.deviceControlBusy &&
+                        !configurationState.diagnosticLogLoading &&
+                        !nmeaState.rawCanReading
+                    Text(
+                        stringResource(R.string.regattalink_device_control),
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
+                    Button(
+                        onClick = { onDeviceControl(RegattaLinkDeviceControlOpcode.SET_UPRIGHT, 0) },
+                        enabled = controlEnabled
+                    ) { Text(stringResource(R.string.regattalink_set_upright)) }
+                    listOf(
+                        RegattaLinkDeviceControlOpcode.ADJUST_FORWARD to R.string.regattalink_forward_trim,
+                        RegattaLinkDeviceControlOpcode.ADJUST_HEEL to R.string.regattalink_heel,
+                        RegattaLinkDeviceControlOpcode.ADJUST_PITCH to R.string.regattalink_pitch
+                    ).forEach { (opcode, label) ->
+                        Text(stringResource(label))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = { onDeviceControl(opcode, -1) }, enabled = controlEnabled) {
+                                Text("−1°")
+                            }
+                            Button(onClick = { onDeviceControl(opcode, 1) }, enabled = controlEnabled) {
+                                Text("+1°")
+                            }
+                        }
+                    }
+                    configurationState.deviceControlStatus?.let { status ->
+                        Text("${status.phase} · ${status.result}")
+                        Text("${status.forwardTrimDeg}° / ${status.heelTrimDeg}° / ${status.pitchTrimDeg}°")
+                    }
+                    if (configurationState.deviceControlError.isNotBlank()) {
+                        Text(configurationState.deviceControlError, color = MaterialTheme.colorScheme.error)
+                    }
+                    TextButton(onClick = { resetDialogOpen = true }, enabled = controlEnabled) {
+                        Text(stringResource(R.string.regattalink_factory_reset))
+                    }
+                }
+                if (connected && configurationState.diagnosticLogSupported) {
+                    Button(
+                        onClick = onDrainDiagnosticLog,
+                        enabled = configEnabled && !configurationState.diagnosticLogLoading &&
+                            !configurationState.deviceControlBusy && !nmeaState.rawCanReading
+                    ) { Text(stringResource(R.string.regattalink_read_diagnostic_log)) }
+                    if (configurationState.diagnosticLogLoading) {
+                        Text(stringResource(R.string.regattalink_loading_diagnostic_log))
+                    }
+                    configurationState.diagnosticLogEntries.forEach { entry ->
+                        Text("${entry.timestamp10ms * 10} ms  ${entry.message}")
+                    }
+                    if (configurationState.diagnosticLogError.isNotBlank()) {
+                        Text(configurationState.diagnosticLogError, color = MaterialTheme.colorScheme.error)
+                    }
                 }
                 if (configurationState.error.isNotBlank()) {
                     Text(

@@ -94,6 +94,24 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun factoryResetClearsAssociationAndSuppressesLegacyBondReconnect() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+        assertTrue(manager.executeDeviceControl(RegattaLinkDeviceControlOpcode.FACTORY_RESET, 0))
+        fakeClient.emitConnection(RegattaLinkClientState())
+
+        assertEquals(null, RegattaLinkConfiguredDeviceStore(context).load())
+        assertFalse(manager.reconnectConfigured())
+    }
+
+    @Test
     fun activeOtaSuppressesGenericDiscoveryAndReconnect() {
         fakeClient.emitOta(
             RegattaLinkOtaUiState(

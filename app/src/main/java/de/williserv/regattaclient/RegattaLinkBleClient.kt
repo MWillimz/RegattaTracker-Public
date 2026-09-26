@@ -191,6 +191,7 @@ internal class RegattaLinkBleClient(
     @Volatile private var deviceInfoReadInProgress = false
     @Volatile private var connectionSetupComplete = false
     @Volatile private var establishedConnection = false
+    @Volatile private var factoryResetExpected = false
     private var serviceRediscoveryGatt: BluetoothGatt? = null
     private var reconnectFuture: CompletableFuture<RegattaLinkDeviceInfo?>? = null
     private var selectedDeviceAddress: String? = null
@@ -442,6 +443,21 @@ internal class RegattaLinkBleClient(
             }
 
             if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                if (factoryResetExpected) {
+                    factoryResetExpected = false
+                    connected = false
+                    establishedConnection = false
+                    failPendingGattOperation(
+                        RegattaLinkOtaTransportException("Factory reset disconnected RegattaLink")
+                    )
+                    callbackGatt.close()
+                    if (gatt === callbackGatt) gatt = null
+                    clearTelemetry()
+                    clearNmea()
+                    clearConfiguration()
+                    emit(RegattaLinkClientState())
+                    return
+                }
                 val wasReadyConnection = establishedConnection
                 connected = false
                 establishedConnection = false
@@ -855,6 +871,7 @@ internal class RegattaLinkBleClient(
     }
 
     override fun disconnect() {
+        factoryResetExpected = false
         stopRawCanCapture(RegattaLinkRawCaptureStopReason.INTERRUPTED)
         if (otaRunning.get()) {
             cancelOta()
@@ -2052,7 +2069,6 @@ internal class RegattaLinkBleClient(
         value: Int
     ): Boolean {
         if (
-            opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET ||
             !lastConfigurationState.deviceControlSupported ||
             otaRunning.get() ||
             rawCaptureRunning.get() ||
@@ -2068,6 +2084,10 @@ internal class RegattaLinkBleClient(
             return false
         }
 
+        if (opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET) {
+            factoryResetExpected = true
+        }
+
         otaExecutor.execute {
             if (!optionalFeatureWorkAllowed(activeGatt)) {
                 deviceControlRunning.set(false)
@@ -2078,6 +2098,7 @@ internal class RegattaLinkBleClient(
             updateConfiguration {
                 it.copy(
                     deviceControlBusy = true,
+                    deviceControlStatus = null,
                     deviceControlError = ""
                 )
             }
@@ -2182,6 +2203,12 @@ internal class RegattaLinkBleClient(
                     error.message ?: "RegattaLink Device Control failed"
             } finally {
                 deviceControlRunning.set(false)
+            }
+
+            if (opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
+                errorMessage.isNotBlank() && connected && gatt === activeGatt
+            ) {
+                factoryResetExpected = false
             }
 
             if (gatt === activeGatt && connected) {
