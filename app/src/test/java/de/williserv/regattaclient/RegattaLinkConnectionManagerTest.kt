@@ -270,13 +270,52 @@ class RegattaLinkConnectionManagerTest {
 
         assertFalse(manager.setDeviceName("Race-Link"))
         assertFalse(manager.setLedBrightness(75))
+        assertFalse(manager.drainDiagnosticLog())
+        assertFalse(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.SET_UPRIGHT,
+                0
+            )
+        )
         assertFalse(manager.refreshPgnInventory())
         assertFalse(manager.readRawCanFrames())
 
         assertEquals(0, fakeClient.setNameCalls)
         assertEquals(0, fakeClient.setBrightnessCalls)
+        assertEquals(0, fakeClient.diagnosticDrainCalls)
+        assertEquals(0, fakeClient.deviceControlCalls)
         assertEquals(0, fakeClient.refreshPgnCalls)
         assertEquals(0, fakeClient.rawReadCalls)
+    }
+
+    @Test
+    fun idleManagerDelegatesDiagnosticAndNonDestructiveDeviceControl() {
+        assertTrue(manager.drainDiagnosticLog())
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.SET_UPRIGHT,
+                0
+            )
+        )
+
+        assertEquals(1, fakeClient.diagnosticDrainCalls)
+        assertEquals(1, fakeClient.deviceControlCalls)
+        assertEquals(
+            RegattaLinkDeviceControlOpcode.SET_UPRIGHT,
+            fakeClient.lastDeviceControlOpcode
+        )
+        assertEquals(0, fakeClient.lastDeviceControlValue)
+    }
+
+    @Test
+    fun firstHalfDoesNotExposeFactoryResetBeforeDisconnectLifecycleExists() {
+        assertFalse(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+        assertEquals(0, fakeClient.deviceControlCalls)
     }
 
     @Test
@@ -349,6 +388,13 @@ class RegattaLinkConnectionManagerTest {
         assertTrue(manager.startRawCanCapture())
         assertFalse(manager.setDeviceName("Race-Link"))
         assertFalse(manager.setLedBrightness(75))
+        assertFalse(manager.drainDiagnosticLog())
+        assertFalse(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
+                1
+            )
+        )
         assertFalse(manager.refreshPgnInventory())
         assertFalse(manager.readRawCanFrames())
 
@@ -414,6 +460,8 @@ class RegattaLinkConnectionManagerTest {
         var disconnectCalls = 0
         var setNameCalls = 0
         var setBrightnessCalls = 0
+        var diagnosticDrainCalls = 0
+        var deviceControlCalls = 0
         var refreshPgnCalls = 0
         var rawReadCalls = 0
         var captureStartCalls = 0
@@ -422,6 +470,8 @@ class RegattaLinkConnectionManagerTest {
         var captureFinished:
             ((RegattaLinkRawCaptureEndReason, String) -> Unit)? = null
         var lastCaptureStopReason: RegattaLinkRawCaptureStopReason? = null
+        var lastDeviceControlOpcode: RegattaLinkDeviceControlOpcode? = null
+        var lastDeviceControlValue: Int? = null
         var lastReconnectAddress: String? = null
         var lastReconnectStableId: String? = null
 
@@ -458,6 +508,21 @@ class RegattaLinkConnectionManagerTest {
 
         override fun setLedBrightness(percent: Int): Boolean {
             setBrightnessCalls += 1
+            return true
+        }
+
+        override fun drainDiagnosticLog(): Boolean {
+            diagnosticDrainCalls += 1
+            return true
+        }
+
+        override fun executeDeviceControl(
+            opcode: RegattaLinkDeviceControlOpcode,
+            value: Int
+        ): Boolean {
+            deviceControlCalls += 1
+            lastDeviceControlOpcode = opcode
+            lastDeviceControlValue = value
             return true
         }
 
