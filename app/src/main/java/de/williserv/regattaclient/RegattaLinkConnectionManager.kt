@@ -652,13 +652,16 @@ internal class RegattaLinkConnectionManager(
     private fun handleConfigurationState(state: RegattaLinkConfigurationState) {
         configurationState = state
 
+        val controlStatus = state.deviceControlStatus
+        val resetContinuesToBondReset =
+            controlStatus?.let(::regattaLinkFactoryResetContinuesToBondReset) == true
         if (factoryResetPending && !state.deviceControlBusy &&
             state.deviceControlError.isNotBlank() &&
-            connectionState.status == RegattaLinkConnectionStatus.CONNECTED
+            connectionState.status == RegattaLinkConnectionStatus.CONNECTED &&
+            !resetContinuesToBondReset
         ) {
             factoryResetPending = false
         }
-        val controlStatus = state.deviceControlStatus
         if (factoryResetPending &&
             controlStatus?.opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
             controlStatus.phase == RegattaLinkDeviceControlPhase.SUCCESS
