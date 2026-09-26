@@ -62,6 +62,14 @@ class RegattaLinkDiscoveryPolicyTest {
     }
 
     @Test
+    fun staleBondDiagnosisRequiresSecuritySpecificGattFailure() {
+        assertTrue(isRegattaLinkStaleBondSecurityGattStatus(0x05))
+        assertTrue(isRegattaLinkStaleBondSecurityGattStatus(0x0f))
+        assertFalse(isRegattaLinkStaleBondSecurityGattStatus(8))
+        assertFalse(isRegattaLinkStaleBondSecurityGattStatus(133))
+    }
+
+    @Test
     fun exhaustedDiscoveryExplainsStaleAndroidBondWhenObserved() {
         assertEquals(
             "No available RegattaLink found",
