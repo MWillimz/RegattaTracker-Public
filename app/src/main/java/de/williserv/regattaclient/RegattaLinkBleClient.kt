@@ -2348,8 +2348,9 @@ internal class RegattaLinkBleClient(
                     connected
                 ) {
                     factoryResetFinalizationTimedOut = true
+                    runCatching { activeGatt.disconnect() }
                     throw RegattaLinkOtaTransportException(
-                        "Factory reset finalization timed out before bond-wipe completion was confirmed",
+                        "Factory reset finalization timed out before bond-wipe completion was confirmed; disconnecting without assuming bond-wipe success",
                         ambiguous = true
                     )
                 }
@@ -2377,13 +2378,8 @@ internal class RegattaLinkBleClient(
 
             if (
                 opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
-                (
-                    factoryResetFinalizationTimedOut ||
-                        (
-                            finalStatus?.phase?.isTerminal == true &&
-                                !regattaLinkFactoryResetContinuesToBondReset(finalStatus)
-                        )
-                    )
+                finalStatus?.phase?.isTerminal == true &&
+                !regattaLinkFactoryResetContinuesToBondReset(finalStatus)
             ) {
                 factoryResetDisconnectTracker.clear(
                     session = activeGatt,
@@ -2402,8 +2398,7 @@ internal class RegattaLinkBleClient(
                             opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
                                 finalStatus?.let(
                                     ::regattaLinkFactoryResetContinuesToBondReset
-                                ) == true &&
-                                !factoryResetFinalizationTimedOut,
+                                ) == true,
                         deviceControlStatus = finalStatus ?: it.deviceControlStatus,
                         deviceControlError = errorMessage
                     )
