@@ -363,7 +363,7 @@ Every successful read returns exactly 20 bytes:
 | 10 | 2 | i16 | Heel/Roll trim, degrees |
 | 12 | 2 | i16 | Pitch trim, degrees |
 | 14 | 1 | u8 | flags |
-| 15 | 1 | u8 | reserved = 0 |
+| 15 | 1 | u8 | Device Control rejection detail: `RL_*` code, `0` otherwise |
 | 16 | 4 | u32 | mounting_epoch |
 
 States:
@@ -383,8 +383,8 @@ Results:
 | ---: | --- |
 | 0 | NONE |
 | 1 | OK |
-| 2 | BUSY, reserved for status; synchronous BUSY writes do not replace prior status |
-| 3 | INVALID, reserved for status; invalid writes do not replace prior status |
+| 2 | BUSY, immediate well-formed request rejection; byte 15 carries the `RL_*` detail |
+| 3 | INVALID, immediate well-formed request rejection; byte 15 carries the `RL_*` detail |
 | 4 | MOTION_REJECT |
 | 5 | ORIENTATION_REJECT |
 | 6 | PERSIST_ERROR |
@@ -399,10 +399,17 @@ Flags:
 - bit 1: Gyro Bias valid;
 - bit 2: Factory Reset firmware bonds have been successfully cleared.
 
-A terminal status remains readable until the next accepted request.
-Synchronous ATT/application rejection uses `0x80 + RL_*`; RegattaTracker preserves
-that callback status and presents documented BUSY/BAD_STATE/BAD_REQUEST-style
-rejections as non-ambiguous protocol errors instead of generic transport failure.
+A terminal or immediate-rejection status remains readable until the next accepted
+request. For a well-formed request that firmware can identify by non-zero request_id,
+application admission failure is returned through 0008 itself: state ERROR, result
+BUSY or INVALID, the rejected request_id, and the exact `RL_*` code in byte 15.
+RegattaTracker uses that request-id-bound status for semantic BUSY/BAD_STATE/
+BAD_REQUEST presentation.
+
+Android GATT callback status numbers in the 0x80 range are not treated as RegattaLink
+application codes because Android's own local GATT status namespace overlaps those
+values (for example 0x85/133). Non-success write callbacks remain transport
+information unless a matching 0008 rejection status is observed.
 
 Accepted sample-driven commands have a firmware-side 10-second monotonic deadline.
 A stalled/no-sample Upright terminates as TIMEOUT and releases Device Control
