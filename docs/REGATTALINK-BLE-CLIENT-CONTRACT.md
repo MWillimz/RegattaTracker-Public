@@ -396,9 +396,13 @@ Results:
 Flags:
 
 - bit 0: Boat Frame valid;
-- bit 1: Gyro Bias valid.
+- bit 1: Gyro Bias valid;
+- bit 2: Factory Reset firmware bonds have been successfully cleared.
 
 A terminal status remains readable until the next accepted request.
+Synchronous ATT/application rejection uses `0x80 + RL_*`; RegattaTracker preserves
+that callback status and presents documented BUSY/BAD_STATE/BAD_REQUEST-style
+rejections as non-ambiguous protocol errors instead of generic transport failure.
 
 Accepted sample-driven commands have a firmware-side 10-second monotonic deadline.
 A stalled/no-sample Upright terminates as TIMEOUT and releases Device Control
@@ -437,17 +441,33 @@ For a reset that proceeds to bond deletion, the ordering is:
 3. if the client disconnects during that grace, skip the remaining delay;
 4. delete all firmware-side bonds, with the initiating peer deleted last;
 5. reopen the five-minute pairing window under the default RegattaLink name;
-6. intentionally terminate the initiating link if it is still connected.
+6. set 0008 status flag bit 2 to confirm firmware-side bond deletion;
+7. intentionally terminate the initiating link if it is still connected.
 
 There is no encrypted-but-unbonded read exception. The terminal grace happens while
 the initiating bond still exists.
 
 RegattaTracker must treat the resulting disconnect as the expected Factory Reset
-lifecycle, not as an ordinary outage and not as an OTA reconnect. Android may retain
+lifecycle, not as an ordinary outage and not as an OTA reconnect. If bit 2 becomes
+visible while the link remains connected, RegattaTracker may close its local GATT
+connection because firmware-side bond deletion is already proven complete. The
+configured-device association must be discarded at that point even if firmware's
+own terminate request failed.
+
+RegattaTracker must not infer bond-wipe success from a fixed elapsed-time threshold.
+The local 10-second finalization watchdog exists only to detect a stuck firmware
+implementation; a watchdog expiry with bit 2 still clear preserves the configured
+association and is reported as an ambiguous finalization failure.
+
+Android may retain
 a stale OS-side bond after the peripheral deletes its bond. The production client
 must use the normal Android pairing/security lifecycle and, on bounded stale-bond
 failure, instruct the user to remove RegattaLink from Android Bluetooth settings and
-retry. Reflection-based removeBond() is not a required production mechanism.
+retry. The stale-bond diagnosis is only asserted after an authentication/encryption
+specific GATT failure from a candidate that Android already reported as bonded;
+ordinary RF timeout, disconnect, service-discovery or parsing failures do not trigger
+destructive unpair guidance. Reflection-based removeBond() is not a required
+production mechanism.
 
 FACTORY_RESET is rejected before destructive mutation while firmware boot validation
 is PENDING_VERIFY/ROLLBACK or while OTA owns the device.
