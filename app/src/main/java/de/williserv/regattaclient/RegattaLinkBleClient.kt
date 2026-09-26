@@ -2163,7 +2163,6 @@ internal class RegattaLinkBleClient(
             var finalStatus: RegattaLinkDeviceControlStatus? = null
             var errorMessage = ""
             var factoryResetFinalizationDeadline: Long? = null
-            var factoryResetFinalizationTimedOut = false
             try {
                 val characteristic = activeGatt
                     .getService(CONFIG_SERVICE_UUID)
@@ -2347,7 +2346,6 @@ internal class RegattaLinkBleClient(
                     gatt === activeGatt &&
                     connected
                 ) {
-                    factoryResetFinalizationTimedOut = true
                     runCatching { activeGatt.disconnect() }
                     throw RegattaLinkOtaTransportException(
                         "Factory reset finalization timed out before bond-wipe completion was confirmed; disconnecting without assuming bond-wipe success",
