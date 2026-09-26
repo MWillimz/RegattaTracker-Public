@@ -243,12 +243,7 @@ internal class RegattaLinkBleClient(
             retryKnownDeviceReconnect("Configured RegattaLink connection timed out")
         } else if (device != null) {
             if (discoveryInProgress) {
-                retryDiscoveryAfterCandidateFailure(
-                    staleBondSecurityFailure =
-                        gattStatus?.let(
-                            ::isRegattaLinkStaleBondSecurityGattStatus
-                        ) == true
-                )
+                retryDiscoveryAfterCandidateFailure()
             } else {
                 emitError(device, "RegattaLink connection timed out")
                 if (
@@ -3467,7 +3462,12 @@ internal class RegattaLinkBleClient(
             retryKnownDeviceReconnect(message)
         } else if (!otaRunning.get()) {
             if (discoveryInProgress) {
-                retryDiscoveryAfterCandidateFailure()
+                retryDiscoveryAfterCandidateFailure(
+                    staleBondSecurityFailure =
+                        gattStatus?.let(
+                            ::isRegattaLinkStaleBondSecurityGattStatus
+                        ) == true
+                )
             } else {
                 emitError(callbackGatt.device, message)
                 if (
