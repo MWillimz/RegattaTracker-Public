@@ -742,6 +742,15 @@ internal class RegattaLinkBleClient(
         if (rawCaptureRunning.get()) {
             stopRawCanCapture(RegattaLinkRawCaptureStopReason.INTERRUPTED)
         }
+        if (diagnosticLogRunning.get() || deviceControlRunning.get()) {
+            emitOta(
+                RegattaLinkOtaUiState(
+                    phase = RegattaLinkOtaPhase.ERROR,
+                    error = "Wait for RegattaLink configuration work to finish before OTA"
+                )
+            )
+            return
+        }
         if (!otaRunning.compareAndSet(false, true)) return
 
         val info = lastState.deviceInfo
@@ -882,6 +891,8 @@ internal class RegattaLinkBleClient(
         clearTelemetry()
         clearConfiguration()
         clearNmea()
+        diagnosticLogRunning.set(false)
+        deviceControlRunning.set(false)
         currentDevice = null
         discoveryInProgress = false
         discoveryCandidateInProgress = false
