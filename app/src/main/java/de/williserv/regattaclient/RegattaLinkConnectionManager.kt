@@ -70,13 +70,13 @@ internal class RegattaLinkConfiguredDeviceStore(context: Context) {
     fun markResetRecoveryPending() {
         prefs.edit()
             .putBoolean(KEY_RESET_PENDING_PAIRING, true)
-            .apply()
+            .commit()
     }
 
     fun clearResetRecoveryPending() {
         prefs.edit()
             .putBoolean(KEY_RESET_PENDING_PAIRING, false)
-            .apply()
+            .commit()
     }
 
     fun clear() {
