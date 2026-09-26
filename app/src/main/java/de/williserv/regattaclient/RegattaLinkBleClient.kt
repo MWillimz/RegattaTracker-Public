@@ -2235,7 +2235,7 @@ internal class RegattaLinkBleClient(
                                 factoryResetAwaitingDisconnect = true,
                                 deviceControlStatus = status,
                                 deviceControlError =
-                                    regattaLinkDeviceControlFailureText(status.result)
+                                    regattaLinkDeviceControlFailureText(status)
                             )
                         }
                         runCatching { activeGatt.disconnect() }
@@ -2304,7 +2304,7 @@ internal class RegattaLinkBleClient(
                                         factoryResetAwaitingDisconnect = true,
                                         deviceControlStatus = status,
                                         deviceControlError =
-                                            regattaLinkDeviceControlFailureText(status.result)
+                                            regattaLinkDeviceControlFailureText(status)
                                     )
                                 }
                             } else {
@@ -2317,7 +2317,7 @@ internal class RegattaLinkBleClient(
                                     )
                                 }
                                 throw RegattaLinkOtaTransportException(
-                                    regattaLinkDeviceControlFailureText(status.result)
+                                    regattaLinkDeviceControlFailureText(status)
                                         .ifBlank {
                                             "RegattaLink Device Control failed"
                                         },
@@ -3215,13 +3215,10 @@ internal class RegattaLinkBleClient(
         if (status == BluetoothGatt.GATT_SUCCESS) {
             pending.future.complete(Unit)
         } else {
-            val applicationFailure =
-                regattaLinkGattApplicationFailureText(status)
             pending.future.completeExceptionally(
                 RegattaLinkOtaTransportException(
-                    message = applicationFailure
-                        ?: "GATT write $uuid failed ($status)",
-                    ambiguous = applicationFailure == null,
+                    message = "GATT write $uuid failed ($status)",
+                    ambiguous = true,
                     gattStatus = status
                 )
             )
