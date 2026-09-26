@@ -297,6 +297,14 @@ internal fun parseRegattaLinkDeviceControlStatus(
     require(flags and 0xf8 == 0) {
         "Unsupported RegattaLink Device Control flags"
     }
+    if (flags and 0x04 != 0) {
+        require(
+            opcodeValue == RegattaLinkDeviceControlOpcode.FACTORY_RESET.wireValue &&
+                phase.isTerminal
+        ) {
+            "Factory Reset bonds-cleared flag requires terminal Factory Reset status"
+        }
+    }
     val applicationErrorCode =
         (raw[15].toInt() and 0xff).takeIf { it != 0 }
     if (applicationErrorCode != null) {
