@@ -56,6 +56,7 @@ class RegattaLinkConnectionManagerTest {
                     onTelemetryStateChanged,
                     onConfigurationStateChanged,
                     onNmeaStateChanged,
+                    onFactoryResetRecoveryStateChanged,
                     onUnexpectedDisconnect ->
                 FakeConnectionClient(
                     onStateChanged = onStateChanged,
@@ -63,6 +64,8 @@ class RegattaLinkConnectionManagerTest {
                     onTelemetryStateChanged = onTelemetryStateChanged,
                     onConfigurationStateChanged = onConfigurationStateChanged,
                     onNmeaStateChanged = onNmeaStateChanged,
+                    onFactoryResetRecoveryStateChanged =
+                        onFactoryResetRecoveryStateChanged,
                     onUnexpectedDisconnect = onUnexpectedDisconnect
                 ).also { fakeClient = it }
             },
@@ -1153,6 +1156,7 @@ class RegattaLinkConnectionManagerTest {
         private val onConfigurationStateChanged: (RegattaLinkConfigurationState) -> Unit,
         @Suppress("UNUSED_PARAMETER")
         private val onNmeaStateChanged: (RegattaLinkNmeaState) -> Unit,
+        private val onFactoryResetRecoveryStateChanged: (Boolean) -> Unit,
         private val onUnexpectedDisconnect: () -> Unit
     ) : RegattaLinkConnectionClient {
         var discoveryAccepted = true
@@ -1282,6 +1286,10 @@ class RegattaLinkConnectionManagerTest {
 
         fun emitNmea(state: RegattaLinkNmeaState) {
             onNmeaStateChanged(state)
+        }
+
+        fun emitFactoryResetRecovery(pending: Boolean) {
+            onFactoryResetRecoveryStateChanged(pending)
         }
 
         fun emitUnexpectedDisconnect() {
