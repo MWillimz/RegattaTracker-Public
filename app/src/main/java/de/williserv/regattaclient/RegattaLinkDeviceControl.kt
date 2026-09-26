@@ -2,6 +2,7 @@ package de.williserv.regattaclient
 
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.atomic.AtomicReference
 
 internal const val REGATTALINK_DIAGNOSTIC_LOG_RECORD_SIZE = 22
 internal const val REGATTALINK_DIAGNOSTIC_LOG_MAX_READS = 20
@@ -10,6 +11,7 @@ internal const val REGATTALINK_DEVICE_CONTROL_STATUS_SIZE = 20
 internal const val REGATTALINK_DEVICE_CONTROL_VERSION = 1
 internal const val REGATTALINK_DEVICE_CONTROL_POLL_MS = 100L
 internal const val REGATTALINK_DEVICE_CONTROL_CLIENT_TIMEOUT_MS = 12_000L
+internal const val REGATTALINK_FACTORY_RESET_DISCONNECT_GRACE_MS = 3_000L
 
 data class RegattaLinkDiagnosticLogEntry(
     val timestamp10ms: Int,
@@ -77,6 +79,73 @@ data class RegattaLinkDeviceControlStatus(
     val gyroBiasValid: Boolean,
     val mountingEpoch: UInt
 )
+
+internal fun regattaLinkFactoryResetContinuesToBondReset(
+    status: RegattaLinkDeviceControlStatus
+): Boolean =
+    status.opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
+        status.phase.isTerminal &&
+        when (status.result) {
+            RegattaLinkDeviceControlResult.OK,
+            RegattaLinkDeviceControlResult.MOTION_REJECT,
+            RegattaLinkDeviceControlResult.ORIENTATION_REJECT -> true
+            else -> false
+        }
+
+internal class RegattaLinkFactoryResetDisconnectTracker<T : Any>(
+    private val nowElapsedMs: () -> Long,
+    private val expectedDisconnectTimeoutMs: Long
+) {
+    private data class Expected<T : Any>(
+        val session: T,
+        val requestId: UInt,
+        val deadlineElapsedMs: Long
+    )
+
+    private val expected = AtomicReference<Expected<T>?>(null)
+
+    fun markAccepted(session: T, requestId: UInt) {
+        require(requestId != 0u)
+        expected.set(
+            Expected(
+                session = session,
+                requestId = requestId,
+                deadlineElapsedMs = nowElapsedMs() + expectedDisconnectTimeoutMs
+            )
+        )
+    }
+
+    fun clear(session: T, requestId: UInt) {
+        while (true) {
+            val current = expected.get() ?: return
+            if (current.session !== session || current.requestId != requestId) return
+            if (expected.compareAndSet(current, null)) return
+        }
+    }
+
+    fun clearAll() {
+        expected.set(null)
+    }
+
+    fun consumeDisconnect(session: T): Boolean {
+        while (true) {
+            val current = expected.get() ?: return false
+            if (current.session !== session) return false
+            if (nowElapsedMs() > current.deadlineElapsedMs) {
+                if (expected.compareAndSet(current, null)) return false
+                continue
+            }
+            if (expected.compareAndSet(current, null)) return true
+        }
+    }
+
+    internal fun isExpected(session: T, requestId: UInt): Boolean {
+        val current = expected.get() ?: return false
+        return current.session === session &&
+            current.requestId == requestId &&
+            nowElapsedMs() <= current.deadlineElapsedMs
+    }
+}
 
 internal enum class RegattaLinkDeviceControlPollDecision {
     IGNORE_OTHER_REQUEST,
