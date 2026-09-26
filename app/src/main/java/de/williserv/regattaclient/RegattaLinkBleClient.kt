@@ -1979,6 +1979,7 @@ internal class RegattaLinkBleClient(
 
     override fun drainDiagnosticLog(): Boolean {
         if (
+            !lastConfigurationState.diagnosticLogSupported ||
             otaRunning.get() ||
             rawCaptureRunning.get() ||
             !isConnected() ||
@@ -2051,6 +2052,7 @@ internal class RegattaLinkBleClient(
     ): Boolean {
         if (
             opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET ||
+            !lastConfigurationState.deviceControlSupported ||
             otaRunning.get() ||
             rawCaptureRunning.get() ||
             !isConnected() ||
