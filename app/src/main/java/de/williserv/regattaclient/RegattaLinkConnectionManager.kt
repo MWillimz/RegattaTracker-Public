@@ -326,7 +326,8 @@ internal class RegattaLinkConnectionManager(
             factoryResetPending ||
             configurationState.factoryResetAwaitingDisconnect ||
             configurationState.deviceControlBusy ||
-            configurationState.diagnosticLogLoading
+            configurationState.diagnosticLogLoading ||
+            configurationState.busy
         ) {
             return
         }
