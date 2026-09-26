@@ -60,6 +60,7 @@ internal class RegattaLinkBleClient(
     private val onTelemetryStateChanged: (RegattaLinkTelemetryState) -> Unit = {},
     private val onConfigurationStateChanged: (RegattaLinkConfigurationState) -> Unit = {},
     private val onNmeaStateChanged: (RegattaLinkNmeaState) -> Unit = {},
+    private val onFactoryResetRecoveryStateChanged: (Boolean) -> Unit = {},
     private val onUnexpectedDisconnect: () -> Unit = {}
 ) : RegattaLinkOtaTransport, RegattaLinkConnectionClient {
     companion object {
@@ -2199,6 +2200,7 @@ internal class RegattaLinkBleClient(
             var finalStatus: RegattaLinkDeviceControlStatus? = null
             var errorMessage = ""
             var factoryResetFinalizationDeadline: Long? = null
+            var factoryResetWriteAccepted = false
             try {
                 val characteristic = activeGatt
                     .getService(CONFIG_SERVICE_UUID)
@@ -2225,10 +2227,12 @@ internal class RegattaLinkBleClient(
                      * disconnect from racing into ordinary outage reconnect
                      * until 0008 makes acceptance/rejection authoritative.
                      */
+                    factoryResetWriteAccepted = true
                     factoryResetDisconnectTracker.markAccepted(
                         session = activeGatt,
                         requestId = requestId
                     )
+                    onFactoryResetRecoveryStateChanged(true)
                     updateConfiguration {
                         it.copy(
                             factoryResetWriteAcceptedRequestId = requestId
@@ -2289,6 +2293,7 @@ internal class RegattaLinkBleClient(
                             session = activeGatt,
                             requestId = requestId
                         )
+                        onFactoryResetRecoveryStateChanged(false)
                         updateConfiguration {
                             it.copy(
                                 factoryResetWriteAcceptedRequestId = null
@@ -2423,6 +2428,16 @@ internal class RegattaLinkBleClient(
                     )
                 }
             } catch (error: Exception) {
+                if (
+                    opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
+                    factoryResetWriteAccepted &&
+                    finalStatus == null &&
+                    gatt === activeGatt &&
+                    connected
+                ) {
+                    requestFactoryResetLocalDisconnect(activeGatt)
+                }
+
                 val expectedFactoryResetDisconnect =
                     opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
                         finalStatus?.let(::regattaLinkFactoryResetContinuesToBondReset) == true &&
@@ -2446,6 +2461,9 @@ internal class RegattaLinkBleClient(
                     session = activeGatt,
                     requestId = requestId
                 )
+                if (factoryResetWriteAccepted) {
+                    onFactoryResetRecoveryStateChanged(false)
+                }
             }
 
             if (gatt === activeGatt && connected) {
@@ -2458,9 +2476,13 @@ internal class RegattaLinkBleClient(
                         factoryResetWriteAcceptedRequestId =
                             if (
                                 opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
-                                finalStatus?.let(
-                                    ::regattaLinkFactoryResetContinuesToBondReset
-                                ) == true
+                                factoryResetWriteAccepted &&
+                                (
+                                    finalStatus == null ||
+                                        finalStatus?.let(
+                                            ::regattaLinkFactoryResetContinuesToBondReset
+                                        ) == true
+                                    )
                             ) {
                                 requestId
                             } else {
@@ -2468,9 +2490,13 @@ internal class RegattaLinkBleClient(
                             },
                         factoryResetAwaitingDisconnect =
                             opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
-                                finalStatus?.let(
-                                    ::regattaLinkFactoryResetContinuesToBondReset
-                                ) == true,
+                                factoryResetWriteAccepted &&
+                                (
+                                    finalStatus == null ||
+                                        finalStatus?.let(
+                                            ::regattaLinkFactoryResetContinuesToBondReset
+                                        ) == true
+                                    ),
                         deviceControlStatus = finalStatus ?: it.deviceControlStatus,
                         deviceControlError = errorMessage
                     )
