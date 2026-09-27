@@ -80,6 +80,35 @@ class RegattaLinkGattSchemaTest {
     }
 
     @Test
+    fun reconciledLegacyFirmwareDoesNotBlockFreshOtaReconnect() {
+        val decision = regattaLinkGattSchemaDecision(
+            reportedVersion = 0,
+            acceptedVersion = 0,
+            connectionStartedBonded = true,
+            serviceChangedObserved = false,
+            serviceChangedRediscoveryCompleted = false
+        )
+
+        assertFalse(decision.waitForRediscovery)
+        assertFalse(decision.requestServiceChanged)
+        assertFalse(decision.acceptReportedVersion)
+    }
+
+    @Test
+    fun legacyRediscoveryIsAcceptedForLaterReconnects() {
+        val decision = regattaLinkGattSchemaDecision(
+            reportedVersion = 0,
+            acceptedVersion = null,
+            connectionStartedBonded = true,
+            serviceChangedObserved = true,
+            serviceChangedRediscoveryCompleted = true
+        )
+
+        assertFalse(decision.waitForRediscovery)
+        assertTrue(decision.acceptReportedVersion)
+    }
+
+    @Test
     fun legacyBondedFirmwareWaitsForItsMigrationServiceChanged() {
         val decision = regattaLinkGattSchemaDecision(
             reportedVersion = 0,
