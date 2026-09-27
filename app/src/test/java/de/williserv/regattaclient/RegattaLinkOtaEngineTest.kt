@@ -11,6 +11,26 @@ import java.util.ArrayDeque
 class RegattaLinkOtaEngineTest {
 
     @Test
+    fun missingPostBootCandidateGetsUsefulInitialObservation() {
+        assertEquals(
+            "no matching RegattaLink completed reconnect",
+            regattaLinkPostBootObservationAfterMissingCandidate(
+                "updated RegattaLink not yet rediscovered"
+            )
+        )
+    }
+
+    @Test
+    fun laterEmptyScanDoesNotOverwriteConcretePostBootGattFailure() {
+        assertEquals(
+            "GATT descriptor write failed (3)",
+            regattaLinkPostBootObservationAfterMissingCandidate(
+                "GATT descriptor write failed (3)"
+            )
+        )
+    }
+
+    @Test
     fun stalePreparingNotificationAfterReceivingSnapshot_isIgnored() {
         val image = ByteArray(32) { it.toByte() }
         val artifact = artifact(image, build = 22880000uL)

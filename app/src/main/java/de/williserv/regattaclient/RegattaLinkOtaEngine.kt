@@ -41,6 +41,20 @@ internal interface RegattaLinkOtaTransport {
 
 internal class RegattaLinkOtaCancelledException : Exception()
 
+private const val REGATTALINK_POST_BOOT_INITIAL_OBSERVATION =
+    "updated RegattaLink not yet rediscovered"
+private const val REGATTALINK_POST_BOOT_NO_MATCH_OBSERVATION =
+    "no matching RegattaLink completed reconnect"
+
+internal fun regattaLinkPostBootObservationAfterMissingCandidate(
+    previous: String
+): String =
+    if (previous == REGATTALINK_POST_BOOT_INITIAL_OBSERVATION) {
+        REGATTALINK_POST_BOOT_NO_MATCH_OBSERVATION
+    } else {
+        previous
+    }
+
 internal class RegattaLinkOtaEngine(
     private val artifact: RegattaLinkFirmwareArtifact,
     private val initialDeviceInfo: RegattaLinkDeviceInfo,
@@ -818,7 +832,7 @@ internal class RegattaLinkOtaEngine(
         val targetBuild = artifact.manifest.buildNumber
         val expectedStableId = initialDeviceInfo.stableId
         val deadline = nowMs() + RECONNECT_TIMEOUT_MS
-        var lastObservation = "updated RegattaLink not yet rediscovered"
+        var lastObservation = REGATTALINK_POST_BOOT_INITIAL_OBSERVATION
 
         while (nowMs() < deadline) {
             emitState(
@@ -834,7 +848,10 @@ internal class RegattaLinkOtaEngine(
                 min(POST_BOOT_CANDIDATE_TIMEOUT_MS, remaining)
             )
             if (info == null) {
-                lastObservation = "no matching RegattaLink completed reconnect"
+                lastObservation =
+                    regattaLinkPostBootObservationAfterMissingCandidate(
+                        lastObservation
+                    )
                 continue
             }
 
