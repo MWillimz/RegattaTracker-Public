@@ -380,6 +380,22 @@ class RegattaLinkDeviceControlTest {
     }
 
     @Test
+    fun destructiveGattRecoveryStartsBeforeWaitingForWriteResponse() {
+        val sequence = mutableListOf<String>()
+
+        val result = afterRegattaLinkGattSubmissionAccepted(
+            onSubmitted = { sequence += "submitted" },
+            awaitResponse = {
+                sequence += "await"
+                7
+            }
+        )
+
+        assertEquals(7, result)
+        assertEquals(listOf("submitted", "await"), sequence)
+    }
+
+    @Test
     fun acceptedFactoryResetOwnsManualDisconnectUntilConsumedOrExpired() {
         var now = 2_000L
         val tracker = RegattaLinkFactoryResetDisconnectTracker<Any>(
