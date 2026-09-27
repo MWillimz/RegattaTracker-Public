@@ -16,6 +16,10 @@ internal fun enterRaceLegalStartDecision(
         EnterRaceLegalGateDecision.FETCH_LEGAL
     }
 
+internal fun shouldOpenRaceLegalBeforeFetch(
+    legalTextLoaded: Boolean
+): Boolean = legalTextLoaded
+
 internal fun shouldShowRaceLegalAfterFetch(
     decision: EnterRaceLegalGateDecision,
     pendingEnterRaceAfterLegal: Boolean,
