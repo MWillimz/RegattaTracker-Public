@@ -461,7 +461,10 @@
     <string name="regattalink_pitch">Pitch</string>
     <string name="regattalink_roll_rate">Rollrate</string>
     <string name="regattalink_pitch_rate">Pitchrate</string>
-    <string name="regattalink_yaw_rate">Yaw-Rate</string>
+    <string name="regattalink_yaw_rate">Gierrate</string>
+    <string name="regattalink_encounter_period">Begegnungsperiode</string>
+    <string name="regattalink_pitch_peak_to_peak">Pitch-Bewegung p-p</string>
+    <string name="regattalink_roll_peak_to_peak">Roll-Bewegung p-p</string>
     <string name="regattalink_vertical_accel">Vertikalbeschleunigung</string>
     <string name="regattalink_calibration_title">Sensor-Ausrichtung / Kalibrierung</string>
     <string name="regattalink_confidence_overall">Gesamt-Confidence</string>
@@ -510,6 +513,8 @@
     <string name="regattalink_confidence">Confidence</string>
     <string name="regattalink_settings_title">Einstellungen</string>
     <string name="regattalink_led_brightness">LED-Helligkeit</string>
+    <string name="regattalink_motion_damping">Dämpfung</string>
+    <string name="regattalink_motion_damping_value">%1$d s</string>
     <string name="regattalink_led_brightness_unavailable">LED-Helligkeit wird von dieser Firmware nicht unterstützt.</string>
     <string name="regattalink_saving">Wird gespeichert…</string>
     <string name="regattalink_nmea_title">NMEA2000</string>
