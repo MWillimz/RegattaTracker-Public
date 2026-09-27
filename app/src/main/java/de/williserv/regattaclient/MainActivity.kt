@@ -774,6 +774,12 @@ class MainActivity : ComponentActivity() {
                             onSetLedBrightness = { percent ->
                                 regattaLinkManager.setLedBrightness(percent)
                             },
+                            onDrainDiagnosticLog = {
+                                regattaLinkManager.drainDiagnosticLog()
+                            },
+                            onDeviceControl = { opcode, value ->
+                                regattaLinkManager.executeDeviceControl(opcode, value)
+                            },
                             onRefreshPgnInventory = {
                                 regattaLinkManager.refreshPgnInventory()
                             },

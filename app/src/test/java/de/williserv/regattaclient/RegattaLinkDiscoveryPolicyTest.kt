@@ -62,6 +62,38 @@ class RegattaLinkDiscoveryPolicyTest {
     }
 
     @Test
+    fun staleBondDiagnosisRequiresSecuritySpecificGattFailure() {
+        assertTrue(isRegattaLinkStaleBondSecurityGattStatus(0x05))
+        assertTrue(isRegattaLinkStaleBondSecurityGattStatus(0x0f))
+        assertFalse(isRegattaLinkStaleBondSecurityGattStatus(8))
+        assertFalse(isRegattaLinkStaleBondSecurityGattStatus(133))
+    }
+
+    @Test
+    fun exhaustedDiscoveryExplainsStaleAndroidBondWhenObserved() {
+        assertEquals(
+            "No available RegattaLink found",
+            regattaLinkManualDiscoveryExhaustedMessage(
+                staleBondFailureObserved = false
+            )
+        )
+        assertEquals(
+            REGATTALINK_STALE_ANDROID_BOND_ERROR,
+            regattaLinkManualDiscoveryExhaustedMessage(
+                staleBondFailureObserved = true
+            )
+        )
+        assertTrue(
+            REGATTALINK_STALE_ANDROID_BOND_ERROR.contains(
+                "Android Bluetooth settings"
+            )
+        )
+        assertTrue(
+            REGATTALINK_STALE_ANDROID_BOND_ERROR.contains("Search again")
+        )
+    }
+
+    @Test
     fun tenPromptCandidateRejectionsStillLeaveFullGattAttemptBudget() {
         val startedAt = 1_000_000L
         val deadline = startedAt + REGATTALINK_MANUAL_DISCOVERY_TIMEOUT_MS

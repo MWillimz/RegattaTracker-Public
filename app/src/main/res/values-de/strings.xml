@@ -551,4 +551,18 @@
     <string name="regattalink_raw_capture_stop">Aufzeichnung stoppen</string>
     <string name="regattalink_raw_capture_export">CSV exportieren</string>
     <string name="regattalink_raw_capture_discard">Verwerfen</string>
+    <string name="regattalink_device_control">Kalibrierung</string>
+    <string name="regattalink_set_upright">Aufrechte Lage setzen</string>
+    <string name="regattalink_set_upright_instruction">Boot und RegattaLink während der Kalibrierung ruhig in der gewünschten neutralen Lage halten.</string>
+    <string name="regattalink_forward_trim">Vorwärtsrichtung / Gier</string>
+    <string name="regattalink_one_degree_port">1° Backbord</string>
+    <string name="regattalink_one_degree_starboard">1° Steuerbord</string>
+    <string name="regattalink_one_degree_front">1° Vorne</string>
+    <string name="regattalink_one_degree_back">1° Hinten</string>
+    <string name="regattalink_not_set">Nicht gesetzt</string>
+    <string name="regattalink_not_valid">Ungültig</string>
+    <string name="regattalink_factory_reset">Werkseinstellungen</string>
+    <string name="regattalink_factory_reset_warning">Dabei werden RegattaLink-Name, LED-Helligkeit, Kalibrierung und Bluetooth-Kopplungen zurückgesetzt. Die Verbindung wird getrennt und das Gerät muss neu gekoppelt werden. Falls Android die alte Kopplung weiterhin anzeigt, RegattaLink in den Android-Bluetooth-Einstellungen entfernen und danach erneut suchen.</string>
+    <string name="regattalink_read_diagnostic_log">Diagnoseprotokoll lesen</string>
+    <string name="regattalink_loading_diagnostic_log">Diagnoseprotokoll wird gelesen…</string>
 </resources>

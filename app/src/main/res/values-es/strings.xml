@@ -551,4 +551,18 @@
     <string name="regattalink_raw_capture_stop">Detener captura</string>
     <string name="regattalink_raw_capture_export">Exportar CSV</string>
     <string name="regattalink_raw_capture_discard">Descartar</string>
+    <string name="regattalink_device_control">Calibración</string>
+    <string name="regattalink_set_upright">Establecer posición vertical</string>
+    <string name="regattalink_set_upright_instruction">Mantén el barco y el RegattaLink quietos en la posición neutra deseada durante la calibración.</string>
+    <string name="regattalink_forward_trim">Dirección / guiñada</string>
+    <string name="regattalink_one_degree_port">1° Babor</string>
+    <string name="regattalink_one_degree_starboard">1° Estribor</string>
+    <string name="regattalink_one_degree_front">1° Proa</string>
+    <string name="regattalink_one_degree_back">1° Popa</string>
+    <string name="regattalink_not_set">No establecido</string>
+    <string name="regattalink_not_valid">No válido</string>
+    <string name="regattalink_factory_reset">Restablecer valores de fábrica</string>
+    <string name="regattalink_factory_reset_warning">Esto restablece el nombre del RegattaLink, el brillo de los LED, la calibración y las vinculaciones Bluetooth. La conexión se cerrará y habrá que volver a vincular el dispositivo. Si Android sigue mostrando la vinculación anterior, elimina RegattaLink en los ajustes de Bluetooth de Android y vuelve a buscar.</string>
+    <string name="regattalink_read_diagnostic_log">Leer registro de diagnóstico</string>
+    <string name="regattalink_loading_diagnostic_log">Leyendo registro de diagnóstico…</string>
 </resources>
