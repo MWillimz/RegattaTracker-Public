@@ -70,6 +70,14 @@ internal fun shouldValidateRegattaLinkGattLayout(
         forcedRediscoveryPendingValidation ||
         !schemaAlreadyVerifiedThisProcess
 
+internal fun regattaLinkGattProofRequiresMotionOneHz(
+    reportedVersion: Int,
+    telemetryAvailable: Boolean
+): Boolean {
+    require(reportedVersion in 0..255)
+    return telemetryAvailable && reportedVersion >= 11
+}
+
 internal class RegattaLinkGattSchemaStore(context: Context) {
     companion object {
         private const val PREFS_NAME = "regattalink_gatt_schema"
