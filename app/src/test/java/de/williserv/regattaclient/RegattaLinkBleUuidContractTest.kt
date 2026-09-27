@@ -60,4 +60,12 @@ class RegattaLinkBleUuidContractTest {
         }
         assertEquals(actual.size, actual.values.toSet().size)
     }
+
+    @Test
+    fun normalTelemetryUsesOnlyMotionOneHz() {
+        assertEquals(
+            setOf(RegattaLinkBleClient.TELEMETRY_MOTION_ONE_HZ_UUID),
+            RegattaLinkBleClient.NORMAL_TELEMETRY_UUIDS
+        )
+    }
 }
