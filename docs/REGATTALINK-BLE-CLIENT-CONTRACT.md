@@ -76,7 +76,8 @@ New pairing is accepted only during the firmware pairing window. The current pai
 Android clients must serialize standard GATT Service Changed handling and must not
 continue using cached handles while service rediscovery is pending. Schema-aware
 firmware advertises its monotonic GATT schema generation in Device Info bits 24..31.
-RegattaTracker persists the accepted generation per stable device ID.
+RegattaTracker persists accepted nonzero generations per stable device ID. Generation
+0 means legacy/unspecified and is never trusted across an app restart.
 
 On a restored bond with a different generation, RegattaTracker writes the reserved
 two-byte value `00 <reported-generation>` to the long-lived writable Device Name
@@ -85,8 +86,11 @@ rediscovery, re-reads Device Info, and only then releases the connection to
 OTA/telemetry. A Service Changed callback
 without the subsequent rediscovery is not sufficient. Legacy schema-0 firmware uses
 its existing migration Service Changed and is likewise gated before movable handles
-are used. The old fixed 500 ms OTA reconnect quiet-time heuristic is not part of the
-schema-aware path.
+are used. After that rediscovery, schema 0 is accepted only for the lifetime of the
+current app process, which allows the mandatory fresh pre-transfer OTA reconnect to
+reuse the corrected Android ATT cache without persisting an unverifiable legacy
+generation. The old fixed 500 ms OTA reconnect quiet-time heuristic is not part of
+the schema-aware path.
 
 Current firmware emits the automatic migration safeguard only on a boot that actually
 crossed a persisted schema generation; it no longer invalidates Android's cache on
