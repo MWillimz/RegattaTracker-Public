@@ -3991,6 +3991,7 @@ internal class RegattaLinkBleClient(
         handler.removeCallbacks(gattSchemaReconcileTimeout)
         gattSchemaReconciliationPending = false
         pendingGattSchemaVersion = 0
+        pendingGattSchemaInfo = null
         resetServiceDiscoveryState()
         connected = false
         establishedConnection = false
