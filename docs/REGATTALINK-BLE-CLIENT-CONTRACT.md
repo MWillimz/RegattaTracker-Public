@@ -81,9 +81,11 @@ RegattaTracker persists accepted nonzero generations per stable device ID. Gener
 
 On a restored bond with a different generation, RegattaTracker writes the reserved
 two-byte value `00 <reported-generation>` to the long-lived writable Device Name
-0002 characteristic, waits for Service Changed and completes rediscovery. The
-callback/rediscovery sequence is necessary but is not accepted as proof by itself:
-before persisting or trusting a generation, each app process performs real I/O
+0002 characteristic and waits for Service Changed. For an explicit schema
+reconciliation, RegattaTracker then closes that GATT instance and reconnects before
+rediscovery; it does not rely on same-connection rediscovery to flush Android's ATT
+cache. The callback/reconnect sequence is necessary but is not accepted as proof by
+itself: before persisting or trusting a generation, each app process performs real I/O
 against the OTA Status characteristic and its CCCD. This is the same downstream
 descriptor path that exposes a stale Android ATT cache as
 `GATT_WRITE_NOT_PERMITTED`.
