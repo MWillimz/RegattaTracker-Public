@@ -74,6 +74,18 @@ class EnterRaceLegalGateTest {
     }
 
     @Test
+    fun manualRaceNoticeDoesNotNavigateToBlankLegalBeforeFetch() {
+        assertEquals(
+            false,
+            shouldOpenRaceLegalBeforeFetch(legalTextLoaded = false)
+        )
+        assertEquals(
+            true,
+            shouldOpenRaceLegalBeforeFetch(legalTextLoaded = true)
+        )
+    }
+
+    @Test
     fun manualRaceNoticeOpensAfterCompatibilityWhenAcceptanceIsPreserved() {
         assertEquals(
             true,
