@@ -775,6 +775,9 @@ class MainActivity : ComponentActivity() {
                             onSetLedBrightness = { percent ->
                                 regattaLinkManager.setLedBrightness(percent)
                             },
+                            onSetMotionDamping = { seconds ->
+                                regattaLinkManager.setMotionDamping(seconds)
+                            },
                             onDrainDiagnosticLog = {
                                 regattaLinkManager.drainDiagnosticLog()
                             },
