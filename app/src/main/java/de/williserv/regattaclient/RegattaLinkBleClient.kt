@@ -53,7 +53,11 @@ data class RegattaLinkClientState(
     val error: String = ""
 )
 
-@SuppressLint("MissingPermission")
+@SuppressLint(
+    "MissingPermission",
+    "DiscouragedPrivateApi",
+    "SoonBlockedPrivateApi"
+)
 internal class RegattaLinkBleClient(
     context: Context,
     private val onStateChanged: (RegattaLinkClientState) -> Unit,
@@ -168,6 +172,18 @@ internal class RegattaLinkBleClient(
      */
     private val legacyGattSchemaAcceptedThisProcess =
         ConcurrentHashMap.newKeySet<String>()
+    /*
+     * A persisted generation is only a hint. Every app process proves that the
+     * actually cached Android handles work before trusting it. This catches the
+     * exact failure where Service Changed/rediscovery completes but a CCCD write
+     * still lands on a stale, non-writable ATT handle.
+     */
+    private val verifiedGattSchemaThisProcess =
+        ConcurrentHashMap.newKeySet<String>()
+    private val gattCacheRefreshAttemptsThisProcess =
+        ConcurrentHashMap.newKeySet<String>()
+    private val gattCacheRefreshPendingValidation =
+        ConcurrentHashMap.newKeySet<String>()
 
     private var scanner: BluetoothLeScanner? = null
     @Volatile private var scanActive = false
@@ -209,11 +225,13 @@ internal class RegattaLinkBleClient(
     private val serviceRediscoveryRequested = AtomicBoolean(false)
     private val serviceRediscoveryDeferredForOta = AtomicBoolean(false)
     private val gattSchemaRefreshRequestRunning = AtomicBoolean(false)
+    private val gattSchemaValidationRunning = AtomicBoolean(false)
     @Volatile private var currentConnectionStartedBonded = false
     @Volatile private var serviceChangedObservedThisConnection = false
     @Volatile private var serviceChangedRediscoveryCompletedThisConnection = false
     @Volatile private var gattSchemaReconciliationPending = false
     @Volatile private var pendingGattSchemaVersion = 0
+    @Volatile private var pendingGattSchemaInfo: RegattaLinkDeviceInfo? = null
     @Volatile private var serviceDiscoveryInProgress = false
     @Volatile private var deviceInfoReadInProgress = false
     @Volatile private var connectionSetupComplete = false
