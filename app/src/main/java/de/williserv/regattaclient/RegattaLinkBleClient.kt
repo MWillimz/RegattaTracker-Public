@@ -307,15 +307,23 @@ internal class RegattaLinkBleClient(
     private val gattSchemaReconcileTimeout = Runnable {
         val activeGatt = gatt ?: return@Runnable
         if (!connected || !gattSchemaReconciliationPending) return@Runnable
+        val info = pendingGattSchemaInfo
+        if (info != null) {
+            recoverAndroidGattCacheOrFail(
+                activeGatt,
+                info,
+                if (pendingGattSchemaVersion > 0) {
+                    "Service Changed/rediscovery did not complete for GATT schema " +
+                        pendingGattSchemaVersion
+                } else {
+                    "Legacy Service Changed was not delivered"
+                }
+            )
+            return@Runnable
+        }
         closeGattWithError(
             activeGatt,
-            if (pendingGattSchemaVersion > 0) {
-                "Timed out reconciling RegattaLink GATT schema " +
-                    pendingGattSchemaVersion
-            } else {
-                "Timed out waiting for legacy RegattaLink Service Changed; " +
-                    "power-cycle RegattaLink once before reconnecting"
-            }
+            "Timed out reconciling RegattaLink GATT services"
         )
     }
 
