@@ -127,11 +127,11 @@ fun SessionAnalysisScreen(
             var gpsManeuverRecoverySeconds by rememberSaveable(detail.session.id) {
                 mutableStateOf(DEFAULT_ANALYSIS_RECOVERY_SECONDS.toFloat())
             }
-            var imuSteadyCourseFilterEnabled by rememberSaveable(detail.session.id) {
+            var imuStabilityFilterEnabled by rememberSaveable(detail.session.id) {
                 mutableStateOf(false)
             }
-            var imuMaxYawRateDps by rememberSaveable(detail.session.id) {
-                mutableStateOf(DEFAULT_IMU_STEADY_YAW_RATE_DPS.toFloat())
+            var imuMaxAttitudeRateDps by rememberSaveable(detail.session.id) {
+                mutableStateOf(DEFAULT_IMU_STEADY_ATTITUDE_RATE_DPS.toFloat())
             }
             var imuRecoverySeconds by rememberSaveable(detail.session.id) {
                 mutableStateOf(DEFAULT_ANALYSIS_RECOVERY_SECONDS.toFloat())
@@ -139,13 +139,13 @@ fun SessionAnalysisScreen(
 
             LaunchedEffect(
                 capabilities.gpsManeuverFilterAvailable,
-                capabilities.imuSteadyCourseFilterAvailable
+                capabilities.imuStabilityFilterAvailable
             ) {
                 if (!capabilities.gpsManeuverFilterAvailable) {
                     gpsManeuverFilterEnabled = false
                 }
-                if (!capabilities.imuSteadyCourseFilterAvailable) {
-                    imuSteadyCourseFilterEnabled = false
+                if (!capabilities.imuStabilityFilterAvailable) {
+                    imuStabilityFilterEnabled = false
                 }
             }
 
@@ -164,12 +164,12 @@ fun SessionAnalysisScreen(
                     )
                 }
                 if (
-                    imuSteadyCourseFilterEnabled &&
-                    capabilities.imuSteadyCourseFilterAvailable
+                    imuStabilityFilterEnabled &&
+                    capabilities.imuStabilityFilterAvailable
                 ) {
                     add(
-                        ImuSteadyCourseAnalysisFilter(
-                            maxYawRateDps = imuMaxYawRateDps.toDouble(),
+                        ImuStabilityAnalysisFilter(
+                            maxAttitudeRateDps = imuMaxAttitudeRateDps.toDouble(),
                             recoverySeconds = imuRecoverySeconds.toDouble()
                         )
                     )
@@ -310,7 +310,7 @@ fun SessionAnalysisScreen(
                 if (
                     capabilities.filterMetrics.isNotEmpty() ||
                     capabilities.gpsManeuverFilterAvailable ||
-                    capabilities.imuSteadyCourseFilterAvailable
+                    capabilities.imuStabilityFilterAvailable
                 ) {
                     item {
                         TextButton(
@@ -345,14 +345,14 @@ fun SessionAnalysisScreen(
                                     gpsManeuverRecoverySeconds = it
                                 },
                                 imuAvailable =
-                                    capabilities.imuSteadyCourseFilterAvailable,
-                                imuEnabled = imuSteadyCourseFilterEnabled,
+                                    capabilities.imuStabilityFilterAvailable,
+                                imuEnabled = imuStabilityFilterEnabled,
                                 onImuEnabledChange = {
-                                    imuSteadyCourseFilterEnabled = it
+                                    imuStabilityFilterEnabled = it
                                 },
-                                imuMaxYawRateDps = imuMaxYawRateDps,
-                                onImuMaxYawRateChange = {
-                                    imuMaxYawRateDps = it
+                                imuMaxAttitudeRateDps = imuMaxAttitudeRateDps,
+                                onImuMaxAttitudeRateChange = {
+                                    imuMaxAttitudeRateDps = it
                                 },
                                 imuRecoverySeconds = imuRecoverySeconds,
                                 onImuRecoveryChange = {
@@ -509,8 +509,8 @@ private fun AnalysisCourseFilters(
     imuAvailable: Boolean,
     imuEnabled: Boolean,
     onImuEnabledChange: (Boolean) -> Unit,
-    imuMaxYawRateDps: Float,
-    onImuMaxYawRateChange: (Float) -> Unit,
+    imuMaxAttitudeRateDps: Float,
+    onImuMaxAttitudeRateChange: (Float) -> Unit,
     imuRecoverySeconds: Float,
     onImuRecoveryChange: (Float) -> Unit
 ) {
@@ -566,21 +566,21 @@ private fun AnalysisCourseFilters(
                         checked = imuEnabled,
                         onCheckedChange = onImuEnabledChange
                     )
-                    Text(stringResource(R.string.session_analysis_imu_steady_filter))
+                    Text(stringResource(R.string.session_analysis_imu_stability_filter))
                 }
                 if (imuEnabled) {
                     Text(
                         text = stringResource(
-                            R.string.session_analysis_imu_yaw_limit,
-                            formatAnalysisNumber(imuMaxYawRateDps.toDouble())
+                            R.string.session_analysis_imu_attitude_limit,
+                            formatAnalysisNumber(imuMaxAttitudeRateDps.toDouble())
                         ),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 12.sp
                     )
                     Slider(
-                        value = imuMaxYawRateDps,
-                        onValueChange = onImuMaxYawRateChange,
-                        valueRange = 0.5f..15f,
+                        value = imuMaxAttitudeRateDps,
+                        onValueChange = onImuMaxAttitudeRateChange,
+                        valueRange = 0.5f..10f,
                         modifier = Modifier.fillMaxWidth()
                     )
                     AnalysisRecoverySlider(
