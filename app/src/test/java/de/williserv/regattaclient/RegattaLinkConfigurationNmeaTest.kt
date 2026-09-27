@@ -31,6 +31,28 @@ class RegattaLinkConfigurationNmeaTest {
     }
 
     @Test
+    fun parsesMotionDampingStrictly() {
+        assertEquals(1, parseRegattaLinkMotionDamping(byteArrayOf(1)))
+        assertEquals(3, parseRegattaLinkMotionDamping(byteArrayOf(3)))
+        assertEquals(10, parseRegattaLinkMotionDamping(byteArrayOf(10)))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsMotionDampingBelowRange() {
+        parseRegattaLinkMotionDamping(byteArrayOf(0))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsMotionDampingAboveRange() {
+        parseRegattaLinkMotionDamping(byteArrayOf(11))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsMotionDampingWrongLength() {
+        parseRegattaLinkMotionDamping(byteArrayOf(3, 3))
+    }
+
+    @Test
     fun configurationMutationPolicyBlocksDeviceControlAndResetOwnership() {
         assertFalse(
             regattaLinkConfigurationMutationBlocked(
