@@ -12,7 +12,7 @@ class RegattaLinkGattSchemaTest {
             shouldValidateRegattaLinkGattLayout(
                 schemaAlreadyVerifiedThisProcess = false,
                 acceptReportedVersion = false,
-                cacheRefreshPendingValidation = false
+                forcedRediscoveryPendingValidation = false
             )
         )
     }
@@ -23,7 +23,7 @@ class RegattaLinkGattSchemaTest {
             shouldValidateRegattaLinkGattLayout(
                 schemaAlreadyVerifiedThisProcess = true,
                 acceptReportedVersion = false,
-                cacheRefreshPendingValidation = false
+                forcedRediscoveryPendingValidation = false
             )
         )
     }
@@ -34,7 +34,7 @@ class RegattaLinkGattSchemaTest {
             shouldValidateRegattaLinkGattLayout(
                 schemaAlreadyVerifiedThisProcess = true,
                 acceptReportedVersion = false,
-                cacheRefreshPendingValidation = true
+                forcedRediscoveryPendingValidation = true
             )
         )
     }
