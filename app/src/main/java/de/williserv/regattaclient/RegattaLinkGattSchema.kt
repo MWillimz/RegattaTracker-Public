@@ -23,7 +23,7 @@ internal fun regattaLinkGattSchemaDecision(
         return RegattaLinkGattSchemaDecision(
             waitForRediscovery = false,
             requestServiceChanged = false,
-            acceptReportedVersion = reportedVersion > 0
+            acceptReportedVersion = true
         )
     }
 
@@ -32,7 +32,7 @@ internal fun regattaLinkGattSchemaDecision(
      * Once this client has accepted that generation there is no reason to
      * invalidate Android's ATT cache on every reconnect.
      */
-    if (reportedVersion > 0 && acceptedVersion == reportedVersion) {
+    if (acceptedVersion == reportedVersion) {
         return RegattaLinkGattSchemaDecision(
             waitForRediscovery = false,
             requestServiceChanged = false,
@@ -49,7 +49,7 @@ internal fun regattaLinkGattSchemaDecision(
         return RegattaLinkGattSchemaDecision(
             waitForRediscovery = false,
             requestServiceChanged = false,
-            acceptReportedVersion = reportedVersion > 0
+            acceptReportedVersion = true
         )
     }
 
@@ -74,13 +74,14 @@ internal class RegattaLinkGattSchemaStore(context: Context) {
 
     fun acceptedVersion(stableId: String): Int? {
         if (stableId.isBlank()) return null
-        val value = prefs.getInt(KEY_PREFIX + stableId.lowercase(), 0)
-        return value.takeIf { it in 1..255 }
+        val key = KEY_PREFIX + stableId.lowercase()
+        if (!prefs.contains(key)) return null
+        return prefs.getInt(key, 0).takeIf { it in 0..255 }
     }
 
     fun accept(stableId: String, version: Int) {
         require(stableId.isNotBlank())
-        require(version in 1..255)
+        require(version in 0..255)
         prefs.edit()
             .putInt(KEY_PREFIX + stableId.lowercase(), version)
             .apply()
