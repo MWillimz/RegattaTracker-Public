@@ -97,4 +97,11 @@ internal class RegattaLinkGattSchemaStore(context: Context) {
             .putInt(KEY_PREFIX + stableId.lowercase(), version)
             .apply()
     }
+
+    fun clear(stableId: String) {
+        if (stableId.isBlank()) return
+        prefs.edit()
+            .remove(KEY_PREFIX + stableId.lowercase())
+            .apply()
+    }
 }
