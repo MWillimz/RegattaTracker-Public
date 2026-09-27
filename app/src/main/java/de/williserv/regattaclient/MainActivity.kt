@@ -849,7 +849,12 @@ class MainActivity : ComponentActivity() {
                                 showClearRaceSetupDialog.value = true
                             },
                             onShowRaceLegal = {
-                                if (raceLegalText.value.isNotBlank()) {
+                                if (
+                                    shouldOpenRaceLegalBeforeFetch(
+                                        legalTextLoaded =
+                                            raceLegalText.value.isNotBlank()
+                                    )
+                                ) {
                                     currentScreen.value = Screen.RACE_LEGAL
                                 } else {
                                     pendingManualRaceLegalOpen = true
@@ -1811,6 +1816,7 @@ class MainActivity : ComponentActivity() {
 
     private fun blockPendingEnterRaceWithLegalError() {
         cancelEnterRaceServerCheck()
+        pendingManualRaceLegalOpen = false
         if (!pendingEnterRaceAfterLegal) {
             currentScreen.value = Screen.RACE
             return
@@ -2108,6 +2114,7 @@ class MainActivity : ComponentActivity() {
                         ) {
                             blockPendingEnterRaceWithLegalError()
                         } else {
+                            pendingManualRaceLegalOpen = false
                             currentScreen.value = Screen.RACE
                         }
                     }
@@ -2279,10 +2286,12 @@ class MainActivity : ComponentActivity() {
                         pendingEnterRaceAfterLegal &&
                         decision == EnterRaceLegalGateDecision.CONTINUE
                     ) {
+                        pendingManualRaceLegalOpen = false
                         continuePendingEnterRaceAfterLegal()
                     } else if (pendingEnterRaceAfterLegal) {
                         blockPendingEnterRaceWithLegalError()
                     } else {
+                        pendingManualRaceLegalOpen = false
                         currentScreen.value = Screen.RACE
                     }
                 }
