@@ -10,6 +10,7 @@ class RegattaLinkBleUuidContractTest {
     fun allocatedRegattaLinkUuids_matchPublicContract() {
         val expected = linkedMapOf(
             "config" to "7f2c4b10-6f63-4a8d-9a3e-2e5d6b710001",
+            "extension" to "7f2c4b10-6f63-4a8d-9a3e-2e5d6b710030",
             "device_name" to "7f2c4b10-6f63-4a8d-9a3e-2e5d6b710002",
             "device_info" to "7f2c4b10-6f63-4a8d-9a3e-2e5d6b710003",
             "pgn_inventory" to "7f2c4b10-6f63-4a8d-9a3e-2e5d6b710004",
@@ -30,6 +31,7 @@ class RegattaLinkBleUuidContractTest {
 
         val actual = linkedMapOf(
             "config" to RegattaLinkBleClient.CONFIG_SERVICE_UUID,
+            "extension" to RegattaLinkBleClient.EXTENSION_SERVICE_UUID,
             "device_name" to RegattaLinkBleClient.DEVICE_NAME_UUID,
             "device_info" to RegattaLinkBleClient.DEVICE_INFO_UUID,
             "pgn_inventory" to RegattaLinkBleClient.NMEA_PGN_INVENTORY_UUID,
