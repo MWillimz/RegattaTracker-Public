@@ -25,6 +25,7 @@ import android.os.SystemClock
 import android.util.Log
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
@@ -158,6 +159,15 @@ internal class RegattaLinkBleClient(
      */
     private val gattSchemaExecutor = Executors.newSingleThreadExecutor()
     private val gattSchemaStore = RegattaLinkGattSchemaStore(appContext)
+    /*
+     * Schema 0 is legacy/unspecified and therefore cannot be trusted across an
+     * app restart. Keep its acceptance process-local only. This is still enough
+     * for OTA: once the initial connection observed Service Changed and
+     * rediscovered, the mandatory fresh pre-transfer reconnect may reuse that
+     * now-correct Android ATT cache within the same process.
+     */
+    private val legacyGattSchemaAcceptedThisProcess =
+        ConcurrentHashMap.newKeySet<String>()
 
     private var scanner: BluetoothLeScanner? = null
     @Volatile private var scanActive = false
@@ -1551,9 +1561,18 @@ internal class RegattaLinkBleClient(
         val device = callbackGatt.device
         handler.removeCallbacks(gattTimeout)
 
+        val acceptedSchemaVersion =
+            if (
+                info.gattSchemaVersion == 0 &&
+                legacyGattSchemaAcceptedThisProcess.contains(info.stableId)
+            ) {
+                0
+            } else {
+                gattSchemaStore.acceptedVersion(info.stableId)
+            }
         val schemaDecision = regattaLinkGattSchemaDecision(
             reportedVersion = info.gattSchemaVersion,
-            acceptedVersion = gattSchemaStore.acceptedVersion(info.stableId),
+            acceptedVersion = acceptedSchemaVersion,
             connectionStartedBonded = currentConnectionStartedBonded,
             serviceChangedObserved = serviceChangedObservedThisConnection,
             serviceChangedRediscoveryCompleted =
@@ -1568,7 +1587,11 @@ internal class RegattaLinkBleClient(
             return
         }
         if (schemaDecision.acceptReportedVersion) {
-            gattSchemaStore.accept(info.stableId, info.gattSchemaVersion)
+            if (info.gattSchemaVersion == 0) {
+                legacyGattSchemaAcceptedThisProcess += info.stableId
+            } else {
+                gattSchemaStore.accept(info.stableId, info.gattSchemaVersion)
+            }
         }
         finishGattSchemaReconciliation()
 
