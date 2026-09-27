@@ -4,7 +4,7 @@ This document is the public, client-facing wire contract between RegattaTracker 
 
 It is intended to be sufficient to implement a compatible BLE client without access to the private RegattaLink repository. Any RegattaLink BLE schema or behavioral change that affects clients must update this document together with the corresponding RegattaTracker implementation/tests.
 
-Contract snapshot: 2026-09-26.
+Contract snapshot: 2026-09-27.
 
 ## 1. Scope and current implementation status
 
