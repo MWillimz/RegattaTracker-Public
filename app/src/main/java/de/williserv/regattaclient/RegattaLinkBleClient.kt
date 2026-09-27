@@ -3132,12 +3132,14 @@ internal class RegattaLinkBleClient(
              * Destructive commands such as Factory Reset must claim recovery
              * ownership before waiting for the callback.
              */
-            onSubmitted?.invoke()
-
-            awaitUnitFuture(
-                future,
-                "GATT write " + characteristic.uuid
-            )
+            afterRegattaLinkGattSubmissionAccepted(
+                onSubmitted = onSubmitted
+            ) {
+                awaitUnitFuture(
+                    future,
+                    "GATT write " + characteristic.uuid
+                )
+            }
             return
         }
     }
