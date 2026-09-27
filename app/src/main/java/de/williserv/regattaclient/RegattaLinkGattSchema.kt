@@ -64,10 +64,10 @@ internal fun regattaLinkGattSchemaDecision(
 internal fun shouldValidateRegattaLinkGattLayout(
     schemaAlreadyVerifiedThisProcess: Boolean,
     acceptReportedVersion: Boolean,
-    cacheRefreshPendingValidation: Boolean
+    forcedRediscoveryPendingValidation: Boolean
 ): Boolean =
     acceptReportedVersion ||
-        cacheRefreshPendingValidation ||
+        forcedRediscoveryPendingValidation ||
         !schemaAlreadyVerifiedThisProcess
 
 internal class RegattaLinkGattSchemaStore(context: Context) {
