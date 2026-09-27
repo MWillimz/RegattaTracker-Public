@@ -40,6 +40,34 @@ class RegattaLinkGattSchemaTest {
     }
 
     @Test
+    fun schemaElevenProofIncludesRequiredMotionOneHzSurface() {
+        assertFalse(
+            regattaLinkGattProofRequiresMotionOneHz(
+                reportedVersion = 10,
+                telemetryAvailable = true
+            )
+        )
+        assertTrue(
+            regattaLinkGattProofRequiresMotionOneHz(
+                reportedVersion = 11,
+                telemetryAvailable = true
+            )
+        )
+        assertTrue(
+            regattaLinkGattProofRequiresMotionOneHz(
+                reportedVersion = 12,
+                telemetryAvailable = true
+            )
+        )
+        assertFalse(
+            regattaLinkGattProofRequiresMotionOneHz(
+                reportedVersion = 11,
+                telemetryAvailable = false
+            )
+        )
+    }
+
+    @Test
     fun acceptedSchemaDoesNotInvalidateEveryReconnect() {
         val decision = regattaLinkGattSchemaDecision(
             reportedVersion = 9,
