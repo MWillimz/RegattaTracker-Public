@@ -61,6 +61,15 @@ internal fun regattaLinkGattSchemaDecision(
     )
 }
 
+internal fun shouldValidateRegattaLinkGattLayout(
+    schemaAlreadyVerifiedThisProcess: Boolean,
+    acceptReportedVersion: Boolean,
+    forcedRediscoveryPendingValidation: Boolean
+): Boolean =
+    acceptReportedVersion ||
+        forcedRediscoveryPendingValidation ||
+        !schemaAlreadyVerifiedThisProcess
+
 internal class RegattaLinkGattSchemaStore(context: Context) {
     companion object {
         private const val PREFS_NAME = "regattalink_gatt_schema"
@@ -76,14 +85,32 @@ internal class RegattaLinkGattSchemaStore(context: Context) {
         if (stableId.isBlank()) return null
         val key = KEY_PREFIX + stableId.lowercase()
         if (!prefs.contains(key)) return null
-        return prefs.getInt(key, 0).takeIf { it in 0..255 }
+        val value = prefs.getInt(key, 0)
+        if (value !in 1..255) {
+            /*
+             * Schema 0 means legacy/unspecified firmware. Persisting it was a
+             * migration bug: it made later app processes trust Android's ATT
+             * cache without observing that boot's Service Changed. Drop any
+             * value written by the affected client build.
+             */
+            prefs.edit().remove(key).apply()
+            return null
+        }
+        return value
     }
 
     fun accept(stableId: String, version: Int) {
         require(stableId.isNotBlank())
-        require(version in 0..255)
+        require(version in 1..255)
         prefs.edit()
             .putInt(KEY_PREFIX + stableId.lowercase(), version)
+            .apply()
+    }
+
+    fun clear(stableId: String) {
+        if (stableId.isBlank()) return
+        prefs.edit()
+            .remove(KEY_PREFIX + stableId.lowercase())
             .apply()
     }
 }

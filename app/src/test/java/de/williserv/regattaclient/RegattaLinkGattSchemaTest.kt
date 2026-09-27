@@ -7,6 +7,39 @@ import org.junit.Test
 class RegattaLinkGattSchemaTest {
 
     @Test
+    fun persistedGenerationStillRequiresOneRealGattProofPerProcess() {
+        assertTrue(
+            shouldValidateRegattaLinkGattLayout(
+                schemaAlreadyVerifiedThisProcess = false,
+                acceptReportedVersion = false,
+                forcedRediscoveryPendingValidation = false
+            )
+        )
+    }
+
+    @Test
+    fun provenGenerationSkipsRepeatedProbeWithinSameProcess() {
+        assertFalse(
+            shouldValidateRegattaLinkGattLayout(
+                schemaAlreadyVerifiedThisProcess = true,
+                acceptReportedVersion = false,
+                forcedRediscoveryPendingValidation = false
+            )
+        )
+    }
+
+    @Test
+    fun localCacheRefreshAlwaysRequiresFreshGattProof() {
+        assertTrue(
+            shouldValidateRegattaLinkGattLayout(
+                schemaAlreadyVerifiedThisProcess = true,
+                acceptReportedVersion = false,
+                forcedRediscoveryPendingValidation = true
+            )
+        )
+    }
+
+    @Test
     fun acceptedSchemaDoesNotInvalidateEveryReconnect() {
         val decision = regattaLinkGattSchemaDecision(
             reportedVersion = 9,
@@ -77,6 +110,21 @@ class RegattaLinkGattSchemaTest {
         assertFalse(decision.waitForRediscovery)
         assertFalse(decision.requestServiceChanged)
         assertTrue(decision.acceptReportedVersion)
+    }
+
+    @Test
+    fun legacyFirmwareWithoutProcessLocalAcceptanceMustReconcileAgain() {
+        val decision = regattaLinkGattSchemaDecision(
+            reportedVersion = 0,
+            acceptedVersion = null,
+            connectionStartedBonded = true,
+            serviceChangedObserved = false,
+            serviceChangedRediscoveryCompleted = false
+        )
+
+        assertTrue(decision.waitForRediscovery)
+        assertFalse(decision.requestServiceChanged)
+        assertFalse(decision.acceptReportedVersion)
     }
 
     @Test
