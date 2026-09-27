@@ -102,6 +102,9 @@ internal class RegattaLinkBleClient(
         val TELEMETRY_MOTION_ONE_HZ_UUID: UUID =
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710025")
 
+        internal val NORMAL_TELEMETRY_UUIDS: Set<UUID> =
+            setOf(TELEMETRY_MOTION_ONE_HZ_UUID)
+
         private val CCCD_UUID: UUID =
             UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
@@ -2332,8 +2335,9 @@ internal class RegattaLinkBleClient(
         }
 
         val service = activeGatt.getService(TELEMETRY_SERVICE_UUID)
-        val motionOneHz =
-            service?.getCharacteristic(TELEMETRY_MOTION_ONE_HZ_UUID)
+        val motionOneHz = service?.getCharacteristic(
+            NORMAL_TELEMETRY_UUIDS.single()
+        )
 
         if (service == null || motionOneHz == null) {
             updateTelemetry {
