@@ -85,6 +85,21 @@ class RegattaLinkGattSchemaTest {
     }
 
     @Test
+    fun schemaTenToElevenRequiresGenericReconciliation() {
+        val decision = regattaLinkGattSchemaDecision(
+            reportedVersion = 11,
+            acceptedVersion = 10,
+            connectionStartedBonded = true,
+            serviceChangedObserved = false,
+            serviceChangedRediscoveryCompleted = false
+        )
+
+        assertTrue(decision.waitForRediscovery)
+        assertTrue(decision.requestServiceChanged)
+        assertFalse(decision.acceptReportedVersion)
+    }
+
+    @Test
     fun callbackAloneStillWaitsForRediscovery() {
         val decision = regattaLinkGattSchemaDecision(
             reportedVersion = 9,
