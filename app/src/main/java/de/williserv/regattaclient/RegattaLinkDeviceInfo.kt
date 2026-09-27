@@ -16,6 +16,8 @@ private const val CAP_OTA_DATA_WRITE_NO_RESPONSE: UInt = 0x00000020u
 private const val CAP_OTA_DATA_WRITE_RESPONSE: UInt = 0x00000040u
 private const val CAP_OTA_PHY_2M: UInt = 0x00000080u
 private const val CAP_OTA_STATUS_SNAPSHOT: UInt = 0x00000100u
+private const val GATT_SCHEMA_VERSION_SHIFT = 24
+private const val GATT_SCHEMA_VERSION_MASK: UInt = 0xff000000u
 
 data class RegattaLinkDeviceInfo(
     val protocolMajor: Int,
@@ -51,6 +53,10 @@ data class RegattaLinkDeviceInfo(
 
     val otaStatusSnapshot: Boolean
         get() = capabilities and CAP_OTA_STATUS_SNAPSHOT != 0u
+
+    val gattSchemaVersion: Int
+        get() = ((capabilities and GATT_SCHEMA_VERSION_MASK) shr
+            GATT_SCHEMA_VERSION_SHIFT).toInt()
 }
 
 internal fun parseRegattaLinkDeviceInfo(raw: ByteArray): RegattaLinkDeviceInfo {
