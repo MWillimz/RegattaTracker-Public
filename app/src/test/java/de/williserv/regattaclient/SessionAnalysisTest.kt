@@ -289,15 +289,16 @@ class SessionAnalysisTest {
     }
 
     @Test
-    fun imuSteadyCourseFilterExcludesHighYawAndConfiguredRecovery() {
-        val yawRates = listOf(0.2, 0.3, 4.0, 0.1, 0.1, 0.1, 0.1)
-        val prepared = yawRates.mapIndexed { index, yaw ->
+    fun imuStabilityFilterExcludesRapidHeelChangeAndConfiguredRecovery() {
+        val heel = listOf(10.0, 10.5, 16.0, 16.2, 16.4, 16.5, 16.6)
+        val prepared = heel.mapIndexed { index, value ->
             PreparedAnalysisSample(
                 timestampMs = index * 1_000L,
                 cogDeg = 90.0,
                 sogMps = index.toDouble(),
                 measurements = mapOf(
-                    "regattalink.fast.yaw_rate_dps" to yaw
+                    "regattalink.summary.heel_filtered_deg" to value,
+                    "regattalink.summary.trim_filtered_deg" to 0.0
                 )
             )
         }
@@ -305,34 +306,42 @@ class SessionAnalysisTest {
         val filtered = applyAnalysisSampleFilters(
             prepared,
             listOf(
-                ImuSteadyCourseAnalysisFilter(
-                    maxYawRateDps = 3.0,
+                ImuStabilityAnalysisFilter(
+                    maxAttitudeRateDps = 2.0,
                     recoverySeconds = 2.0
                 )
             )
         )
 
         assertEquals(
-            listOf(0.0, 1.0, 5.0, 6.0),
+            listOf(0.0, 5.0, 6.0),
             filtered.map { it.sogMps }
         )
     }
 
     @Test
-    fun imuSteadyCourseFilterIsOnlyAvailableWithPersistedYawRate() {
+    fun imuStabilityFilterIsOnlyAvailableWithPersistedOneHertzHeel() {
         val withoutImu = listOf(sample(timestamp = "2026-09-24T12:00:00"))
         val withoutCapabilities = discoverSessionAnalysisCapabilities(
             withoutImu,
             prepareAnalysisSamples(withoutImu)
         )
-        assertFalse(withoutCapabilities.imuSteadyCourseFilterAvailable)
+        assertFalse(withoutCapabilities.imuStabilityFilterAvailable)
 
         val withImu = listOf(
             sample(
                 timestamp = "2026-09-24T12:00:00",
                 measurements = """
                     {
-                      "regattalink.fast.yaw_rate_dps":{"value":0.4,"unit":"deg/s","group":"regattalink"}
+                      "regattalink.summary.heel_filtered_deg":{"value":4.0,"unit":"deg","group":"regattalink"}
+                    }
+                """.trimIndent()
+            ),
+            sample(
+                timestamp = "2026-09-24T12:00:01",
+                measurements = """
+                    {
+                      "regattalink.summary.heel_filtered_deg":{"value":4.4,"unit":"deg","group":"regattalink"}
                     }
                 """.trimIndent()
             )
@@ -341,7 +350,7 @@ class SessionAnalysisTest {
             withImu,
             prepareAnalysisSamples(withImu)
         )
-        assertTrue(withCapabilities.imuSteadyCourseFilterAvailable)
+        assertTrue(withCapabilities.imuStabilityFilterAvailable)
     }
 
     @Test
@@ -352,8 +361,9 @@ class SessionAnalysisTest {
                 cogDeg = if (index >= 3) 30.0 else 0.0,
                 sogMps = index.toDouble(),
                 measurements = mapOf(
-                    "regattalink.fast.yaw_rate_dps" to
-                        if (index == 6) 5.0 else 0.0
+                    "regattalink.summary.heel_filtered_deg" to
+                        if (index == 6) 10.0 else 0.0,
+                    "regattalink.summary.trim_filtered_deg" to 0.0
                 )
             )
         }
@@ -367,14 +377,14 @@ class SessionAnalysisTest {
                     changeThresholdDeg = 20.0,
                     recoverySeconds = 0.0
                 ),
-                ImuSteadyCourseAnalysisFilter(
-                    maxYawRateDps = 3.0,
+                ImuStabilityAnalysisFilter(
+                    maxAttitudeRateDps = 2.0,
                     recoverySeconds = 0.0
                 )
             )
         )
 
-        assertEquals(listOf(0.0, 5.0), filtered.map { it.sogMps })
+        assertEquals(listOf(0.0), filtered.map { it.sogMps })
     }
 
     @Test
