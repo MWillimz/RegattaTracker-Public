@@ -184,6 +184,8 @@ internal class RegattaLinkBleClient(
         ConcurrentHashMap.newKeySet<String>()
     private val gattCacheRefreshPendingValidation =
         ConcurrentHashMap.newKeySet<String>()
+    private val gattServiceChangedReconnectPendingValidation =
+        ConcurrentHashMap.newKeySet<String>()
 
     private var scanner: BluetoothLeScanner? = null
     @Volatile private var scanActive = false
@@ -594,12 +596,29 @@ internal class RegattaLinkBleClient(
             serviceChangedObservedThisConnection = true
             serviceChangedRediscoveryCompletedThisConnection = false
 
+            val pendingSchemaInfo = pendingGattSchemaInfo
+            if (
+                gattSchemaReconciliationPending &&
+                pendingSchemaInfo != null
+            ) {
+                /*
+                 * Do not trust same-connection rediscovery for a schema
+                 * migration. Android can deliver Service Changed yet keep
+                 * downstream CCCD handles stale until the GATT connection is
+                 * rebuilt. Close this GATT instance, reconnect, discover from
+                 * scratch and prove the real OTA CCCD before accepting it.
+                 */
+                restartAfterGattServiceChanged(
+                    callbackGatt,
+                    pendingSchemaInfo
+                )
+                return
+            }
+
             /*
-             * During an OTA transfer the current GATT table is already in use,
-             * so a surprise Service Changed remains deferred. During the
-             * pre-transfer or post-boot OTA reconnect, however, OTA_RECONNECT
-             * owns connection establishment specifically so schema
-             * reconciliation must run before the reconnect future is released.
+             * During an active OTA transfer the current table is already in use,
+             * so an unrelated Service Changed remains deferred. During setup,
+             * serialize normal rediscovery.
              */
             if (
                 otaRunning.get() &&
@@ -1589,9 +1608,14 @@ internal class RegattaLinkBleClient(
         val schemaKey = gattSchemaKey(info)
         val validatingAfterLocalCacheRefresh =
             gattCacheRefreshPendingValidation.contains(schemaKey)
+        val validatingAfterServiceChangedReconnect =
+            gattServiceChangedReconnectPendingValidation.contains(schemaKey)
+        val validatingAfterForcedRediscovery =
+            validatingAfterLocalCacheRefresh ||
+                validatingAfterServiceChangedReconnect
         val acceptedSchemaVersion =
             when {
-                validatingAfterLocalCacheRefresh -> info.gattSchemaVersion
+                validatingAfterForcedRediscovery -> info.gattSchemaVersion
                 info.gattSchemaVersion == 0 &&
                     legacyGattSchemaAcceptedThisProcess.contains(info.stableId) -> 0
                 else -> gattSchemaStore.acceptedVersion(info.stableId)
@@ -1627,7 +1651,7 @@ internal class RegattaLinkBleClient(
                 acceptReportedVersion =
                     schemaDecision.acceptReportedVersion,
                 cacheRefreshPendingValidation =
-                    validatingAfterLocalCacheRefresh
+                    validatingAfterForcedRediscovery
             )
         ) {
             validateGattSchemaThenComplete(callbackGatt, info)
@@ -1786,6 +1810,28 @@ internal class RegattaLinkBleClient(
     private fun gattSchemaKey(info: RegattaLinkDeviceInfo): String =
         info.stableId.lowercase() + ":" + info.gattSchemaVersion
 
+    private fun restartAfterGattServiceChanged(
+        activeGatt: BluetoothGatt,
+        info: RegattaLinkDeviceInfo
+    ) {
+        if (gatt !== activeGatt || !connected) return
+        val key = gattSchemaKey(info)
+        gattServiceChangedReconnectPendingValidation += key
+        handler.removeCallbacks(gattSchemaReconcileTimeout)
+        val device = activeGatt.device
+        Log.i(
+            LOG_TAG,
+            "Reconnecting after Service Changed before accepting GATT schema " +
+                info.gattSchemaVersion
+        )
+        closeGatt()
+        handler.post {
+            if (gatt == null) {
+                prepareDevice(device)
+            }
+        }
+    }
+
     private fun validateGattSchemaThenComplete(
         activeGatt: BluetoothGatt,
         info: RegattaLinkDeviceInfo
@@ -1840,6 +1886,7 @@ internal class RegattaLinkBleClient(
                 val key = gattSchemaKey(info)
                 verifiedGattSchemaThisProcess += key
                 gattCacheRefreshPendingValidation.remove(key)
+                gattServiceChangedReconnectPendingValidation.remove(key)
                 if (info.gattSchemaVersion == 0) {
                     legacyGattSchemaAcceptedThisProcess += info.stableId
                 } else {
@@ -1940,6 +1987,7 @@ internal class RegattaLinkBleClient(
         gattSchemaStore.clear(info.stableId)
         legacyGattSchemaAcceptedThisProcess.remove(info.stableId)
         verifiedGattSchemaThisProcess.remove(key)
+        gattServiceChangedReconnectPendingValidation.remove(key)
 
         if (
             gattCacheRefreshAttemptsThisProcess.add(key) &&
