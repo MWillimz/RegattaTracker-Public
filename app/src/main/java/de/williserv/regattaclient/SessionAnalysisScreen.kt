@@ -179,6 +179,33 @@ fun SessionAnalysisScreen(
                 applyAnalysisSampleFilters(prepared, sampleFilters)
             }
 
+            LaunchedEffect(analysisSamples, metricsById) {
+                activeFilterRanges.keys.toList().forEach { metricId ->
+                    val metric = metricsById[metricId]
+                    val observed = metric?.let {
+                        metricObservedRange(it, analysisSamples)
+                    }
+                    if (observed == null) {
+                        activeFilterRanges.remove(metricId)
+                    } else {
+                        val current = activeFilterRanges[metricId]
+                            ?: return@forEach
+                        val observedStart = observed.start.toFloat()
+                        val observedEnd = observed.endInclusive.toFloat()
+                        val start = current.start.coerceIn(
+                            observedStart,
+                            observedEnd
+                        )
+                        val end = current.endInclusive.coerceIn(
+                            observedStart,
+                            observedEnd
+                        )
+                        activeFilterRanges[metricId] =
+                            minOf(start, end)..maxOf(start, end)
+                    }
+                }
+            }
+
             val activeFilters = activeFilterRanges.mapNotNull { (metricId, range) ->
                 if (metricsById[metricId] == null) {
                     null
