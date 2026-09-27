@@ -374,6 +374,11 @@
     <string name="session_analysis_show_filters">Mostra filtri</string>
     <string name="session_analysis_hide_filters">Nascondi filtri</string>
     <string name="session_analysis_filter_range">%1$s–%2$s %3$s</string>
+    <string name="session_analysis_gps_maneuver_filter">Filtro manovre GPS</string>
+    <string name="session_analysis_gps_maneuver_threshold">Variazione di rotta: %1$d° / 5 s</string>
+    <string name="session_analysis_imu_stability_filter">Filtro stabilità IMU</string>
+    <string name="session_analysis_imu_attitude_limit">Variazione massima sbandamento/assetto: %1$s °/s</string>
+    <string name="session_analysis_recovery_seconds">Escludi per %1$d s dopo</string>
     <string name="session_analysis_color_legend">Colore: %1$s</string>
     <string name="session_analysis_points">%1$d punti visibili</string>
     <string name="session_replay_button">Replay</string>

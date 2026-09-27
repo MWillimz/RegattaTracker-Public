@@ -248,6 +248,146 @@ class SessionAnalysisTest {
     }
 
     @Test
+    fun shortestCourseDeltaHandlesNorthWraparound() {
+        assertEquals(
+            2.0,
+            kotlin.math.abs(shortestAnalysisAngleDeltaDeg(1.0, 359.0)),
+            0.001
+        )
+        assertEquals(
+            2.0,
+            kotlin.math.abs(shortestAnalysisAngleDeltaDeg(359.0, 1.0)),
+            0.001
+        )
+    }
+
+    @Test
+    fun gpsManeuverFilterExcludesTransitionAndConfiguredRecovery() {
+        val prepared = listOf(0.0, 0.0, 0.0, 30.0, 30.0, 30.0, 30.0, 30.0)
+            .mapIndexed { index, cog ->
+                PreparedAnalysisSample(
+                    timestampMs = index * 1_000L,
+                    cogDeg = cog,
+                    sogMps = index.toDouble(),
+                    measurements = emptyMap()
+                )
+            }
+
+        val filtered = applyAnalysisSampleFilters(
+            prepared,
+            listOf(
+                GpsManeuverAnalysisFilter(
+                    smoothingSeconds = 0.1,
+                    changeWindowSeconds = 2.0,
+                    changeThresholdDeg = 20.0,
+                    recoverySeconds = 2.0
+                )
+            )
+        )
+
+        assertEquals(listOf(0.0, 7.0), filtered.map { it.sogMps })
+    }
+
+    @Test
+    fun imuStabilityFilterExcludesRapidHeelChangeAndConfiguredRecovery() {
+        val heel = listOf(10.0, 10.5, 16.0, 16.2, 16.4, 16.5, 16.6)
+        val prepared = heel.mapIndexed { index, value ->
+            PreparedAnalysisSample(
+                timestampMs = index * 1_000L,
+                cogDeg = 90.0,
+                sogMps = index.toDouble(),
+                measurements = mapOf(
+                    "regattalink.summary.heel_filtered_deg" to value,
+                    "regattalink.summary.trim_filtered_deg" to 0.0
+                )
+            )
+        }
+
+        val filtered = applyAnalysisSampleFilters(
+            prepared,
+            listOf(
+                ImuStabilityAnalysisFilter(
+                    maxAttitudeRateDps = 2.0,
+                    recoverySeconds = 2.0
+                )
+            )
+        )
+
+        assertEquals(
+            listOf(0.0, 5.0, 6.0),
+            filtered.map { it.sogMps }
+        )
+    }
+
+    @Test
+    fun imuStabilityFilterIsOnlyAvailableWithPersistedOneHertzHeel() {
+        val withoutImu = listOf(sample(timestamp = "2026-09-24T12:00:00"))
+        val withoutCapabilities = discoverSessionAnalysisCapabilities(
+            withoutImu,
+            prepareAnalysisSamples(withoutImu)
+        )
+        assertFalse(withoutCapabilities.imuStabilityFilterAvailable)
+
+        val withImu = listOf(
+            sample(
+                timestamp = "2026-09-24T12:00:00",
+                measurements = """
+                    {
+                      "regattalink.summary.heel_filtered_deg":{"value":4.0,"unit":"deg","group":"regattalink"}
+                    }
+                """.trimIndent()
+            ),
+            sample(
+                timestamp = "2026-09-24T12:00:01",
+                measurements = """
+                    {
+                      "regattalink.summary.heel_filtered_deg":{"value":4.4,"unit":"deg","group":"regattalink"}
+                    }
+                """.trimIndent()
+            )
+        )
+        val withCapabilities = discoverSessionAnalysisCapabilities(
+            withImu,
+            prepareAnalysisSamples(withImu)
+        )
+        assertTrue(withCapabilities.imuStabilityFilterAvailable)
+    }
+
+    @Test
+    fun activeSampleFiltersCombineByRejectingEitherFilter() {
+        val prepared = (0..6).map { index ->
+            PreparedAnalysisSample(
+                timestampMs = index * 1_000L,
+                cogDeg = if (index >= 3) 30.0 else 0.0,
+                sogMps = index.toDouble(),
+                measurements = mapOf(
+                    "regattalink.summary.heel_filtered_deg" to
+                        if (index == 6) 10.0 else 0.0,
+                    "regattalink.summary.trim_filtered_deg" to 0.0
+                )
+            )
+        }
+
+        val filtered = applyAnalysisSampleFilters(
+            prepared,
+            listOf(
+                GpsManeuverAnalysisFilter(
+                    smoothingSeconds = 0.1,
+                    changeWindowSeconds = 2.0,
+                    changeThresholdDeg = 20.0,
+                    recoverySeconds = 0.0
+                ),
+                ImuStabilityAnalysisFilter(
+                    maxAttitudeRateDps = 2.0,
+                    recoverySeconds = 0.0
+                )
+            )
+        )
+
+        assertEquals(listOf(0.0), filtered.map { it.sogMps })
+    }
+
+    @Test
     fun genericNegativeRadiusSamplesAreRejected() {
         val samples = listOf(
             sample(
@@ -277,10 +417,11 @@ class SessionAnalysisTest {
     private fun sample(
         cog: Float = 90f,
         sog: Float = 4f,
-        measurements: String? = null
+        measurements: String? = null,
+        timestamp: String = "2026-09-24T12:00:00"
     ) = SessionTrackingSample(
         localId = 1L,
-        timestamp = "2026-09-24T12:00:00",
+        timestamp = timestamp,
         utcOffsetMinutes = 0,
         lat = 54.0,
         lon = 10.0,

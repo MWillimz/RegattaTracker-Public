@@ -23,6 +23,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RangeSlider
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -117,6 +118,93 @@ fun SessionAnalysisScreen(
             var allFiltersExpanded by rememberSaveable(detail.session.id) {
                 mutableStateOf(false)
             }
+            var gpsManeuverFilterEnabled by rememberSaveable(detail.session.id) {
+                mutableStateOf(false)
+            }
+            var gpsManeuverThresholdDeg by rememberSaveable(detail.session.id) {
+                mutableStateOf(DEFAULT_GPS_MANEUVER_THRESHOLD_DEG.toFloat())
+            }
+            var gpsManeuverRecoverySeconds by rememberSaveable(detail.session.id) {
+                mutableStateOf(DEFAULT_ANALYSIS_RECOVERY_SECONDS.toFloat())
+            }
+            var imuStabilityFilterEnabled by rememberSaveable(detail.session.id) {
+                mutableStateOf(false)
+            }
+            var imuMaxAttitudeRateDps by rememberSaveable(detail.session.id) {
+                mutableStateOf(DEFAULT_IMU_STEADY_ATTITUDE_RATE_DPS.toFloat())
+            }
+            var imuRecoverySeconds by rememberSaveable(detail.session.id) {
+                mutableStateOf(DEFAULT_ANALYSIS_RECOVERY_SECONDS.toFloat())
+            }
+
+            LaunchedEffect(
+                capabilities.gpsManeuverFilterAvailable,
+                capabilities.imuStabilityFilterAvailable
+            ) {
+                if (!capabilities.gpsManeuverFilterAvailable) {
+                    gpsManeuverFilterEnabled = false
+                }
+                if (!capabilities.imuStabilityFilterAvailable) {
+                    imuStabilityFilterEnabled = false
+                }
+            }
+
+            val sampleFilters = buildList<AnalysisSampleFilter> {
+                if (
+                    gpsManeuverFilterEnabled &&
+                    capabilities.gpsManeuverFilterAvailable
+                ) {
+                    add(
+                        GpsManeuverAnalysisFilter(
+                            changeThresholdDeg =
+                                gpsManeuverThresholdDeg.toDouble(),
+                            recoverySeconds =
+                                gpsManeuverRecoverySeconds.toDouble()
+                        )
+                    )
+                }
+                if (
+                    imuStabilityFilterEnabled &&
+                    capabilities.imuStabilityFilterAvailable
+                ) {
+                    add(
+                        ImuStabilityAnalysisFilter(
+                            maxAttitudeRateDps = imuMaxAttitudeRateDps.toDouble(),
+                            recoverySeconds = imuRecoverySeconds.toDouble()
+                        )
+                    )
+                }
+            }
+            val analysisSamples = remember(prepared, sampleFilters) {
+                applyAnalysisSampleFilters(prepared, sampleFilters)
+            }
+
+            LaunchedEffect(analysisSamples, metricsById) {
+                activeFilterRanges.keys.toList().forEach { metricId ->
+                    val metric = metricsById[metricId]
+                    val observed = metric?.let {
+                        metricObservedRange(it, analysisSamples)
+                    }
+                    if (observed == null) {
+                        activeFilterRanges.remove(metricId)
+                    } else {
+                        val current = activeFilterRanges[metricId]
+                            ?: return@forEach
+                        val observedStart = observed.start.toFloat()
+                        val observedEnd = observed.endInclusive.toFloat()
+                        val start = current.start.coerceIn(
+                            observedStart,
+                            observedEnd
+                        )
+                        val end = current.endInclusive.coerceIn(
+                            observedStart,
+                            observedEnd
+                        )
+                        activeFilterRanges[metricId] =
+                            minOf(start, end)..maxOf(start, end)
+                    }
+                }
+            }
 
             val activeFilters = activeFilterRanges.mapNotNull { (metricId, range) ->
                 if (metricsById[metricId] == null) {
@@ -142,14 +230,14 @@ fun SessionAnalysisScreen(
                 }
 
             val dataset = remember(
-                prepared,
+                analysisSamples,
                 angleMetric,
                 radiusMetric,
                 colorMetric,
                 activeFilters
             ) {
                 buildSessionAnalysisDataset(
-                    samples = prepared,
+                    samples = analysisSamples,
                     angleMetric = angleMetric,
                     radiusMetric = radiusMetric,
                     colorMetric = colorMetric,
@@ -219,7 +307,11 @@ fun SessionAnalysisScreen(
                     }
                 }
 
-                if (capabilities.filterMetrics.isNotEmpty()) {
+                if (
+                    capabilities.filterMetrics.isNotEmpty() ||
+                    capabilities.gpsManeuverFilterAvailable ||
+                    capabilities.imuStabilityFilterAvailable
+                ) {
                     item {
                         TextButton(
                             onClick = { filtersExpanded = !filtersExpanded }
@@ -236,9 +328,42 @@ fun SessionAnalysisScreen(
 
                     if (filtersExpanded) {
                         item {
+                            AnalysisStateFilters(
+                                gpsAvailable =
+                                    capabilities.gpsManeuverFilterAvailable,
+                                gpsEnabled = gpsManeuverFilterEnabled,
+                                onGpsEnabledChange = {
+                                    gpsManeuverFilterEnabled = it
+                                },
+                                gpsThresholdDeg = gpsManeuverThresholdDeg,
+                                onGpsThresholdChange = {
+                                    gpsManeuverThresholdDeg = it
+                                },
+                                gpsRecoverySeconds =
+                                    gpsManeuverRecoverySeconds,
+                                onGpsRecoveryChange = {
+                                    gpsManeuverRecoverySeconds = it
+                                },
+                                imuAvailable =
+                                    capabilities.imuStabilityFilterAvailable,
+                                imuEnabled = imuStabilityFilterEnabled,
+                                onImuEnabledChange = {
+                                    imuStabilityFilterEnabled = it
+                                },
+                                imuMaxAttitudeRateDps = imuMaxAttitudeRateDps,
+                                onImuMaxAttitudeRateChange = {
+                                    imuMaxAttitudeRateDps = it
+                                },
+                                imuRecoverySeconds = imuRecoverySeconds,
+                                onImuRecoveryChange = {
+                                    imuRecoverySeconds = it
+                                }
+                            )
+                        }
+                        item {
                             AnalysisFilters(
                                 metrics = capabilities.filterMetrics,
-                                preparedSamples = prepared,
+                                preparedSamples = analysisSamples,
                                 activeRanges = activeFilterRanges,
                                 allExpanded = allFiltersExpanded,
                                 onAllExpandedChange = { allFiltersExpanded = it }
@@ -370,6 +495,124 @@ private fun AnalysisMetricSelector(
             }
         }
     }
+}
+
+@Composable
+private fun AnalysisStateFilters(
+    gpsAvailable: Boolean,
+    gpsEnabled: Boolean,
+    onGpsEnabledChange: (Boolean) -> Unit,
+    gpsThresholdDeg: Float,
+    onGpsThresholdChange: (Float) -> Unit,
+    gpsRecoverySeconds: Float,
+    onGpsRecoveryChange: (Float) -> Unit,
+    imuAvailable: Boolean,
+    imuEnabled: Boolean,
+    onImuEnabledChange: (Boolean) -> Unit,
+    imuMaxAttitudeRateDps: Float,
+    onImuMaxAttitudeRateChange: (Float) -> Unit,
+    imuRecoverySeconds: Float,
+    onImuRecoveryChange: (Float) -> Unit
+) {
+    if (!gpsAvailable && !imuAvailable) return
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        if (gpsAvailable) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = gpsEnabled,
+                        onCheckedChange = onGpsEnabledChange
+                    )
+                    Text(stringResource(R.string.session_analysis_gps_maneuver_filter))
+                }
+                if (gpsEnabled) {
+                    Text(
+                        text = stringResource(
+                            R.string.session_analysis_gps_maneuver_threshold,
+                            gpsThresholdDeg.toInt()
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp
+                    )
+                    Slider(
+                        value = gpsThresholdDeg,
+                        onValueChange = onGpsThresholdChange,
+                        valueRange = 5f..45f,
+                        steps = 39,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    AnalysisRecoverySlider(
+                        value = gpsRecoverySeconds,
+                        onValueChange = onGpsRecoveryChange
+                    )
+                }
+            }
+        }
+
+        if (imuAvailable) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = imuEnabled,
+                        onCheckedChange = onImuEnabledChange
+                    )
+                    Text(stringResource(R.string.session_analysis_imu_stability_filter))
+                }
+                if (imuEnabled) {
+                    Text(
+                        text = stringResource(
+                            R.string.session_analysis_imu_attitude_limit,
+                            formatAnalysisNumber(imuMaxAttitudeRateDps.toDouble())
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp
+                    )
+                    Slider(
+                        value = imuMaxAttitudeRateDps,
+                        onValueChange = onImuMaxAttitudeRateChange,
+                        valueRange = 0.5f..10f,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    AnalysisRecoverySlider(
+                        value = imuRecoverySeconds,
+                        onValueChange = onImuRecoveryChange
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AnalysisRecoverySlider(
+    value: Float,
+    onValueChange: (Float) -> Unit
+) {
+    Text(
+        text = stringResource(
+            R.string.session_analysis_recovery_seconds,
+            value.toInt()
+        ),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        fontSize = 12.sp
+    )
+    Slider(
+        value = value,
+        onValueChange = onValueChange,
+        valueRange = 0f..15f,
+        steps = 14,
+        modifier = Modifier.fillMaxWidth()
+    )
 }
 
 @Composable

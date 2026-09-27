@@ -374,6 +374,11 @@
     <string name="session_analysis_show_filters">Filter anzeigen</string>
     <string name="session_analysis_hide_filters">Filter ausblenden</string>
     <string name="session_analysis_filter_range">%1$s–%2$s %3$s</string>
+    <string name="session_analysis_gps_maneuver_filter">GPS-Manöverfilter</string>
+    <string name="session_analysis_gps_maneuver_threshold">Kursänderung: %1$d° / 5 s</string>
+    <string name="session_analysis_imu_stability_filter">IMU-Stabilitätsfilter</string>
+    <string name="session_analysis_imu_attitude_limit">Maximale Heel-/Trim-Änderung: %1$s °/s</string>
+    <string name="session_analysis_recovery_seconds">Danach %1$d s ausschließen</string>
     <string name="session_analysis_color_legend">Farbe: %1$s</string>
     <string name="session_analysis_points">%1$d sichtbare Punkte</string>
     <string name="session_replay_button">Replay</string>
