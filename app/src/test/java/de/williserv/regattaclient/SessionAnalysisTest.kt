@@ -308,7 +308,8 @@ class SessionAnalysisTest {
         assertEquals(
             "Pitch",
             capabilities.metrics.single {
-                it.id == "regattalink.summary.trim_filtered_deg"
+                it.measurementKey ==
+                    "regattalink.summary.trim_filtered_deg"
             }.label
         )
     }
