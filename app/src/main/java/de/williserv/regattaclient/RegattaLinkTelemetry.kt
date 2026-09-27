@@ -9,6 +9,13 @@ internal const val REGATTALINK_TELEMETRY_RECORD_SIZE = 20
 internal const val REGATTALINK_TELEMETRY_SCHEMA_VERSION = 1
 internal const val REGATTALINK_FAST_STALE_MS = 2_000L
 internal const val REGATTALINK_SLOW_STALE_MS = 3_000L
+internal const val REGATTALINK_MOTION_ONE_HZ_STALE_MS = 3_000L
+
+private const val MOTION_ONE_HZ_ATTITUDE_VALID = 1 shl 0
+private const val MOTION_ONE_HZ_YAW_RATE_VALID = 1 shl 1
+private const val MOTION_ONE_HZ_PERIOD_VALID = 1 shl 2
+private const val MOTION_ONE_HZ_PITCH_P2P_VALID = 1 shl 3
+private const val MOTION_ONE_HZ_ROLL_P2P_VALID = 1 shl 4
 
 data class RegattaLinkFastMotion(
     val confidencePct: Int,
@@ -50,9 +57,28 @@ data class RegattaLinkCalibrationDiagnostics(
     val calibrationRevision: Int
 )
 
+data class RegattaLinkMotionOneHz(
+    val validityFlags: Int,
+    val sequence: Int,
+    val timestampMs: Long,
+    val heelDeg: Double?,
+    val pitchDeg: Double?,
+    val yawRateDps: Double?,
+    val encounterPeriodS: Double?,
+    val pitchPeakToPeakDeg: Double?,
+    val rollPeakToPeakDeg: Double?
+)
+
 data class RegattaLinkTelemetryState(
     val supported: Boolean = false,
     val subscribed: Boolean = false,
+    val motionOneHz: RegattaLinkMotionOneHz? = null,
+    val motionOneHzReceivedAtElapsedMs: Long? = null,
+    /*
+     * Legacy protocol models remain available for explicit diagnostics and
+     * historical fixtures. Normal Tracker setup does not subscribe to
+     * 0021/0022/0023 anymore.
+     */
     val fast: RegattaLinkFastMotion? = null,
     val fastReceivedAtElapsedMs: Long? = null,
     val summary: RegattaLinkMotionSummary? = null,
@@ -132,6 +158,48 @@ internal fun parseRegattaLinkCalibrationDiagnostics(
     )
 }
 
+internal fun parseRegattaLinkMotionOneHz(raw: ByteArray): RegattaLinkMotionOneHz {
+    val buffer = telemetryBuffer(raw)
+    val flags = raw[1].toInt() and 0xff
+    fun valid(mask: Int): Boolean = flags and mask != 0
+
+    return RegattaLinkMotionOneHz(
+        validityFlags = flags,
+        sequence = buffer.getShort(2).toInt() and 0xffff,
+        timestampMs = buffer.getInt(4).toLong() and 0xffffffffL,
+        heelDeg = if (valid(MOTION_ONE_HZ_ATTITUDE_VALID)) {
+            buffer.getShort(8).toInt() / 100.0
+        } else {
+            null
+        },
+        pitchDeg = if (valid(MOTION_ONE_HZ_ATTITUDE_VALID)) {
+            buffer.getShort(10).toInt() / 100.0
+        } else {
+            null
+        },
+        yawRateDps = if (valid(MOTION_ONE_HZ_YAW_RATE_VALID)) {
+            buffer.getShort(12).toInt() / 100.0
+        } else {
+            null
+        },
+        encounterPeriodS = if (valid(MOTION_ONE_HZ_PERIOD_VALID)) {
+            (buffer.getShort(14).toInt() and 0xffff) / 100.0
+        } else {
+            null
+        },
+        pitchPeakToPeakDeg = if (valid(MOTION_ONE_HZ_PITCH_P2P_VALID)) {
+            (buffer.getShort(16).toInt() and 0xffff) / 100.0
+        } else {
+            null
+        },
+        rollPeakToPeakDeg = if (valid(MOTION_ONE_HZ_ROLL_P2P_VALID)) {
+            (buffer.getShort(18).toInt() and 0xffff) / 100.0
+        } else {
+            null
+        }
+    )
+}
+
 private fun telemetryBuffer(raw: ByteArray): ByteBuffer {
     require(raw.size == REGATTALINK_TELEMETRY_RECORD_SIZE) {
         "RegattaLink telemetry record must be $REGATTALINK_TELEMETRY_RECORD_SIZE bytes, got ${raw.size}"
@@ -159,111 +227,51 @@ internal fun buildRegattaLinkMeasurementsJson(
 ): String? {
     if (!state.supported || state.pausedForOta) return null
 
+    val motion = state.motionOneHz
+    if (
+        motion == null ||
+        !isRegattaLinkTelemetryFresh(
+            state.motionOneHzReceivedAtElapsedMs,
+            REGATTALINK_MOTION_ONE_HZ_STALE_MS,
+            nowElapsedMs
+        )
+    ) {
+        return null
+    }
+
     val measurements = JSONObject()
 
-    fun put(key: String, value: Any, unit: String? = null) {
-        val measurement = JSONObject()
-            .put("value", value)
-            .put("group", "regattalink")
-        if (unit != null) {
-            measurement.put("unit", unit)
-        }
-        measurements.put(key, measurement)
+    fun put(key: String, value: Any, unit: String) {
+        measurements.put(
+            key,
+            JSONObject()
+                .put("value", value)
+                .put("group", "regattalink")
+                .put("unit", unit)
+        )
     }
 
-    if (
-        state.fast != null &&
-        isRegattaLinkTelemetryFresh(
-            state.fastReceivedAtElapsedMs,
-            REGATTALINK_FAST_STALE_MS,
-            nowElapsedMs
-        )
-    ) {
-        val fast = state.fast
-        put("regattalink.fast.confidence_pct", fast.confidencePct, "%")
-        put("regattalink.fast.sequence", fast.sequence)
-        put("regattalink.fast.timestamp_ms", fast.timestampMs, "ms")
-        put("regattalink.fast.roll_deg", fast.rollDeg, "deg")
-        put("regattalink.fast.pitch_deg", fast.pitchDeg, "deg")
-        put("regattalink.fast.roll_rate_dps", fast.rollRateDps, "deg/s")
-        put("regattalink.fast.pitch_rate_dps", fast.pitchRateDps, "deg/s")
-        put("regattalink.fast.yaw_rate_dps", fast.yawRateDps, "deg/s")
-        put("regattalink.fast.vertical_accel_g", fast.verticalAccelG, "g")
+    motion.heelDeg?.let {
+        put("regattalink.summary.heel_filtered_deg", it, "deg")
     }
-
-    if (
-        state.summary != null &&
-        isRegattaLinkTelemetryFresh(
-            state.summaryReceivedAtElapsedMs,
-            REGATTALINK_SLOW_STALE_MS,
-            nowElapsedMs
-        )
-    ) {
-        val summary = state.summary
-        put("regattalink.summary.confidence_pct", summary.confidencePct, "%")
-        put("regattalink.summary.sequence", summary.sequence)
-        put("regattalink.summary.timestamp_ms", summary.timestampMs, "ms")
-        put("regattalink.summary.heel_filtered_deg", summary.heelFilteredDeg, "deg")
-        put("regattalink.summary.trim_filtered_deg", summary.trimFilteredDeg, "deg")
-        put("regattalink.summary.roll_rms_deg", summary.rollRmsDeg, "deg")
-        put("regattalink.summary.pitch_rms_deg", summary.pitchRmsDeg, "deg")
-        put(
-            "regattalink.summary.vertical_accel_rms_g",
-            summary.verticalAccelRmsG,
-            "g"
-        )
-        put("regattalink.summary.motion_intensity", summary.motionIntensity)
+    motion.pitchDeg?.let {
+        /*
+         * Keep the historical storage key for session/#302 compatibility.
+         * User-facing Tracker text calls this Pitch.
+         */
+        put("regattalink.summary.trim_filtered_deg", it, "deg")
     }
-
-    if (
-        state.calibration != null &&
-        isRegattaLinkTelemetryFresh(
-            state.calibrationReceivedAtElapsedMs,
-            REGATTALINK_SLOW_STALE_MS,
-            nowElapsedMs
-        )
-    ) {
-        val calibration = state.calibration
-        put(
-            "regattalink.calibration.overall_confidence_pct",
-            calibration.overallConfidencePct,
-            "%"
-        )
-        put(
-            "regattalink.calibration.forward_confidence_pct",
-            calibration.forwardConfidencePct,
-            "%"
-        )
-        put(
-            "regattalink.calibration.roll_confidence_pct",
-            calibration.rollConfidencePct,
-            "%"
-        )
-        put("regattalink.calibration.learner_state", calibration.learnerState)
-        put("regattalink.calibration.gyro_bias_valid", calibration.gyroBiasValid)
-        put("regattalink.calibration.boat_frame_valid", calibration.boatFrameValid)
-        put("regattalink.calibration.sequence", calibration.sequence)
-        put(
-            "regattalink.calibration.positive_maneuvers",
-            calibration.positiveManeuvers
-        )
-        put(
-            "regattalink.calibration.negative_maneuvers",
-            calibration.negativeManeuvers
-        )
-        put(
-            "regattalink.calibration.roll_pair_observations",
-            calibration.rollPairObservations
-        )
-        put(
-            "regattalink.calibration.contradictory_maneuvers",
-            calibration.contradictoryManeuvers
-        )
-        put("regattalink.calibration.mounting_epoch", calibration.mountingEpoch)
-        put(
-            "regattalink.calibration.calibration_revision",
-            calibration.calibrationRevision
-        )
+    motion.yawRateDps?.let {
+        put("regattalink.motion.yaw_rate_dps", it, "deg/s")
+    }
+    motion.encounterPeriodS?.let {
+        put("regattalink.motion.encounter_period_s", it, "s")
+    }
+    motion.pitchPeakToPeakDeg?.let {
+        put("regattalink.motion.pitch_peak_to_peak_deg", it, "deg")
+    }
+    motion.rollPeakToPeakDeg?.let {
+        put("regattalink.motion.roll_peak_to_peak_deg", it, "deg")
     }
 
     return if (measurements.length() == 0) null else measurements.toString()
