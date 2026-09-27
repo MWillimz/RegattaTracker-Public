@@ -2,7 +2,6 @@ package de.williserv.regattaclient
 
 import android.content.Context
 
-internal const val REGATTALINK_GATT_SCHEMA_REFRESH_OPCODE = 1
 internal const val REGATTALINK_GATT_SCHEMA_RECONCILE_TIMEOUT_MS = 10_000L
 
 internal data class RegattaLinkGattSchemaDecision(
