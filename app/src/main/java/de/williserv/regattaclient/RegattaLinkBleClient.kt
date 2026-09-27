@@ -1650,7 +1650,7 @@ internal class RegattaLinkBleClient(
                     verifiedGattSchemaThisProcess.contains(schemaKey),
                 acceptReportedVersion =
                     schemaDecision.acceptReportedVersion,
-                cacheRefreshPendingValidation =
+                forcedRediscoveryPendingValidation =
                     validatingAfterForcedRediscovery
             )
         ) {
