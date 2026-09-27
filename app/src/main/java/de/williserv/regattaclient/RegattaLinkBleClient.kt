@@ -1678,16 +1678,16 @@ internal class RegattaLinkBleClient(
                 }
                 val characteristic = activeGatt
                     .getService(CONFIG_SERVICE_UUID)
-                    ?.getCharacteristic(DEVICE_INFO_UUID)
+                    ?.getCharacteristic(DEVICE_NAME_UUID)
                     ?: throw RegattaLinkOtaTransportException(
-                        "RegattaLink Device Info is unavailable for GATT refresh",
+                        "RegattaLink stable configuration handle is unavailable for GATT refresh",
                         ambiguous = false
                     )
                 writeCharacteristicBlockingDirect(
                     activeGatt,
                     characteristic,
                     byteArrayOf(
-                        REGATTALINK_GATT_SCHEMA_REFRESH_OPCODE.toByte(),
+                        0,
                         info.gattSchemaVersion.toByte()
                     )
                 )
