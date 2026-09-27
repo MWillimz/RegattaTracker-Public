@@ -328,7 +328,7 @@ fun SessionAnalysisScreen(
 
                     if (filtersExpanded) {
                         item {
-                            AnalysisCourseFilters(
+                            AnalysisStateFilters(
                                 gpsAvailable =
                                     capabilities.gpsManeuverFilterAvailable,
                                 gpsEnabled = gpsManeuverFilterEnabled,
@@ -498,7 +498,7 @@ private fun AnalysisMetricSelector(
 }
 
 @Composable
-private fun AnalysisCourseFilters(
+private fun AnalysisStateFilters(
     gpsAvailable: Boolean,
     gpsEnabled: Boolean,
     onGpsEnabledChange: (Boolean) -> Unit,
