@@ -81,21 +81,31 @@ RegattaTracker persists accepted nonzero generations per stable device ID. Gener
 
 On a restored bond with a different generation, RegattaTracker writes the reserved
 two-byte value `00 <reported-generation>` to the long-lived writable Device Name
-0002 characteristic, waits for the Service Changed callback, completes service
-rediscovery, re-reads Device Info, and only then releases the connection to
-OTA/telemetry. A Service Changed callback
-without the subsequent rediscovery is not sufficient. Legacy schema-0 firmware uses
-its existing migration Service Changed and is likewise gated before movable handles
-are used. After that rediscovery, schema 0 is accepted only for the lifetime of the
-current app process, which allows the mandatory fresh pre-transfer OTA reconnect to
-reuse the corrected Android ATT cache without persisting an unverifiable legacy
-generation. The old fixed 500 ms OTA reconnect quiet-time heuristic is not part of
-the schema-aware path.
+0002 characteristic, waits for Service Changed and completes rediscovery. The
+callback/rediscovery sequence is necessary but is not accepted as proof by itself:
+before persisting or trusting a generation, each app process performs real I/O
+against the OTA Status characteristic and its CCCD. This is the same downstream
+descriptor path that exposes a stale Android ATT cache as
+`GATT_WRITE_NOT_PERMITTED`.
 
-Current firmware emits the automatic migration safeguard only on a boot that actually
-crossed a persisted schema generation; it no longer invalidates Android's cache on
-every ordinary reboot. A firmware replacement may still add, remove or move
-characteristics, but clients must discover by UUID and never by hard-coded ATT handle.
+If that proof fails, or Service Changed never completes, RegattaTracker clears its
+accepted-generation hint and performs at most one local Android GATT-cache refresh,
+then reconnects, rediscovers, and repeats the real GATT proof. The local refresh does
+not delete the bond. A second failure is terminal and retains the concrete GATT
+failure instead of entering a reconnect loop.
+
+Legacy schema-0 firmware uses its existing migration Service Changed and is likewise
+gated before movable handles are used. After successful real GATT proof, schema 0 is
+accepted only for the lifetime of the current app process, which allows the mandatory
+fresh pre-transfer OTA reconnect to reuse the corrected Android ATT cache without
+persisting an unverifiable legacy generation. The old fixed 500 ms OTA reconnect
+quiet-time heuristic is not part of the reconciliation path.
+
+Schema 9 is the frozen ATT-handle baseline. Existing configuration, OTA, telemetry,
+and the initial extension characteristics must not be reordered or changed in a way
+that inserts descriptors/handles ahead of existing entries. Future additions belong
+after the frozen extension prefix (or in later-registered services). Clients still
+discover by UUID rather than hard-coded handles.
 
 ## 4. Configuration and extension services
 
