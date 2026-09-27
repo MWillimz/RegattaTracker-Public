@@ -247,6 +247,8 @@ internal class RegattaLinkBleClient(
                     REGATTALINK_FACTORY_RESET_DISCONNECT_MARGIN_MS
         )
     private var serviceRediscoveryGatt: BluetoothGatt? = null
+    @Volatile private var gattSchemaReconnectGatt: BluetoothGatt? = null
+    @Volatile private var gattSchemaReconnectDevice: BluetoothDevice? = null
     private var reconnectFuture: CompletableFuture<RegattaLinkDeviceInfo?>? = null
     private var selectedDeviceAddress: String? = null
     private val attemptedDiscoveryAddresses = mutableSetOf<String>()
@@ -327,6 +329,16 @@ internal class RegattaLinkBleClient(
             activeGatt,
             "Timed out reconciling RegattaLink GATT services"
         )
+    }
+
+    private val gattSchemaReconnectFallback = Runnable {
+        val activeGatt = gattSchemaReconnectGatt ?: return@Runnable
+        val device = gattSchemaReconnectDevice ?: activeGatt.device
+        Log.w(
+            LOG_TAG,
+            "Timed out waiting for planned GATT schema disconnect; forcing close"
+        )
+        completePlannedGattSchemaDisconnect(activeGatt, device)
     }
 
     private val serviceRediscovery = object : Runnable {
@@ -526,6 +538,13 @@ internal class RegattaLinkBleClient(
             }
 
             if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                if (gattSchemaReconnectGatt === callbackGatt) {
+                    completePlannedGattSchemaDisconnect(
+                        callbackGatt,
+                        gattSchemaReconnectDevice ?: callbackGatt.device
+                    )
+                    return
+                }
                 if (factoryResetDisconnectTracker.consumeDisconnect(callbackGatt)) {
                     completeFactoryResetDisconnect(callbackGatt)
                     return
@@ -1815,16 +1834,49 @@ internal class RegattaLinkBleClient(
         info: RegattaLinkDeviceInfo
     ) {
         if (gatt !== activeGatt || !connected) return
+        if (gattSchemaReconnectGatt != null) return
+
         val key = gattSchemaKey(info)
         gattServiceChangedReconnectPendingValidation += key
         handler.removeCallbacks(gattSchemaReconcileTimeout)
-        val device = activeGatt.device
+        gattSchemaReconnectGatt = activeGatt
+        gattSchemaReconnectDevice = activeGatt.device
+        connectionSetupComplete = false
         Log.i(
             LOG_TAG,
-            "Reconnecting after Service Changed before accepting GATT schema " +
+            "Disconnecting after Service Changed before accepting GATT schema " +
                 info.gattSchemaVersion
         )
-        closeGatt()
+        activeGatt.disconnect()
+        handler.removeCallbacks(gattSchemaReconnectFallback)
+        handler.postDelayed(gattSchemaReconnectFallback, 2_000L)
+    }
+
+    private fun completePlannedGattSchemaDisconnect(
+        activeGatt: BluetoothGatt,
+        device: BluetoothDevice
+    ) {
+        if (gattSchemaReconnectGatt !== activeGatt) return
+
+        handler.removeCallbacks(gattSchemaReconnectFallback)
+        gattSchemaReconnectGatt = null
+        gattSchemaReconnectDevice = null
+        connected = false
+        establishedConnection = false
+        resetServiceDiscoveryState()
+        failPendingGattOperation(
+            RegattaLinkOtaTransportException(
+                "GATT connection intentionally rebuilt after Service Changed",
+                ambiguous = false
+            )
+        )
+        runCatching { activeGatt.disconnect() }
+        activeGatt.close()
+        if (gatt === activeGatt) {
+            gatt = null
+        }
+        mtu = 23
+
         handler.post {
             if (gatt == null) {
                 prepareDevice(device)
@@ -4042,6 +4094,9 @@ internal class RegattaLinkBleClient(
     private fun closeGatt() {
         handler.removeCallbacks(gattTimeout)
         handler.removeCallbacks(gattSchemaReconcileTimeout)
+        handler.removeCallbacks(gattSchemaReconnectFallback)
+        gattSchemaReconnectGatt = null
+        gattSchemaReconnectDevice = null
         gattSchemaReconciliationPending = false
         pendingGattSchemaVersion = 0
         pendingGattSchemaInfo = null
