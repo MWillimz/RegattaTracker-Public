@@ -8,13 +8,14 @@ Contract snapshot: 2026-09-26.
 
 ## 1. Scope and current implementation status
 
-The current BLE contract contains three RegattaLink service families. Firmware contract availability and current Android consumption are deliberately tracked separately:
+The current BLE contract contains four RegattaLink service families. Firmware contract availability and current Android consumption are deliberately tracked separately:
 
 | Area | Service suffix | Firmware contract | Current RegattaTracker consumption |
 | --- | ---: | --- | --- |
-| configuration/device information/diagnostics/control | 0001 | implemented; 0006 brightness plus 0007 diagnostic log and 0008 Device Control are additive and optional by UUID discovery | 0002-0008 discovered and consumed; 0007 bounded user-triggered drain plus complete 0008 Set Upright, trim and Factory Reset lifecycle/UI implemented |
+| configuration/device information | 0001 | implemented; frozen at 0002-0006 | 0002-0006 discovered and consumed |
 | OTA | 0010 | implemented | implemented |
 | telemetry | 0020 | implemented with IMU 0021-0023 and normalized NMEA Boat State 0024 | 0021-0024 consumed; 0024 discovered independently of the IMU capability bit |
+| post-core extensions | 0030 | implemented; 0007 diagnostic log and 0008 Device Control live here from schema 9 | 0007 bounded user-triggered drain plus complete 0008 Set Upright, trim and Factory Reset lifecycle/UI; legacy 0001 fallback retained for schema 8 |
 
 The firmware contract currently defines four NMEA2000-facing BLE surfaces/behaviors relevant to clients:
 
@@ -37,12 +38,12 @@ Base UUID:
 | --- | ---: | --- | --- | --- |
 | Configuration service | 0001 | service | implemented | discovery anchor |
 | Device name | 0002 | encrypted/bonded read + write | implemented | implemented |
-| Device info | 0003 | encrypted/bonded read | implemented | implemented |
+| Device info | 0003 | encrypted/bonded read + schema-refresh write | implemented | implemented |
 | NMEA2000 PGN inventory | 0004 | encrypted/bonded read | implemented | implemented |
 | NMEA2000 raw CAN FIFO | 0005 | encrypted/bonded read | implemented | implemented as explicit bounded diagnostic read |
 | Global LED brightness | 0006 | encrypted/bonded read + write | additive contract in RegattaLink #135 / PR #136; optional by discovery | implemented when discovered |
-| Diagnostic log FIFO | 0007 | encrypted/bonded read | implemented; optional by discovery | implemented as explicit bounded 20-read drain with UI presentation |
-| Device Control | 0008 | encrypted/bonded read + write with response | implemented; optional by discovery | request/status engine, Set Upright, direction-labelled trims and Factory Reset lifecycle/UI implemented |
+| Diagnostic log FIFO | 0007 | encrypted/bonded read in service 0030 | implemented; optional by discovery | implemented as explicit bounded 20-read drain with UI presentation |
+| Device Control | 0008 | encrypted/bonded read + write with response in service 0030 | implemented; optional by discovery | request/status engine, Set Upright, direction-labelled trims and Factory Reset lifecycle/UI implemented |
 | OTA service | 0010 | service | implemented | implemented |
 | OTA control | 0011 | encrypted/bonded write with response | implemented | implemented |
 | OTA DATA | 0012 | encrypted/bonded write; no-response preferred, response supported | implemented | implemented |
@@ -52,6 +53,7 @@ Base UUID:
 | Motion summary telemetry | 0022 | encrypted/bonded read + notify | implemented | implemented |
 | Calibration diagnostics telemetry | 0023 | encrypted/bonded read + notify | implemented | implemented |
 | Normalized NMEA Boat State v1 | 0024 | encrypted/bonded read + notify | implemented | implemented; UUID-discovered independently of IMU capability |
+| Extension service | 0030 | service | implemented | discovery anchor for 0007/0008 from schema 9 |
 
 All multibyte integers in custom RegattaLink records are little-endian unless stated otherwise.
 
@@ -71,11 +73,26 @@ Custom RegattaLink application characteristics require an encrypted persistent b
 
 New pairing is accepted only during the firmware pairing window. The current pairing window is five minutes. Previously bonded peers may reconnect after that window.
 
-Android clients must tolerate standard GATT Service Changed behavior. Current firmware emits Service Changed on secured reconnect as a cache-invalidation safeguard. The client must serialize rediscovery and must not continue using cached handles while service rediscovery is pending.
+Android clients must serialize standard GATT Service Changed handling and must not
+continue using cached handles while service rediscovery is pending. Schema-aware
+firmware advertises its monotonic GATT schema generation in Device Info bits 24..31.
+RegattaTracker persists the accepted generation per stable device ID.
 
-A firmware replacement may add, remove or move characteristics. Clients must discover services/characteristics by UUID, never by hard-coded ATT handle.
+On a restored bond with a different generation, RegattaTracker writes
+`01 <reported-generation>` to the stable Device Info 0003 characteristic, waits for
+the Service Changed callback, completes service rediscovery, re-reads Device Info,
+and only then releases the connection to OTA/telemetry. A Service Changed callback
+without the subsequent rediscovery is not sufficient. Legacy schema-0 firmware uses
+its existing migration Service Changed and is likewise gated before movable handles
+are used. The old fixed 500 ms OTA reconnect quiet-time heuristic is not part of the
+schema-aware path.
 
-## 4. Configuration service 0001
+Current firmware emits the automatic migration safeguard only on a boot that actually
+crossed a persisted schema generation; it no longer invalidates Android's cache on
+every ordinary reboot. A firmware replacement may still add, remove or move
+characteristics, but clients must discover by UUID and never by hard-coded ATT handle.
+
+## 4. Configuration and extension services
 
 Full UUID:
 
@@ -115,8 +132,10 @@ Full UUID:
 
 Properties:
 
-- read only;
-- encrypted/bonded access required.
+- read;
+- encrypted/bonded access required;
+- schema-aware firmware also permits an encrypted write of exactly two bytes
+  `01 <schema-version>` to request a full GATT Service Changed indication.
 
 Record size: exactly 32 bytes.
 
@@ -146,6 +165,7 @@ Capability bits:
 | 6 | 0x00000040 | OTA DATA write with response fallback |
 | 7 | 0x00000080 | best-effort LE 2M PHY support |
 | 8 | 0x00000100 | authoritative OTA status SNAPSHOT support |
+| 24..31 | 0xff000000 | monotonic GATT schema generation; 0 means legacy/unspecified |
 
 RegattaTracker compatibility checks:
 
@@ -272,7 +292,7 @@ The wire contract is deliberately a percentage only. Low/High choices, fixed ste
 RegattaTracker reads 0006 when present and writes it only on an explicit completed UI change; absence on older firmware remains non-fatal.
 
 
-### 4.6 Diagnostic log FIFO 0007
+### 4.6 Diagnostic log FIFO 0007 (extension service 0030)
 
 Full UUID:
 
@@ -309,7 +329,7 @@ Client rules:
 - disconnect or Service Changed aborts the current drain cleanly;
 - absence on older firmware is non-fatal.
 
-### 4.7 Device Control 0008
+### 4.7 Device Control 0008 (extension service 0030)
 
 Full UUID:
 
