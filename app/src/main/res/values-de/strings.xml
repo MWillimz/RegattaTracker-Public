@@ -572,7 +572,7 @@
     <string name="regattalink_not_set">Nicht gesetzt</string>
     <string name="regattalink_not_valid">Ungültig</string>
     <string name="regattalink_factory_reset">Werkseinstellungen</string>
-    <string name="regattalink_factory_reset_warning">Dabei werden RegattaLink-Name, LED-Helligkeit, Kalibrierung und Bluetooth-Kopplungen zurückgesetzt. Die Verbindung wird getrennt und das Gerät muss neu gekoppelt werden. Falls Android die alte Kopplung weiterhin anzeigt, RegattaLink in den Android-Bluetooth-Einstellungen entfernen und danach erneut suchen.</string>
+    <string name="regattalink_factory_reset_warning">Dabei werden RegattaLink-Name, LED-Helligkeit, Bewegungsdämpfung, Kalibrierung und Bluetooth-Kopplungen zurückgesetzt. Die Verbindung wird getrennt und das Gerät muss neu gekoppelt werden. Falls Android die alte Kopplung weiterhin anzeigt, RegattaLink in den Android-Bluetooth-Einstellungen entfernen und danach erneut suchen.</string>
     <string name="regattalink_read_diagnostic_log">Diagnoseprotokoll lesen</string>
     <string name="regattalink_loading_diagnostic_log">Diagnoseprotokoll wird gelesen…</string>
 </resources>
