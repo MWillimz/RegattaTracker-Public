@@ -29,6 +29,7 @@ internal class RegattaLinkConfiguredDeviceStore(context: Context) {
         private const val KEY_STABLE_ID = "stable_id"
         private const val KEY_DEVICE_ADDRESS = "device_address"
         private const val KEY_DEVICE_NAME = "device_name"
+        private const val KEY_RESET_PENDING_PAIRING = "reset_pending_pairing"
     }
 
     private val prefs = context.applicationContext.getSharedPreferences(
@@ -54,14 +55,35 @@ internal class RegattaLinkConfiguredDeviceStore(context: Context) {
             .putString(KEY_STABLE_ID, device.stableId)
             .putString(KEY_DEVICE_ADDRESS, device.deviceAddress)
             .putString(KEY_DEVICE_NAME, device.deviceName)
+            .putBoolean(KEY_RESET_PENDING_PAIRING, false)
             .apply()
     }
 
     fun updateName(stableId: String, deviceName: String) {
         val current = load() ?: return
         if (current.stableId != stableId) return
-        save(current.copy(deviceName = deviceName))
+        prefs.edit()
+            .putString(KEY_DEVICE_NAME, deviceName)
+            .apply()
     }
+
+    fun markResetRecoveryPending() {
+        prefs.edit()
+            .putBoolean(KEY_RESET_PENDING_PAIRING, true)
+            .commit()
+    }
+
+    fun clearResetRecoveryPending() {
+        prefs.edit()
+            .putBoolean(KEY_RESET_PENDING_PAIRING, false)
+            .commit()
+    }
+
+    fun clear() {
+        prefs.edit().clear().putBoolean(KEY_RESET_PENDING_PAIRING, true).apply()
+    }
+
+    fun requiresNewPairing(): Boolean = prefs.getBoolean(KEY_RESET_PENDING_PAIRING, false)
 }
 
 internal interface RegattaLinkConnectionListener {
@@ -87,6 +109,11 @@ internal interface RegattaLinkConnectionClient {
     fun resetOtaState()
     fun setDeviceName(name: String): Boolean
     fun setLedBrightness(percent: Int): Boolean
+    fun drainDiagnosticLog(): Boolean = false
+    fun executeDeviceControl(
+        opcode: RegattaLinkDeviceControlOpcode,
+        value: Int
+    ): Boolean = false
     fun refreshPgnInventory(): Boolean
     fun readRawCanFrames(): Boolean
 
@@ -130,6 +157,7 @@ internal fun interface RegattaLinkConnectionClientFactory {
         onTelemetryStateChanged: (RegattaLinkTelemetryState) -> Unit,
         onConfigurationStateChanged: (RegattaLinkConfigurationState) -> Unit,
         onNmeaStateChanged: (RegattaLinkNmeaState) -> Unit,
+        onFactoryResetRecoveryStateChanged: (Boolean) -> Unit,
         onUnexpectedDisconnect: () -> Unit
     ): RegattaLinkConnectionClient
 }
@@ -144,6 +172,7 @@ internal class RegattaLinkConnectionManager(
                 onTelemetryStateChanged,
                 onConfigurationStateChanged,
                 onNmeaStateChanged,
+                onFactoryResetRecoveryStateChanged,
                 onUnexpectedDisconnect ->
             RegattaLinkBleClient(
                 context = clientContext,
@@ -152,6 +181,8 @@ internal class RegattaLinkConnectionManager(
                 onTelemetryStateChanged = onTelemetryStateChanged,
                 onConfigurationStateChanged = onConfigurationStateChanged,
                 onNmeaStateChanged = onNmeaStateChanged,
+                onFactoryResetRecoveryStateChanged =
+                    onFactoryResetRecoveryStateChanged,
                 onUnexpectedDisconnect = onUnexpectedDisconnect
             )
         },
@@ -197,6 +228,9 @@ internal class RegattaLinkConnectionManager(
     @Volatile
     private var legacyBootstrapAddress: String? = null
 
+    @Volatile
+    private var factoryResetPending = false
+
     private val client = clientFactory.create(
         context = appContext,
         onStateChanged = ::handleConnectionState,
@@ -204,9 +238,11 @@ internal class RegattaLinkConnectionManager(
         onTelemetryStateChanged = ::handleTelemetryState,
         onConfigurationStateChanged = ::handleConfigurationState,
         onNmeaStateChanged = ::handleNmeaState,
+        onFactoryResetRecoveryStateChanged =
+            ::handleFactoryResetRecoveryStateChanged,
         onUnexpectedDisconnect = {
             handler.post {
-                if (!otaState.isActive) {
+                if (!otaState.isActive && !factoryResetPending) {
                     ensureConnectedIfPermitted()
                 }
             }
@@ -241,7 +277,8 @@ internal class RegattaLinkConnectionManager(
     }
 
     fun reconnectConfigured(): Boolean {
-        if (otaState.isActive || explicitDiscoveryRequested) return false
+        if (otaState.isActive || explicitDiscoveryRequested || factoryResetPending) return false
+        if (configuredDeviceStore.requiresNewPairing()) return false
 
         val configured = configuredDeviceStore.load()
         if (configured != null) {
@@ -267,7 +304,7 @@ internal class RegattaLinkConnectionManager(
     }
 
     fun startDiscovery(): Boolean {
-        if (otaState.isActive) return false
+        if (otaState.isActive || factoryResetPending) return false
         legacyBootstrapAddress = null
         val accepted = client.startDiscovery()
         if (accepted) {
@@ -277,6 +314,7 @@ internal class RegattaLinkConnectionManager(
     }
 
     fun disconnect() {
+        if (factoryResetPending) return
         explicitDiscoveryRequested = false
         legacyBootstrapAddress = null
         stopRawCanCapture(interrupted = true)
@@ -284,6 +322,15 @@ internal class RegattaLinkConnectionManager(
     }
 
     fun startOta(artifact: RegattaLinkFirmwareArtifact) {
+        if (
+            factoryResetPending ||
+            configurationState.factoryResetAwaitingDisconnect ||
+            configurationState.deviceControlBusy ||
+            configurationState.diagnosticLogLoading ||
+            configurationState.busy
+        ) {
+            return
+        }
         explicitDiscoveryRequested = false
         legacyBootstrapAddress = null
         if (rawCaptureState.isActive) {
@@ -301,13 +348,68 @@ internal class RegattaLinkConnectionManager(
     }
 
     fun setDeviceName(name: String): Boolean {
-        if (otaState.isActive || rawCaptureState.isActive) return false
+        if (
+            otaState.isActive ||
+            rawCaptureState.isActive ||
+            regattaLinkConfigurationMutationBlocked(
+                state = configurationState,
+                factoryResetOwned = factoryResetPending
+            )
+        ) {
+            return false
+        }
         return client.setDeviceName(name)
     }
 
     fun setLedBrightness(percent: Int): Boolean {
-        if (otaState.isActive || rawCaptureState.isActive) return false
+        if (
+            otaState.isActive ||
+            rawCaptureState.isActive ||
+            regattaLinkConfigurationMutationBlocked(
+                state = configurationState,
+                factoryResetOwned = factoryResetPending
+            )
+        ) {
+            return false
+        }
         return client.setLedBrightness(percent)
+    }
+
+    fun drainDiagnosticLog(): Boolean {
+        if (
+            !configurationState.diagnosticLogSupported ||
+            otaState.isActive ||
+            rawCaptureState.isActive ||
+            configurationState.deviceControlBusy
+        ) {
+            return false
+        }
+        return client.drainDiagnosticLog()
+    }
+
+    fun executeDeviceControl(
+        opcode: RegattaLinkDeviceControlOpcode,
+        value: Int
+    ): Boolean {
+        if (
+            !configurationState.deviceControlSupported ||
+            otaState.isActive ||
+            rawCaptureState.isActive ||
+            configurationState.diagnosticLogLoading
+        ) {
+            return false
+        }
+        if (
+            opcode in setOf(
+                RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
+                RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
+                RegattaLinkDeviceControlOpcode.ADJUST_PITCH
+            ) &&
+            configurationState.deviceControlStatus?.boatFrameValid != true
+        ) {
+            return false
+        }
+        return client.executeDeviceControl(opcode, value)
     }
 
     fun refreshPgnInventory(): Boolean {
@@ -325,6 +427,8 @@ internal class RegattaLinkConnectionManager(
             otaState.isActive ||
             rawCaptureState.isActive ||
             rawCaptureState.hasFile ||
+            configurationState.diagnosticLogLoading ||
+            configurationState.deviceControlBusy ||
             connectionState.status != RegattaLinkConnectionStatus.CONNECTED ||
             !nmeaState.rawCanSupported
         ) {
@@ -518,6 +622,16 @@ internal class RegattaLinkConnectionManager(
         connectionState = state
 
         if (
+            factoryResetPending &&
+            state.status == RegattaLinkConnectionStatus.IDLE
+        ) {
+            factoryResetPending = false
+            configuredDeviceStore.clear()
+            legacyBootstrapAddress = null
+            explicitDiscoveryRequested = false
+        }
+
+        if (
             rawCaptureState.isActive &&
             state.status != RegattaLinkConnectionStatus.CONNECTED
         ) {
@@ -582,8 +696,57 @@ internal class RegattaLinkConnectionManager(
         listeners.forEach { it.onTelemetryStateChanged(state) }
     }
 
+    private fun handleFactoryResetRecoveryStateChanged(pending: Boolean) {
+        if (pending) {
+            factoryResetPending = true
+            configuredDeviceStore.markResetRecoveryPending()
+            return
+        }
+
+        if (configuredDeviceStore.load() != null) {
+            factoryResetPending = false
+            configuredDeviceStore.clearResetRecoveryPending()
+        }
+    }
+
     private fun handleConfigurationState(state: RegattaLinkConfigurationState) {
         configurationState = state
+
+        if (
+            state.deviceControlAcceptedOpcode ==
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
+            state.deviceControlAcceptedRequestId != null
+        ) {
+            factoryResetPending = true
+            configuredDeviceStore.markResetRecoveryPending()
+        }
+
+        if (
+            factoryResetPending &&
+            state.deviceControlStatus?.opcode ==
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
+            state.deviceControlStatus.factoryResetBondsCleared
+        ) {
+            configuredDeviceStore.clear()
+            legacyBootstrapAddress = null
+            explicitDiscoveryRequested = false
+        }
+
+        val resetStatus = state.deviceControlStatus
+        if (
+            factoryResetPending &&
+            !state.deviceControlBusy &&
+            !state.factoryResetAwaitingDisconnect &&
+            state.deviceControlError.isNotBlank() &&
+            connectionState.status == RegattaLinkConnectionStatus.CONNECTED &&
+            resetStatus?.opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
+            resetStatus.phase.isTerminal &&
+            !regattaLinkFactoryResetContinuesToBondReset(resetStatus) &&
+            !resetStatus.factoryResetBondsCleared
+        ) {
+            factoryResetPending = false
+            configuredDeviceStore.clearResetRecoveryPending()
+        }
 
         val stableId = connectionState.deviceInfo?.stableId
         if (

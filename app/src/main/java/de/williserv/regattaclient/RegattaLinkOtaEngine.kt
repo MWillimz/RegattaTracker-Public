@@ -18,6 +18,7 @@ internal enum class RegattaLinkOtaSubmitResult {
 internal class RegattaLinkOtaTransportException(
     message: String,
     val ambiguous: Boolean = true,
+    val gattStatus: Int? = null,
     cause: Throwable? = null
 ) : Exception(message, cause)
 

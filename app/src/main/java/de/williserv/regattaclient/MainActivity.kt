@@ -86,6 +86,7 @@ class MainActivity : ComponentActivity() {
     private val raceLegalAcceptStatusText = mutableStateOf("")
     private val eventLegalFlowState = EventLegalFlowState()
     private var pendingEnterRaceAfterLegal = false
+    private var pendingManualRaceLegalOpen = false
     private val enterRaceServerCheckInProgress = mutableStateOf(false)
     private val enterRaceServerCheckState = EnterRaceServerCheckState()
     private var activeLegalFetchContext: EventCompatibilityContext? = null
@@ -253,7 +254,6 @@ class MainActivity : ComponentActivity() {
 
     private val showClearConfirmDialog = mutableStateOf(false)
     private val showOcsDecisionDialog = mutableStateOf(false)
-    private val showLeaveRaceOptionsDialog = mutableStateOf(false)
     private val showRetireConfirmDialog = mutableStateOf(false)
     private val retirementReported = mutableStateOf(false)
     private val retirementStatusText = mutableStateOf("")
@@ -775,6 +775,12 @@ class MainActivity : ComponentActivity() {
                             onSetLedBrightness = { percent ->
                                 regattaLinkManager.setLedBrightness(percent)
                             },
+                            onDrainDiagnosticLog = {
+                                regattaLinkManager.drainDiagnosticLog()
+                            },
+                            onDeviceControl = { opcode, value ->
+                                regattaLinkManager.executeDeviceControl(opcode, value)
+                            },
                             onRefreshPgnInventory = {
                                 regattaLinkManager.refreshPgnInventory()
                             },
@@ -838,18 +844,22 @@ class MainActivity : ComponentActivity() {
                             raceShortened = rawRaceCourseShortened,
                             seriesDisplayMetadata = raceSeriesDisplayMetadata.value,
                             modifier = Modifier.padding(innerPadding),
+                            retireEnabled = !retirementRequestInFlight.value,
                             onClearRaceSetupClick = {
                                 showClearRaceSetupDialog.value = true
                             },
                             onShowRaceLegal = {
-                                if (raceLegalText.value.isBlank()) {
-                                    fetchRaceLegalText()
-                                } else {
+                                if (
+                                    shouldOpenRaceLegalBeforeFetch(
+                                        legalTextLoaded =
+                                            raceLegalText.value.isNotBlank()
+                                    )
+                                ) {
                                     currentScreen.value = Screen.RACE_LEGAL
+                                } else {
+                                    pendingManualRaceLegalOpen = true
+                                    fetchRaceLegalText()
                                 }
-                            },
-                            onRefreshRaceData = {
-                                fetchRaceDataForDisplay()
                             },
                             onScanQr = {
                                 currentScreen.value = Screen.QR_SCANNER
@@ -857,8 +867,11 @@ class MainActivity : ComponentActivity() {
                             onEnterRace = {
                                 requestEnterRaceAfterLocalChecks()
                             },
-                            onLeaveRace = {
-                                showLeaveRaceOptionsDialog.value = true
+                            onRetire = {
+                                showRetireConfirmDialog.value = true
+                            },
+                            onExitRace = {
+                                leaveRace()
                             },
                             onRegisterRace = {
                                 registerForRace()
@@ -950,23 +963,6 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
-                if (showLeaveRaceOptionsDialog.value) {
-                    LeaveRaceOptionsDialog(
-                        retireEnabled = !retirementRequestInFlight.value,
-                        onRetire = {
-                            showLeaveRaceOptionsDialog.value = false
-                            showRetireConfirmDialog.value = true
-                        },
-                        onLeaveRace = {
-                            showLeaveRaceOptionsDialog.value = false
-                            leaveRace()
-                        },
-                        onCancel = {
-                            showLeaveRaceOptionsDialog.value = false
-                        }
-                    )
-                }
-
                 if (showRetireConfirmDialog.value) {
                     RetireConfirmDialog(
                         onConfirm = {
@@ -1027,7 +1023,11 @@ class MainActivity : ComponentActivity() {
                         onCancel = {
                             cancelEnterRaceServerCheck()
                             pendingEnterRaceAfterLegal = false
+                            pendingManualRaceLegalOpen = false
                             showEventUpdateRecommendedDialog.value = false
+                            if (currentScreen.value == Screen.RACE_LEGAL) {
+                                currentScreen.value = Screen.RACE
+                            }
                         }
                     )
                 }
@@ -1037,7 +1037,11 @@ class MainActivity : ComponentActivity() {
                         onDismiss = {
                             cancelEnterRaceServerCheck()
                             pendingEnterRaceAfterLegal = false
+                            pendingManualRaceLegalOpen = false
                             showEventUpdateRequiredDialog.value = false
+                            if (currentScreen.value == Screen.RACE_LEGAL) {
+                                currentScreen.value = Screen.RACE
+                            }
                         }
                     )
                 }
@@ -1312,6 +1316,7 @@ class MainActivity : ComponentActivity() {
 
 
     private fun resetRaceLegalState() {
+        pendingManualRaceLegalOpen = false
         raceLegalAccepted.value = false
         raceLegalText.value = ""
         raceLegalHash.value = ""
@@ -1376,6 +1381,7 @@ class MainActivity : ComponentActivity() {
     private fun resetEventCompatibilityState() {
         cancelEnterRaceServerCheck()
         pendingEnterRaceAfterLegal = false
+        pendingManualRaceLegalOpen = false
         eventCompatibilityGeneration += 1L
         eventCompatibilityAllowedAccess = null
         eventCompatibilityWarningAccess = null
@@ -1810,6 +1816,7 @@ class MainActivity : ComponentActivity() {
 
     private fun blockPendingEnterRaceWithLegalError() {
         cancelEnterRaceServerCheck()
+        pendingManualRaceLegalOpen = false
         if (!pendingEnterRaceAfterLegal) {
             currentScreen.value = Screen.RACE
             return
@@ -2107,6 +2114,7 @@ class MainActivity : ComponentActivity() {
                         ) {
                             blockPendingEnterRaceWithLegalError()
                         } else {
+                            pendingManualRaceLegalOpen = false
                             currentScreen.value = Screen.RACE
                         }
                     }
@@ -2198,29 +2206,41 @@ class MainActivity : ComponentActivity() {
                                 )
                             )
 
-                            when (
+                            val legalDecision =
                                 enterRaceLegalFetchDecision(
                                     serverResponded = true,
                                     responseSuccessful = true,
                                     documentValid = true,
                                     acceptancePreserved = preserveAcceptance
                                 )
-                            ) {
+                            val showManualLegal =
+                                shouldShowRaceLegalAfterFetch(
+                                    decision = legalDecision,
+                                    pendingEnterRaceAfterLegal =
+                                        pendingEnterRaceAfterLegal,
+                                    manualOpenRequested =
+                                        pendingManualRaceLegalOpen
+                                )
+                            when (legalDecision) {
                                 EnterRaceLegalGateDecision.CONTINUE -> {
                                     if (pendingEnterRaceAfterLegal) {
+                                        pendingManualRaceLegalOpen = false
                                         continuePendingEnterRaceAfterLegal()
-                                    } else {
+                                    } else if (showManualLegal) {
+                                        pendingManualRaceLegalOpen = false
                                         currentScreen.value = Screen.RACE_LEGAL
                                     }
                                 }
 
                                 EnterRaceLegalGateDecision.SHOW_LEGAL -> {
+                                    pendingManualRaceLegalOpen = false
                                     currentScreen.value = Screen.RACE_LEGAL
                                 }
 
                                 EnterRaceLegalGateDecision.FETCH_LEGAL,
                                 EnterRaceLegalGateDecision.BLOCK -> {
                                     pendingEnterRaceAfterLegal = false
+                                    pendingManualRaceLegalOpen = false
                                     currentScreen.value = Screen.RACE
                                 }
                             }
@@ -2266,10 +2286,12 @@ class MainActivity : ComponentActivity() {
                         pendingEnterRaceAfterLegal &&
                         decision == EnterRaceLegalGateDecision.CONTINUE
                     ) {
+                        pendingManualRaceLegalOpen = false
                         continuePendingEnterRaceAfterLegal()
                     } else if (pendingEnterRaceAfterLegal) {
                         blockPendingEnterRaceWithLegalError()
                     } else {
+                        pendingManualRaceLegalOpen = false
                         currentScreen.value = Screen.RACE
                     }
                 }
@@ -3918,35 +3940,6 @@ fun TrackingConsentDialog(
         dismissButton = {
             TextButton(onClick = onCancel) {
                 Text(stringResource(R.string.cancel))
-            }
-        }
-    )
-}
-
-@Composable
-fun LeaveRaceOptionsDialog(
-    retireEnabled: Boolean,
-    onRetire: () -> Unit,
-    onLeaveRace: () -> Unit,
-    onCancel: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onCancel,
-        title = { Text(stringResource(R.string.leave_race)) },
-        text = { Text(stringResource(R.string.leave_race_choice_message)) },
-        confirmButton = {
-            TextButton(onClick = onRetire, enabled = retireEnabled) {
-                Text(stringResource(R.string.retire))
-            }
-        },
-        dismissButton = {
-            Row {
-                TextButton(onClick = onLeaveRace) {
-                    Text(stringResource(R.string.leave_race))
-                }
-                TextButton(onClick = onCancel) {
-                    Text(stringResource(R.string.cancel))
-                }
             }
         }
     )
