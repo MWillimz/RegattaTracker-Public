@@ -14,8 +14,9 @@ internal const val DEFAULT_GPS_MANEUVER_SMOOTHING_SECONDS = 3.0
 internal const val DEFAULT_GPS_MANEUVER_WINDOW_SECONDS = 5.0
 internal const val DEFAULT_GPS_MANEUVER_THRESHOLD_DEG = 20.0
 internal const val DEFAULT_ANALYSIS_RECOVERY_SECONDS = 5.0
-internal const val DEFAULT_IMU_STEADY_YAW_RATE_DPS = 3.0
-private const val IMU_YAW_RATE_KEY = "regattalink.fast.yaw_rate_dps"
+internal const val DEFAULT_IMU_STEADY_ATTITUDE_RATE_DPS = 1.5
+private const val IMU_HEEL_KEY = "regattalink.summary.heel_filtered_deg"
+private const val IMU_TRIM_KEY = "regattalink.summary.trim_filtered_deg"
 
 enum class AnalysisMetricUse {
     ANGLE,
@@ -67,8 +68,9 @@ data class GpsManeuverAnalysisFilter(
     val recoverySeconds: Double = DEFAULT_ANALYSIS_RECOVERY_SECONDS
 ) : AnalysisSampleFilter
 
-data class ImuSteadyCourseAnalysisFilter(
-    val maxYawRateDps: Double = DEFAULT_IMU_STEADY_YAW_RATE_DPS,
+data class ImuStabilityAnalysisFilter(
+    val maxAttitudeRateDps: Double =
+        DEFAULT_IMU_STEADY_ATTITUDE_RATE_DPS,
     val recoverySeconds: Double = DEFAULT_ANALYSIS_RECOVERY_SECONDS
 ) : AnalysisSampleFilter
 
@@ -100,7 +102,7 @@ data class SessionAnalysisCapabilities(
     val defaultAngleId: String,
     val defaultRadiusId: String,
     val gpsManeuverFilterAvailable: Boolean = false,
-    val imuSteadyCourseFilterAvailable: Boolean = false
+    val imuStabilityFilterAvailable: Boolean = false
 )
 
 internal fun prepareAnalysisSamples(
@@ -133,8 +135,8 @@ internal fun applyAnalysisSampleFilters(
         val mask = when (filter) {
             is GpsManeuverAnalysisFilter ->
                 gpsManeuverExclusionMask(samples, filter)
-            is ImuSteadyCourseAnalysisFilter ->
-                imuSteadyCourseExclusionMask(samples, filter)
+            is ImuStabilityAnalysisFilter ->
+                imuStabilityExclusionMask(samples, filter)
         }
         for (index in excluded.indices) {
             excluded[index] = excluded[index] || mask[index]
@@ -149,13 +151,13 @@ internal fun hasGpsManeuverFilterData(
 ): Boolean =
     samples.count { it.timestampMs != null && it.cogDeg.isFinite() } >= 2
 
-internal fun hasImuSteadyCourseFilterData(
+internal fun hasImuStabilityFilterData(
     samples: List<PreparedAnalysisSample>
 ): Boolean =
-    samples.any { sample ->
+    samples.count { sample ->
         sample.timestampMs != null &&
-            sample.measurements[IMU_YAW_RATE_KEY]?.isFinite() == true
-    }
+            sample.measurements[IMU_HEEL_KEY]?.isFinite() == true
+    } >= 2
 
 private fun gpsManeuverExclusionMask(
     samples: List<PreparedAnalysisSample>,
@@ -250,21 +252,75 @@ private fun gpsManeuverExclusionMask(
     return excluded
 }
 
-private fun imuSteadyCourseExclusionMask(
+private fun imuStabilityExclusionMask(
     samples: List<PreparedAnalysisSample>,
-    filter: ImuSteadyCourseAnalysisFilter
+    filter: ImuStabilityAnalysisFilter
 ): BooleanArray {
-    require(filter.maxYawRateDps > 0.0)
+    require(filter.maxAttitudeRateDps > 0.0)
     require(filter.recoverySeconds >= 0.0)
 
     val excluded = BooleanArray(samples.size)
+    var previousIndex: Int? = null
+
     samples.forEachIndexed { index, sample ->
-        val yawRate = sample.measurements[IMU_YAW_RATE_KEY]
-        excluded[index] =
-            sample.timestampMs == null ||
-            yawRate == null ||
-            !yawRate.isFinite() ||
-            abs(yawRate) > filter.maxYawRateDps
+        val time = sample.timestampMs
+        val heel = sample.measurements[IMU_HEEL_KEY]
+        if (time == null || heel == null || !heel.isFinite()) {
+            excluded[index] = true
+            previousIndex = null
+            return@forEachIndexed
+        }
+
+        val previous = previousIndex
+        if (previous != null) {
+            val previousSample = samples[previous]
+            val previousTime = previousSample.timestampMs
+            val previousHeel = previousSample.measurements[IMU_HEEL_KEY]
+            if (
+                previousTime != null &&
+                previousHeel != null &&
+                previousHeel.isFinite()
+            ) {
+                val dtSeconds = (time - previousTime) / 1_000.0
+                if (dtSeconds > 0.0 && dtSeconds <= 3.0) {
+                    val heelRate = abs(
+                        shortestAnalysisAngleDeltaDeg(heel, previousHeel)
+                    ) / dtSeconds
+
+                    val trim = sample.measurements[IMU_TRIM_KEY]
+                    val previousTrim =
+                        previousSample.measurements[IMU_TRIM_KEY]
+                    val trimRate =
+                        if (
+                            trim != null &&
+                            previousTrim != null &&
+                            trim.isFinite() &&
+                            previousTrim.isFinite()
+                        ) {
+                            abs(trim - previousTrim) / dtSeconds
+                        } else {
+                            0.0
+                        }
+
+                    if (
+                        max(heelRate, trimRate) >
+                        filter.maxAttitudeRateDps
+                    ) {
+                        /*
+                         * The transition spans both 1 Hz summary samples.
+                         * Exclude both endpoints, then apply the configured
+                         * recovery tail below.
+                         */
+                        excluded[previous] = true
+                        excluded[index] = true
+                    }
+                } else {
+                    excluded[index] = true
+                }
+            }
+        }
+
+        previousIndex = index
     }
 
     extendAnalysisExclusionForward(
@@ -484,8 +540,8 @@ internal fun discoverSessionAnalysisCapabilities(
         defaultAngleId = defaultAngle,
         defaultRadiusId = defaultRadius,
         gpsManeuverFilterAvailable = hasGpsManeuverFilterData(preparedSamples),
-        imuSteadyCourseFilterAvailable =
-            hasImuSteadyCourseFilterData(preparedSamples)
+        imuStabilityFilterAvailable =
+            hasImuStabilityFilterData(preparedSamples)
     )
 }
 
