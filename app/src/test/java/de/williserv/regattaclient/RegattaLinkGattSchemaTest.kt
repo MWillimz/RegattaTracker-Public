@@ -80,6 +80,21 @@ class RegattaLinkGattSchemaTest {
     }
 
     @Test
+    fun legacyFirmwareWithoutProcessLocalAcceptanceMustReconcileAgain() {
+        val decision = regattaLinkGattSchemaDecision(
+            reportedVersion = 0,
+            acceptedVersion = null,
+            connectionStartedBonded = true,
+            serviceChangedObserved = false,
+            serviceChangedRediscoveryCompleted = false
+        )
+
+        assertTrue(decision.waitForRediscovery)
+        assertFalse(decision.requestServiceChanged)
+        assertFalse(decision.acceptReportedVersion)
+    }
+
+    @Test
     fun reconciledLegacyFirmwareDoesNotBlockFreshOtaReconnect() {
         val decision = regattaLinkGattSchemaDecision(
             reportedVersion = 0,
