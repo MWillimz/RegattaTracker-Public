@@ -1665,10 +1665,11 @@ internal class RegattaLinkBleClient(
 
         /*
          * A generation match or Service Changed callback is not proof that
-         * Android's cached ATT handles are usable. Prove the real OTA status
-         * characteristic + CCCD once per app process before persisting or
-         * trusting the schema. This is the exact operation that failed with
-         * GATT_WRITE_NOT_PERMITTED when the cache was stale.
+         * Android's cached ATT table is usable. Prove real critical
+         * characteristic/CCCD I/O once per app process before persisting or
+         * trusting the schema. OTA Status covers the historic stale-handle
+         * failure; schema 11+ additionally proves the required Motion 1 Hz
+         * surface because that append does not move the earlier OTA handles.
          */
         if (
             shouldValidateRegattaLinkGattLayout(
