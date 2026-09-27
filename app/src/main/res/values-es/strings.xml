@@ -462,6 +462,9 @@
     <string name="regattalink_roll_rate">Velocidad de balanceo</string>
     <string name="regattalink_pitch_rate">Velocidad de cabeceo</string>
     <string name="regattalink_yaw_rate">Velocidad de guiñada</string>
+    <string name="regattalink_encounter_period">Período de encuentro</string>
+    <string name="regattalink_pitch_peak_to_peak">Movimiento de cabeceo p-p</string>
+    <string name="regattalink_roll_peak_to_peak">Movimiento de balanceo p-p</string>
     <string name="regattalink_vertical_accel">Aceleración vertical</string>
     <string name="regattalink_calibration_title">Orientación / calibración del sensor</string>
     <string name="regattalink_confidence_overall">Confianza total</string>
@@ -510,6 +513,8 @@
     <string name="regattalink_confidence">Confianza</string>
     <string name="regattalink_settings_title">Ajustes</string>
     <string name="regattalink_led_brightness">Brillo LED</string>
+    <string name="regattalink_motion_damping">Amortiguación</string>
+    <string name="regattalink_motion_damping_value">%1$d s</string>
     <string name="regattalink_led_brightness_unavailable">El brillo LED no es compatible con este firmware.</string>
     <string name="regattalink_saving">Guardando…</string>
     <string name="regattalink_nmea_title">NMEA2000</string>
