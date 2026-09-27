@@ -2269,27 +2269,33 @@ internal class RegattaLinkBleClient(
                 writeCharacteristicBlockingDirect(
                     activeGatt,
                     characteristic,
-                    request
+                    request,
+                    onSubmitted =
+                        if (opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET) {
+                            {
+                                /*
+                                 * Local submission is the last point at which
+                                 * we know the request was definitely not sent.
+                                 * After ACCEPTED, any missing/error callback is
+                                 * ambiguous and firmware may already continue
+                                 * the destructive reset after disconnect.
+                                 */
+                                factoryResetWriteAccepted = true
+                                factoryResetDisconnectTracker.markAccepted(
+                                    session = activeGatt,
+                                    requestId = requestId
+                                )
+                                onFactoryResetRecoveryStateChanged(true)
+                                updateConfiguration {
+                                    it.copy(
+                                        factoryResetWriteAcceptedRequestId = requestId
+                                    )
+                                }
+                            }
+                        } else {
+                            null
+                        }
                 )
-                if (opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET) {
-                    /*
-                     * ATT success is only provisional ownership: firmware may
-                     * still publish a request-id-bound 0008 rejection. Keep a
-                     * disconnect from racing into ordinary outage reconnect
-                     * until 0008 makes acceptance/rejection authoritative.
-                     */
-                    factoryResetWriteAccepted = true
-                    factoryResetDisconnectTracker.markAccepted(
-                        session = activeGatt,
-                        requestId = requestId
-                    )
-                    onFactoryResetRecoveryStateChanged(true)
-                    updateConfiguration {
-                        it.copy(
-                            factoryResetWriteAcceptedRequestId = requestId
-                        )
-                    }
-                }
 
                 var requestAcceptanceObserved = false
                 val commandDeadline =
@@ -3082,7 +3088,8 @@ internal class RegattaLinkBleClient(
     private fun writeCharacteristicBlockingDirect(
         activeGatt: BluetoothGatt,
         characteristic: BluetoothGattCharacteristic,
-        value: ByteArray
+        value: ByteArray,
+        onSubmitted: (() -> Unit)? = null
     ) {
         var attempts = 0
         while (true) {
@@ -3119,10 +3126,20 @@ internal class RegattaLinkBleClient(
                 )
             }
 
-            awaitUnitFuture(
-                future,
-                "GATT write " + characteristic.uuid
-            )
+            /*
+             * From this point on, a missing/error callback is ambiguous: the
+             * peripheral may already have processed the ATT Write Request.
+             * Destructive commands such as Factory Reset must claim recovery
+             * ownership before waiting for the callback.
+             */
+            afterRegattaLinkGattSubmissionAccepted(
+                onSubmitted = onSubmitted
+            ) {
+                awaitUnitFuture(
+                    future,
+                    "GATT write " + characteristic.uuid
+                )
+            }
             return
         }
     }

@@ -380,6 +380,43 @@ class RegattaLinkDeviceControlTest {
     }
 
     @Test
+    fun destructiveGattRecoveryStartsBeforeWaitingForWriteResponse() {
+        val sequence = mutableListOf<String>()
+
+        val result = afterRegattaLinkGattSubmissionAccepted(
+            onSubmitted = { sequence += "submitted" },
+            awaitResponse = {
+                sequence += "await"
+                7
+            }
+        )
+
+        assertEquals(7, result)
+        assertEquals(listOf("submitted", "await"), sequence)
+    }
+
+    @Test
+    fun destructiveGattRecoveryIsClaimedEvenWhenWriteResponseFails() {
+        var submitted = false
+
+        try {
+            afterRegattaLinkGattSubmissionAccepted(
+                onSubmitted = { submitted = true },
+                awaitResponse = {
+                    throw RegattaLinkOtaTransportException(
+                        "write callback lost",
+                        ambiguous = true
+                    )
+                }
+            )
+        } catch (_: RegattaLinkOtaTransportException) {
+            // Expected: the callback outcome is ambiguous after submission.
+        }
+
+        assertTrue(submitted)
+    }
+
+    @Test
     fun acceptedFactoryResetOwnsManualDisconnectUntilConsumedOrExpired() {
         var now = 2_000L
         val tracker = RegattaLinkFactoryResetDisconnectTracker<Any>(

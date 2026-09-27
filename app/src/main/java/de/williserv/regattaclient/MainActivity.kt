@@ -86,6 +86,7 @@ class MainActivity : ComponentActivity() {
     private val raceLegalAcceptStatusText = mutableStateOf("")
     private val eventLegalFlowState = EventLegalFlowState()
     private var pendingEnterRaceAfterLegal = false
+    private var pendingManualRaceLegalOpen = false
     private val enterRaceServerCheckInProgress = mutableStateOf(false)
     private val enterRaceServerCheckState = EnterRaceServerCheckState()
     private var activeLegalFetchContext: EventCompatibilityContext? = null
@@ -848,8 +849,15 @@ class MainActivity : ComponentActivity() {
                                 showClearRaceSetupDialog.value = true
                             },
                             onShowRaceLegal = {
-                                currentScreen.value = Screen.RACE_LEGAL
-                                if (raceLegalText.value.isBlank()) {
+                                if (
+                                    shouldOpenRaceLegalBeforeFetch(
+                                        legalTextLoaded =
+                                            raceLegalText.value.isNotBlank()
+                                    )
+                                ) {
+                                    currentScreen.value = Screen.RACE_LEGAL
+                                } else {
+                                    pendingManualRaceLegalOpen = true
                                     fetchRaceLegalText()
                                 }
                             },
@@ -1015,7 +1023,11 @@ class MainActivity : ComponentActivity() {
                         onCancel = {
                             cancelEnterRaceServerCheck()
                             pendingEnterRaceAfterLegal = false
+                            pendingManualRaceLegalOpen = false
                             showEventUpdateRecommendedDialog.value = false
+                            if (currentScreen.value == Screen.RACE_LEGAL) {
+                                currentScreen.value = Screen.RACE
+                            }
                         }
                     )
                 }
@@ -1025,7 +1037,11 @@ class MainActivity : ComponentActivity() {
                         onDismiss = {
                             cancelEnterRaceServerCheck()
                             pendingEnterRaceAfterLegal = false
+                            pendingManualRaceLegalOpen = false
                             showEventUpdateRequiredDialog.value = false
+                            if (currentScreen.value == Screen.RACE_LEGAL) {
+                                currentScreen.value = Screen.RACE
+                            }
                         }
                     )
                 }
@@ -1300,6 +1316,7 @@ class MainActivity : ComponentActivity() {
 
 
     private fun resetRaceLegalState() {
+        pendingManualRaceLegalOpen = false
         raceLegalAccepted.value = false
         raceLegalText.value = ""
         raceLegalHash.value = ""
@@ -1364,6 +1381,7 @@ class MainActivity : ComponentActivity() {
     private fun resetEventCompatibilityState() {
         cancelEnterRaceServerCheck()
         pendingEnterRaceAfterLegal = false
+        pendingManualRaceLegalOpen = false
         eventCompatibilityGeneration += 1L
         eventCompatibilityAllowedAccess = null
         eventCompatibilityWarningAccess = null
@@ -1798,6 +1816,7 @@ class MainActivity : ComponentActivity() {
 
     private fun blockPendingEnterRaceWithLegalError() {
         cancelEnterRaceServerCheck()
+        pendingManualRaceLegalOpen = false
         if (!pendingEnterRaceAfterLegal) {
             currentScreen.value = Screen.RACE
             return
@@ -2095,6 +2114,7 @@ class MainActivity : ComponentActivity() {
                         ) {
                             blockPendingEnterRaceWithLegalError()
                         } else {
+                            pendingManualRaceLegalOpen = false
                             currentScreen.value = Screen.RACE
                         }
                     }
@@ -2186,27 +2206,41 @@ class MainActivity : ComponentActivity() {
                                 )
                             )
 
-                            when (
+                            val legalDecision =
                                 enterRaceLegalFetchDecision(
                                     serverResponded = true,
                                     responseSuccessful = true,
                                     documentValid = true,
                                     acceptancePreserved = preserveAcceptance
                                 )
-                            ) {
+                            val showManualLegal =
+                                shouldShowRaceLegalAfterFetch(
+                                    decision = legalDecision,
+                                    pendingEnterRaceAfterLegal =
+                                        pendingEnterRaceAfterLegal,
+                                    manualOpenRequested =
+                                        pendingManualRaceLegalOpen
+                                )
+                            when (legalDecision) {
                                 EnterRaceLegalGateDecision.CONTINUE -> {
                                     if (pendingEnterRaceAfterLegal) {
+                                        pendingManualRaceLegalOpen = false
                                         continuePendingEnterRaceAfterLegal()
+                                    } else if (showManualLegal) {
+                                        pendingManualRaceLegalOpen = false
+                                        currentScreen.value = Screen.RACE_LEGAL
                                     }
                                 }
 
                                 EnterRaceLegalGateDecision.SHOW_LEGAL -> {
+                                    pendingManualRaceLegalOpen = false
                                     currentScreen.value = Screen.RACE_LEGAL
                                 }
 
                                 EnterRaceLegalGateDecision.FETCH_LEGAL,
                                 EnterRaceLegalGateDecision.BLOCK -> {
                                     pendingEnterRaceAfterLegal = false
+                                    pendingManualRaceLegalOpen = false
                                     currentScreen.value = Screen.RACE
                                 }
                             }
@@ -2252,10 +2286,12 @@ class MainActivity : ComponentActivity() {
                         pendingEnterRaceAfterLegal &&
                         decision == EnterRaceLegalGateDecision.CONTINUE
                     ) {
+                        pendingManualRaceLegalOpen = false
                         continuePendingEnterRaceAfterLegal()
                     } else if (pendingEnterRaceAfterLegal) {
                         blockPendingEnterRaceWithLegalError()
                     } else {
+                        pendingManualRaceLegalOpen = false
                         currentScreen.value = Screen.RACE
                     }
                 }

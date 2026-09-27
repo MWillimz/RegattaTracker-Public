@@ -74,6 +74,54 @@ class EnterRaceLegalGateTest {
     }
 
     @Test
+    fun manualRaceNoticeDoesNotNavigateToBlankLegalBeforeFetch() {
+        assertEquals(
+            false,
+            shouldOpenRaceLegalBeforeFetch(legalTextLoaded = false)
+        )
+        assertEquals(
+            true,
+            shouldOpenRaceLegalBeforeFetch(legalTextLoaded = true)
+        )
+    }
+
+    @Test
+    fun manualRaceNoticeOpensAfterCompatibilityWhenAcceptanceIsPreserved() {
+        assertEquals(
+            true,
+            shouldShowRaceLegalAfterFetch(
+                decision = EnterRaceLegalGateDecision.CONTINUE,
+                pendingEnterRaceAfterLegal = false,
+                manualOpenRequested = true
+            )
+        )
+    }
+
+    @Test
+    fun enterRaceContinuationWinsOverManualRaceNoticeNavigation() {
+        assertEquals(
+            false,
+            shouldShowRaceLegalAfterFetch(
+                decision = EnterRaceLegalGateDecision.CONTINUE,
+                pendingEnterRaceAfterLegal = true,
+                manualOpenRequested = true
+            )
+        )
+    }
+
+    @Test
+    fun unacceptedDocumentStillShowsLegalWithoutManualRequest() {
+        assertEquals(
+            true,
+            shouldShowRaceLegalAfterFetch(
+                decision = EnterRaceLegalGateDecision.SHOW_LEGAL,
+                pendingEnterRaceAfterLegal = false,
+                manualOpenRequested = false
+            )
+        )
+    }
+
+    @Test
     fun validAlreadyAcceptedDocumentContinues() {
         assertEquals(
             EnterRaceLegalGateDecision.CONTINUE,

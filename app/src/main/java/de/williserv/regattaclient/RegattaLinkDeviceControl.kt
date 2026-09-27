@@ -124,6 +124,14 @@ internal fun regattaLinkFactoryResetContinuesToBondReset(
             else -> false
         }
 
+internal fun <T> afterRegattaLinkGattSubmissionAccepted(
+    onSubmitted: (() -> Unit)?,
+    awaitResponse: () -> T
+): T {
+    onSubmitted?.invoke()
+    return awaitResponse()
+}
+
 internal fun <T : Any> consumeRegattaLinkFactoryResetFallback(
     session: T,
     sessionStillCurrent: Boolean,

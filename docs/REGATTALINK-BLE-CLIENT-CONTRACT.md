@@ -407,9 +407,13 @@ RegattaTracker uses that request-id-bound status for semantic BUSY/BAD_STATE/
 BAD_REQUEST presentation. A successful ATT write alone is therefore not Device
 Control acceptance: Tracker takes manager-level command/reset acceptance only after
 it observes the matching request_id in 0008 without rejection detail. For Factory
-Reset, ATT success creates only provisional, GATT-session-bound disconnect ownership
-so a link loss before the first 0008 read cannot fall into ordinary outage reconnect;
-a matching 0008 rejection clears that provisional ownership.
+Reset, local acceptance of the GATT write submission creates provisional,
+GATT-session-bound disconnect ownership **before** Tracker waits for the Android write
+callback. From that point a missing/error callback is ambiguous because firmware may
+already have processed the ATT Write Request. A link loss in that window therefore
+cannot fall into ordinary outage reconnect. A definite local pre-transmission
+rejection creates no reset ownership, and a matching 0008 rejection clears any
+provisional ownership.
 
 Android GATT callback status numbers in the 0x80 range are not treated as RegattaLink
 application codes because Android's own local GATT status namespace overlaps those
