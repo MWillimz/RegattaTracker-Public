@@ -248,6 +248,136 @@ class SessionAnalysisTest {
     }
 
     @Test
+    fun shortestCourseDeltaHandlesNorthWraparound() {
+        assertEquals(
+            2.0,
+            kotlin.math.abs(shortestAnalysisAngleDeltaDeg(1.0, 359.0)),
+            0.001
+        )
+        assertEquals(
+            2.0,
+            kotlin.math.abs(shortestAnalysisAngleDeltaDeg(359.0, 1.0)),
+            0.001
+        )
+    }
+
+    @Test
+    fun gpsManeuverFilterExcludesTransitionAndConfiguredRecovery() {
+        val prepared = listOf(0.0, 0.0, 0.0, 30.0, 30.0, 30.0, 30.0, 30.0)
+            .mapIndexed { index, cog ->
+                PreparedAnalysisSample(
+                    timestampMs = index * 1_000L,
+                    cogDeg = cog,
+                    sogMps = index.toDouble(),
+                    measurements = emptyMap()
+                )
+            }
+
+        val filtered = applyAnalysisSampleFilters(
+            prepared,
+            listOf(
+                GpsManeuverAnalysisFilter(
+                    smoothingSeconds = 0.1,
+                    changeWindowSeconds = 2.0,
+                    changeThresholdDeg = 20.0,
+                    recoverySeconds = 2.0
+                )
+            )
+        )
+
+        assertEquals(listOf(0.0, 7.0), filtered.map { it.sogMps })
+    }
+
+    @Test
+    fun imuSteadyCourseFilterExcludesHighYawAndConfiguredRecovery() {
+        val yawRates = listOf(0.2, 0.3, 4.0, 0.1, 0.1, 0.1, 0.1)
+        val prepared = yawRates.mapIndexed { index, yaw ->
+            PreparedAnalysisSample(
+                timestampMs = index * 1_000L,
+                cogDeg = 90.0,
+                sogMps = index.toDouble(),
+                measurements = mapOf(
+                    "regattalink.fast.yaw_rate_dps" to yaw
+                )
+            )
+        }
+
+        val filtered = applyAnalysisSampleFilters(
+            prepared,
+            listOf(
+                ImuSteadyCourseAnalysisFilter(
+                    maxYawRateDps = 3.0,
+                    recoverySeconds = 2.0
+                )
+            )
+        )
+
+        assertEquals(
+            listOf(0.0, 1.0, 5.0, 6.0),
+            filtered.map { it.sogMps }
+        )
+    }
+
+    @Test
+    fun imuSteadyCourseFilterIsOnlyAvailableWithPersistedYawRate() {
+        val withoutImu = listOf(sample(timestamp = "2026-09-24T12:00:00"))
+        val withoutCapabilities = discoverSessionAnalysisCapabilities(
+            withoutImu,
+            prepareAnalysisSamples(withoutImu)
+        )
+        assertFalse(withoutCapabilities.imuSteadyCourseFilterAvailable)
+
+        val withImu = listOf(
+            sample(
+                timestamp = "2026-09-24T12:00:00",
+                measurements = """
+                    {
+                      "regattalink.fast.yaw_rate_dps":{"value":0.4,"unit":"deg/s","group":"regattalink"}
+                    }
+                """.trimIndent()
+            )
+        )
+        val withCapabilities = discoverSessionAnalysisCapabilities(
+            withImu,
+            prepareAnalysisSamples(withImu)
+        )
+        assertTrue(withCapabilities.imuSteadyCourseFilterAvailable)
+    }
+
+    @Test
+    fun activeSampleFiltersCombineByRejectingEitherFilter() {
+        val prepared = (0..6).map { index ->
+            PreparedAnalysisSample(
+                timestampMs = index * 1_000L,
+                cogDeg = if (index >= 3) 30.0 else 0.0,
+                sogMps = index.toDouble(),
+                measurements = mapOf(
+                    "regattalink.fast.yaw_rate_dps" to
+                        if (index == 6) 5.0 else 0.0
+                )
+            )
+        }
+
+        val filtered = applyAnalysisSampleFilters(
+            prepared,
+            listOf(
+                GpsManeuverAnalysisFilter(
+                    smoothingSeconds = 0.1,
+                    changeWindowSeconds = 2.0,
+                    changeThresholdDeg = 20.0,
+                    recoverySeconds = 0.0
+                ),
+                ImuSteadyCourseAnalysisFilter(
+                    maxYawRateDps = 3.0,
+                    recoverySeconds = 0.0
+                )
+            )
+        )
+
+        assertEquals(listOf(0.0, 5.0), filtered.map { it.sogMps })
+    }
+
+    @Test
     fun genericNegativeRadiusSamplesAreRejected() {
         val samples = listOf(
             sample(
@@ -277,10 +407,11 @@ class SessionAnalysisTest {
     private fun sample(
         cog: Float = 90f,
         sog: Float = 4f,
-        measurements: String? = null
+        measurements: String? = null,
+        timestamp: String = "2026-09-24T12:00:00"
     ) = SessionTrackingSample(
         localId = 1L,
-        timestamp = "2026-09-24T12:00:00",
+        timestamp = timestamp,
         utcOffsetMinutes = 0,
         lat = 54.0,
         lon = 10.0,
