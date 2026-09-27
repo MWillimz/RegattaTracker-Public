@@ -54,7 +54,7 @@ Base UUID:
 | Motion summary telemetry | 0022 | encrypted/bonded read + notify | implemented | parser retained; not subscribed in normal flow |
 | Calibration diagnostics telemetry | 0023 | encrypted/bonded read + notify | implemented | parser retained; not subscribed in normal flow |
 | Normalized NMEA Boat State v1 | 0024 | encrypted/bonded read + notify | implemented | implemented; UUID-discovered independently of IMU capability |
-| Motion 1 Hz | 0025 | encrypted/bonded read + notify | specified by RegattaLink #165, fixed 20-byte v1 | required normal IMU/motion subscription |
+| Motion 1 Hz | 0025 | encrypted/bonded read + notify | implemented by RegattaLink #165 / PR #166, fixed 20-byte v1 | required normal IMU/motion subscription |
 | Extension service | 0030 | service | implemented | discovery anchor for 0007/0008 |
 
 All multibyte integers in custom RegattaLink records are little-endian unless stated otherwise.
@@ -105,11 +105,11 @@ fresh pre-transfer OTA reconnect to reuse the corrected Android ATT cache withou
 persisting an unverifiable legacy generation. The old fixed 500 ms OTA reconnect
 quiet-time heuristic is not part of the reconciliation path.
 
-Schema 10 is the current deployed generation after the deliberate addition of
-configuration characteristic 0009. Clients must continue to treat the advertised
-generation as authoritative and reconcile any change before using downstream
-handles. RegattaTracker discovers every characteristic by UUID rather than
-hard-coded ATT handle.
+Schema 11 is the current target generation after schema 10 added configuration
+characteristic 0009 and schema 11 appended Motion 1 Hz 0025. Clients must continue
+to treat the advertised generation as authoritative and reconcile any change before
+using downstream handles. RegattaTracker discovers every characteristic by UUID
+rather than hard-coded ATT handle.
 
 ## 4. Configuration and extension services
 
