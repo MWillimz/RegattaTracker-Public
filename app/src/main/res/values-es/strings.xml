@@ -374,6 +374,11 @@
     <string name="session_analysis_show_filters">Mostrar filtros</string>
     <string name="session_analysis_hide_filters">Ocultar filtros</string>
     <string name="session_analysis_filter_range">%1$s–%2$s %3$s</string>
+    <string name="session_analysis_gps_maneuver_filter">Filtro de maniobras GPS</string>
+    <string name="session_analysis_gps_maneuver_threshold">Cambio de rumbo: %1$d° / 5 s</string>
+    <string name="session_analysis_imu_steady_filter">Filtro IMU de rumbo estable</string>
+    <string name="session_analysis_imu_yaw_limit">Velocidad máxima de guiñada: %1$s °/s</string>
+    <string name="session_analysis_recovery_seconds">Excluir durante %1$d s después</string>
     <string name="session_analysis_color_legend">Color: %1$s</string>
     <string name="session_analysis_points">%1$d puntos visibles</string>
     <string name="session_replay_button">Replay</string>
