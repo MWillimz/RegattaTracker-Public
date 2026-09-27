@@ -307,7 +307,11 @@ fun SessionAnalysisScreen(
                     }
                 }
 
-                if (capabilities.filterMetrics.isNotEmpty()) {
+                if (
+                    capabilities.filterMetrics.isNotEmpty() ||
+                    capabilities.gpsManeuverFilterAvailable ||
+                    capabilities.imuSteadyCourseFilterAvailable
+                ) {
                     item {
                         TextButton(
                             onClick = { filtersExpanded = !filtersExpanded }
