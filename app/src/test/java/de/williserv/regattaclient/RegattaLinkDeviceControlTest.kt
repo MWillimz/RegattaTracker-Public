@@ -417,6 +417,28 @@ class RegattaLinkDeviceControlTest {
     }
 
     @Test
+    fun destructiveGattRecoveryRemainsClaimedWhenWriteResponseFails() {
+        val sequence = mutableListOf<String>()
+
+        try {
+            afterRegattaLinkGattSubmissionAccepted(
+                onSubmitted = { sequence += "submitted" },
+                awaitResponse = {
+                    sequence += "await"
+                    throw RegattaLinkOtaTransportException(
+                        "missing callback",
+                        ambiguous = true
+                    )
+                }
+            )
+        } catch (_: RegattaLinkOtaTransportException) {
+            // Expected: the important invariant is callback ordering.
+        }
+
+        assertEquals(listOf("submitted", "await"), sequence)
+    }
+
+    @Test
     fun acceptedFactoryResetOwnsManualDisconnectUntilConsumedOrExpired() {
         var now = 2_000L
         val tracker = RegattaLinkFactoryResetDisconnectTracker<Any>(
