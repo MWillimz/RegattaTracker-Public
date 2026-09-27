@@ -38,7 +38,7 @@ Base UUID:
 | --- | ---: | --- | --- | --- |
 | Configuration service | 0001 | service | implemented | discovery anchor |
 | Device name | 0002 | encrypted/bonded read + write | implemented | implemented |
-| Device info | 0003 | encrypted/bonded read + schema-refresh write | implemented | implemented |
+| Device info | 0003 | encrypted/bonded read | implemented | implemented |
 | NMEA2000 PGN inventory | 0004 | encrypted/bonded read | implemented | implemented |
 | NMEA2000 raw CAN FIFO | 0005 | encrypted/bonded read | implemented | implemented as explicit bounded diagnostic read |
 | Global LED brightness | 0006 | encrypted/bonded read + write | additive contract in RegattaLink #135 / PR #136; optional by discovery | implemented when discovered |
@@ -78,10 +78,11 @@ continue using cached handles while service rediscovery is pending. Schema-aware
 firmware advertises its monotonic GATT schema generation in Device Info bits 24..31.
 RegattaTracker persists the accepted generation per stable device ID.
 
-On a restored bond with a different generation, RegattaTracker writes
-`01 <reported-generation>` to the stable Device Info 0003 characteristic, waits for
-the Service Changed callback, completes service rediscovery, re-reads Device Info,
-and only then releases the connection to OTA/telemetry. A Service Changed callback
+On a restored bond with a different generation, RegattaTracker writes the reserved
+two-byte value `00 <reported-generation>` to the long-lived writable Device Name
+0002 characteristic, waits for the Service Changed callback, completes service
+rediscovery, re-reads Device Info, and only then releases the connection to
+OTA/telemetry. A Service Changed callback
 without the subsequent rediscovery is not sufficient. Legacy schema-0 firmware uses
 its existing migration Service Changed and is likewise gated before movable handles
 are used. The old fixed 500 ms OTA reconnect quiet-time heuristic is not part of the
@@ -120,7 +121,10 @@ Rules:
 - DEL 0x7f is forbidden;
 - a successful write is persisted;
 - firmware updates the GAP name immediately where the stack permits;
-- name writes are rejected as BUSY while OTA owns the device.
+- name writes are rejected as BUSY while OTA owns the device;
+- schema-aware firmware reserves the otherwise-invalid two-byte value
+  `00 <schema-version>` on this same stable writable handle to request a
+  full Service Changed indication; it is not persisted as a name.
 
 The current client should treat device naming as configuration, not as a stable device identifier. Device identity comes from Device Info.
 
@@ -132,10 +136,8 @@ Full UUID:
 
 Properties:
 
-- read;
-- encrypted/bonded access required;
-- schema-aware firmware also permits an encrypted write of exactly two bytes
-  `01 <schema-version>` to request a full GATT Service Changed indication.
+- read only;
+- encrypted/bonded access required.
 
 Record size: exactly 32 bytes.
 
