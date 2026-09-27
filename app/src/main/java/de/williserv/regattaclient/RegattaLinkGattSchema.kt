@@ -61,6 +61,15 @@ internal fun regattaLinkGattSchemaDecision(
     )
 }
 
+internal fun shouldValidateRegattaLinkGattLayout(
+    schemaAlreadyVerifiedThisProcess: Boolean,
+    acceptReportedVersion: Boolean,
+    cacheRefreshPendingValidation: Boolean
+): Boolean =
+    acceptReportedVersion ||
+        cacheRefreshPendingValidation ||
+        !schemaAlreadyVerifiedThisProcess
+
 internal class RegattaLinkGattSchemaStore(context: Context) {
     companion object {
         private const val PREFS_NAME = "regattalink_gatt_schema"
