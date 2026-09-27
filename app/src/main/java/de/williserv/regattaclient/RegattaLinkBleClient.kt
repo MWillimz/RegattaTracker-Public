@@ -204,7 +204,6 @@ internal class RegattaLinkBleClient(
     @Volatile private var serviceChangedRediscoveryCompletedThisConnection = false
     @Volatile private var gattSchemaReconciliationPending = false
     @Volatile private var pendingGattSchemaVersion = 0
-    @Volatile private var pendingGattSchemaStableId = ""
     @Volatile private var serviceDiscoveryInProgress = false
     @Volatile private var deviceInfoReadInProgress = false
     @Volatile private var connectionSetupComplete = false
@@ -1647,7 +1646,6 @@ internal class RegattaLinkBleClient(
         connectionSetupComplete = false
         gattSchemaReconciliationPending = true
         pendingGattSchemaVersion = info.gattSchemaVersion
-        pendingGattSchemaStableId = info.stableId
         emitForDevice(
             activeGatt.device,
             RegattaLinkConnectionStatus.DISCOVERING
@@ -1717,14 +1715,12 @@ internal class RegattaLinkBleClient(
         handler.removeCallbacks(gattSchemaReconcileTimeout)
         gattSchemaReconciliationPending = false
         pendingGattSchemaVersion = 0
-        pendingGattSchemaStableId = ""
     }
 
     private fun resetGattSchemaReconciliationForNewConnection() {
         handler.removeCallbacks(gattSchemaReconcileTimeout)
         gattSchemaReconciliationPending = false
         pendingGattSchemaVersion = 0
-        pendingGattSchemaStableId = ""
         serviceChangedObservedThisConnection = false
         serviceChangedRediscoveryCompletedThisConnection = false
         gattSchemaRefreshRequestRunning.set(false)
@@ -3730,7 +3726,6 @@ internal class RegattaLinkBleClient(
         handler.removeCallbacks(gattSchemaReconcileTimeout)
         gattSchemaReconciliationPending = false
         pendingGattSchemaVersion = 0
-        pendingGattSchemaStableId = ""
         resetServiceDiscoveryState()
         connected = false
         establishedConnection = false
