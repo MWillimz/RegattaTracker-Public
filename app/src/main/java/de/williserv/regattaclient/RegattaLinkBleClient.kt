@@ -1709,6 +1709,7 @@ internal class RegattaLinkBleClient(
         connectionSetupComplete = false
         gattSchemaReconciliationPending = true
         pendingGattSchemaVersion = info.gattSchemaVersion
+        pendingGattSchemaInfo = info
         emitForDevice(
             activeGatt.device,
             RegattaLinkConnectionStatus.DISCOVERING
@@ -1766,24 +1767,225 @@ internal class RegattaLinkBleClient(
                         connected &&
                         gattSchemaReconciliationPending
                     ) {
-                        closeGattWithError(activeGatt, errorMessage!!)
+                        recoverAndroidGattCacheOrFail(
+                            activeGatt,
+                            info,
+                            errorMessage!!
+                        )
                     }
                 }
             }
         }
     }
 
+    private fun gattSchemaKey(info: RegattaLinkDeviceInfo): String =
+        info.stableId.lowercase() + ":" + info.gattSchemaVersion
+
+    private fun validateGattSchemaThenComplete(
+        activeGatt: BluetoothGatt,
+        info: RegattaLinkDeviceInfo
+    ) {
+        if (gatt !== activeGatt || !connected) return
+        if (!gattSchemaValidationRunning.compareAndSet(false, true)) {
+            handler.postDelayed(
+                {
+                    if (gatt === activeGatt && connected) {
+                        validateGattSchemaThenComplete(activeGatt, info)
+                    }
+                },
+                50L
+            )
+            return
+        }
+
+        connectionSetupComplete = false
+        gattSchemaReconciliationPending = true
+        pendingGattSchemaVersion = info.gattSchemaVersion
+        pendingGattSchemaInfo = info
+        handler.removeCallbacks(gattSchemaReconcileTimeout)
+        emitForDevice(
+            activeGatt.device,
+            RegattaLinkConnectionStatus.DISCOVERING
+        )
+
+        gattSchemaExecutor.execute {
+            var failure: String? = null
+            try {
+                if (gatt !== activeGatt || !connected) return@execute
+                probeCriticalGattLayout(activeGatt, info)
+            } catch (error: Exception) {
+                failure = error.message
+                    ?: "RegattaLink critical GATT layout validation failed"
+            } finally {
+                gattSchemaValidationRunning.set(false)
+            }
+
+            handler.post {
+                if (gatt !== activeGatt || !connected) return@post
+
+                if (failure != null) {
+                    recoverAndroidGattCacheOrFail(
+                        activeGatt,
+                        info,
+                        failure!!
+                    )
+                    return@post
+                }
+
+                val key = gattSchemaKey(info)
+                verifiedGattSchemaThisProcess += key
+                gattCacheRefreshPendingValidation.remove(key)
+                if (info.gattSchemaVersion == 0) {
+                    legacyGattSchemaAcceptedThisProcess += info.stableId
+                } else {
+                    gattSchemaStore.accept(
+                        info.stableId,
+                        info.gattSchemaVersion
+                    )
+                }
+
+                finishGattSchemaReconciliation()
+                completeConnectionAfterDeviceInfo(activeGatt, info)
+            }
+        }
+    }
+
+    private fun probeCriticalGattLayout(
+        activeGatt: BluetoothGatt,
+        info: RegattaLinkDeviceInfo
+    ) {
+        if (!info.otaAvailable) {
+            val nameCharacteristic = activeGatt
+                .getService(CONFIG_SERVICE_UUID)
+                ?.getCharacteristic(DEVICE_NAME_UUID)
+                ?: throw RegattaLinkOtaTransportException(
+                    "RegattaLink configuration service is incomplete",
+                    ambiguous = false
+                )
+            readCharacteristicBlocking(activeGatt, nameCharacteristic)
+            return
+        }
+
+        val statusCharacteristic = requireOtaCharacteristic(
+            activeGatt,
+            REGATTALINK_OTA_STATUS_UUID
+        )
+        val descriptor = statusCharacteristic.getDescriptor(CCCD_UUID)
+            ?: throw RegattaLinkOtaTransportException(
+                "RegattaLink OTA status CCCD is unavailable",
+                ambiguous = false
+            )
+
+        if (!activeGatt.setCharacteristicNotification(statusCharacteristic, true)) {
+            throw RegattaLinkOtaTransportException(
+                "Could not enable RegattaLink OTA status notification for GATT validation",
+                ambiguous = false
+            )
+        }
+
+        try {
+            writeDescriptorBlocking(
+                activeGatt,
+                descriptor,
+                BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+            )
+            parseRegattaLinkOtaStatus(
+                readCharacteristicBlocking(activeGatt, statusCharacteristic)
+            )
+        } finally {
+            runCatching {
+                writeDescriptorBlocking(
+                    activeGatt,
+                    descriptor,
+                    BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
+                )
+            }
+            runCatching {
+                activeGatt.setCharacteristicNotification(
+                    statusCharacteristic,
+                    false
+                )
+            }
+            otaProgressQueue.clear()
+        }
+    }
+
+    private fun refreshAndroidGattCache(activeGatt: BluetoothGatt): Boolean {
+        return runCatching {
+            val refresh = activeGatt.javaClass.getMethod("refresh")
+            (refresh.invoke(activeGatt) as? Boolean) == true
+        }.onFailure { error ->
+            Log.w(
+                LOG_TAG,
+                "Android BluetoothGatt.refresh() fallback unavailable",
+                error
+            )
+        }.getOrDefault(false)
+    }
+
+    private fun recoverAndroidGattCacheOrFail(
+        activeGatt: BluetoothGatt,
+        info: RegattaLinkDeviceInfo,
+        reason: String
+    ) {
+        if (gatt !== activeGatt || !connected) return
+
+        val key = gattSchemaKey(info)
+        handler.removeCallbacks(gattSchemaReconcileTimeout)
+        gattSchemaStore.clear(info.stableId)
+        legacyGattSchemaAcceptedThisProcess.remove(info.stableId)
+        verifiedGattSchemaThisProcess.remove(key)
+
+        if (
+            gattCacheRefreshAttemptsThisProcess.add(key) &&
+            refreshAndroidGattCache(activeGatt)
+        ) {
+            /*
+             * refresh() is deliberately a one-shot recovery path, not normal
+             * connection setup. It clears Android's local ATT cache without
+             * deleting the bond. Reconnect and prove the real CCCD/read path
+             * before accepting this generation again.
+             */
+            gattCacheRefreshPendingValidation += key
+            val device = activeGatt.device
+            Log.w(
+                LOG_TAG,
+                "Refreshing stale Android GATT cache for RegattaLink " +
+                    info.stableId + " schema=" + info.gattSchemaVersion +
+                    "; reason=" + reason
+            )
+            closeGatt()
+            handler.postDelayed(
+                {
+                    if (gatt == null) {
+                        prepareDevice(device)
+                    }
+                },
+                250L
+            )
+            return
+        }
+
+        gattCacheRefreshPendingValidation.remove(key)
+        closeGattWithError(
+            activeGatt,
+            "RegattaLink GATT cache remained stale after one local refresh. " +
+                "Forget/pair the RegattaLink once. Root cause: $reason"
+        )
+    }
+
     private fun finishGattSchemaReconciliation() {
-        if (!gattSchemaReconciliationPending) return
         handler.removeCallbacks(gattSchemaReconcileTimeout)
         gattSchemaReconciliationPending = false
         pendingGattSchemaVersion = 0
+        pendingGattSchemaInfo = null
     }
 
     private fun resetGattSchemaReconciliationForNewConnection() {
         handler.removeCallbacks(gattSchemaReconcileTimeout)
         gattSchemaReconciliationPending = false
         pendingGattSchemaVersion = 0
+        pendingGattSchemaInfo = null
         serviceChangedObservedThisConnection = false
         serviceChangedRediscoveryCompletedThisConnection = false
         gattSchemaRefreshRequestRunning.set(false)
