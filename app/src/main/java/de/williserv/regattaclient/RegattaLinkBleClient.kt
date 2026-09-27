@@ -1584,17 +1584,17 @@ internal class RegattaLinkBleClient(
             return
         }
 
-        val device = callbackGatt.device
         handler.removeCallbacks(gattTimeout)
 
+        val schemaKey = gattSchemaKey(info)
+        val validatingAfterLocalCacheRefresh =
+            gattCacheRefreshPendingValidation.contains(schemaKey)
         val acceptedSchemaVersion =
-            if (
+            when {
+                validatingAfterLocalCacheRefresh -> info.gattSchemaVersion
                 info.gattSchemaVersion == 0 &&
-                legacyGattSchemaAcceptedThisProcess.contains(info.stableId)
-            ) {
-                0
-            } else {
-                gattSchemaStore.acceptedVersion(info.stableId)
+                    legacyGattSchemaAcceptedThisProcess.contains(info.stableId) -> 0
+                else -> gattSchemaStore.acceptedVersion(info.stableId)
             }
         val schemaDecision = regattaLinkGattSchemaDecision(
             reportedVersion = info.gattSchemaVersion,
@@ -1612,14 +1612,33 @@ internal class RegattaLinkBleClient(
             )
             return
         }
-        if (schemaDecision.acceptReportedVersion) {
-            if (info.gattSchemaVersion == 0) {
-                legacyGattSchemaAcceptedThisProcess += info.stableId
-            } else {
-                gattSchemaStore.accept(info.stableId, info.gattSchemaVersion)
-            }
+
+        /*
+         * A generation match or Service Changed callback is not proof that
+         * Android's cached ATT handles are usable. Prove the real OTA status
+         * characteristic + CCCD once per app process before persisting or
+         * trusting the schema. This is the exact operation that failed with
+         * GATT_WRITE_NOT_PERMITTED when the cache was stale.
+         */
+        if (
+            schemaDecision.acceptReportedVersion ||
+            validatingAfterLocalCacheRefresh ||
+            !verifiedGattSchemaThisProcess.contains(schemaKey)
+        ) {
+            validateGattSchemaThenComplete(callbackGatt, info)
+            return
         }
+
         finishGattSchemaReconciliation()
+        completeConnectionAfterDeviceInfo(callbackGatt, info)
+    }
+
+    private fun completeConnectionAfterDeviceInfo(
+        callbackGatt: BluetoothGatt,
+        info: RegattaLinkDeviceInfo
+    ) {
+        if (gatt !== callbackGatt || !connected) return
+        val device = callbackGatt.device
 
         if (scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT) {
             val expectedStableId = knownReconnectExpectedStableId
@@ -1674,11 +1693,6 @@ internal class RegattaLinkBleClient(
         }
 
         if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
-            /*
-             * Schema-aware reconnects are released only after an observed
-             * Service Changed has caused a complete rediscovery when the
-             * advertised generation differs. No quiet-time guess is needed.
-             */
             connectionSetupComplete = true
             establishedConnection = true
             reconnectFuture?.complete(info)
