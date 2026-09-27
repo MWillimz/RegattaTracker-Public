@@ -109,6 +109,7 @@ internal interface RegattaLinkConnectionClient {
     fun resetOtaState()
     fun setDeviceName(name: String): Boolean
     fun setLedBrightness(percent: Int): Boolean
+    fun setMotionDamping(seconds: Int): Boolean
     fun drainDiagnosticLog(): Boolean = false
     fun executeDeviceControl(
         opcode: RegattaLinkDeviceControlOpcode,
@@ -373,6 +374,21 @@ internal class RegattaLinkConnectionManager(
             return false
         }
         return client.setLedBrightness(percent)
+    }
+
+    fun setMotionDamping(seconds: Int): Boolean {
+        if (
+            seconds !in 1..10 ||
+            otaState.isActive ||
+            rawCaptureState.isActive ||
+            regattaLinkConfigurationMutationBlocked(
+                state = configurationState,
+                factoryResetOwned = factoryResetPending
+            )
+        ) {
+            return false
+        }
+        return client.setMotionDamping(seconds)
     }
 
     fun drainDiagnosticLog(): Boolean {
