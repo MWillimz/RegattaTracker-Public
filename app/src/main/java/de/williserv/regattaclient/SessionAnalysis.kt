@@ -282,6 +282,7 @@ private fun extendAnalysisExclusionForward(
 ) {
     if (recoverySeconds <= 0.0) return
     val recoveryMs = (recoverySeconds * 1_000.0).toLong()
+    val sourceExclusions = excluded.copyOf()
     var blockedUntil = Long.MIN_VALUE
 
     samples.indices.forEach { index ->
@@ -290,9 +291,10 @@ private fun extendAnalysisExclusionForward(
             excluded[index] = true
             return@forEach
         }
-        if (excluded[index]) {
+        if (sourceExclusions[index]) {
             blockedUntil = max(blockedUntil, time + recoveryMs)
-        } else if (time <= blockedUntil) {
+        }
+        if (time <= blockedUntil) {
             excluded[index] = true
         }
     }
