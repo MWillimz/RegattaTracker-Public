@@ -1621,9 +1621,14 @@ internal class RegattaLinkBleClient(
          * GATT_WRITE_NOT_PERMITTED when the cache was stale.
          */
         if (
-            schemaDecision.acceptReportedVersion ||
-            validatingAfterLocalCacheRefresh ||
-            !verifiedGattSchemaThisProcess.contains(schemaKey)
+            shouldValidateRegattaLinkGattLayout(
+                schemaAlreadyVerifiedThisProcess =
+                    verifiedGattSchemaThisProcess.contains(schemaKey),
+                acceptReportedVersion =
+                    schemaDecision.acceptReportedVersion,
+                cacheRefreshPendingValidation =
+                    validatingAfterLocalCacheRefresh
+            )
         ) {
             validateGattSchemaThenComplete(callbackGatt, info)
             return
