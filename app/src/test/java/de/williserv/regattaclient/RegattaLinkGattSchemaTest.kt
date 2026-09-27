@@ -7,6 +7,39 @@ import org.junit.Test
 class RegattaLinkGattSchemaTest {
 
     @Test
+    fun persistedGenerationStillRequiresOneRealGattProofPerProcess() {
+        assertTrue(
+            shouldValidateRegattaLinkGattLayout(
+                schemaAlreadyVerifiedThisProcess = false,
+                acceptReportedVersion = false,
+                cacheRefreshPendingValidation = false
+            )
+        )
+    }
+
+    @Test
+    fun provenGenerationSkipsRepeatedProbeWithinSameProcess() {
+        assertFalse(
+            shouldValidateRegattaLinkGattLayout(
+                schemaAlreadyVerifiedThisProcess = true,
+                acceptReportedVersion = false,
+                cacheRefreshPendingValidation = false
+            )
+        )
+    }
+
+    @Test
+    fun localCacheRefreshAlwaysRequiresFreshGattProof() {
+        assertTrue(
+            shouldValidateRegattaLinkGattLayout(
+                schemaAlreadyVerifiedThisProcess = true,
+                acceptReportedVersion = false,
+                cacheRefreshPendingValidation = true
+            )
+        )
+    }
+
+    @Test
     fun acceptedSchemaDoesNotInvalidateEveryReconnect() {
         val decision = regattaLinkGattSchemaDecision(
             reportedVersion = 9,
