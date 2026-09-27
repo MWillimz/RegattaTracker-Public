@@ -461,7 +461,10 @@
     <string name="regattalink_pitch">Beccheggio</string>
     <string name="regattalink_roll_rate">Velocità rollio</string>
     <string name="regattalink_pitch_rate">Velocità beccheggio</string>
-    <string name="regattalink_yaw_rate">Velocità imbardata</string>
+    <string name="regattalink_yaw_rate">Velocità d’imbardata</string>
+    <string name="regattalink_encounter_period">Periodo d’incontro</string>
+    <string name="regattalink_pitch_peak_to_peak">Movimento di beccheggio p-p</string>
+    <string name="regattalink_roll_peak_to_peak">Movimento di rollio p-p</string>
     <string name="regattalink_vertical_accel">Accelerazione verticale</string>
     <string name="regattalink_calibration_title">Orientamento / calibrazione sensore</string>
     <string name="regattalink_confidence_overall">Confidenza complessiva</string>
@@ -510,6 +513,8 @@
     <string name="regattalink_confidence">Confidenza</string>
     <string name="regattalink_settings_title">Impostazioni</string>
     <string name="regattalink_led_brightness">Luminosità LED</string>
+    <string name="regattalink_motion_damping">Smorzamento</string>
+    <string name="regattalink_motion_damping_value">%1$d s</string>
     <string name="regattalink_led_brightness_unavailable">La luminosità LED non è supportata da questo firmware.</string>
     <string name="regattalink_saving">Salvataggio…</string>
     <string name="regattalink_nmea_title">NMEA2000</string>
