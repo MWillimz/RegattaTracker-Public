@@ -1965,7 +1965,134 @@ internal class RegattaLinkBleClient(
         activeGatt: BluetoothGatt,
         info: RegattaLinkDeviceInfo
     ) {
-        if (!info.otaAvailable) {
+        var provedCriticalLayout = false
+
+        if (info.otaAvailable) {
+            val statusCharacteristic = requireOtaCharacteristic(
+                activeGatt,
+                REGATTALINK_OTA_STATUS_UUID
+            )
+            val descriptor = statusCharacteristic.getDescriptor(CCCD_UUID)
+                ?: throw RegattaLinkOtaTransportException(
+                    "RegattaLink OTA status CCCD is unavailable",
+                    ambiguous = false
+                )
+
+            if (
+                !activeGatt.setCharacteristicNotification(
+                    statusCharacteristic,
+                    true
+                )
+            ) {
+                throw RegattaLinkOtaTransportException(
+                    "Could not enable RegattaLink OTA status notification " +
+                        "for GATT validation",
+                    ambiguous = false
+                )
+            }
+
+            try {
+                writeDescriptorBlocking(
+                    activeGatt,
+                    descriptor,
+                    BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                )
+                parseRegattaLinkOtaStatus(
+                    readCharacteristicBlocking(
+                        activeGatt,
+                        statusCharacteristic
+                    )
+                )
+            } finally {
+                runCatching {
+                    writeDescriptorBlocking(
+                        activeGatt,
+                        descriptor,
+                        BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
+                    )
+                }
+                runCatching {
+                    activeGatt.setCharacteristicNotification(
+                        statusCharacteristic,
+                        false
+                    )
+                }
+                otaProgressQueue.clear()
+            }
+            provedCriticalLayout = true
+        }
+
+        /*
+         * Schema 11 appends 0025 after the previous telemetry prefix. OTA
+         * handles do not move in that migration, so proving only OTA Status
+         * could accept an Android cache that still exposes the old schema-10
+         * telemetry table. Prove the actual required normal-motion
+         * characteristic and its CCCD as well.
+         */
+        if (
+            regattaLinkGattProofRequiresMotionOneHz(
+                reportedVersion = info.gattSchemaVersion,
+                telemetryAvailable = info.telemetryAvailable
+            )
+        ) {
+            val motionCharacteristic = activeGatt
+                .getService(TELEMETRY_SERVICE_UUID)
+                ?.getCharacteristic(TELEMETRY_MOTION_ONE_HZ_UUID)
+                ?: throw RegattaLinkOtaTransportException(
+                    "RegattaLink Motion 1 Hz characteristic is missing " +
+                        "from schema ${info.gattSchemaVersion}",
+                    ambiguous = false
+                )
+            val descriptor = motionCharacteristic.getDescriptor(CCCD_UUID)
+                ?: throw RegattaLinkOtaTransportException(
+                    "RegattaLink Motion 1 Hz CCCD is unavailable",
+                    ambiguous = false
+                )
+
+            if (
+                !activeGatt.setCharacteristicNotification(
+                    motionCharacteristic,
+                    true
+                )
+            ) {
+                throw RegattaLinkOtaTransportException(
+                    "Could not enable RegattaLink Motion 1 Hz notification " +
+                        "for GATT validation",
+                    ambiguous = false
+                )
+            }
+
+            try {
+                writeDescriptorBlocking(
+                    activeGatt,
+                    descriptor,
+                    BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                )
+                parseRegattaLinkMotionOneHz(
+                    readCharacteristicBlocking(
+                        activeGatt,
+                        motionCharacteristic
+                    )
+                )
+            } finally {
+                runCatching {
+                    writeDescriptorBlocking(
+                        activeGatt,
+                        descriptor,
+                        BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
+                    )
+                }
+                runCatching {
+                    activeGatt.setCharacteristicNotification(
+                        motionCharacteristic,
+                        false
+                    )
+                }
+            }
+            provedCriticalLayout = true
+        }
+
+        if (!provedCriticalLayout) {
             val nameCharacteristic = activeGatt
                 .getService(CONFIG_SERVICE_UUID)
                 ?.getCharacteristic(DEVICE_NAME_UUID)
@@ -1974,50 +2101,6 @@ internal class RegattaLinkBleClient(
                     ambiguous = false
                 )
             readCharacteristicBlocking(activeGatt, nameCharacteristic)
-            return
-        }
-
-        val statusCharacteristic = requireOtaCharacteristic(
-            activeGatt,
-            REGATTALINK_OTA_STATUS_UUID
-        )
-        val descriptor = statusCharacteristic.getDescriptor(CCCD_UUID)
-            ?: throw RegattaLinkOtaTransportException(
-                "RegattaLink OTA status CCCD is unavailable",
-                ambiguous = false
-            )
-
-        if (!activeGatt.setCharacteristicNotification(statusCharacteristic, true)) {
-            throw RegattaLinkOtaTransportException(
-                "Could not enable RegattaLink OTA status notification for GATT validation",
-                ambiguous = false
-            )
-        }
-
-        try {
-            writeDescriptorBlocking(
-                activeGatt,
-                descriptor,
-                BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-            )
-            parseRegattaLinkOtaStatus(
-                readCharacteristicBlocking(activeGatt, statusCharacteristic)
-            )
-        } finally {
-            runCatching {
-                writeDescriptorBlocking(
-                    activeGatt,
-                    descriptor,
-                    BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
-                )
-            }
-            runCatching {
-                activeGatt.setCharacteristicNotification(
-                    statusCharacteristic,
-                    false
-                )
-            }
-            otaProgressQueue.clear()
         }
     }
 
