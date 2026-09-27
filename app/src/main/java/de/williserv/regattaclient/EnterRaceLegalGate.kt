@@ -16,6 +16,18 @@ internal fun enterRaceLegalStartDecision(
         EnterRaceLegalGateDecision.FETCH_LEGAL
     }
 
+internal fun shouldShowRaceLegalAfterFetch(
+    decision: EnterRaceLegalGateDecision,
+    pendingEnterRaceAfterLegal: Boolean,
+    manualOpenRequested: Boolean
+): Boolean =
+    decision == EnterRaceLegalGateDecision.SHOW_LEGAL ||
+        (
+            decision == EnterRaceLegalGateDecision.CONTINUE &&
+                manualOpenRequested &&
+                !pendingEnterRaceAfterLegal
+            )
+
 internal fun enterRaceLegalFetchDecision(
     serverResponded: Boolean,
     responseSuccessful: Boolean,
