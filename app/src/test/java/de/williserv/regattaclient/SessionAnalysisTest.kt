@@ -289,6 +289,31 @@ class SessionAnalysisTest {
     }
 
     @Test
+    fun persistedTrimMeasurementIsPresentedAsPitch() {
+        val source = listOf(
+            sample(
+                measurements = """
+                    {
+                      "regattalink.summary.trim_filtered_deg":{"value":2.0,"unit":"deg","group":"regattalink"}
+                    }
+                """.trimIndent()
+            )
+        )
+
+        val capabilities = discoverSessionAnalysisCapabilities(
+            source,
+            prepareAnalysisSamples(source)
+        )
+
+        assertEquals(
+            "Pitch",
+            capabilities.metrics.single {
+                it.id == "regattalink.summary.trim_filtered_deg"
+            }.label
+        )
+    }
+
+    @Test
     fun imuStabilityFilterExcludesRapidHeelChangeAndConfiguredRecovery() {
         val heel = listOf(10.0, 10.5, 16.0, 16.2, 16.4, 16.5, 16.6)
         val prepared = heel.mapIndexed { index, value ->
