@@ -87,6 +87,8 @@ internal class RegattaLinkBleClient(
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710007")
         val DEVICE_CONTROL_UUID: UUID =
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710008")
+        val MOTION_DAMPING_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710009")
         val TELEMETRY_SERVICE_UUID: UUID =
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710020")
         val TELEMETRY_FAST_UUID: UUID =
@@ -97,6 +99,8 @@ internal class RegattaLinkBleClient(
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710023")
         val TELEMETRY_BOAT_STATE_UUID: UUID =
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710024")
+        val TELEMETRY_MOTION_ONE_HZ_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710025")
 
         private val CCCD_UUID: UUID =
             UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
@@ -2136,6 +2140,7 @@ internal class RegattaLinkBleClient(
         val extensionService = regattaLinkExtensionService(activeGatt)
         val nameCharacteristic = service?.getCharacteristic(DEVICE_NAME_UUID)
         val brightnessCharacteristic = service?.getCharacteristic(LED_BRIGHTNESS_UUID)
+        val dampingCharacteristic = service?.getCharacteristic(MOTION_DAMPING_UUID)
         val diagnosticLogCharacteristic =
             extensionService?.getCharacteristic(DIAGNOSTIC_LOG_UUID)
         val deviceControlCharacteristic =
@@ -2144,6 +2149,7 @@ internal class RegattaLinkBleClient(
         var next = RegattaLinkConfigurationState(
             deviceNameSupported = nameCharacteristic != null,
             ledBrightnessSupported = brightnessCharacteristic != null,
+            motionDampingSupported = dampingCharacteristic != null,
             diagnosticLogSupported = diagnosticLogCharacteristic != null,
             deviceControlSupported = deviceControlCharacteristic != null
         )
@@ -2172,6 +2178,21 @@ internal class RegattaLinkBleClient(
                 if (errorMessage.isBlank()) {
                     errorMessage = error.message
                         ?: "Could not read RegattaLink LED brightness"
+                }
+            }
+        }
+
+        if (dampingCharacteristic != null && optionalFeatureWorkAllowed(activeGatt)) {
+            runCatching {
+                parseRegattaLinkMotionDamping(
+                    readCharacteristicBlocking(activeGatt, dampingCharacteristic)
+                )
+            }.onSuccess { damping ->
+                next = next.copy(motionDampingSeconds = damping)
+            }.onFailure { error ->
+                if (errorMessage.isBlank()) {
+                    errorMessage = error.message
+                        ?: "Could not read RegattaLink motion damping"
                 }
             }
         }
@@ -2311,44 +2332,37 @@ internal class RegattaLinkBleClient(
         }
 
         val service = activeGatt.getService(TELEMETRY_SERVICE_UUID)
-        val fast = service?.getCharacteristic(TELEMETRY_FAST_UUID)
-        val summary = service?.getCharacteristic(TELEMETRY_SUMMARY_UUID)
-        val calibration = service?.getCharacteristic(TELEMETRY_CALIBRATION_UUID)
+        val motionOneHz =
+            service?.getCharacteristic(TELEMETRY_MOTION_ONE_HZ_UUID)
 
-        if (service == null || fast == null || summary == null || calibration == null) {
+        if (service == null || motionOneHz == null) {
             updateTelemetry {
                 it.copy(
                     supported = true,
                     subscribed = false,
-                    error = "RegattaLink telemetry service is incomplete"
+                    error = "RegattaLink Motion 1 Hz telemetry is unavailable"
                 )
             }
             return
         }
 
-        val characteristics = listOf(fast, summary, calibration)
         try {
-            characteristics.forEach { characteristic ->
-                if (gatt !== activeGatt || !connected) return
-                if (!activeGatt.setCharacteristicNotification(characteristic, true)) {
-                    throw RegattaLinkOtaTransportException(
-                        "Could not enable RegattaLink telemetry notification " +
-                            characteristic.uuid,
-                        ambiguous = false
-                    )
-                }
-                val descriptor = characteristic.getDescriptor(CCCD_UUID)
-                    ?: throw RegattaLinkOtaTransportException(
-                        "RegattaLink telemetry CCCD is unavailable for " +
-                            characteristic.uuid,
-                        ambiguous = false
-                    )
-                writeDescriptorBlocking(
-                    activeGatt,
-                    descriptor,
-                    BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+            if (!activeGatt.setCharacteristicNotification(motionOneHz, true)) {
+                throw RegattaLinkOtaTransportException(
+                    "Could not enable RegattaLink Motion 1 Hz notifications",
+                    ambiguous = false
                 )
             }
+            val descriptor = motionOneHz.getDescriptor(CCCD_UUID)
+                ?: throw RegattaLinkOtaTransportException(
+                    "RegattaLink Motion 1 Hz CCCD is unavailable",
+                    ambiguous = false
+                )
+            writeDescriptorBlocking(
+                activeGatt,
+                descriptor,
+                BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+            )
 
             updateTelemetry {
                 it.copy(
@@ -2358,16 +2372,14 @@ internal class RegattaLinkBleClient(
                 )
             }
 
-            characteristics.forEach { characteristic ->
-                if (gatt !== activeGatt || !connected) return
-                val raw = readCharacteristicBlocking(activeGatt, characteristic)
-                handleTelemetryRecord(
-                    activeGatt,
-                    characteristic.uuid,
-                    raw,
-                    initialOnly = true
-                )
-            }
+            if (gatt !== activeGatt || !connected) return
+            val raw = readCharacteristicBlocking(activeGatt, motionOneHz)
+            handleTelemetryRecord(
+                activeGatt,
+                motionOneHz.uuid,
+                raw,
+                initialOnly = true
+            )
         } catch (error: Exception) {
             if (gatt === activeGatt) {
                 updateTelemetry {
@@ -2375,7 +2387,7 @@ internal class RegattaLinkBleClient(
                         supported = true,
                         subscribed = false,
                         error = error.message
-                            ?: "RegattaLink telemetry subscription failed"
+                            ?: "RegattaLink Motion 1 Hz subscription failed"
                     )
                 }
             }
@@ -2445,6 +2457,22 @@ internal class RegattaLinkBleClient(
 
         try {
             when (characteristicUuid) {
+                TELEMETRY_MOTION_ONE_HZ_UUID -> {
+                    val parsed = parseRegattaLinkMotionOneHz(value)
+                    updateTelemetry {
+                        if (initialOnly && it.motionOneHz != null) {
+                            it
+                        } else {
+                            it.copy(
+                                supported = true,
+                                motionOneHz = parsed,
+                                motionOneHzReceivedAtElapsedMs = receivedAt,
+                                error = ""
+                            )
+                        }
+                    }
+                }
+
                 TELEMETRY_FAST_UUID -> {
                     val parsed = parseRegattaLinkFastMotion(value)
                     updateTelemetry {
@@ -2640,6 +2668,84 @@ internal class RegattaLinkBleClient(
                             busy = false,
                             error = error.message
                                 ?: "Could not change RegattaLink LED brightness"
+                        )
+                    }
+                }
+            } finally {
+                configurationMutationRunning.set(false)
+            }
+        }
+        return true
+    }
+
+    override fun setMotionDamping(seconds: Int): Boolean {
+        if (seconds !in 1..10) {
+            updateConfiguration {
+                it.copy(error = "Motion damping must be between 1 and 10 seconds")
+            }
+            return false
+        }
+        if (otaRunning.get() || !isConnected()) return false
+
+        val activeGatt = gatt ?: return false
+        if (
+            configurationMutationBlocked(activeGatt) ||
+            !configurationMutationRunning.compareAndSet(false, true)
+        ) {
+            return false
+        }
+        otaExecutor.execute {
+            try {
+                if (
+                    !optionalFeatureWorkAllowed(activeGatt) ||
+                    configurationMutationBlocked(activeGatt)
+                ) {
+                    return@execute
+                }
+                updateConfiguration { it.copy(busy = true, error = "") }
+                try {
+                    val characteristic = activeGatt
+                        .getService(CONFIG_SERVICE_UUID)
+                        ?.getCharacteristic(MOTION_DAMPING_UUID)
+                        ?: throw RegattaLinkOtaTransportException(
+                            "RegattaLink motion damping setting is unavailable",
+                            ambiguous = false
+                        )
+                    writeCharacteristicBlockingDirect(
+                        activeGatt,
+                        characteristic,
+                        byteArrayOf(seconds.toByte())
+                    )
+                    updateConfiguration {
+                        it.copy(
+                            motionDampingSupported = true,
+                            motionDampingSeconds = seconds,
+                            busy = false,
+                            error = ""
+                        )
+                    }
+                } catch (error: Exception) {
+                    val reread =
+                        if (optionalFeatureWorkAllowed(activeGatt)) {
+                            runCatching {
+                                val characteristic = activeGatt
+                                    .getService(CONFIG_SERVICE_UUID)
+                                    ?.getCharacteristic(MOTION_DAMPING_UUID)
+                                    ?: return@runCatching null
+                                parseRegattaLinkMotionDamping(
+                                    readCharacteristicBlocking(activeGatt, characteristic)
+                                )
+                            }.getOrNull()
+                        } else {
+                            null
+                        }
+                    updateConfiguration {
+                        it.copy(
+                            motionDampingSeconds =
+                                reread ?: it.motionDampingSeconds,
+                            busy = false,
+                            error = error.message
+                                ?: "Could not change RegattaLink motion damping"
                         )
                     }
                 }
