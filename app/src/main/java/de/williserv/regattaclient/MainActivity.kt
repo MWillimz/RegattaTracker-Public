@@ -843,7 +843,8 @@ class MainActivity : ComponentActivity() {
                             canRegisterRace = setupConfirmed.value &&
                                     raceDataReady.value &&
                                     raceLegalAccepted.value &&
-                                    !inRace.value,
+                                    !inRace.value &&
+                                    !raceRegistered.value,
                             registerRaceStatusText = registerRaceStatusText.value,
                             raceShortenedText = raceShortenedText.value,
                             raceShortened = rawRaceCourseShortened,
