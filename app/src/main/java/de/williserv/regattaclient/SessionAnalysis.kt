@@ -15,8 +15,6 @@ internal const val DEFAULT_GPS_MANEUVER_WINDOW_SECONDS = 5.0
 internal const val DEFAULT_GPS_MANEUVER_THRESHOLD_DEG = 20.0
 internal const val DEFAULT_ANALYSIS_RECOVERY_SECONDS = 5.0
 internal const val DEFAULT_IMU_STEADY_ATTITUDE_RATE_DPS = 1.5
-private const val IMU_HEEL_KEY = "regattalink.summary.heel_filtered_deg"
-private const val IMU_TRIM_KEY = "regattalink.summary.trim_filtered_deg"
 
 enum class AnalysisMetricUse {
     ANGLE,
@@ -156,7 +154,7 @@ internal fun hasImuStabilityFilterData(
 ): Boolean =
     samples.count { sample ->
         sample.timestampMs != null &&
-            sample.measurements[IMU_HEEL_KEY]?.isFinite() == true
+            sample.measurements[REGATTALINK_MOTION_HEEL_KEY]?.isFinite() == true
     } >= 2
 
 private fun gpsManeuverExclusionMask(
@@ -264,7 +262,7 @@ private fun imuStabilityExclusionMask(
 
     samples.forEachIndexed { index, sample ->
         val time = sample.timestampMs
-        val heel = sample.measurements[IMU_HEEL_KEY]
+        val heel = sample.measurements[REGATTALINK_MOTION_HEEL_KEY]
         if (time == null || heel == null || !heel.isFinite()) {
             excluded[index] = true
             previousIndex = null
@@ -275,7 +273,7 @@ private fun imuStabilityExclusionMask(
         if (previous != null) {
             val previousSample = samples[previous]
             val previousTime = previousSample.timestampMs
-            val previousHeel = previousSample.measurements[IMU_HEEL_KEY]
+            val previousHeel = previousSample.measurements[REGATTALINK_MOTION_HEEL_KEY]
             if (
                 previousTime != null &&
                 previousHeel != null &&
@@ -287,27 +285,28 @@ private fun imuStabilityExclusionMask(
                         shortestAnalysisAngleDeltaDeg(heel, previousHeel)
                     ) / dtSeconds
 
-                    val trim = sample.measurements[IMU_TRIM_KEY]
-                    val previousTrim =
-                        previousSample.measurements[IMU_TRIM_KEY]
-                    val trimRate =
+                    val pitch =
+                        sample.measurements[REGATTALINK_MOTION_PITCH_KEY]
+                    val previousPitch =
+                        previousSample.measurements[REGATTALINK_MOTION_PITCH_KEY]
+                    val pitchRate =
                         if (
-                            trim != null &&
-                            previousTrim != null &&
-                            trim.isFinite() &&
-                            previousTrim.isFinite()
+                            pitch != null &&
+                            previousPitch != null &&
+                            pitch.isFinite() &&
+                            previousPitch.isFinite()
                         ) {
-                            abs(trim - previousTrim) / dtSeconds
+                            abs(pitch - previousPitch) / dtSeconds
                         } else {
                             0.0
                         }
 
                     if (
-                        max(heelRate, trimRate) >
+                        max(heelRate, pitchRate) >
                         filter.maxAttitudeRateDps
                     ) {
                         /*
-                         * The transition spans both 1 Hz summary samples.
+                         * The transition spans both 1 Hz Motion samples.
                          * Exclude both endpoints, then apply the configured
                          * recovery tail below.
                          */
@@ -441,13 +440,13 @@ internal fun discoverSessionAnalysisCapabilities(
             displayScale = MPS_TO_KNOTS
         ),
         knownMetric(
-            key = "regattalink.summary.heel_filtered_deg",
+            key = REGATTALINK_MOTION_HEEL_KEY,
             label = "Heel",
             unit = "deg",
             recommended = setOf(AnalysisMetricUse.COLOR)
         ),
         knownMetric(
-            key = "regattalink.summary.trim_filtered_deg",
+            key = REGATTALINK_MOTION_PITCH_KEY,
             label = "Pitch",
             unit = "deg",
             recommended = setOf(AnalysisMetricUse.COLOR)

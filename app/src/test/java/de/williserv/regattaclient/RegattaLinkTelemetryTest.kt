@@ -208,13 +208,13 @@ class RegattaLinkTelemetryTest {
         assertEquals(6, json.length())
         assertEquals(
             12.0,
-            json.getJSONObject("regattalink.summary.heel_filtered_deg")
+            json.getJSONObject("regattalink.motion.heel_deg")
                 .getDouble("value"),
             0.001
         )
         assertEquals(
             -2.0,
-            json.getJSONObject("regattalink.summary.trim_filtered_deg")
+            json.getJSONObject("regattalink.motion.pitch_deg")
                 .getDouble("value"),
             0.001
         )
@@ -230,6 +230,8 @@ class RegattaLinkTelemetryTest {
                 .getDouble("value"),
             0.001
         )
+        assertFalse(json.has("regattalink.summary.heel_filtered_deg"))
+        assertFalse(json.has("regattalink.summary.trim_filtered_deg"))
         assertFalse(json.has("regattalink.fast.roll_deg"))
         assertFalse(json.has("regattalink.summary.roll_rms_deg"))
         assertFalse(json.has("regattalink.summary.sequence"))

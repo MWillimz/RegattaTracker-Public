@@ -92,7 +92,7 @@ class SessionAnalysisTest {
             sample(
                 measurements = """
                     {
-                      "regattalink.summary.heel_filtered_deg":{"value":-8.0,"unit":"deg","group":"regattalink"},
+                      "regattalink.motion.heel_deg":{"value":-8.0,"unit":"deg","group":"regattalink"},
                       "nmea.aws_mps":{"value":6.0,"unit":"m/s","group":"nmea"},
                       "nmea.depth_m":{"value":12.0,"unit":"m","group":"nmea"}
                     }
@@ -105,7 +105,7 @@ class SessionAnalysisTest {
         )
 
         val heel = capabilities.colorMetrics.single {
-            it.id == "measurement:regattalink.summary.heel_filtered_deg"
+            it.id == "measurement:regattalink.motion.heel_deg"
         }
         val aws = capabilities.colorMetrics.single {
             it.id == "measurement:nmea.aws_mps"
@@ -223,7 +223,7 @@ class SessionAnalysisTest {
                       "nmea.latitude_deg":{"value":54.0,"unit":"deg","group":"nmea"},
                       "nmea.longitude_deg":{"value":10.0,"unit":"deg","group":"nmea"},
                       "nmea.fancy_angle":{"value":1.57079632679,"unit":"rad","group":"nmea"},
-                      "regattalink.summary.heel_filtered_deg":{"value":-8.0,"unit":"deg","group":"regattalink"}
+                      "regattalink.motion.heel_deg":{"value":-8.0,"unit":"deg","group":"regattalink"}
                     }
                 """.trimIndent()
             )
@@ -289,12 +289,12 @@ class SessionAnalysisTest {
     }
 
     @Test
-    fun persistedTrimMeasurementIsPresentedAsPitch() {
+    fun canonicalPitchMeasurementIsPresentedAsPitch() {
         val source = listOf(
             sample(
                 measurements = """
                     {
-                      "regattalink.summary.trim_filtered_deg":{"value":2.0,"unit":"deg","group":"regattalink"}
+                      "regattalink.motion.pitch_deg":{"value":2.0,"unit":"deg","group":"regattalink"}
                     }
                 """.trimIndent()
             )
@@ -309,7 +309,7 @@ class SessionAnalysisTest {
             "Pitch",
             capabilities.metrics.single {
                 it.measurementKey ==
-                    "regattalink.summary.trim_filtered_deg"
+                    "regattalink.motion.pitch_deg"
             }.label
         )
     }
@@ -323,8 +323,8 @@ class SessionAnalysisTest {
                 cogDeg = 90.0,
                 sogMps = index.toDouble(),
                 measurements = mapOf(
-                    "regattalink.summary.heel_filtered_deg" to value,
-                    "regattalink.summary.trim_filtered_deg" to 0.0
+                    "regattalink.motion.heel_deg" to value,
+                    "regattalink.motion.pitch_deg" to 0.0
                 )
             )
         }
@@ -359,7 +359,7 @@ class SessionAnalysisTest {
                 timestamp = "2026-09-24T12:00:00",
                 measurements = """
                     {
-                      "regattalink.summary.heel_filtered_deg":{"value":4.0,"unit":"deg","group":"regattalink"}
+                      "regattalink.motion.heel_deg":{"value":4.0,"unit":"deg","group":"regattalink"}
                     }
                 """.trimIndent()
             ),
@@ -367,7 +367,7 @@ class SessionAnalysisTest {
                 timestamp = "2026-09-24T12:00:01",
                 measurements = """
                     {
-                      "regattalink.summary.heel_filtered_deg":{"value":4.4,"unit":"deg","group":"regattalink"}
+                      "regattalink.motion.heel_deg":{"value":4.4,"unit":"deg","group":"regattalink"}
                     }
                 """.trimIndent()
             )
@@ -387,9 +387,9 @@ class SessionAnalysisTest {
                 cogDeg = if (index >= 3) 30.0 else 0.0,
                 sogMps = index.toDouble(),
                 measurements = mapOf(
-                    "regattalink.summary.heel_filtered_deg" to
+                    "regattalink.motion.heel_deg" to
                         if (index == 6) 10.0 else 0.0,
-                    "regattalink.summary.trim_filtered_deg" to 0.0
+                    "regattalink.motion.pitch_deg" to 0.0
                 )
             )
         }
