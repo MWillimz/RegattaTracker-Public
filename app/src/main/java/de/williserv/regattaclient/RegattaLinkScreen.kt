@@ -1227,9 +1227,13 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
                     Button(
                         onClick = onStartRawCapture,
                         enabled =
-                            connected &&
-                                !otaActive &&
-                                !nmeaState.rawCanReading,
+                            regattaLinkRawCaptureStartAllowed(
+                                connected = connected,
+                                otaActive = otaActive,
+                                configurationState = configurationState,
+                                nmeaState = nmeaState,
+                                rawCaptureState = rawCaptureState
+                            ),
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 10.dp)
