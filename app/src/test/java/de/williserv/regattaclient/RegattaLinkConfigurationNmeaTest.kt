@@ -11,11 +11,46 @@ import java.nio.ByteOrder
 class RegattaLinkConfigurationNmeaTest {
 
     @Test
-    fun validatesDeviceNameByUtf8ByteLength() {
+    fun validatesDeviceNameWithTypedErrorsAndUtf8ByteBoundaries() {
+        assertEquals(
+            RegattaLinkDeviceNameValidationError.EMPTY,
+            validateRegattaLinkDeviceName("")
+        )
         assertNull(validateRegattaLinkDeviceName("RegattaLink-31B2"))
-        assertNull(validateRegattaLinkDeviceName("ääääääääääää"))
-        assertTrue(validateRegattaLinkDeviceName("äääääääääääää") != null)
-        assertTrue(validateRegattaLinkDeviceName("bad\nname") != null)
+
+        assertNull(validateRegattaLinkDeviceName("a".repeat(24)))
+        assertEquals(
+            RegattaLinkDeviceNameValidationError.TOO_LONG_UTF8,
+            validateRegattaLinkDeviceName("a".repeat(25))
+        )
+
+        // 'ä' uses two UTF-8 bytes, so 12 characters are exactly 24 bytes.
+        assertNull(validateRegattaLinkDeviceName("ä".repeat(12)))
+        assertEquals(
+            RegattaLinkDeviceNameValidationError.TOO_LONG_UTF8,
+            validateRegattaLinkDeviceName("ä".repeat(13))
+        )
+
+        // '船' uses three UTF-8 bytes, exercising a different multibyte boundary.
+        assertNull(validateRegattaLinkDeviceName("船".repeat(8)))
+        assertEquals(
+            RegattaLinkDeviceNameValidationError.TOO_LONG_UTF8,
+            validateRegattaLinkDeviceName("船".repeat(9))
+        )
+    }
+
+    @Test
+    fun rejectsUnsupportedDeviceNameControlCharactersWithTypedError() {
+        listOf(
+            "bad\nname",
+            "bad\u0000name",
+            "bad\u007fname"
+        ).forEach { name ->
+            assertEquals(
+                RegattaLinkDeviceNameValidationError.UNSUPPORTED_CONTROL_CHARACTER,
+                validateRegattaLinkDeviceName(name)
+            )
+        }
     }
 
     @Test
