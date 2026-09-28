@@ -321,8 +321,9 @@ class RegattaLinkLoadMeasurementsTest {
             receivedAtElapsedMs = 1_000L
         )
 
-        RegattaLinkLoadSnapshotStore.replaceMetadata(
-            listOf(sensor.copy(alias = "Vorstag"))
+        RegattaLinkLoadSnapshotStore.updateAlias(
+            identityKey = sensor.identityKey,
+            alias = "Vorstag"
         )
 
         assertNull(

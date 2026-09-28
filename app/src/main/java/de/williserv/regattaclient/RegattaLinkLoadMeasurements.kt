@@ -283,45 +283,64 @@ internal class RegattaLinkLoadAliasStore(context: Context) {
 }
 
 internal object RegattaLinkLoadSnapshotStore {
-    @Volatile
-    private var latest: List<RegattaLinkLoadSensor> = emptyList()
+    private data class Snapshot(
+        val sensors: List<RegattaLinkLoadSensor>,
+        val receivedAtElapsedMs: Long?
+    )
 
     @Volatile
-    private var latestReceivedAtElapsedMs: Long? = null
+    private var latest = Snapshot(
+        sensors = emptyList(),
+        receivedAtElapsedMs = null
+    )
 
     fun update(
         sensors: List<RegattaLinkLoadSensor>,
         receivedAtElapsedMs: Long = SystemClock.elapsedRealtime()
     ) {
-        latest = sensors.toList()
-        latestReceivedAtElapsedMs = receivedAtElapsedMs
+        latest = Snapshot(
+            sensors = sensors.toList(),
+            receivedAtElapsedMs = receivedAtElapsedMs
+        )
     }
 
-    fun replaceMetadata(sensors: List<RegattaLinkLoadSensor>) {
-        latest = sensors.toList()
+    fun updateAlias(identityKey: String, alias: String?) {
+        val snapshot = latest
+        latest = snapshot.copy(
+            sensors = snapshot.sensors.map { sensor ->
+                if (sensor.identityKey == identityKey) {
+                    sensor.copy(alias = alias)
+                } else {
+                    sensor
+                }
+            }
+        )
     }
 
     fun clear() {
-        latest = emptyList()
-        latestReceivedAtElapsedMs = null
+        latest = Snapshot(
+            sensors = emptyList(),
+            receivedAtElapsedMs = null
+        )
     }
 
-    fun current(): List<RegattaLinkLoadSensor> = latest
+    fun current(): List<RegattaLinkLoadSensor> =
+        latest.sensors
 
     fun measurementsJson(
         nowElapsedMs: Long = SystemClock.elapsedRealtime()
     ): String? {
-        val receivedAt = latestReceivedAtElapsedMs ?: return null
+        val snapshot = latest
+        val receivedAt = snapshot.receivedAtElapsedMs ?: return null
         val ageMs = nowElapsedMs - receivedAt
         if (ageMs !in 0..REGATTALINK_LOAD_TRANSPORT_STALE_MS) {
             return null
         }
 
-        val sensors = latest
-        if (sensors.isEmpty()) return null
+        if (snapshot.sensors.isEmpty()) return null
 
         val measurements = JSONObject()
-        sensors.forEach { sensor ->
+        snapshot.sensors.forEach { sensor ->
             if (!sensor.loadKg.isFinite()) return@forEach
             measurements.put(
                 sensor.measurementKey,
