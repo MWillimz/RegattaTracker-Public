@@ -444,7 +444,6 @@ internal class RegattaLinkConnectionManager(
                     deviceControlAcceptedOpcode = null,
                     deviceControlAcceptedRequestId = null,
                     factoryResetWriteAcceptedRequestId = null,
-                    deviceControlStatus = null,
                     deviceControlError = ""
                 )
             )
