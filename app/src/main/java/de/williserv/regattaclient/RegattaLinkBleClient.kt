@@ -3009,7 +3009,8 @@ internal class RegattaLinkBleClient(
                 return@execute
             }
 
-            val requestId = nextDeviceControlRequestId()
+            try {
+                val requestId = nextDeviceControlRequestId()
             updateConfiguration {
                 it.copy(
                     deviceControlBusy = true,
@@ -3337,7 +3338,9 @@ internal class RegattaLinkBleClient(
                 }
             }
 
-            deviceControlExecutionGuard.release(execution)
+            } finally {
+                deviceControlExecutionGuard.release(execution)
+            }
         }
         return true
     }
