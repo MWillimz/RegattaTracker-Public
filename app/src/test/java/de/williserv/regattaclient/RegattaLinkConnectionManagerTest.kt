@@ -1065,6 +1065,51 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun acceptedTrimPreservesConfirmedOrientationStatusWhileBusy() {
+        val confirmedStatus = RegattaLinkDeviceControlStatus(
+            opcode = RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
+            phase = RegattaLinkDeviceControlPhase.SUCCESS,
+            result = RegattaLinkDeviceControlResult.OK,
+            requestId = 12u,
+            forwardTrimDeg = 1,
+            heelTrimDeg = -2,
+            pitchTrimDeg = 3,
+            boatFrameValid = true,
+            gyroBiasValid = true,
+            mountingEpoch = 4u
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlStatus = confirmedStatus
+            )
+        )
+
+        var latestConfiguration: RegattaLinkConfigurationState? = null
+        val listener = object : RegattaLinkConnectionListener {
+            override fun onConfigurationStateChanged(
+                state: RegattaLinkConfigurationState
+            ) {
+                latestConfiguration = state
+            }
+        }
+        manager.addListener(listener)
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
+                1
+            )
+        )
+
+        val pending = requireNotNull(latestConfiguration)
+        assertTrue(pending.deviceControlBusy)
+        assertEquals(confirmedStatus, pending.deviceControlStatus)
+        manager.removeListener(listener)
+    }
+
+    @Test
     fun deviceControlBusyPreventsOtaStartAtManagerBoundary() {
         fakeClient.emitConfiguration(
             RegattaLinkConfigurationState(deviceControlBusy = true)

@@ -2,10 +2,9 @@ package de.williserv.regattaclient
 
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.text.NumberFormat
-import java.util.Locale
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 internal const val REGATTALINK_DIAGNOSTIC_LOG_RECORD_SIZE = 22
 internal const val REGATTALINK_DIAGNOSTIC_LOG_MAX_READS = 20
@@ -75,25 +74,31 @@ internal fun formatRegattaLinkDirectionalTrim(
     else -> "${-valueDeg}° $negativeDirectionLabel"
 }
 
+internal fun roundRegattaLinkUserFacingDegrees(
+    valueDeg: Double
+): Int {
+    val magnitude = abs(valueDeg).roundToInt()
+    return if (valueDeg < 0.0) -magnitude else magnitude
+}
+
+internal fun formatRegattaLinkWholeDegreeAngle(
+    valueDeg: Double
+): String = "${roundRegattaLinkUserFacingDegrees(valueDeg)}°"
+
 internal fun formatRegattaLinkDirectionalMeasurement(
     valueDeg: Double?,
     positiveDirectionLabel: String,
-    negativeDirectionLabel: String,
-    locale: Locale = Locale.getDefault()
+    negativeDirectionLabel: String
 ): String {
     if (valueDeg == null) return "—"
 
-    val magnitude = abs(valueDeg)
-    if (magnitude < 0.05) return "0°"
+    val rounded = roundRegattaLinkUserFacingDegrees(valueDeg)
+    if (rounded == 0) return "0°"
 
-    val formatter = NumberFormat.getNumberInstance(locale).apply {
-        minimumFractionDigits = 0
-        maximumFractionDigits = 1
-    }
     val direction =
-        if (valueDeg > 0.0) positiveDirectionLabel else negativeDirectionLabel
+        if (rounded > 0) positiveDirectionLabel else negativeDirectionLabel
 
-    return "${formatter.format(magnitude)}° $direction"
+    return "${abs(rounded)}° $direction"
 }
 
 internal fun regattaLinkShouldShowManualOrientationControls(
@@ -126,6 +131,18 @@ internal fun regattaLinkOrientationControlsEnabled(
     baseControlsEnabled &&
         boatFrameValid &&
         !deviceControlBusy
+
+internal fun regattaLinkDeviceControlRejectedBeforeStartState(
+    state: RegattaLinkConfigurationState,
+    errorMessage: String
+): RegattaLinkConfigurationState =
+    state.copy(
+        deviceControlBusy = false,
+        deviceControlAcceptedOpcode = null,
+        deviceControlAcceptedRequestId = null,
+        factoryResetWriteAcceptedRequestId = null,
+        deviceControlError = errorMessage
+    )
 
 enum class RegattaLinkDeviceControlPhase(val wireValue: Int) {
     IDLE(0),
@@ -204,6 +221,30 @@ internal fun <T : Any> consumeRegattaLinkFactoryResetFallback(
     tracker: RegattaLinkFactoryResetDisconnectTracker<T>
 ): Boolean =
     sessionStillCurrent && tracker.consumeDisconnect(session)
+
+internal class RegattaLinkDeviceControlExecutionGuard<T : Any> {
+    internal class Lease<T : Any> internal constructor(
+        val session: T
+    )
+
+    private val active = AtomicReference<Lease<T>?>(null)
+
+    fun tryAcquire(session: T): Lease<T>? {
+        val lease = Lease(session)
+        return if (active.compareAndSet(null, lease)) lease else null
+    }
+
+    fun isActive(): Boolean = active.get() != null
+
+    fun owns(lease: Lease<T>): Boolean = active.get() === lease
+
+    fun release(lease: Lease<T>): Boolean =
+        active.compareAndSet(lease, null)
+
+    fun clear() {
+        active.set(null)
+    }
+}
 
 internal class RegattaLinkFactoryResetDisconnectTracker<T : Any>(
     private val nowElapsedMs: () -> Long,

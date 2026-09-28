@@ -118,6 +118,7 @@ fun HomeScreen(
     retirementReported: Boolean,
     retirementStatusText: String,
     raceDataReady: Boolean,
+    raceRegistered: Boolean,
     dtlText: String,
     ttlText: String,
     ocsText: String,
@@ -194,7 +195,23 @@ fun HomeScreen(
                 !raceStatusCode.equals("finished", ignoreCase = true) &&
                 !raceStatusCode.equals("cancelled", ignoreCase = true)
 
-    val raceColor = raceStatusColor(raceStatusCode, inRace, raceDataReady)
+    val raceHomeStatus = resolveRaceHomeStatus(
+        raceStatusCode = raceStatusCode,
+        raceStatusDisplayText = raceStatusDisplayText,
+        raceDataReady = raceDataReady,
+        raceConfigured = raceEvent.isNotBlank(),
+        inRace = inRace,
+        raceRegistered = raceRegistered,
+        millisToStart = millisToStart
+    )
+    val raceColor = when (raceHomeStatus) {
+        RaceHomeStatus.CHECKING,
+        RaceHomeStatus.REGISTERED_NOT_ENTERED -> MaterialTheme.colorScheme.outline
+        RaceHomeStatus.NOT_ENTERED -> RegattaRed
+        RaceHomeStatus.READY,
+        RaceHomeStatus.RACING -> RegattaGreen
+        RaceHomeStatus.SERVER_STATUS -> raceStatusColor(raceStatusCode, inRace, raceDataReady)
+    }
     val startPrefix = stringResource(R.string.start_prefix)
     val infoPrefix = stringResource(R.string.info_prefix)
     val distancePrefix = stringResource(R.string.distance_prefix)
@@ -276,24 +293,32 @@ fun HomeScreen(
         StatusOverviewCard(
             gpsStatus = gpsStatus,
             gpsColor = gpsColor,
-            raceStatusText = shortRaceStatusText(
-                raceStatusCode = raceStatusCode,
-                raceStatusDisplayText = raceStatusDisplayText,
-                raceDataReady = raceDataReady,
-                raceStartText = raceStartText,
-                inRace = inRace,
-                racePrefix = stringResource(R.string.race_prefix),
-                startPrefix = startPrefix,
-                activeText = stringResource(R.string.status_active),
-                notActiveText = stringResource(R.string.status_not_active),
-                loadedText = stringResource(R.string.status_loaded),
-                plannedText = stringResource(R.string.status_planned),
-                racingText = stringResource(R.string.status_racing),
-                startedText = stringResource(R.string.status_started),
-                finishedText = stringResource(R.string.status_finished),
-                postponedText = stringResource(R.string.status_postponed),
-                cancelledText = stringResource(R.string.status_cancelled)
-            ),
+            raceStatusText = when (raceHomeStatus) {
+                RaceHomeStatus.CHECKING -> stringResource(R.string.status_checking)
+                RaceHomeStatus.NOT_ENTERED -> stringResource(R.string.status_not_entered)
+                RaceHomeStatus.REGISTERED_NOT_ENTERED ->
+                    stringResource(R.string.status_registered_not_entered)
+                RaceHomeStatus.READY -> stringResource(R.string.status_ready)
+                RaceHomeStatus.RACING -> stringResource(R.string.status_racing)
+                RaceHomeStatus.SERVER_STATUS -> shortRaceStatusText(
+                    raceStatusCode = raceStatusCode,
+                    raceStatusDisplayText = raceStatusDisplayText,
+                    raceDataReady = raceDataReady,
+                    raceStartText = raceStartText,
+                    inRace = inRace,
+                    racePrefix = stringResource(R.string.race_prefix),
+                    startPrefix = startPrefix,
+                    activeText = stringResource(R.string.status_active),
+                    notActiveText = stringResource(R.string.status_not_active),
+                    loadedText = stringResource(R.string.status_loaded),
+                    plannedText = stringResource(R.string.status_planned),
+                    racingText = stringResource(R.string.status_racing),
+                    startedText = stringResource(R.string.status_started),
+                    finishedText = stringResource(R.string.status_finished),
+                    postponedText = stringResource(R.string.status_postponed),
+                    cancelledText = stringResource(R.string.status_cancelled)
+                )
+            },
             raceColor = raceColor,
             uploadStatusText = shortUploadStatus(
                 pendingUploadCount = pendingUploadCount,
