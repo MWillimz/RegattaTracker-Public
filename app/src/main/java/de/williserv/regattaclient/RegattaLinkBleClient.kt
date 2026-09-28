@@ -3011,7 +3011,6 @@ internal class RegattaLinkBleClient(
                     deviceControlAcceptedOpcode = null,
                     deviceControlAcceptedRequestId = null,
                     factoryResetWriteAcceptedRequestId = null,
-                    deviceControlStatus = null,
                     deviceControlError = ""
                 )
             }
@@ -3321,7 +3320,7 @@ internal class RegattaLinkBleClient(
                                             ::regattaLinkFactoryResetContinuesToBondReset
                                         ) == true
                                     ),
-                        deviceControlStatus = finalStatus ?: it.deviceControlStatus,
+                        deviceControlStatus = finalStatus,
                         deviceControlError = errorMessage
                     )
                 }
