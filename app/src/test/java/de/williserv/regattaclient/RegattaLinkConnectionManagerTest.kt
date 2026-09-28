@@ -1105,6 +1105,52 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun rawCaptureStartUsesSharedDiagnosticExclusionPolicy() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED
+            )
+        )
+        fakeClient.emitNmea(
+            RegattaLinkNmeaState(rawCanSupported = true)
+        )
+
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(diagnosticLogLoading = true)
+        )
+        assertFalse(manager.startRawCanCapture())
+        assertEquals(0, fakeClient.captureStartCalls)
+
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlBusy = true)
+        )
+        assertFalse(manager.startRawCanCapture())
+        assertEquals(0, fakeClient.captureStartCalls)
+
+        fakeClient.emitConfiguration(RegattaLinkConfigurationState())
+        fakeClient.emitNmea(
+            RegattaLinkNmeaState(
+                rawCanSupported = true,
+                rawCanReading = true
+            )
+        )
+        assertFalse(manager.startRawCanCapture())
+        assertEquals(0, fakeClient.captureStartCalls)
+
+        fakeClient.emitNmea(
+            RegattaLinkNmeaState(rawCanSupported = true)
+        )
+        assertTrue(manager.startRawCanCapture())
+        assertEquals(1, fakeClient.captureStartCalls)
+
+        fakeClient.captureFinished?.invoke(
+            RegattaLinkRawCaptureEndReason.USER_STOP,
+            ""
+        )
+        assertTrue(manager.discardRawCanCapture())
+    }
+
+    @Test
     fun rawCaptureStreamsFramesAndFinalizesCsv() {
         fakeClient.emitConnection(
             RegattaLinkClientState(
