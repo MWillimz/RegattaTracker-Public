@@ -448,7 +448,7 @@ internal fun discoverSessionAnalysisCapabilities(
         ),
         knownMetric(
             key = "regattalink.summary.trim_filtered_deg",
-            label = "Trim",
+            label = "Pitch",
             unit = "deg",
             recommended = setOf(AnalysisMetricUse.COLOR)
         ),

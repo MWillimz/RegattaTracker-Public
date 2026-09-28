@@ -40,6 +40,34 @@ class RegattaLinkGattSchemaTest {
     }
 
     @Test
+    fun schemaElevenProofIncludesRequiredMotionOneHzSurface() {
+        assertFalse(
+            regattaLinkGattProofRequiresMotionOneHz(
+                reportedVersion = 10,
+                telemetryAvailable = true
+            )
+        )
+        assertTrue(
+            regattaLinkGattProofRequiresMotionOneHz(
+                reportedVersion = 11,
+                telemetryAvailable = true
+            )
+        )
+        assertTrue(
+            regattaLinkGattProofRequiresMotionOneHz(
+                reportedVersion = 12,
+                telemetryAvailable = true
+            )
+        )
+        assertFalse(
+            regattaLinkGattProofRequiresMotionOneHz(
+                reportedVersion = 11,
+                telemetryAvailable = false
+            )
+        )
+    }
+
+    @Test
     fun acceptedSchemaDoesNotInvalidateEveryReconnect() {
         val decision = regattaLinkGattSchemaDecision(
             reportedVersion = 9,
@@ -59,6 +87,36 @@ class RegattaLinkGattSchemaTest {
         val decision = regattaLinkGattSchemaDecision(
             reportedVersion = 9,
             acceptedVersion = 8,
+            connectionStartedBonded = true,
+            serviceChangedObserved = false,
+            serviceChangedRediscoveryCompleted = false
+        )
+
+        assertTrue(decision.waitForRediscovery)
+        assertTrue(decision.requestServiceChanged)
+        assertFalse(decision.acceptReportedVersion)
+    }
+
+    @Test
+    fun schemaNineToTenRequiresGenericReconciliation() {
+        val decision = regattaLinkGattSchemaDecision(
+            reportedVersion = 10,
+            acceptedVersion = 9,
+            connectionStartedBonded = true,
+            serviceChangedObserved = false,
+            serviceChangedRediscoveryCompleted = false
+        )
+
+        assertTrue(decision.waitForRediscovery)
+        assertTrue(decision.requestServiceChanged)
+        assertFalse(decision.acceptReportedVersion)
+    }
+
+    @Test
+    fun schemaTenToElevenRequiresGenericReconciliation() {
+        val decision = regattaLinkGattSchemaDecision(
+            reportedVersion = 11,
+            acceptedVersion = 10,
             connectionStartedBonded = true,
             serviceChangedObserved = false,
             serviceChangedRediscoveryCompleted = false

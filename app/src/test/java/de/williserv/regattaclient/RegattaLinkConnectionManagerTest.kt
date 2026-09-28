@@ -875,6 +875,7 @@ class RegattaLinkConnectionManagerTest {
 
         assertFalse(manager.setDeviceName("Race-Link"))
         assertFalse(manager.setLedBrightness(75))
+        assertFalse(manager.setMotionDamping(4))
         assertFalse(manager.drainDiagnosticLog())
         assertFalse(
             manager.executeDeviceControl(
@@ -887,6 +888,7 @@ class RegattaLinkConnectionManagerTest {
 
         assertEquals(0, fakeClient.setNameCalls)
         assertEquals(0, fakeClient.setBrightnessCalls)
+        assertEquals(0, fakeClient.setDampingCalls)
         assertEquals(0, fakeClient.diagnosticDrainCalls)
         assertEquals(0, fakeClient.deviceControlCalls)
         assertEquals(0, fakeClient.refreshPgnCalls)
@@ -901,8 +903,10 @@ class RegattaLinkConnectionManagerTest {
 
         assertFalse(manager.setDeviceName("Race-Link"))
         assertFalse(manager.setLedBrightness(75))
+        assertFalse(manager.setMotionDamping(4))
         assertEquals(0, fakeClient.setNameCalls)
         assertEquals(0, fakeClient.setBrightnessCalls)
+        assertEquals(0, fakeClient.setDampingCalls)
 
         fakeClient.emitConfiguration(
             RegattaLinkConfigurationState(
@@ -913,8 +917,10 @@ class RegattaLinkConnectionManagerTest {
 
         assertFalse(manager.setDeviceName("Race-Link"))
         assertFalse(manager.setLedBrightness(75))
+        assertFalse(manager.setMotionDamping(4))
         assertEquals(0, fakeClient.setNameCalls)
         assertEquals(0, fakeClient.setBrightnessCalls)
+        assertEquals(0, fakeClient.setDampingCalls)
 
         fakeClient.emitConfiguration(
             RegattaLinkConfigurationState(
@@ -925,15 +931,24 @@ class RegattaLinkConnectionManagerTest {
 
         assertFalse(manager.setDeviceName("Race-Link"))
         assertFalse(manager.setLedBrightness(75))
+        assertFalse(manager.setMotionDamping(4))
         assertEquals(0, fakeClient.setNameCalls)
         assertEquals(0, fakeClient.setBrightnessCalls)
+        assertEquals(0, fakeClient.setDampingCalls)
 
         fakeClient.emitConfiguration(RegattaLinkConfigurationState())
 
         assertTrue(manager.setDeviceName("Race-Link"))
         assertTrue(manager.setLedBrightness(75))
+        assertTrue(manager.setMotionDamping(4))
         assertEquals(1, fakeClient.setNameCalls)
         assertEquals(1, fakeClient.setBrightnessCalls)
+        assertEquals(1, fakeClient.setDampingCalls)
+        assertEquals(4, fakeClient.lastDampingSeconds)
+
+        assertFalse(manager.setMotionDamping(0))
+        assertFalse(manager.setMotionDamping(11))
+        assertEquals(1, fakeClient.setDampingCalls)
     }
 
     @Test
@@ -1239,6 +1254,7 @@ class RegattaLinkConnectionManagerTest {
         var otaStartCalls = 0
         var setNameCalls = 0
         var setBrightnessCalls = 0
+        var setDampingCalls = 0
         var diagnosticDrainCalls = 0
         var deviceControlCalls = 0
         var refreshPgnCalls = 0
@@ -1251,6 +1267,7 @@ class RegattaLinkConnectionManagerTest {
         var lastCaptureStopReason: RegattaLinkRawCaptureStopReason? = null
         var lastDeviceControlOpcode: RegattaLinkDeviceControlOpcode? = null
         var lastDeviceControlValue: Int? = null
+        var lastDampingSeconds: Int? = null
         var lastReconnectAddress: String? = null
         var lastReconnectStableId: String? = null
 
@@ -1289,6 +1306,12 @@ class RegattaLinkConnectionManagerTest {
 
         override fun setLedBrightness(percent: Int): Boolean {
             setBrightnessCalls += 1
+            return true
+        }
+
+        override fun setMotionDamping(seconds: Int): Boolean {
+            setDampingCalls += 1
+            lastDampingSeconds = seconds
             return true
         }
 

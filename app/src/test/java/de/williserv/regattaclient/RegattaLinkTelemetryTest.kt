@@ -9,6 +9,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -82,45 +84,120 @@ class RegattaLinkTelemetryTest {
         assertEquals(65535, parsed.sequence)
     }
 
+    @Test
+    fun parsesMotionOneHzSignedAndUnsignedValues() {
+        val raw = ByteArray(20)
+        val buffer = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
+        raw[0] = 1
+        raw[1] = 0x1f
+        buffer.putShort(2, 0xffff.toShort())
+        buffer.putInt(4, 0xffffffff.toInt())
+        buffer.putShort(8, (-1234).toShort())
+        buffer.putShort(10, 235.toShort())
+        buffer.putShort(12, (-123).toShort())
+        buffer.putShort(14, 567.toShort())
+        buffer.putShort(16, 890.toShort())
+        buffer.putShort(18, 1234.toShort())
+
+        val parsed = parseRegattaLinkMotionOneHz(raw)
+
+        assertEquals(0x1f, parsed.validityFlags)
+        assertEquals(65535, parsed.sequence)
+        assertEquals(4_294_967_295L, parsed.timestampMs)
+        assertEquals(-12.34, parsed.heelDeg ?: error("heel missing"), 0.001)
+        assertEquals(2.35, parsed.pitchDeg ?: error("pitch missing"), 0.001)
+        assertEquals(-1.23, parsed.yawRateDps ?: error("yaw missing"), 0.001)
+        assertEquals(
+            5.67,
+            parsed.encounterPeriodS ?: error("period missing"),
+            0.001
+        )
+        assertEquals(
+            8.90,
+            parsed.pitchPeakToPeakDeg ?: error("pitch p-p missing"),
+            0.001
+        )
+        assertEquals(
+            12.34,
+            parsed.rollPeakToPeakDeg ?: error("roll p-p missing"),
+            0.001
+        )
+    }
+
+    @Test
+    fun motionOneHzValidityFlagsSuppressInvalidFields() {
+        val raw = ByteArray(20)
+        val buffer = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
+        raw[0] = 1
+        raw[1] = 0x03
+        buffer.putShort(8, 1200.toShort())
+        buffer.putShort(10, (-300).toShort())
+        buffer.putShort(12, 250.toShort())
+        buffer.putShort(14, 700.toShort())
+        buffer.putShort(16, 800.toShort())
+        buffer.putShort(18, 900.toShort())
+
+        val parsed = parseRegattaLinkMotionOneHz(raw)
+
+        assertEquals(12.0, parsed.heelDeg ?: error("heel missing"), 0.001)
+        assertEquals(-3.0, parsed.pitchDeg ?: error("pitch missing"), 0.001)
+        assertEquals(2.5, parsed.yawRateDps ?: error("yaw missing"), 0.001)
+        assertNull(parsed.encounterPeriodS)
+        assertNull(parsed.pitchPeakToPeakDeg)
+        assertNull(parsed.rollPeakToPeakDeg)
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun rejectsWrongRecordLength() {
-        parseRegattaLinkFastMotion(ByteArray(19))
+        parseRegattaLinkMotionOneHz(ByteArray(19))
     }
 
     @Test(expected = IllegalArgumentException::class)
     fun rejectsUnknownSchemaVersion() {
-        parseRegattaLinkFastMotion(ByteArray(20).also { it[0] = 2 })
+        parseRegattaLinkMotionOneHz(ByteArray(20).also { it[0] = 2 })
     }
 
     @Test
-    fun measurementSnapshotIncludesFreshValuesAndOmitsStaleBlocks() {
+    fun measurementSnapshotContainsOnlyFreshLowRateMotionValues() {
         val state = RegattaLinkTelemetryState(
             supported = true,
             subscribed = true,
+            motionOneHz = RegattaLinkMotionOneHz(
+                validityFlags = 0x1f,
+                sequence = 7,
+                timestampMs = 100,
+                heelDeg = 12.0,
+                pitchDeg = -2.0,
+                yawRateDps = 1.5,
+                encounterPeriodS = 5.2,
+                pitchPeakToPeakDeg = 4.4,
+                rollPeakToPeakDeg = 8.8
+            ),
+            motionOneHzReceivedAtElapsedMs = 9_000L,
             fast = RegattaLinkFastMotion(
-                confidencePct = 0,
-                sequence = 65535,
-                timestampMs = 4_000_000_000L,
-                rollDeg = -4.2,
-                pitchDeg = 1.1,
-                rollRateDps = 2.2,
-                pitchRateDps = 3.3,
-                yawRateDps = 4.4,
-                verticalAccelG = -0.02
+                confidencePct = 100,
+                sequence = 1,
+                timestampMs = 1,
+                rollDeg = 99.0,
+                pitchDeg = 99.0,
+                rollRateDps = 99.0,
+                pitchRateDps = 99.0,
+                yawRateDps = 99.0,
+                verticalAccelG = 9.9
             ),
             fastReceivedAtElapsedMs = 9_000L,
             summary = RegattaLinkMotionSummary(
-                confidencePct = 50,
-                sequence = 7,
-                timestampMs = 100,
-                heelFilteredDeg = 12.0,
-                trimFilteredDeg = -2.0,
-                rollRmsDeg = 1.2,
-                pitchRmsDeg = 0.8,
-                verticalAccelRmsG = 0.03,
-                motionIntensity = 74
+                confidencePct = 100,
+                sequence = 1,
+                timestampMs = 1,
+                heelFilteredDeg = 99.0,
+                trimFilteredDeg = 99.0,
+                rollRmsDeg = 99.0,
+                pitchRmsDeg = 99.0,
+                verticalAccelRmsG = 9.9,
+                motionIntensity = 999
             ),
-            summaryReceivedAtElapsedMs = 6_000L
+            summaryReceivedAtElapsedMs = 9_000L
         )
 
         val json = JSONObject(
@@ -128,89 +205,108 @@ class RegattaLinkTelemetryTest {
                 ?: error("measurements missing")
         )
 
+        assertEquals(6, json.length())
         assertEquals(
-            -4.2,
-            json.getJSONObject("regattalink.fast.roll_deg").getDouble("value"),
+            12.0,
+            json.getJSONObject("regattalink.summary.heel_filtered_deg")
+                .getDouble("value"),
             0.001
         )
         assertEquals(
-            65535,
-            json.getJSONObject("regattalink.fast.sequence").getInt("value")
+            -2.0,
+            json.getJSONObject("regattalink.summary.trim_filtered_deg")
+                .getDouble("value"),
+            0.001
         )
-        assertFalse(json.has("regattalink.summary.heel_filtered_deg"))
+        assertEquals(
+            1.5,
+            json.getJSONObject("regattalink.motion.yaw_rate_dps")
+                .getDouble("value"),
+            0.001
+        )
+        assertEquals(
+            5.2,
+            json.getJSONObject("regattalink.motion.encounter_period_s")
+                .getDouble("value"),
+            0.001
+        )
+        assertFalse(json.has("regattalink.fast.roll_deg"))
+        assertFalse(json.has("regattalink.summary.roll_rms_deg"))
+        assertFalse(json.has("regattalink.summary.sequence"))
     }
 
     @Test
-    fun fullTelemetrySnapshotFitsServerMeasurementAndSampleBudgets() {
+    fun invalidMotionOneHzFieldsAreOmittedInsteadOfStoredAsZero() {
         val state = RegattaLinkTelemetryState(
             supported = true,
             subscribed = true,
-            fast = RegattaLinkFastMotion(
-                confidencePct = 100,
-                sequence = 65535,
-                timestampMs = 4_294_967_295L,
-                rollDeg = -180.0,
-                pitchDeg = 180.0,
-                rollRateDps = 327.67,
-                pitchRateDps = -327.68,
-                yawRateDps = 123.45,
-                verticalAccelG = 32.767
+            motionOneHz = RegattaLinkMotionOneHz(
+                validityFlags = 0x03,
+                sequence = 1,
+                timestampMs = 1,
+                heelDeg = 4.0,
+                pitchDeg = 1.0,
+                yawRateDps = -0.5,
+                encounterPeriodS = null,
+                pitchPeakToPeakDeg = null,
+                rollPeakToPeakDeg = null
             ),
-            fastReceivedAtElapsedMs = 10_000L,
+            motionOneHzReceivedAtElapsedMs = 10_000L
+        )
+
+        val json = JSONObject(
+            buildRegattaLinkMeasurementsJson(state, 10_000L)
+                ?: error("measurements missing")
+        )
+
+        assertEquals(3, json.length())
+        assertFalse(json.has("regattalink.motion.encounter_period_s"))
+        assertFalse(json.has("regattalink.motion.pitch_peak_to_peak_deg"))
+        assertFalse(json.has("regattalink.motion.roll_peak_to_peak_deg"))
+    }
+
+    @Test
+    fun legacyTelemetryWithoutMotionOneHzIsNotPersisted() {
+        val state = RegattaLinkTelemetryState(
+            supported = true,
+            subscribed = false,
             summary = RegattaLinkMotionSummary(
                 confidencePct = 100,
-                sequence = 65535,
-                timestampMs = 4_294_967_295L,
-                heelFilteredDeg = -180.0,
-                trimFilteredDeg = 180.0,
-                rollRmsDeg = 655.35,
-                pitchRmsDeg = 655.35,
-                verticalAccelRmsG = 65.535,
-                motionIntensity = 65535
+                sequence = 1,
+                timestampMs = 1,
+                heelFilteredDeg = 4.0,
+                trimFilteredDeg = 1.0,
+                rollRmsDeg = 0.2,
+                pitchRmsDeg = 0.2,
+                verticalAccelRmsG = 0.01,
+                motionIntensity = 1
             ),
-            summaryReceivedAtElapsedMs = 10_000L,
-            calibration = RegattaLinkCalibrationDiagnostics(
-                overallConfidencePct = 100,
-                forwardConfidencePct = 100,
-                rollConfidencePct = 100,
-                learnerState = 2,
-                gyroBiasValid = true,
-                boatFrameValid = true,
-                sequence = 65535,
-                positiveManeuvers = 65535,
-                negativeManeuvers = 65535,
-                rollPairObservations = 65535,
-                contradictoryManeuvers = 65535,
-                mountingEpoch = 65535,
-                calibrationRevision = 65535
-            ),
-            calibrationReceivedAtElapsedMs = 10_000L
+            summaryReceivedAtElapsedMs = 10_000L
         )
 
-        val measurements = JSONObject(
-            requireNotNull(buildRegattaLinkMeasurementsJson(state, 10_000L))
+        assertNull(buildRegattaLinkMeasurementsJson(state, 10_000L))
+    }
+
+    @Test
+    fun staleMotionOneHzIsNotPersisted() {
+        val state = RegattaLinkTelemetryState(
+            supported = true,
+            subscribed = true,
+            motionOneHz = RegattaLinkMotionOneHz(
+                validityFlags = 0x01,
+                sequence = 1,
+                timestampMs = 1,
+                heelDeg = 1.0,
+                pitchDeg = 2.0,
+                yawRateDps = null,
+                encounterPeriodS = null,
+                pitchPeakToPeakDeg = null,
+                rollPeakToPeakDeg = null
+            ),
+            motionOneHzReceivedAtElapsedMs = 1_000L
         )
-        assertEquals(31, measurements.length())
 
-        val sample = JSONObject()
-            .put("sequence_id", Long.MAX_VALUE)
-            .put("timestamp", "2026-09-22T17:30:00+02:00")
-            .put("client_version_code", 2_100_000_000)
-            .put("client_build_id", "26.09.22-1730-production")
-            .put("boat_name", "Test Boat")
-            .put("captain_name", "Test Captain")
-            .put("hull_color", "white")
-            .put("sail_number", "GER 12345")
-            .put("yardstick", 100.0)
-            .put("boat_type", "Test Type")
-            .put("lat", 54.0)
-            .put("lon", 10.0)
-            .put("accuracy", 5.0)
-            .put("cog", 180.0)
-            .put("sog", 5.0)
-            .put("measurements", measurements)
-
-        assertTrue(sample.toString().toByteArray(Charsets.UTF_8).size < 5 * 1024)
+        assertNull(buildRegattaLinkMeasurementsJson(state, 5_000L))
     }
 
     @Test
@@ -218,18 +314,18 @@ class RegattaLinkTelemetryTest {
         val state = RegattaLinkTelemetryState(
             supported = true,
             pausedForOta = true,
-            fast = RegattaLinkFastMotion(
-                confidencePct = 10,
+            motionOneHz = RegattaLinkMotionOneHz(
+                validityFlags = 0x1f,
                 sequence = 1,
                 timestampMs = 1,
-                rollDeg = 0.0,
+                heelDeg = 0.0,
                 pitchDeg = 0.0,
-                rollRateDps = 0.0,
-                pitchRateDps = 0.0,
                 yawRateDps = 0.0,
-                verticalAccelG = 0.0
+                encounterPeriodS = 5.0,
+                pitchPeakToPeakDeg = 2.0,
+                rollPeakToPeakDeg = 2.0
             ),
-            fastReceivedAtElapsedMs = 10L
+            motionOneHzReceivedAtElapsedMs = 10L
         )
 
         assertNull(buildRegattaLinkMeasurementsJson(state, 11L))

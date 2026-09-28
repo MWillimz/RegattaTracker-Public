@@ -461,7 +461,10 @@
     <string name="regattalink_pitch">Pitch</string>
     <string name="regattalink_roll_rate">Rollrate</string>
     <string name="regattalink_pitch_rate">Pitchrate</string>
-    <string name="regattalink_yaw_rate">Yaw-Rate</string>
+    <string name="regattalink_yaw_rate">Gierrate</string>
+    <string name="regattalink_encounter_period">Begegnungsperiode</string>
+    <string name="regattalink_pitch_peak_to_peak">Pitch-Bewegung p-p</string>
+    <string name="regattalink_roll_peak_to_peak">Roll-Bewegung p-p</string>
     <string name="regattalink_vertical_accel">Vertikalbeschleunigung</string>
     <string name="regattalink_calibration_title">Sensor-Ausrichtung / Kalibrierung</string>
     <string name="regattalink_confidence_overall">Gesamt-Confidence</string>
@@ -510,6 +513,8 @@
     <string name="regattalink_confidence">Confidence</string>
     <string name="regattalink_settings_title">Einstellungen</string>
     <string name="regattalink_led_brightness">LED-Helligkeit</string>
+    <string name="regattalink_motion_damping">Dämpfung</string>
+    <string name="regattalink_motion_damping_value">%1$d s</string>
     <string name="regattalink_led_brightness_unavailable">LED-Helligkeit wird von dieser Firmware nicht unterstützt.</string>
     <string name="regattalink_saving">Wird gespeichert…</string>
     <string name="regattalink_nmea_title">NMEA2000</string>
@@ -567,7 +572,7 @@
     <string name="regattalink_not_set">Nicht gesetzt</string>
     <string name="regattalink_not_valid">Ungültig</string>
     <string name="regattalink_factory_reset">Werkseinstellungen</string>
-    <string name="regattalink_factory_reset_warning">Dabei werden RegattaLink-Name, LED-Helligkeit, Kalibrierung und Bluetooth-Kopplungen zurückgesetzt. Die Verbindung wird getrennt und das Gerät muss neu gekoppelt werden. Falls Android die alte Kopplung weiterhin anzeigt, RegattaLink in den Android-Bluetooth-Einstellungen entfernen und danach erneut suchen.</string>
+    <string name="regattalink_factory_reset_warning">Dabei werden RegattaLink-Name, LED-Helligkeit, Bewegungsdämpfung, Kalibrierung und Bluetooth-Kopplungen zurückgesetzt. Die Verbindung wird getrennt und das Gerät muss neu gekoppelt werden. Falls Android die alte Kopplung weiterhin anzeigt, RegattaLink in den Android-Bluetooth-Einstellungen entfernen und danach erneut suchen.</string>
     <string name="regattalink_read_diagnostic_log">Diagnoseprotokoll lesen</string>
     <string name="regattalink_loading_diagnostic_log">Diagnoseprotokoll wird gelesen…</string>
 </resources>

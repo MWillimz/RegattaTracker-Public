@@ -13,6 +13,8 @@ data class RegattaLinkConfigurationState(
     val deviceName: String = "",
     val ledBrightnessSupported: Boolean = false,
     val ledBrightnessPct: Int? = null,
+    val motionDampingSupported: Boolean = false,
+    val motionDampingSeconds: Int? = null,
     val diagnosticLogSupported: Boolean = false,
     val diagnosticLogLoading: Boolean = false,
     val diagnosticLogEntries: List<RegattaLinkDiagnosticLogEntry> = emptyList(),
@@ -153,6 +155,13 @@ internal fun parseRegattaLinkLedBrightness(raw: ByteArray): Int {
     require(raw.size == 1) { "RegattaLink LED brightness must be exactly one byte" }
     val value = raw[0].toInt() and 0xff
     require(value <= 100) { "Invalid RegattaLink LED brightness $value" }
+    return value
+}
+
+internal fun parseRegattaLinkMotionDamping(raw: ByteArray): Int {
+    require(raw.size == 1) { "RegattaLink motion damping must be exactly one byte" }
+    val value = raw[0].toInt() and 0xff
+    require(value in 1..10) { "Invalid RegattaLink motion damping $value s" }
     return value
 }
 
