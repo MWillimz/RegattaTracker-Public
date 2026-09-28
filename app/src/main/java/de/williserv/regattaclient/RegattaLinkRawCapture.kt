@@ -48,6 +48,23 @@ data class RegattaLinkRawCaptureState(
         get() = !filePath.isNullOrBlank()
 }
 
+internal fun regattaLinkRawCaptureStartAllowed(
+    connected: Boolean,
+    otaActive: Boolean,
+    configurationState: RegattaLinkConfigurationState,
+    nmeaState: RegattaLinkNmeaState,
+    rawCaptureState: RegattaLinkRawCaptureState
+): Boolean =
+    connected &&
+        nmeaState.rawCanSupported &&
+        !otaActive &&
+        !rawCaptureState.isActive &&
+        !rawCaptureState.hasFile &&
+        !nmeaState.rawCanReading &&
+        !configurationState.diagnosticLogLoading &&
+        !configurationState.deviceControlBusy
+
+
 internal data class Nmea2000CanIdFields(
     val priority: Int,
     val pgn: Long,
