@@ -25,6 +25,44 @@ class RegattaLinkConfigurationNmeaTest {
         assertEquals(100, parseRegattaLinkLedBrightness(byteArrayOf(100)))
     }
 
+    @Test
+    fun configSliderSubmissionReturnsDraftToConfirmedFirmwareValue() {
+        val brightness = prepareRegattaLinkConfigSliderSubmission(
+            draftValue = 75.4f,
+            confirmedValue = 50,
+            validRange = 0..100
+        )
+        assertEquals(75, brightness.requestedValue)
+        assertEquals(50f, brightness.confirmedDraft)
+
+        val damping = prepareRegattaLinkConfigSliderSubmission(
+            draftValue = 5.2f,
+            confirmedValue = 3,
+            validRange = 1..10
+        )
+        assertEquals(5, damping.requestedValue)
+        assertEquals(3f, damping.confirmedDraft)
+    }
+
+    @Test
+    fun configSliderSubmissionKeepsRangeClamping() {
+        val brightness = prepareRegattaLinkConfigSliderSubmission(
+            draftValue = 120f,
+            confirmedValue = 50,
+            validRange = 0..100
+        )
+        assertEquals(100, brightness.requestedValue)
+        assertEquals(50f, brightness.confirmedDraft)
+
+        val damping = prepareRegattaLinkConfigSliderSubmission(
+            draftValue = 0f,
+            confirmedValue = 3,
+            validRange = 1..10
+        )
+        assertEquals(1, damping.requestedValue)
+        assertEquals(3f, damping.confirmedDraft)
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun rejectsOutOfRangeLedBrightness() {
         parseRegattaLinkLedBrightness(byteArrayOf(101))
