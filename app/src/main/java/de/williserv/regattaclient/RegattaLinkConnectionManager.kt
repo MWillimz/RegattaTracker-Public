@@ -440,13 +440,14 @@ internal class RegattaLinkConnectionManager(
 
     fun startRawCanCapture(): Boolean {
         if (
-            otaState.isActive ||
-            rawCaptureState.isActive ||
-            rawCaptureState.hasFile ||
-            configurationState.diagnosticLogLoading ||
-            configurationState.deviceControlBusy ||
-            connectionState.status != RegattaLinkConnectionStatus.CONNECTED ||
-            !nmeaState.rawCanSupported
+            !regattaLinkRawCaptureStartAllowed(
+                connected =
+                    connectionState.status == RegattaLinkConnectionStatus.CONNECTED,
+                otaActive = otaState.isActive,
+                configurationState = configurationState,
+                nmeaState = nmeaState,
+                rawCaptureState = rawCaptureState
+            )
         ) {
             return false
         }
