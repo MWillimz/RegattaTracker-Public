@@ -94,7 +94,6 @@ class MainActivity : ComponentActivity() {
     private var activeLegalFetchEnterRaceGeneration: Long? = null
 
     private val showClearRaceSetupDialog = mutableStateOf(false)
-    private val showRegistrationReminderDialog = mutableStateOf(false)
     private lateinit var db: TrackingDbHelper
     private lateinit var raceLegalAcceptanceStore: RaceLegalAcceptanceStore
     private lateinit var locationManager: LocationManager
@@ -1020,14 +1019,6 @@ class MainActivity : ComponentActivity() {
                         onContinue = {
                             showFinishDetectedDialog.value = false
                             continueRaceAfterDetectedFinish()
-                        }
-                    )
-                }
-
-                if (showRegistrationReminderDialog.value) {
-                    RegistrationReminderDialog(
-                        onOk = {
-                            showRegistrationReminderDialog.value = false
                         }
                     )
                 }
@@ -2697,7 +2688,6 @@ class MainActivity : ComponentActivity() {
                     if (responseCode in 200..299) {
                         setRaceRegistered(true)
                         registerRaceStatusText.value = getString(R.string.registered_for_race)
-                        showRegistrationReminderDialog.value = true
                         onSuccess?.invoke()
                     } else {
                         registerRaceStatusText.value =
@@ -4021,26 +4011,6 @@ fun RetireConfirmDialog(
         dismissButton = {
             TextButton(onClick = onCancel) {
                 Text(stringResource(R.string.cancel))
-            }
-        }
-    )
-}
-
-@Composable
-fun RegistrationReminderDialog(
-    onOk: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onOk,
-        title = {
-            Text(stringResource(R.string.registration_reminder_title))
-        },
-        text = {
-            Text(stringResource(R.string.registration_reminder_message))
-        },
-        confirmButton = {
-            TextButton(onClick = onOk) {
-                Text(stringResource(R.string.ok))
             }
         }
     )
