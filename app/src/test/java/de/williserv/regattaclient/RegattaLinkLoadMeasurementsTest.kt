@@ -258,7 +258,7 @@ class RegattaLinkLoadMeasurementsTest {
     @Test
     fun snapshotStoreWritesExistingDynamicMeasurementContract() {
         RegattaLinkLoadSnapshotStore.update(
-            listOf(
+            sensors = listOf(
                 RegattaLinkLoadSensor(
                     identityKey = "stable:nmea:0123456789abcdef.0",
                     measurementKey = "nmea.load.0123456789abcdef.0",
@@ -274,11 +274,16 @@ class RegattaLinkLoadMeasurementsTest {
                     loadKg = 42.0,
                     stableIdentity = true
                 )
-            )
+            ),
+            receivedAtElapsedMs = 1_000L
         )
 
         val json = JSONObject(
-            requireNotNull(RegattaLinkLoadSnapshotStore.measurementsJson())
+            requireNotNull(
+                RegattaLinkLoadSnapshotStore.measurementsJson(
+                    nowElapsedMs = 2_000L
+                )
+            )
         )
         assertEquals(2, json.length())
         val first = json.getJSONObject("nmea.load.0123456789abcdef.0")
@@ -287,8 +292,46 @@ class RegattaLinkLoadMeasurementsTest {
         assertEquals("load", first.getString("group"))
         assertEquals("Vorstag", first.getString("label"))
 
+        assertNull(
+            RegattaLinkLoadSnapshotStore.measurementsJson(
+                nowElapsedMs =
+                    1_001L + REGATTALINK_LOAD_TRANSPORT_STALE_MS
+            )
+        )
+
         RegattaLinkLoadSnapshotStore.clear()
-        assertNull(RegattaLinkLoadSnapshotStore.measurementsJson())
+        assertNull(
+            RegattaLinkLoadSnapshotStore.measurementsJson(
+                nowElapsedMs = 2_000L
+            )
+        )
+    }
+
+    @Test
+    fun aliasMetadataChangeDoesNotRefreshTransportFreshness() {
+        val sensor = RegattaLinkLoadSensor(
+            identityKey = "stable:nmea:0123456789abcdef.0",
+            measurementKey = "nmea.load.0123456789abcdef.0",
+            defaultLabel = "Load 0",
+            loadKg = 70.5,
+            stableIdentity = true
+        )
+        RegattaLinkLoadSnapshotStore.update(
+            sensors = listOf(sensor),
+            receivedAtElapsedMs = 1_000L
+        )
+
+        RegattaLinkLoadSnapshotStore.replaceMetadata(
+            listOf(sensor.copy(alias = "Vorstag"))
+        )
+
+        assertNull(
+            RegattaLinkLoadSnapshotStore.measurementsJson(
+                nowElapsedMs =
+                    1_001L + REGATTALINK_LOAD_TRANSPORT_STALE_MS
+            )
+        )
+        RegattaLinkLoadSnapshotStore.clear()
     }
 
     @Test

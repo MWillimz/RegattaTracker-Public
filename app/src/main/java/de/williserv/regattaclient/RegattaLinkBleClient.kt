@@ -2666,7 +2666,10 @@ internal class RegattaLinkBleClient(
                 loadPacketAssembler.accept(value)
             }.onSuccess { sensors ->
                 if (sensors != null) {
-                    RegattaLinkLoadSnapshotStore.update(sensors)
+                    RegattaLinkLoadSnapshotStore.update(
+                        sensors,
+                        receivedAtElapsedMs = SystemClock.elapsedRealtime()
+                    )
                     updateNmea {
                         it.copy(
                             loadSupported = true,

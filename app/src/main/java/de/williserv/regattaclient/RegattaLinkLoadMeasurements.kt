@@ -1,6 +1,7 @@
 package de.williserv.regattaclient
 
 import android.content.Context
+import android.os.SystemClock
 import org.json.JSONObject
 import java.util.Locale
 
@@ -10,6 +11,7 @@ internal const val REGATTALINK_LOAD_WIRE_TYPE_SAMPLE = 2
 internal const val REGATTALINK_LOAD_MAX_FRAME_SIZE = 20
 internal const val REGATTALINK_LOAD_INVALID_VALUE = 0xffff
 internal const val REGATTALINK_LOAD_MAX_ALIAS_BYTES = 48
+internal const val REGATTALINK_LOAD_TRANSPORT_STALE_MS = 3_500L
 
 data class RegattaLinkLoadSensor(
     val identityKey: String,
@@ -284,17 +286,37 @@ internal object RegattaLinkLoadSnapshotStore {
     @Volatile
     private var latest: List<RegattaLinkLoadSensor> = emptyList()
 
-    fun update(sensors: List<RegattaLinkLoadSensor>) {
+    @Volatile
+    private var latestReceivedAtElapsedMs: Long? = null
+
+    fun update(
+        sensors: List<RegattaLinkLoadSensor>,
+        receivedAtElapsedMs: Long = SystemClock.elapsedRealtime()
+    ) {
+        latest = sensors.toList()
+        latestReceivedAtElapsedMs = receivedAtElapsedMs
+    }
+
+    fun replaceMetadata(sensors: List<RegattaLinkLoadSensor>) {
         latest = sensors.toList()
     }
 
     fun clear() {
         latest = emptyList()
+        latestReceivedAtElapsedMs = null
     }
 
     fun current(): List<RegattaLinkLoadSensor> = latest
 
-    fun measurementsJson(): String? {
+    fun measurementsJson(
+        nowElapsedMs: Long = SystemClock.elapsedRealtime()
+    ): String? {
+        val receivedAt = latestReceivedAtElapsedMs ?: return null
+        val ageMs = nowElapsedMs - receivedAt
+        if (ageMs !in 0..REGATTALINK_LOAD_TRANSPORT_STALE_MS) {
+            return null
+        }
+
         val sensors = latest
         if (sensors.isEmpty()) return null
 

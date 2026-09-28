@@ -422,7 +422,7 @@ internal class RegattaLinkConnectionManager(
                 it
             }
         }
-        RegattaLinkLoadSnapshotStore.update(sensors)
+        RegattaLinkLoadSnapshotStore.replaceMetadata(sensors)
         handleNmeaState(nmeaState.copy(loadSensors = sensors))
         return true
     }
