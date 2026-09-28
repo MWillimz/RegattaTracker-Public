@@ -130,6 +130,7 @@ class TrackingDbHelperTest {
         assertTrue(tableExists(db, "tracking_sessions"))
         assertTrue(columnExists(db, "tracking_samples", "session_id"))
         assertTrue(columnExists(db, "tracking_samples", "measurements_json"))
+        assertTrue(columnExists(db, "tracking_samples", "cog_valid"))
         listOf(
             "accel_x",
             "accel_y",
@@ -144,6 +145,46 @@ class TrackingDbHelperTest {
         assertTrue(columnExists(db, "tracking_sessions", "course_json"))
         assertTrue(columnExists(db, "tracking_sessions", "course_map_viewport_json"))
         assertTrue(indexExists(db, "idx_tracking_samples_session_id"))
+    }
+
+    @Test
+    fun trackingSession_preservesCogValidityForReplay() {
+        val helper = TrackingDbHelper(context)
+        val sessionId = requireNotNull(
+            helper.createTrackingSession(
+                startedAt = 1_700_000_000_000L,
+                mode = "manual",
+                accessContextId = null,
+                displayName = "COG validity"
+            )
+        )
+
+        insertSample(
+            helper = helper,
+            sequenceId = 1L,
+            accessContextId = null,
+            sessionId = sessionId,
+            cogValid = true
+        )
+        insertSample(
+            helper = helper,
+            sequenceId = 2L,
+            accessContextId = null,
+            sessionId = sessionId,
+            cogValid = false
+        )
+        insertSample(
+            helper = helper,
+            sequenceId = 3L,
+            accessContextId = null,
+            sessionId = sessionId,
+            cogValid = null
+        )
+
+        assertEquals(
+            listOf(true, false, null),
+            helper.getTrackingSamplesForSession(sessionId).map { it.cogValid }
+        )
     }
 
     @Test
@@ -328,6 +369,7 @@ class TrackingDbHelperTest {
         val helper = TrackingDbHelper(context)
         val db = helper.writableDatabase
 
+        assertTrue(columnExists(db, "tracking_samples", "cog_valid"))
         listOf(
             "accel_x",
             "accel_y",
@@ -380,6 +422,7 @@ class TrackingDbHelperTest {
         assertEquals(111L, sessionSample.localId)
         assertEquals(31L, sessionSample.raceContextId)
         assertEquals("Legacy Run", sessionSample.resolvedEventName)
+        assertNull(sessionSample.cogValid)
         assertEquals(
             """{"regattalink.fast.roll_deg":{"value":12.3,"group":"regattalink"}}""",
             sessionSample.measurementsJson
@@ -540,7 +583,8 @@ class TrackingDbHelperTest {
         accessContextId: Long?,
         sailNumber: String = "GER 1234",
         sessionId: Long? = null,
-        measurementsJson: String? = null
+        measurementsJson: String? = null,
+        cogValid: Boolean? = null
     ): Long {
         return helper.insertSample(
             sequenceId = sequenceId,
@@ -556,6 +600,7 @@ class TrackingDbHelperTest {
             accuracy = 5f,
             cog = 90f,
             sog = 3f,
+            cogValid = cogValid,
             accessContextId = accessContextId,
             sessionId = sessionId,
             measurementsJson = measurementsJson
