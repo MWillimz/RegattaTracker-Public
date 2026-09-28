@@ -26,6 +26,28 @@ internal fun regattaLinkUiMessageResource(
         R.string.regattalink_error_telemetry_invalid
     RegattaLinkUiMessage.CONFIGURATION_FAILED ->
         R.string.regattalink_error_configuration_failed
+    RegattaLinkUiMessage.DEVICE_CONTROL_UNSUPPORTED ->
+        R.string.regattalink_error_device_control_unsupported
+    RegattaLinkUiMessage.DEVICE_CONTROL_BUSY ->
+        R.string.regattalink_error_device_control_busy
+    RegattaLinkUiMessage.DEVICE_CONTROL_NOT_READY ->
+        R.string.regattalink_error_device_control_not_ready
+    RegattaLinkUiMessage.DEVICE_CONTROL_REJECTED ->
+        R.string.regattalink_error_device_control_rejected
+    RegattaLinkUiMessage.CALIBRATION_MOTION_REJECTED ->
+        R.string.regattalink_error_calibration_motion_rejected
+    RegattaLinkUiMessage.CALIBRATION_ORIENTATION_REJECTED ->
+        R.string.regattalink_error_calibration_orientation_rejected
+    RegattaLinkUiMessage.CALIBRATION_PERSIST_FAILED ->
+        R.string.regattalink_error_calibration_persist_failed
+    RegattaLinkUiMessage.FACTORY_RESET_CONFIG_FAILED ->
+        R.string.regattalink_error_factory_reset_config_failed
+    RegattaLinkUiMessage.FACTORY_RESET_BOND_FAILED ->
+        R.string.regattalink_error_factory_reset_bond_failed
+    RegattaLinkUiMessage.DEVICE_CONTROL_INTERNAL_FAILED ->
+        R.string.regattalink_error_device_control_internal_failed
+    RegattaLinkUiMessage.CALIBRATION_TIMEOUT ->
+        R.string.regattalink_error_calibration_timeout
     RegattaLinkUiMessage.NAME_CHANGE_FAILED ->
         R.string.regattalink_error_name_change_failed
     RegattaLinkUiMessage.LED_BRIGHTNESS_RANGE ->

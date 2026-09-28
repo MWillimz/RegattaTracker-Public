@@ -1961,12 +1961,13 @@ private fun RegattaLinkImuSetupSheet(
                     modifier = Modifier.padding(top = 10.dp)
                 )
             }
-            if (deviceControlError.isNotBlank()) {
+            regattaLinkDeviceControlUiMessage(
+                status = controlStatus,
+                hasError = deviceControlError.isNotBlank()
+            )?.let { message ->
                 Text(
                     text = stringResource(
-                        regattaLinkUiMessageResource(
-                            RegattaLinkUiMessage.CONFIGURATION_FAILED
-                        )
+                        regattaLinkUiMessageResource(message)
                     ),
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(top = 8.dp)

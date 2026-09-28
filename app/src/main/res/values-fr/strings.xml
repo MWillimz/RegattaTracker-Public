@@ -409,6 +409,17 @@
     <string name="regattalink_error_telemetry_unavailable">La télémétrie RegattaLink n’est pas disponible.</string>
     <string name="regattalink_error_telemetry_invalid">Télémétrie RegattaLink non valide reçue.</string>
     <string name="regattalink_error_configuration_failed">Impossible de lire ou de modifier les réglages du RegattaLink.</string>
+    <string name="regattalink_error_device_control_unsupported">Ce RegattaLink ne prend pas en charge cette action de configuration.</string>
+    <string name="regattalink_error_device_control_busy">La configuration du RegattaLink est occupée. Réessayez dans un instant.</string>
+    <string name="regattalink_error_device_control_not_ready">Le RegattaLink n’est pas encore prêt pour cette action de configuration.</string>
+    <string name="regattalink_error_device_control_rejected">Le RegattaLink a refusé l’action de configuration.</string>
+    <string name="regattalink_error_calibration_motion_rejected">L’étalonnage a échoué car le bateau a bougé. Immobilisez le bateau et réessayez.</string>
+    <string name="regattalink_error_calibration_orientation_rejected">L’étalonnage a échoué car l’orientation du capteur n’est pas valide.</string>
+    <string name="regattalink_error_calibration_persist_failed">Le RegattaLink n’a pas pu enregistrer l’étalonnage.</string>
+    <string name="regattalink_error_factory_reset_config_failed">Le RegattaLink n’a pas pu réinitialiser sa configuration.</string>
+    <string name="regattalink_error_factory_reset_bond_failed">Le RegattaLink n’a pas pu réinitialiser les associations Bluetooth.</string>
+    <string name="regattalink_error_device_control_internal_failed">Le contrôle de l’appareil RegattaLink a échoué en interne.</string>
+    <string name="regattalink_error_calibration_timeout">Délai d’étalonnage dépassé. Réessayez.</string>
     <string name="regattalink_error_name_change_failed">Impossible de modifier le nom du RegattaLink.</string>
     <string name="regattalink_error_led_brightness_range">La luminosité LED doit être comprise entre 0 et 100 pour cent.</string>
     <string name="regattalink_error_motion_damping_range">L’amortissement du mouvement doit être compris entre 1 et 10 secondes.</string>
