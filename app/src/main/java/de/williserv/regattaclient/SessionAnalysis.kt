@@ -149,6 +149,11 @@ private fun analysisSamplesAreContinuous(
         current.sourceIndex == previous.sourceIndex + 1
 }
 
+/*
+ * Use the already-persisted GPS SOG series for the analysis acceleration
+ * signal. This is gravity-free by construction and avoids reintroducing
+ * RegattaLink Fast Motion into normal session analysis.
+ */
 private fun analysisAccelerationOverLookback(
     samples: List<PreparedAnalysisSample>,
     index: Int,
