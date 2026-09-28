@@ -11,6 +11,16 @@ internal const val REGATTALINK_FAST_STALE_MS = 2_000L
 internal const val REGATTALINK_SLOW_STALE_MS = 3_000L
 internal const val REGATTALINK_MOTION_ONE_HZ_STALE_MS = 3_000L
 
+internal const val REGATTALINK_MOTION_HEEL_KEY = "regattalink.motion.heel_deg"
+internal const val REGATTALINK_MOTION_PITCH_KEY = "regattalink.motion.pitch_deg"
+internal const val REGATTALINK_MOTION_YAW_RATE_KEY = "regattalink.motion.yaw_rate_dps"
+internal const val REGATTALINK_MOTION_ENCOUNTER_PERIOD_KEY =
+    "regattalink.motion.encounter_period_s"
+internal const val REGATTALINK_MOTION_PITCH_PEAK_TO_PEAK_KEY =
+    "regattalink.motion.pitch_peak_to_peak_deg"
+internal const val REGATTALINK_MOTION_ROLL_PEAK_TO_PEAK_KEY =
+    "regattalink.motion.roll_peak_to_peak_deg"
+
 private const val MOTION_ONE_HZ_ATTITUDE_VALID = 1 shl 0
 private const val MOTION_ONE_HZ_YAW_RATE_VALID = 1 shl 1
 private const val MOTION_ONE_HZ_PERIOD_VALID = 1 shl 2
@@ -253,26 +263,22 @@ internal fun buildRegattaLinkMeasurementsJson(
     }
 
     motion.heelDeg?.let {
-        put("regattalink.summary.heel_filtered_deg", it, "deg")
+        put(REGATTALINK_MOTION_HEEL_KEY, it, "deg")
     }
     motion.pitchDeg?.let {
-        /*
-         * Keep the historical storage key for session/#302 compatibility.
-         * User-facing Tracker text calls this Pitch.
-         */
-        put("regattalink.summary.trim_filtered_deg", it, "deg")
+        put(REGATTALINK_MOTION_PITCH_KEY, it, "deg")
     }
     motion.yawRateDps?.let {
-        put("regattalink.motion.yaw_rate_dps", it, "deg/s")
+        put(REGATTALINK_MOTION_YAW_RATE_KEY, it, "deg/s")
     }
     motion.encounterPeriodS?.let {
-        put("regattalink.motion.encounter_period_s", it, "s")
+        put(REGATTALINK_MOTION_ENCOUNTER_PERIOD_KEY, it, "s")
     }
     motion.pitchPeakToPeakDeg?.let {
-        put("regattalink.motion.pitch_peak_to_peak_deg", it, "deg")
+        put(REGATTALINK_MOTION_PITCH_PEAK_TO_PEAK_KEY, it, "deg")
     }
     motion.rollPeakToPeakDeg?.let {
-        put("regattalink.motion.roll_peak_to_peak_deg", it, "deg")
+        put(REGATTALINK_MOTION_ROLL_PEAK_TO_PEAK_KEY, it, "deg")
     }
 
     return if (measurements.length() == 0) null else measurements.toString()
