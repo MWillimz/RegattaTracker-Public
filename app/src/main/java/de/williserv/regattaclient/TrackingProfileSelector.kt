@@ -58,6 +58,16 @@ fun TrackingProfileSelector(
                 label = { Text(stringResource(R.string.tracking_profile_battery_saver)) },
                 modifier = Modifier.weight(1f)
             )
+
+            FilterChip(
+                selected = selectedProfile == TrackingProfile.FIXED_1S,
+                onClick = {
+                    selectedProfile = TrackingProfile.FIXED_1S
+                    TrackingProfileConfig.write(context, TrackingProfile.FIXED_1S)
+                },
+                label = { Text(stringResource(R.string.tracking_profile_fixed_1s)) },
+                modifier = Modifier.weight(1f)
+            )
         }
 
         Text(
