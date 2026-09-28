@@ -28,6 +28,7 @@ data class RegattaLinkConfigurationState(
     val deviceControlStatus: RegattaLinkDeviceControlStatus? = null,
     val deviceControlError: String = "",
     val busy: Boolean = false,
+    val userMessage: RegattaLinkUiMessage? = null,
     val error: String = ""
 )
 
@@ -124,6 +125,7 @@ data class RegattaLinkNmeaState(
     val boatState: RegattaLinkBoatState? = null,
     val boatStateReceivedAtElapsedMs: Long? = null,
     val pausedForOta: Boolean = false,
+    val userMessage: RegattaLinkUiMessage? = null,
     val error: String = ""
 )
 
