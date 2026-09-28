@@ -11,6 +11,7 @@ class RaceHomeStatusTest {
             RaceHomeStatus.CHECKING,
             resolveRaceHomeStatus(
                 raceStatusCode = "",
+                raceStatusDisplayText = "",
                 raceDataReady = false,
                 raceConfigured = true,
                 inRace = false,
@@ -26,6 +27,7 @@ class RaceHomeStatusTest {
             RaceHomeStatus.SERVER_STATUS,
             resolveRaceHomeStatus(
                 raceStatusCode = "racing",
+                raceStatusDisplayText = "Race: error 503",
                 raceDataReady = false,
                 raceConfigured = true,
                 inRace = false,
@@ -41,6 +43,7 @@ class RaceHomeStatusTest {
             RaceHomeStatus.NOT_ENTERED,
             resolveRaceHomeStatus(
                 raceStatusCode = "planned",
+                raceStatusDisplayText = "",
                 raceDataReady = true,
                 raceConfigured = true,
                 inRace = false,
@@ -56,6 +59,7 @@ class RaceHomeStatusTest {
             RaceHomeStatus.REGISTERED_NOT_ENTERED,
             resolveRaceHomeStatus(
                 raceStatusCode = "planned",
+                raceStatusDisplayText = "",
                 raceDataReady = true,
                 raceConfigured = true,
                 inRace = false,
@@ -71,6 +75,7 @@ class RaceHomeStatusTest {
             RaceHomeStatus.NOT_ENTERED,
             resolveRaceHomeStatus(
                 raceStatusCode = "racing",
+                raceStatusDisplayText = "",
                 raceDataReady = true,
                 raceConfigured = true,
                 inRace = false,
@@ -86,6 +91,7 @@ class RaceHomeStatusTest {
             RaceHomeStatus.READY,
             resolveRaceHomeStatus(
                 raceStatusCode = "planned",
+                raceStatusDisplayText = "",
                 raceDataReady = true,
                 raceConfigured = true,
                 inRace = true,
@@ -101,6 +107,7 @@ class RaceHomeStatusTest {
             RaceHomeStatus.RACING,
             resolveRaceHomeStatus(
                 raceStatusCode = "started",
+                raceStatusDisplayText = "",
                 raceDataReady = true,
                 raceConfigured = true,
                 inRace = true,
@@ -116,6 +123,7 @@ class RaceHomeStatusTest {
             RaceHomeStatus.SERVER_STATUS,
             resolveRaceHomeStatus(
                 raceStatusCode = "finished",
+                raceStatusDisplayText = "",
                 raceDataReady = true,
                 raceConfigured = true,
                 inRace = false,
