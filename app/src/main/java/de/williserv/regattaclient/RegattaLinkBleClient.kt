@@ -2767,7 +2767,7 @@ internal class RegattaLinkBleClient(
                 ) {
                     return@execute
                 }
-                updateConfiguration { it.copy(busy = true, error = "") }
+                updateConfiguration { it.copy(busy = true, userMessage = null, error = "") }
                 try {
                     val characteristic = activeGatt
                         .getService(CONFIG_SERVICE_UUID)
@@ -2849,7 +2849,7 @@ internal class RegattaLinkBleClient(
                 ) {
                     return@execute
                 }
-                updateConfiguration { it.copy(busy = true, error = "") }
+                updateConfiguration { it.copy(busy = true, userMessage = null, error = "") }
                 try {
                     val characteristic = activeGatt
                         .getService(CONFIG_SERVICE_UUID)
