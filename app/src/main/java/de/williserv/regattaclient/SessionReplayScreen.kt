@@ -798,7 +798,7 @@ private fun ReplayTimeline(
             drawReplayBoat(
                 center = Offset(x, selectedFraction * size.height),
                 radius = timelineBoatRadiusPx,
-                bearingDegrees = replayBoatBearingDegrees(samples[selectedIndex].cog),
+                bearingDegrees = 180f,
                 color = markerColor,
                 outlineWidth = timelineBoatOutlineWidthPx
             )
