@@ -2,8 +2,6 @@
 <resources>
     <string name="register_with_race_committee">Register with Race Committee</string>
     <string name="registered_with_race_committee">Registered with Race Committee</string>
-    <string name="registration_reminder_title">Registered successfully</string>
-    <string name="registration_reminder_message">Your boat is registered for this race. Tracking has not started yet.\n\nPress “Enter Race” shortly before the race to start tracking.</string>
     <string name="enter_race_available_24h">“Enter Race” is available 24 hours before the start.</string>
     <string name="status_checking">Checking…</string>
     <string name="status_not_entered">Not entered</string>
