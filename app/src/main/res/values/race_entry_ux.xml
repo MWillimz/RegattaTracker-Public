@@ -7,7 +7,6 @@
     <string name="status_checking">Checking…</string>
     <string name="status_not_entered">Not entered</string>
     <string name="status_registered_not_entered">Registered · Not entered</string>
-    <string name="status_ready">Ready</string>
     <string name="registration_reminder_title">Registration complete</string>
     <string name="registration_reminder_message">You are registered for this race, but tracking has not started yet. Tap “Enter Race” later, shortly before the race or at the dock, to start tracking.</string>
 </resources>
