@@ -170,6 +170,15 @@ internal class RegattaLinkBleClient(
     private val bluetoothManager =
         appContext.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
     private val handler = Handler(Looper.getMainLooper())
+    private val loadTelemetryStaleRunnable = Runnable {
+        val nowElapsedMs = SystemClock.elapsedRealtime()
+        updateNmea { state ->
+            regattaLinkExpireLoadSensorsIfTransportStale(
+                state = state,
+                nowElapsedMs = nowElapsedMs
+            )
+        }
+    }
     private val otaExecutor = Executors.newSingleThreadExecutor()
     /*
      * OTA itself can block in reconnectCandidate(). GATT schema reconciliation
@@ -590,6 +599,7 @@ internal class RegattaLinkBleClient(
                             pausedForOta = true
                         )
                     }
+                    handler.removeCallbacks(loadTelemetryStaleRunnable)
                     loadPacketAssembler.reset()
                     RegattaLinkLoadSnapshotStore.clear()
                     emitNmea(
@@ -2393,6 +2403,7 @@ internal class RegattaLinkBleClient(
         val loadCharacteristic =
             telemetryService?.getCharacteristic(TELEMETRY_LOAD_UUID)
 
+        handler.removeCallbacks(loadTelemetryStaleRunnable)
         loadPacketAssembler.reset()
         RegattaLinkLoadSnapshotStore.clear()
 
@@ -2666,17 +2677,29 @@ internal class RegattaLinkBleClient(
                 loadPacketAssembler.accept(value)
             }.onSuccess { sensors ->
                 if (sensors != null) {
+                    val receivedAtElapsedMs = SystemClock.elapsedRealtime()
                     RegattaLinkLoadSnapshotStore.update(
                         sensors,
-                        receivedAtElapsedMs = SystemClock.elapsedRealtime()
+                        receivedAtElapsedMs = receivedAtElapsedMs
                     )
                     updateNmea {
                         it.copy(
                             loadSupported = true,
                             loadSubscribed = true,
                             loadSensors = sensors,
+                            loadReceivedAtElapsedMs =
+                                receivedAtElapsedMs.takeIf {
+                                    sensors.isNotEmpty()
+                                },
                             userMessage = null,
                             error = ""
+                        )
+                    }
+                    handler.removeCallbacks(loadTelemetryStaleRunnable)
+                    if (sensors.isNotEmpty()) {
+                        handler.postDelayed(
+                            loadTelemetryStaleRunnable,
+                            REGATTALINK_LOAD_TRANSPORT_STALE_MS
                         )
                     }
                 }
@@ -4805,6 +4828,7 @@ internal class RegattaLinkBleClient(
     }
 
     private fun clearNmea() {
+        handler.removeCallbacks(loadTelemetryStaleRunnable)
         loadPacketAssembler.reset()
         RegattaLinkLoadSnapshotStore.clear()
         emitNmea(RegattaLinkNmeaState())
@@ -4886,12 +4910,14 @@ internal class RegattaLinkBleClient(
         if (lastNmeaState.pausedForOta != paused) {
             updateNmea {
                 if (paused) {
+                    handler.removeCallbacks(loadTelemetryStaleRunnable)
                     loadPacketAssembler.reset()
                     RegattaLinkLoadSnapshotStore.clear()
                     it.copy(
                         boatState = null,
                         boatStateReceivedAtElapsedMs = null,
                         loadSensors = emptyList(),
+                        loadReceivedAtElapsedMs = null,
                         pausedForOta = true
                     )
                 } else {

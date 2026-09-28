@@ -132,6 +132,7 @@ data class RegattaLinkNmeaState(
     val loadSupported: Boolean = false,
     val loadSubscribed: Boolean = false,
     val loadSensors: List<RegattaLinkLoadSensor> = emptyList(),
+    val loadReceivedAtElapsedMs: Long? = null,
     val pausedForOta: Boolean = false,
     val error: String = "",
     val userMessage: RegattaLinkUiMessage? = null
@@ -185,6 +186,19 @@ internal fun parseRegattaLinkMotionDamping(raw: ByteArray): Int {
     val value = raw[0].toInt() and 0xff
     require(value in 1..10) { "Invalid RegattaLink motion damping $value s" }
     return value
+}
+
+internal fun regattaLinkExpireLoadSensorsIfTransportStale(
+    state: RegattaLinkNmeaState,
+    nowElapsedMs: Long
+): RegattaLinkNmeaState {
+    val receivedAt = state.loadReceivedAtElapsedMs ?: return state
+    val ageMs = nowElapsedMs - receivedAt
+    if (ageMs < REGATTALINK_LOAD_TRANSPORT_STALE_MS) return state
+    return state.copy(
+        loadSensors = emptyList(),
+        loadReceivedAtElapsedMs = null
+    )
 }
 
 internal fun parseRegattaLinkLoadPrecision(raw: ByteArray): Boolean {

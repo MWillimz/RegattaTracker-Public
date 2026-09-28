@@ -23,8 +23,6 @@ internal fun discoverSessionNumericMeasurements(
         val keys = measurements.keys()
         while (keys.hasNext()) {
             val key = keys.next()
-            if (discovered.containsKey(key)) continue
-
             val measurement = measurements.optJSONObject(key) ?: continue
             val value = measurement.opt("value")
             if (value !is Number || !value.toDouble().isFinite()) continue
@@ -39,13 +37,18 @@ internal fun discoverSessionNumericMeasurements(
                 .trim()
                 .takeIf { it.isNotBlank() }
 
-            discovered[key] = SessionNumericMeasurement(
-                key = key,
-                label = explicitLabel
-                    ?: prettySessionMeasurementLabel(key, group, unit),
-                unit = unit,
-                group = group
-            )
+            val existing = discovered[key]
+            if (existing == null) {
+                discovered[key] = SessionNumericMeasurement(
+                    key = key,
+                    label = explicitLabel
+                        ?: prettySessionMeasurementLabel(key, group, unit),
+                    unit = unit,
+                    group = group
+                )
+            } else if (explicitLabel != null) {
+                discovered[key] = existing.copy(label = explicitLabel)
+            }
         }
     }
 

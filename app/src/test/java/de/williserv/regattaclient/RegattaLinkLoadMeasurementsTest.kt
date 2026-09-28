@@ -341,6 +341,40 @@ class RegattaLinkLoadMeasurementsTest {
     }
 
     @Test
+    fun transportTimeoutClearsVisibleLoadSensors() {
+        val sensor = RegattaLinkLoadSensor(
+            identityKey = "stable:nmea:0123456789abcdef.0",
+            measurementKey = "nmea.load.0123456789abcdef.0",
+            defaultLabel = "Load 0",
+            loadKg = 70.5,
+            stableIdentity = true
+        )
+        val state = RegattaLinkNmeaState(
+            loadSupported = true,
+            loadSubscribed = true,
+            loadSensors = listOf(sensor),
+            loadReceivedAtElapsedMs = 1_000L
+        )
+
+        val stillFresh = regattaLinkExpireLoadSensorsIfTransportStale(
+            state = state,
+            nowElapsedMs =
+                1_000L + REGATTALINK_LOAD_TRANSPORT_STALE_MS - 1L
+        )
+        assertEquals(1, stillFresh.loadSensors.size)
+
+        val stale = regattaLinkExpireLoadSensorsIfTransportStale(
+            state = state,
+            nowElapsedMs =
+                1_000L + REGATTALINK_LOAD_TRANSPORT_STALE_MS
+        )
+        assertTrue(stale.loadSensors.isEmpty())
+        assertNull(stale.loadReceivedAtElapsedMs)
+        assertTrue(stale.loadSupported)
+        assertTrue(stale.loadSubscribed)
+    }
+
+    @Test
     fun loadMeasurementsMergeWithoutOverwritingImuOrNmea() {
         val load =
             """{"nmea.load.0123456789abcdef.0":{"value":70.5,"unit":"kg","group":"load"}}"""
