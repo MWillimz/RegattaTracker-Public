@@ -5,4 +5,9 @@
     <string name="registration_reminder_title">Inscription réussie</string>
     <string name="registration_reminder_message">Votre bateau est inscrit à cette course. Le suivi n’a pas encore démarré.\n\nAppuyez sur « Entrer en course » peu avant la course pour démarrer le suivi.</string>
     <string name="enter_race_available_24h">« Entrer en course » est disponible 24 heures avant le départ.</string>
+    <string name="status_checking">Vérification…</string>
+    <string name="status_not_entered">Pas encore en course</string>
+    <string name="status_registered_not_entered">Inscrit · Pas encore en course</string>
+    <string name="registration_reminder_title">Inscription terminée</string>
+    <string name="registration_reminder_message">Vous êtes inscrit à cette course, mais le suivi n’a pas encore démarré. Appuyez plus tard sur « Entrer en course », peu avant le départ ou au quai, pour démarrer le suivi.</string>
 </resources>

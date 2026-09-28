@@ -94,6 +94,7 @@ class MainActivity : ComponentActivity() {
     private var activeLegalFetchEnterRaceGeneration: Long? = null
 
     private val showClearRaceSetupDialog = mutableStateOf(false)
+    private val showRegistrationReminderDialog = mutableStateOf(false)
     private lateinit var db: TrackingDbHelper
     private lateinit var raceLegalAcceptanceStore: RaceLegalAcceptanceStore
     private lateinit var locationManager: LocationManager
@@ -538,6 +539,7 @@ class MainActivity : ComponentActivity() {
                             retirementReported = retirementReported.value,
                             retirementStatusText = retirementStatusText.value,
                             raceDataReady = raceDataReady.value,
+                            raceRegistered = raceRegistered.value,
                             dtlText = dtlText.value,
                             ttlText = ttlText.value,
                             ocsText = ocsText.value,
@@ -733,7 +735,7 @@ class MainActivity : ComponentActivity() {
                                     }
 
                                     if (invalidateRegistration) {
-                                        raceRegistered.value = false
+                                        setRaceRegistered(false)
                                         registerRaceStatusText.value = ""
                                     }
                                     if (invalidateLegal) {
@@ -842,7 +844,8 @@ class MainActivity : ComponentActivity() {
                             canRegisterRace = setupConfirmed.value &&
                                     raceDataReady.value &&
                                     raceLegalAccepted.value &&
-                                    !inRace.value,
+                                    !inRace.value &&
+                                    !raceRegistered.value,
                             registerRaceStatusText = registerRaceStatusText.value,
                             raceShortenedText = raceShortenedText.value,
                             raceShortened = rawRaceCourseShortened,
@@ -878,7 +881,11 @@ class MainActivity : ComponentActivity() {
                                 leaveRace()
                             },
                             onRegisterRace = {
-                                registerForRace()
+                                registerForRace(
+                                    onSuccess = {
+                                        showRegistrationReminderDialog.value = true
+                                    }
+                                )
                             },
                             onBack = ::navigateBack
                         )
@@ -1017,6 +1024,14 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
+                if (showRegistrationReminderDialog.value) {
+                    RegistrationReminderDialog(
+                        onOk = {
+                            showRegistrationReminderDialog.value = false
+                        }
+                    )
+                }
+
                 if (showClearRaceSetupDialog.value) {
                     ClearRaceSetupDialog(
                         onConfirm = {
@@ -1141,6 +1156,7 @@ class MainActivity : ComponentActivity() {
             occurrenceNo = prefs.getInt("series_occurrence_no", 0).takeIf { it > 0 },
             plannedRaceCount = prefs.getInt("series_planned_race_count", 0).takeIf { it > 0 }
         )
+        raceRegistered.value = prefs.getBoolean("race_registered", false)
 
         raceDataReady.value = prefs.getBoolean("race_data_ready", false)
         if (resolvedEventName.value.isBlank()) {
@@ -1372,7 +1388,7 @@ class MainActivity : ComponentActivity() {
         rawRaceCourseShortened = false
         currentRaceStatus = ""
         raceStartEpochMillis = null
-        raceRegistered.value = false
+        setRaceRegistered(false)
         registerRaceStatusText.value = ""
         resultsStatusText.value = ""
         resultsPublished.value = false
@@ -1459,7 +1475,7 @@ class MainActivity : ComponentActivity() {
         retirementReported.value = false
         retirementStatusText.value = ""
         raceLegalResolvedEventName = ""
-        raceRegistered.value = false
+        setRaceRegistered(false)
         registerRaceStatusText.value = ""
 
         raceStatusText.value = getString(R.string.race_not_loaded)
@@ -1511,6 +1527,14 @@ class MainActivity : ComponentActivity() {
         updateStartPanelStatus()
     }
 
+    private fun setRaceRegistered(registered: Boolean) {
+        raceRegistered.value = registered
+        getSharedPreferences(racePrefsName, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("race_registered", registered)
+            .apply()
+    }
+
     private fun saveRaceSetup() {
         getSharedPreferences(racePrefsName, Context.MODE_PRIVATE)
             .edit()
@@ -1521,6 +1545,7 @@ class MainActivity : ComponentActivity() {
             .putString("series_run_name", raceSeriesDisplayMetadata.value.runName)
             .putInt("series_occurrence_no", raceSeriesDisplayMetadata.value.occurrenceNo ?: 0)
             .putInt("series_planned_race_count", raceSeriesDisplayMetadata.value.plannedRaceCount ?: 0)
+            .putBoolean("race_registered", raceRegistered.value)
             .putInt("race_raw_state_version", RACE_RAW_STATE_VERSION)
             .putString("race_status_raw", rawRaceStatus)
             .putString("race_start_raw", rawRaceStart)
@@ -1725,7 +1750,7 @@ class MainActivity : ComponentActivity() {
             raceSecret.value = secret
             clearResolvedEventContextForAccessChange()
 
-            raceRegistered.value = false
+            setRaceRegistered(false)
             registerRaceStatusText.value = ""
 
             raceStatusText.value = getString(R.string.qr_code_loaded)
@@ -2670,7 +2695,7 @@ class MainActivity : ComponentActivity() {
                     }
 
                     if (responseCode in 200..299) {
-                        raceRegistered.value = true
+                        setRaceRegistered(true)
                         registerRaceStatusText.value = getString(R.string.registered_for_race)
                         showRegistrationReminderDialog.value = true
                         onSuccess?.invoke()
@@ -3954,6 +3979,26 @@ fun TrackingConsentDialog(
         dismissButton = {
             TextButton(onClick = onCancel) {
                 Text(stringResource(R.string.cancel))
+            }
+        }
+    )
+}
+
+@Composable
+fun RegistrationReminderDialog(
+    onOk: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onOk,
+        title = {
+            Text(stringResource(R.string.registration_reminder_title))
+        },
+        text = {
+            Text(stringResource(R.string.registration_reminder_message))
+        },
+        confirmButton = {
+            TextButton(onClick = onOk) {
+                Text(stringResource(R.string.ok))
             }
         }
     )
