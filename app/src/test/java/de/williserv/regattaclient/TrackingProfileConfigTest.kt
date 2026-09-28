@@ -15,6 +15,10 @@ class TrackingProfileConfigTest {
             TrackingProfile.BATTERY_SAVER,
             TrackingProfile.fromPersistedValue("battery_saver")
         )
+        assertEquals(
+            TrackingProfile.FIXED_1S,
+            TrackingProfile.fromPersistedValue("fixed_1s")
+        )
     }
 
     @Test

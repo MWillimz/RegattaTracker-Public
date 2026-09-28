@@ -3,5 +3,6 @@
     <string name="tracking_profile_title">Tracking profile</string>
     <string name="tracking_profile_normal">Normal</string>
     <string name="tracking_profile_battery_saver">Battery Saver</string>
-    <string name="tracking_profile_description">Battery Saver reduces tracking resolution away from course elements to extend battery life.</string>
+    <string name="tracking_profile_fixed_1s">Fixed 1 s</string>
+    <string name="tracking_profile_description">Normal adapts the rate to course distance. Battery Saver reduces it further. Fixed 1 s records every second regardless of distance.</string>
 </resources>

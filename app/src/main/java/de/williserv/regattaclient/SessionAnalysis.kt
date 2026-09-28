@@ -114,7 +114,12 @@ internal fun prepareAnalysisSamples(
     val prepared = samples.mapIndexed { index, sample ->
         PreparedAnalysisSample(
             timestampMs = analysisSampleTimestampMs(sample),
-            cogDeg = sample.cog.toDouble(),
+            cogDeg =
+                if (sample.cogValid == false) {
+                    Double.NaN
+                } else {
+                    sample.cog.toDouble()
+                },
             sogMps = sample.sog.toDouble(),
             measurements = sessionNumericMeasurementValues(sample),
             sourceIndex = index
@@ -784,6 +789,23 @@ internal fun buildSessionAnalysisDataset(
     )
 }
 
+private fun analysisSamplesAreContinuousForAggregation(
+    previous: PreparedAnalysisSample,
+    current: PreparedAnalysisSample,
+    windowMs: Long
+): Boolean {
+    if (!analysisSamplesAreContinuous(previous, current)) return false
+    val previousTime = previous.timestampMs ?: return false
+    val currentTime = current.timestampMs ?: return false
+
+    /*
+     * A gap as large as the aggregation window contains no evidence for the
+     * missing part of that window. This matters for the adaptive Normal and
+     * Battery Saver profiles, whose sampling cadence can change mid-session.
+     */
+    return currentTime - previousTime < windowMs
+}
+
 private fun aggregateAnalysisPoints(
     eligible: List<EligibleAnalysisPoint>,
     angleKind: AnalysisAngleKind,
@@ -798,9 +820,10 @@ private fun aggregateAnalysisPoints(
         var segmentEnd = segmentStart + 1
         while (
             segmentEnd < eligible.size &&
-            analysisSamplesAreContinuous(
-                eligible[segmentEnd - 1].sample,
-                eligible[segmentEnd].sample
+            analysisSamplesAreContinuousForAggregation(
+                previous = eligible[segmentEnd - 1].sample,
+                current = eligible[segmentEnd].sample,
+                windowMs = windowMs
             )
         ) {
             segmentEnd += 1

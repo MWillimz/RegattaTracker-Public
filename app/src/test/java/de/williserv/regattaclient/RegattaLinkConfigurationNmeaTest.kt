@@ -163,6 +163,17 @@ class RegattaLinkConfigurationNmeaTest {
                 deviceControlRunning = true
             )
         )
+        assertTrue(
+            regattaLinkConfigurationMutationBlocked(
+                RegattaLinkConfigurationState(diagnosticLogLoading = true)
+            )
+        )
+        assertTrue(
+            regattaLinkConfigurationMutationBlocked(
+                RegattaLinkConfigurationState(),
+                diagnosticLogRunning = true
+            )
+        )
     }
 
     @Test

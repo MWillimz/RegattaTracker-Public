@@ -2,8 +2,6 @@
 <resources>
     <string name="register_with_race_committee">Beim Wettfahrtkomitee registrieren</string>
     <string name="registered_with_race_committee">Beim Wettfahrtkomitee registriert</string>
-    <string name="registration_reminder_title">Erfolgreich registriert</string>
-    <string name="registration_reminder_message">Dein Boot ist für diese Regatta registriert. Das Tracking wurde noch nicht gestartet.\n\nDrücke kurz vor der Regatta „Regatta starten“, um das Tracking zu starten.</string>
     <string name="enter_race_available_24h">„Regatta starten“ ist ab 24 Stunden vor dem Start verfügbar.</string>
     <string name="status_checking">Wird geprüft…</string>
     <string name="status_not_entered">Nicht gestartet</string>

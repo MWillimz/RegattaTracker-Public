@@ -2679,7 +2679,8 @@ internal class RegattaLinkBleClient(
             state = lastConfigurationState,
             factoryResetOwned =
                 factoryResetDisconnectTracker.ownsLifecycle(activeGatt),
-            deviceControlRunning = deviceControlExecutionGuard.isActive()
+            deviceControlRunning = deviceControlExecutionGuard.isActive(),
+            diagnosticLogRunning = diagnosticLogRunning.get()
         )
 
     override fun setDeviceName(name: String): Boolean {
@@ -2915,6 +2916,7 @@ internal class RegattaLinkBleClient(
             otaRunning.get() ||
             rawCaptureRunning.get() ||
             deviceControlExecutionGuard.isActive() ||
+            configurationMutationRunning.get() ||
             !isConnected() ||
             !diagnosticLogRunning.compareAndSet(false, true)
         ) {
@@ -2926,18 +2928,23 @@ internal class RegattaLinkBleClient(
             return false
         }
 
+        updateConfiguration {
+            it.copy(
+                diagnosticLogLoading = true,
+                diagnosticLogEntries = emptyList(),
+                diagnosticLogError = ""
+            )
+        }
+
         otaExecutor.execute {
             if (!optionalFeatureWorkAllowed(activeGatt)) {
                 diagnosticLogRunning.set(false)
+                if (gatt === activeGatt && connected) {
+                    updateConfiguration {
+                        it.copy(diagnosticLogLoading = false)
+                    }
+                }
                 return@execute
-            }
-
-            updateConfiguration {
-                it.copy(
-                    diagnosticLogLoading = true,
-                    diagnosticLogEntries = emptyList(),
-                    diagnosticLogError = ""
-                )
             }
 
             val entries = mutableListOf<RegattaLinkDiagnosticLogEntry>()
