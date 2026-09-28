@@ -35,11 +35,14 @@ data class RegattaLinkConfigurationState(
 internal fun regattaLinkConfigurationMutationBlocked(
     state: RegattaLinkConfigurationState,
     factoryResetOwned: Boolean = false,
-    deviceControlRunning: Boolean = false
+    deviceControlRunning: Boolean = false,
+    diagnosticLogRunning: Boolean = false
 ): Boolean =
     factoryResetOwned ||
         deviceControlRunning ||
+        diagnosticLogRunning ||
         state.deviceControlBusy ||
+        state.diagnosticLogLoading ||
         state.factoryResetAwaitingDisconnect ||
         state.factoryResetWriteAcceptedRequestId != null
 
