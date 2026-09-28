@@ -414,6 +414,202 @@ class SessionAnalysisTest {
     }
 
     @Test
+    fun accelerationFilterUsesMaximumGpsSpeedChangeFromPreviousFiveSeconds() {
+        val samples = (0..11).map { second ->
+            sample(
+                sog = if (second < 6) 2f else 3f,
+                timestamp = timestampAtSecond(second)
+            )
+        }
+        val prepared = prepareAnalysisSamples(samples)
+        val capabilities = discoverSessionAnalysisCapabilities(samples, prepared)
+        val acceleration = capabilities.filterMetrics.single {
+            it.id == "derived.acceleration_5s"
+        }
+
+        assertTrue(
+            acceleration.isRecommendedFor(AnalysisMetricUse.FILTER)
+        )
+        assertFalse(capabilities.colorMetrics.any {
+            it.id == acceleration.id
+        })
+        assertEquals(
+            0.0,
+            metricValue(acceleration, prepared[5])!!,
+            0.001
+        )
+        assertEquals(
+            1.0,
+            metricValue(acceleration, prepared[6])!!,
+            0.001
+        )
+        assertEquals(
+            1.0,
+            metricValue(acceleration, prepared[10])!!,
+            0.001
+        )
+        assertEquals(
+            0.0,
+            metricValue(acceleration, prepared[11])!!,
+            0.001
+        )
+
+        val byId = capabilities.metrics.associateBy { it.id }
+        val filtered = buildSessionAnalysisDataset(
+            samples = prepared,
+            angleMetric = byId.getValue("gps.cog"),
+            radiusMetric = byId.getValue("gps.sog"),
+            colorMetric = null,
+            filters = listOf(
+                AnalysisRangeFilter(
+                    metricId = acceleration.id,
+                    min = 0.0,
+                    max = 0.5
+                )
+            ),
+            metricsById = byId
+        )
+
+        // The first five seconds have no complete lookback. The speed-change
+        // event then stays excluded for the full configured five-second view.
+        assertEquals(2, filtered.points.size)
+    }
+
+    @Test
+    fun tenSecondAggregationUsesOnlyCompleteContinuousSegments() {
+        val prepared = (0..20).map { index ->
+            PreparedAnalysisSample(
+                timestampMs = index * 1_000L,
+                cogDeg = if (index % 2 == 0) 359.0 else 1.0,
+                sogMps = index.toDouble(),
+                measurements = emptyMap(),
+                sourceIndex = index
+            )
+        }
+        val angle = AnalysisMetric(
+            id = "gps.cog",
+            label = "COG",
+            unit = "deg",
+            source = AnalysisMetricSource.GPS_COG,
+            angleKind = AnalysisAngleKind.COMPASS
+        )
+        val radius = AnalysisMetric(
+            id = "gps.sog",
+            label = "SOG",
+            unit = "m/s",
+            source = AnalysisMetricSource.GPS_SOG
+        )
+        val metrics = listOf(angle, radius).associateBy { it.id }
+
+        val dataset = buildSessionAnalysisDataset(
+            samples = prepared,
+            angleMetric = angle,
+            radiusMetric = radius,
+            colorMetric = null,
+            filters = emptyList(),
+            metricsById = metrics,
+            aggregationWindowMs = ANALYSIS_AGGREGATION_WINDOW_MS
+        )
+
+        assertEquals(2, dataset.points.size)
+        assertEquals(0.0, dataset.points[0].angleDeg, 0.01)
+        assertEquals(4.5, dataset.points[0].radius, 0.001)
+        assertEquals(14.5, dataset.points[1].radius, 0.001)
+    }
+
+    @Test
+    fun tenSecondAggregationDoesNotBridgeFilteredSamples() {
+        val prepared = (0..20).map { index ->
+            PreparedAnalysisSample(
+                timestampMs = index * 1_000L,
+                cogDeg = 90.0,
+                sogMps = 4.0,
+                measurements = mapOf(
+                    "test.keep" to if (index == 5) 1.0 else 0.0
+                ),
+                sourceIndex = index
+            )
+        }
+        val angle = AnalysisMetric(
+            id = "gps.cog",
+            label = "COG",
+            unit = "deg",
+            source = AnalysisMetricSource.GPS_COG,
+            angleKind = AnalysisAngleKind.COMPASS
+        )
+        val radius = AnalysisMetric(
+            id = "gps.sog",
+            label = "SOG",
+            unit = "m/s",
+            source = AnalysisMetricSource.GPS_SOG
+        )
+        val gate = AnalysisMetric(
+            id = "measurement:test.keep",
+            label = "Gate",
+            unit = null,
+            source = AnalysisMetricSource.MEASUREMENT,
+            measurementKey = "test.keep"
+        )
+        val metrics = listOf(angle, radius, gate).associateBy { it.id }
+
+        val dataset = buildSessionAnalysisDataset(
+            samples = prepared,
+            angleMetric = angle,
+            radiusMetric = radius,
+            colorMetric = null,
+            filters = listOf(
+                AnalysisRangeFilter(
+                    metricId = gate.id,
+                    min = 0.0,
+                    max = 0.0
+                )
+            ),
+            metricsById = metrics,
+            aggregationWindowMs = ANALYSIS_AGGREGATION_WINDOW_MS
+        )
+
+        assertEquals(1, dataset.points.size)
+    }
+
+    @Test
+    fun shorterThanTenSecondsDoesNotProduceAggregate() {
+        val prepared = (0..9).map { index ->
+            PreparedAnalysisSample(
+                timestampMs = index * 1_000L,
+                cogDeg = 90.0,
+                sogMps = 4.0,
+                measurements = emptyMap(),
+                sourceIndex = index
+            )
+        }
+        val angle = AnalysisMetric(
+            id = "gps.cog",
+            label = "COG",
+            unit = "deg",
+            source = AnalysisMetricSource.GPS_COG,
+            angleKind = AnalysisAngleKind.COMPASS
+        )
+        val radius = AnalysisMetric(
+            id = "gps.sog",
+            label = "SOG",
+            unit = "m/s",
+            source = AnalysisMetricSource.GPS_SOG
+        )
+
+        val dataset = buildSessionAnalysisDataset(
+            samples = prepared,
+            angleMetric = angle,
+            radiusMetric = radius,
+            colorMetric = null,
+            filters = emptyList(),
+            metricsById = listOf(angle, radius).associateBy { it.id },
+            aggregationWindowMs = ANALYSIS_AGGREGATION_WINDOW_MS
+        )
+
+        assertTrue(dataset.points.isEmpty())
+    }
+
+    @Test
     fun genericNegativeRadiusSamplesAreRejected() {
         val samples = listOf(
             sample(
@@ -439,6 +635,9 @@ class SessionAnalysisTest {
 
         assertTrue(dataset.points.isEmpty())
     }
+
+    private fun timestampAtSecond(second: Int): String =
+        "2026-09-24T12:00:" + second.toString().padStart(2, '0')
 
     private fun sample(
         cog: Float = 90f,
