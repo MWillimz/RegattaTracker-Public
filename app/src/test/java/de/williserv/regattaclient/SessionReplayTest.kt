@@ -78,6 +78,15 @@ class SessionReplayTest {
     }
 
     @Test
+    fun replayBoatBearing_followsCogAndNormalizes() {
+        assertEquals(0f, replayBoatBearingDegrees(0f), 0.0001f)
+        assertEquals(90f, replayBoatBearingDegrees(90f), 0.0001f)
+        assertEquals(270f, replayBoatBearingDegrees(-90f), 0.0001f)
+        assertEquals(5f, replayBoatBearingDegrees(365f), 0.0001f)
+        assertEquals(0f, replayBoatBearingDegrees(Float.NaN), 0.0001f)
+    }
+
+    @Test
     fun replayCanvasSizing_keepsLogicalSizeStableAcrossDensities() {
         val mdpi = replayCanvasSizing(canvasScalePx = 600f, density = 1f)
         val xxhdpi = replayCanvasSizing(canvasScalePx = 1800f, density = 3f)
