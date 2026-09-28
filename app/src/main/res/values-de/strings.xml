@@ -552,6 +552,7 @@
     <string name="regattalink_unavailable">Nicht verfügbar</string>
     <string name="regattalink_confidence">Confidence</string>
     <string name="regattalink_settings_title">Einstellungen</string>
+    <string name="regattalink_setup">Einrichten</string>
     <string name="regattalink_setup_imu">IMU einrichten</string>
     <string name="regattalink_setup_nmea">NMEA einrichten</string>
     <string name="regattalink_advanced_diagnostics">Erweitert / Diagnose</string>
