@@ -18,7 +18,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -118,13 +117,29 @@ internal enum class RegattaLinkSetupDestination {
     FIRMWARE
 }
 
-internal fun regattaLinkSetupDestinations(): List<RegattaLinkSetupDestination> =
-    listOf(
+internal data class RegattaLinkSetupMenuItem(
+    val destination: RegattaLinkSetupDestination,
+    val labelResId: Int
+)
+
+internal val regattaLinkSetupMenuItems = listOf(
+    RegattaLinkSetupMenuItem(
         RegattaLinkSetupDestination.IMU,
+        R.string.regattalink_setup_imu
+    ),
+    RegattaLinkSetupMenuItem(
         RegattaLinkSetupDestination.NMEA,
+        R.string.regattalink_setup_nmea
+    ),
+    RegattaLinkSetupMenuItem(
         RegattaLinkSetupDestination.ADVANCED_DIAGNOSTICS,
-        RegattaLinkSetupDestination.FIRMWARE
+        R.string.regattalink_advanced_diagnostics
+    ),
+    RegattaLinkSetupMenuItem(
+        RegattaLinkSetupDestination.FIRMWARE,
+        R.string.regattalink_firmware_title
     )
+)
 
 @Composable
 fun RegattaLinkScreen(
@@ -360,87 +375,26 @@ fun RegattaLinkScreen(
                 fontWeight = FontWeight.SemiBold
             )
             Box {
-                val openSettingsDescription =
-                    stringResource(R.string.regattalink_open_settings)
-                IconButton(
-                    onClick = { settingsMenuExpanded = true },
-                    modifier = Modifier.semantics {
-                        contentDescription = openSettingsDescription
-                    }
+                Button(
+                    onClick = { settingsMenuExpanded = true }
                 ) {
-                    val dotColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    Canvas(modifier = Modifier.size(28.dp)) {
-                        val radius = 2.2.dp.toPx()
-                        val x = size.width / 2f
-                        drawCircle(
-                            color = dotColor,
-                            radius = radius,
-                            center = Offset(x, size.height * 0.24f)
-                        )
-                        drawCircle(
-                            color = dotColor,
-                            radius = radius,
-                            center = Offset(x, size.height * 0.50f)
-                        )
-                        drawCircle(
-                            color = dotColor,
-                            radius = radius,
-                            center = Offset(x, size.height * 0.76f)
-                        )
-                    }
+                    Text(stringResource(R.string.regattalink_setup))
                 }
                 DropdownMenu(
                     expanded = settingsMenuExpanded,
                     onDismissRequest = { settingsMenuExpanded = false }
                 ) {
-                    DropdownMenuItem(
-                        text = {
-                            Text(stringResource(R.string.regattalink_setup_imu))
-                        },
-                        onClick = {
-                            settingsMenuExpanded = false
-                            activeSetupDestination =
-                                RegattaLinkSetupDestination.IMU
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = {
-                            Text(stringResource(R.string.regattalink_setup_nmea))
-                        },
-                        onClick = {
-                            settingsMenuExpanded = false
-                            activeSetupDestination =
-                                RegattaLinkSetupDestination.NMEA
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                stringResource(
-                                    R.string.regattalink_advanced_diagnostics
-                                )
-                            )
-                        },
-                        onClick = {
-                            settingsMenuExpanded = false
-                            activeSetupDestination =
-                                RegattaLinkSetupDestination.ADVANCED_DIAGNOSTICS
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                stringResource(
-                                    R.string.regattalink_firmware_title
-                                )
-                            )
-                        },
-                        onClick = {
-                            settingsMenuExpanded = false
-                            activeSetupDestination =
-                                RegattaLinkSetupDestination.FIRMWARE
-                        }
-                    )
+                    regattaLinkSetupMenuItems.forEach { menuItem ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(stringResource(menuItem.labelResId))
+                            },
+                            onClick = {
+                                settingsMenuExpanded = false
+                                activeSetupDestination = menuItem.destination
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -603,13 +557,13 @@ fun RegattaLinkScreen(
                         telemetryValue(
                             label = stringResource(R.string.regattalink_heel),
                             value = motion.heelDeg?.let {
-                                formatTelemetry(it, "°")
+                                formatRegattaLinkWholeDegreeAngle(it)
                             } ?: "--"
                         )
                         telemetryValue(
                             label = stringResource(R.string.regattalink_pitch),
                             value = motion.pitchDeg?.let {
-                                formatTelemetry(it, "°")
+                                formatRegattaLinkWholeDegreeAngle(it)
                             } ?: "--"
                         )
                         telemetryValue(
@@ -649,10 +603,12 @@ fun RegattaLinkScreen(
 
                 if (configurationState.deviceControlBusy) {
                     Text(
-                        text = configurationState.deviceControlStatus?.let {
-                            "${stringResource(R.string.regattalink_device_control)}: " +
-                                "${it.phase} · ${it.result}"
-                        } ?: stringResource(R.string.regattalink_updating),
+                        text = configurationState.deviceControlStatus
+                            ?.takeIf { !it.phase.isTerminal }
+                            ?.let {
+                                "${stringResource(R.string.regattalink_device_control)}: " +
+                                    "${it.phase} · ${it.result}"
+                            } ?: stringResource(R.string.regattalink_updating),
                         modifier = Modifier.padding(top = 8.dp)
                     )
                 }
@@ -1790,30 +1746,6 @@ private fun RegattaLinkImuSetupSheet(
                 fontWeight = FontWeight.SemiBold
             )
 
-            Text(
-                text = stringResource(R.string.regattalink_live_orientation),
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(top = 18.dp)
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(20.dp)
-            ) {
-                RegattaLinkLiveOrientationValue(
-                    label = stringResource(R.string.regattalink_heel),
-                    value = liveHeelValue,
-                    modifier = Modifier.weight(1f)
-                )
-                RegattaLinkLiveOrientationValue(
-                    label = stringResource(R.string.regattalink_pitch),
-                    value = livePitchValue,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
             val liveStatusText = when {
                 !telemetryState.supported ->
                     stringResource(R.string.regattalink_unavailable)
@@ -1945,6 +1877,8 @@ private fun RegattaLinkImuSetupSheet(
                 )
                 RegattaLinkOrientationControl(
                     status = controlStatus,
+                    liveHeelValue = liveHeelValue,
+                    livePitchValue = livePitchValue,
                     enabled = controlsEnabled,
                     onAdjust = onAdjust,
                     modifier = Modifier
@@ -1955,9 +1889,10 @@ private fun RegattaLinkImuSetupSheet(
 
             if (deviceControlBusy) {
                 Text(
-                    text = controlStatus?.let {
-                        "${it.phase} · ${it.result}"
-                    } ?: stringResource(R.string.regattalink_updating),
+                    text = controlStatus
+                        ?.takeIf { !it.phase.isTerminal }
+                        ?.let { "${it.phase} · ${it.result}" }
+                        ?: stringResource(R.string.regattalink_updating),
                     modifier = Modifier.padding(top = 10.dp)
                 )
             }
@@ -2009,6 +1944,8 @@ private fun RegattaLinkLiveOrientationValue(
 @Composable
 private fun RegattaLinkOrientationControl(
     status: RegattaLinkDeviceControlStatus?,
+    liveHeelValue: String,
+    livePitchValue: String,
     enabled: Boolean,
     onAdjust: (RegattaLinkDeviceControlOpcode, Int) -> Unit,
     modifier: Modifier = Modifier
@@ -2095,9 +2032,9 @@ private fun RegattaLinkOrientationControl(
             )
         }
 
-        Text(
-            text = stringResource(R.string.regattalink_pitch),
-            fontWeight = FontWeight.Medium,
+        RegattaLinkLiveOrientationValue(
+            label = stringResource(R.string.regattalink_pitch),
+            value = livePitchValue,
             modifier = Modifier.padding(top = 18.dp)
         )
         Text(
@@ -2124,9 +2061,9 @@ private fun RegattaLinkOrientationControl(
             modifier = Modifier.padding(top = 8.dp)
         )
 
-        Text(
-            text = stringResource(R.string.regattalink_heel),
-            fontWeight = FontWeight.Medium,
+        RegattaLinkLiveOrientationValue(
+            label = stringResource(R.string.regattalink_heel),
+            value = liveHeelValue,
             modifier = Modifier.padding(top = 18.dp)
         )
         Text(

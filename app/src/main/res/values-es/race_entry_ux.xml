@@ -2,6 +2,10 @@
 <resources>
     <string name="register_with_race_committee">Registrarse con el comité de regata</string>
     <string name="registered_with_race_committee">Registrado con el comité de regata</string>
-    <string name="remember_enter_race">Recuerda pulsar « Entrar en regata » antes de salir del muelle.</string>
     <string name="enter_race_available_24h">« Entrar en regata » estará disponible 24 horas antes de la salida.</string>
+    <string name="status_checking">Comprobando…</string>
+    <string name="status_not_entered">Sin entrar</string>
+    <string name="status_registered_not_entered">Registrado · Sin entrar</string>
+    <string name="registration_reminder_title">Registro completado</string>
+    <string name="registration_reminder_message">Estás registrado para esta regata, pero el seguimiento todavía no ha comenzado. Pulsa « Entrar en regata » más tarde, poco antes de la salida o en el muelle, para iniciar el seguimiento.</string>
 </resources>

@@ -451,14 +451,7 @@ fun RaceScreen(
                     }
                 }
 
-                if (raceRegistered) {
-                    Text(
-                        text = stringResource(R.string.remember_enter_race),
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 6.dp)
-                    )
-                } else if (registerRaceStatusText.isNotBlank()) {
+                if (!raceRegistered && registerRaceStatusText.isNotBlank()) {
                     Text(
                         text = registerRaceStatusText,
                         fontSize = 14.sp,

@@ -3,5 +3,6 @@
     <string name="tracking_profile_title">Perfil de seguimiento</string>
     <string name="tracking_profile_normal">Normal</string>
     <string name="tracking_profile_battery_saver">Ahorro de batería</string>
-    <string name="tracking_profile_description">El modo de ahorro de batería reduce la resolución del seguimiento lejos de los elementos del recorrido para prolongar la autonomía.</string>
+    <string name="tracking_profile_fixed_1s">Fijo 1 s</string>
+    <string name="tracking_profile_description">Normal adapta la frecuencia a la distancia respecto a los elementos del recorrido. Ahorro de batería la reduce más. Fijo 1 s registra cada segundo independientemente de la distancia.</string>
 </resources>

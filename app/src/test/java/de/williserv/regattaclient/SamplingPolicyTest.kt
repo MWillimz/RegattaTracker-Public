@@ -18,6 +18,13 @@ class SamplingPolicyTest {
         assertEquals(10_000L, SamplingPolicy.intervalForBand(TrackingProfile.BATTERY_SAVER, SamplingDistanceBand.MEDIUM))
         assertEquals(30_000L, SamplingPolicy.intervalForBand(TrackingProfile.BATTERY_SAVER, SamplingDistanceBand.FAR))
         assertEquals(60_000L, SamplingPolicy.intervalForBand(TrackingProfile.BATTERY_SAVER, SamplingDistanceBand.VERY_FAR))
+
+        SamplingDistanceBand.entries.forEach { band ->
+            assertEquals(
+                1_000L,
+                SamplingPolicy.intervalForBand(TrackingProfile.FIXED_1S, band)
+            )
+        }
     }
 
     @Test
@@ -105,11 +112,22 @@ class SamplingPolicyTest {
             sailNumber = "MARK:1",
             previousBand = SamplingDistanceBand.NEAR
         )
+        val fixed = SamplingPolicy.decide(
+            position = GeoPoint(53.0, 10.0),
+            startLine = null,
+            finishLine = null,
+            courseMarks = emptyList(),
+            trackingProfile = TrackingProfile.FIXED_1S,
+            sailNumber = "MARK:1",
+            previousBand = SamplingDistanceBand.NEAR
+        )
 
         assertEquals(30_000L, normal.intervalMs)
         assertEquals(60_000L, saver.intervalMs)
+        assertEquals(1_000L, fixed.intervalMs)
         assertNull(normal.band)
         assertNull(saver.band)
+        assertNull(fixed.band)
     }
 
     @Test

@@ -595,6 +595,7 @@
     <string name="regattalink_unavailable">Unavailable</string>
     <string name="regattalink_confidence">Confidence</string>
     <string name="regattalink_settings_title">Settings</string>
+    <string name="regattalink_setup">Setup</string>
     <string name="regattalink_setup_imu">Setup IMU</string>
     <string name="regattalink_setup_nmea">Setup NMEA</string>
     <string name="regattalink_advanced_diagnostics">Advanced / Diagnostics</string>

@@ -7,7 +7,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.util.Locale
 
 class RegattaLinkDeviceControlTest {
 
@@ -443,7 +442,7 @@ class RegattaLinkDeviceControlTest {
     }
 
     @Test
-    fun setupDestinationOrderMatchesMenuContract() {
+    fun setupMenuItemsMatchDestinationAndLabelContract() {
         assertEquals(
             listOf(
                 RegattaLinkSetupDestination.IMU,
@@ -451,19 +450,36 @@ class RegattaLinkDeviceControlTest {
                 RegattaLinkSetupDestination.ADVANCED_DIAGNOSTICS,
                 RegattaLinkSetupDestination.FIRMWARE
             ),
-            regattaLinkSetupDestinations()
+            regattaLinkSetupMenuItems.map { it.destination }
+        )
+        assertEquals(
+            listOf(
+                R.string.regattalink_setup_imu,
+                R.string.regattalink_setup_nmea,
+                R.string.regattalink_advanced_diagnostics,
+                R.string.regattalink_firmware_title
+            ),
+            regattaLinkSetupMenuItems.map { it.labelResId }
         )
     }
 
     @Test
-    fun liveOrientationFormattingUsesPhysicalDirections() {
+    fun userFacingAttitudeFormattingRoundsToWholeDegrees() {
+        assertEquals("2°", formatRegattaLinkWholeDegreeAngle(2.34))
+        assertEquals("3°", formatRegattaLinkWholeDegreeAngle(2.6))
+        assertEquals("-3°", formatRegattaLinkWholeDegreeAngle(-2.6))
+        assertEquals("-1°", formatRegattaLinkWholeDegreeAngle(-0.5))
+        assertEquals("0°", formatRegattaLinkWholeDegreeAngle(-0.4))
+    }
+
+    @Test
+    fun liveOrientationFormattingUsesPhysicalDirectionsAtWholeDegrees() {
         assertEquals(
             "3° Starboard",
             formatRegattaLinkDirectionalMeasurement(
                 3.0,
                 "Starboard",
-                "Port",
-                Locale.US
+                "Port"
             )
         )
         assertEquals(
@@ -471,35 +487,31 @@ class RegattaLinkDeviceControlTest {
             formatRegattaLinkDirectionalMeasurement(
                 -3.0,
                 "Starboard",
-                "Port",
-                Locale.US
+                "Port"
             )
         )
         assertEquals(
-            "2.3° Bow up",
+            "2° Bow up",
             formatRegattaLinkDirectionalMeasurement(
                 2.34,
                 "Bow up",
-                "Bow down",
-                Locale.US
+                "Bow down"
             )
         )
         assertEquals(
-            "2.3° Bow down",
+            "3° Bow down",
             formatRegattaLinkDirectionalMeasurement(
-                -2.34,
+                -2.6,
                 "Bow up",
-                "Bow down",
-                Locale.US
+                "Bow down"
             )
         )
         assertEquals(
             "0°",
             formatRegattaLinkDirectionalMeasurement(
-                0.01,
+                0.4,
                 "Starboard",
-                "Port",
-                Locale.US
+                "Port"
             )
         )
         assertEquals(
@@ -507,8 +519,7 @@ class RegattaLinkDeviceControlTest {
             formatRegattaLinkDirectionalMeasurement(
                 null,
                 "Starboard",
-                "Port",
-                Locale.US
+                "Port"
             )
         )
     }
@@ -726,6 +737,67 @@ class RegattaLinkDeviceControlTest {
         }
 
         assertTrue(submitted)
+    }
+
+    @Test
+    fun rejectedBeforeStartClearsBusyAndPreservesConfirmedStatus() {
+        val confirmedStatus = RegattaLinkDeviceControlStatus(
+            opcode = RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
+            phase = RegattaLinkDeviceControlPhase.SUCCESS,
+            result = RegattaLinkDeviceControlResult.OK,
+            requestId = 12u,
+            forwardTrimDeg = 1,
+            heelTrimDeg = -2,
+            pitchTrimDeg = 3,
+            boatFrameValid = true,
+            gyroBiasValid = true,
+            mountingEpoch = 4u
+        )
+        val state = RegattaLinkConfigurationState(
+            deviceControlSupported = true,
+            deviceControlBusy = true,
+            deviceControlAcceptedOpcode =
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+            deviceControlAcceptedRequestId = 55u,
+            factoryResetWriteAcceptedRequestId = 55u,
+            factoryResetAwaitingDisconnect = true,
+            deviceControlStatus = confirmedStatus
+        )
+
+        val rejected = regattaLinkDeviceControlRejectedBeforeStartState(
+            state = state,
+            errorMessage = "connection no longer ready"
+        )
+
+        assertFalse(rejected.deviceControlBusy)
+        assertNull(rejected.deviceControlAcceptedOpcode)
+        assertNull(rejected.deviceControlAcceptedRequestId)
+        assertNull(rejected.factoryResetWriteAcceptedRequestId)
+        assertTrue(rejected.factoryResetAwaitingDisconnect)
+        assertEquals(confirmedStatus, rejected.deviceControlStatus)
+        assertEquals("connection no longer ready", rejected.deviceControlError)
+    }
+
+    @Test
+    fun staleDeviceControlExecutionCannotReleaseNewerLease() {
+        val guard = RegattaLinkDeviceControlExecutionGuard<Any>()
+        val firstSession = Any()
+        val secondSession = Any()
+
+        val first = requireNotNull(guard.tryAcquire(firstSession))
+        assertTrue(guard.isActive())
+        assertNull(guard.tryAcquire(firstSession))
+
+        guard.clear()
+
+        val second = requireNotNull(guard.tryAcquire(secondSession))
+        assertTrue(guard.owns(second))
+        assertFalse(guard.release(first))
+        assertTrue(guard.owns(second))
+        assertTrue(guard.isActive())
+
+        assertTrue(guard.release(second))
+        assertFalse(guard.isActive())
     }
 
     @Test

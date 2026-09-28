@@ -2,6 +2,7 @@ package de.williserv.regattaclient
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -43,6 +44,21 @@ class TelemetryMetadataPayloadTest {
     }
 
     @Test
+    fun `fixed one-second tracking profile uploads unchanged`() {
+        val payload = buildTelemetryUploadPayload(
+            sample = sample(
+                batteryPercent = null,
+                batteryCharging = null,
+                trackingProfile = "fixed_1s",
+                utcOffsetMinutes = null
+            ),
+            client = client
+        )
+
+        assertEquals("fixed_1s", payload.getString("tracking_profile"))
+    }
+
+    @Test
     fun `optional metadata is omitted when sample did not contain it`() {
         val payload = buildTelemetryUploadPayload(
             sample = sample(
@@ -58,6 +74,33 @@ class TelemetryMetadataPayloadTest {
         assertFalse(payload.has("battery_charging"))
         assertFalse(payload.has("tracking_profile"))
         assertFalse(payload.has("utc_offset_minutes"))
+    }
+
+    @Test
+    fun `invalid bearing uploads COG as null while valid zero stays numeric`() {
+        val invalid = buildTelemetryUploadPayload(
+            sample = sample(
+                batteryPercent = null,
+                batteryCharging = null,
+                trackingProfile = null,
+                utcOffsetMinutes = null,
+                cogValid = false
+            ),
+            client = client
+        )
+        val validNorth = buildTelemetryUploadPayload(
+            sample = sample(
+                batteryPercent = null,
+                batteryCharging = null,
+                trackingProfile = null,
+                utcOffsetMinutes = null,
+                cogValid = true
+            ),
+            client = client
+        )
+
+        assertTrue(invalid.isNull("cog"))
+        assertEquals(0.0, validNorth.getDouble("cog"), 0.001)
     }
 
     @Test
@@ -142,7 +185,8 @@ class TelemetryMetadataPayloadTest {
         batteryPercent: Int?,
         batteryCharging: Boolean?,
         trackingProfile: String?,
-        utcOffsetMinutes: Int?
+        utcOffsetMinutes: Int?,
+        cogValid: Boolean? = null
     ) = PendingTrackingSample(
         localId = 1L,
         accessContext = accessContext,
@@ -158,6 +202,7 @@ class TelemetryMetadataPayloadTest {
         lon = 10.0,
         accuracy = 5f,
         cog = 0f,
+        cogValid = cogValid,
         sog = 0f,
         batteryPercent = batteryPercent,
         batteryCharging = batteryCharging,

@@ -2,6 +2,10 @@
 <resources>
     <string name="register_with_race_committee">Beim Wettfahrtkomitee registrieren</string>
     <string name="registered_with_race_committee">Beim Wettfahrtkomitee registriert</string>
-    <string name="remember_enter_race">Vor dem Ablegen „Regatta starten“ drücken.</string>
     <string name="enter_race_available_24h">„Regatta starten“ ist ab 24 Stunden vor dem Start verfügbar.</string>
+    <string name="status_checking">Wird geprüft…</string>
+    <string name="status_not_entered">Nicht gestartet</string>
+    <string name="status_registered_not_entered">Registriert · Nicht gestartet</string>
+    <string name="registration_reminder_title">Registrierung abgeschlossen</string>
+    <string name="registration_reminder_message">Du bist für diese Regatta registriert, aber die Aufzeichnung wurde noch nicht gestartet. Drücke später kurz vor der Regatta oder am Steg auf „Regatta starten“, um die Aufzeichnung zu starten.</string>
 </resources>

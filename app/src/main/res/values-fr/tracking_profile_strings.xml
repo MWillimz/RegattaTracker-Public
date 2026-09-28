@@ -3,5 +3,6 @@
     <string name="tracking_profile_title">Profil de suivi</string>
     <string name="tracking_profile_normal">Normal</string>
     <string name="tracking_profile_battery_saver">Économie de batterie</string>
-    <string name="tracking_profile_description">Le mode économie de batterie réduit la résolution du suivi loin des éléments du parcours afin de prolonger l’autonomie.</string>
+    <string name="tracking_profile_fixed_1s">Fixe 1 s</string>
+    <string name="tracking_profile_description">Normal adapte la fréquence à la distance des éléments du parcours. Économie de batterie la réduit davantage. Fixe 1 s enregistre chaque seconde quelle que soit la distance.</string>
 </resources>

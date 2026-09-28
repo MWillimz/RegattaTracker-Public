@@ -87,6 +87,21 @@ class SessionAnalysisTest {
     }
 
     @Test
+    fun invalidRecordedCogIsExcludedWhileValidNorthRemainsAvailable() {
+        val invalid = prepareAnalysisSamples(
+            listOf(sample(cog = 0f, cogValid = false))
+        ).single()
+        val validNorth = prepareAnalysisSamples(
+            listOf(sample(cog = 0f, cogValid = true))
+        ).single()
+
+        assertTrue(invalid.cogDeg.isNaN())
+        assertEquals(0.0, validNorth.cogDeg, 0.001)
+        assertFalse(hasGpsManeuverFilterData(listOf(invalid)))
+        assertTrue(hasGpsManeuverFilterData(listOf(validNorth, validNorth.copy(sourceIndex = 1))))
+    }
+
+    @Test
     fun heelAndWindAreRecommendedForColorWhileDepthIsAllSensors() {
         val samples = listOf(
             sample(
@@ -518,6 +533,45 @@ class SessionAnalysisTest {
     }
 
     @Test
+    fun tenSecondAggregationDoesNotUseSparseBoundarySampleAsCoverage() {
+        val timestamps = listOf(0L, 1_000L, 2_000L, 3_000L, 4_000L, 5_000L, 35_000L)
+        val prepared = timestamps.mapIndexed { index, timestamp ->
+            PreparedAnalysisSample(
+                timestampMs = timestamp,
+                cogDeg = 90.0,
+                sogMps = 4.0,
+                measurements = emptyMap(),
+                sourceIndex = index
+            )
+        }
+        val angle = AnalysisMetric(
+            id = "gps.cog",
+            label = "COG",
+            unit = "deg",
+            source = AnalysisMetricSource.GPS_COG,
+            angleKind = AnalysisAngleKind.COMPASS
+        )
+        val radius = AnalysisMetric(
+            id = "gps.sog",
+            label = "SOG",
+            unit = "m/s",
+            source = AnalysisMetricSource.GPS_SOG
+        )
+
+        val dataset = buildSessionAnalysisDataset(
+            samples = prepared,
+            angleMetric = angle,
+            radiusMetric = radius,
+            colorMetric = null,
+            filters = emptyList(),
+            metricsById = listOf(angle, radius).associateBy { it.id },
+            aggregationWindowMs = ANALYSIS_AGGREGATION_WINDOW_MS
+        )
+
+        assertTrue(dataset.points.isEmpty())
+    }
+
+    @Test
     fun tenSecondAggregationDoesNotBridgeFilteredSamples() {
         val prepared = (0..20).map { index ->
             PreparedAnalysisSample(
@@ -643,7 +697,8 @@ class SessionAnalysisTest {
         cog: Float = 90f,
         sog: Float = 4f,
         measurements: String? = null,
-        timestamp: String = "2026-09-24T12:00:00"
+        timestamp: String = "2026-09-24T12:00:00",
+        cogValid: Boolean? = null
     ) = SessionTrackingSample(
         localId = 1L,
         timestamp = timestamp,
@@ -653,6 +708,7 @@ class SessionAnalysisTest {
         accuracy = 3f,
         cog = cog,
         sog = sog,
+        cogValid = cogValid,
         measurementsJson = measurements
     )
 }
