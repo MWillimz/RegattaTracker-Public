@@ -498,6 +498,9 @@
     <string name="regattalink_change_name">RegattaLink-Namen ändern</string>
     <string name="regattalink_name">Name</string>
     <string name="regattalink_name_required">Name darf nicht leer sein</string>
+    <string name="regattalink_name_validation_empty">Name darf nicht leer sein</string>
+    <string name="regattalink_name_validation_too_long_utf8">Name darf höchstens 24 UTF-8-Bytes lang sein</string>
+    <string name="regattalink_name_validation_unsupported_control_character">Name enthält nicht unterstützte Steuerzeichen</string>
     <string name="regattalink_save">Speichern</string>
     <string name="regattalink_cancel">Abbrechen</string>
     <string name="regattalink_change">Ändern</string>
