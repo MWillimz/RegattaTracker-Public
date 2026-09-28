@@ -1,21 +1,28 @@
 package de.williserv.regattaclient
 
 import android.os.SystemClock
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -25,8 +32,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -120,6 +134,8 @@ fun RegattaLinkScreen(
 
     var technicalDetailsExpanded by rememberSaveable { mutableStateOf(false) }
     var nmeaDetailsExpanded by rememberSaveable { mutableStateOf(false) }
+    var settingsMenuExpanded by rememberSaveable { mutableStateOf(false) }
+    var settingsSheetOpen by rememberSaveable { mutableStateOf(false) }
     var pgnInventoryAutoRefreshRequested by remember(state.deviceAddress) {
         mutableStateOf(false)
     }
@@ -165,6 +181,21 @@ fun RegattaLinkScreen(
             !rawCaptureState.isActive &&
             !configurationState.busy &&
             !regattaLinkConfigurationMutationBlocked(configurationState)
+    val deviceControlBaseEnabled =
+        configEnabled &&
+            !configurationState.diagnosticLogLoading &&
+            !nmeaState.rawCanReading
+    val deviceControlEnabled =
+        deviceControlBaseEnabled &&
+            !configurationState.deviceControlBusy
+    val controlStatus = configurationState.deviceControlStatus
+    val boatFrameValid = controlStatus?.boatFrameValid == true
+    val orientationControlsEnabled =
+        regattaLinkOrientationControlsEnabled(
+            baseControlsEnabled = deviceControlBaseEnabled,
+            boatFrameValid = boatFrameValid,
+            deviceControlBusy = configurationState.deviceControlBusy
+        )
     val nameValidationError =
         if (nameDraft.isBlank()) {
             stringResource(R.string.regattalink_name_required)
@@ -199,16 +230,63 @@ fun RegattaLinkScreen(
         }
     }
 
+    if (settingsSheetOpen) {
+        RegattaLinkSettingsSheet(
+            controlStatus = controlStatus,
+            controlsEnabled = orientationControlsEnabled,
+            deviceControlBusy = configurationState.deviceControlBusy,
+            deviceControlError = configurationState.deviceControlError,
+            onAdjust = onDeviceControl,
+            onDismiss = { settingsSheetOpen = false }
+        )
+    }
+
     Column(
         modifier = modifier
             .padding(24.dp)
             .verticalScroll(rememberScrollState())
     ) {
-        Text(
-            text = stringResource(R.string.regattalink_title),
-            fontSize = 26.sp,
-            fontWeight = FontWeight.SemiBold
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(R.string.regattalink_title),
+                fontSize = 26.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Box {
+                val openSettingsDescription =
+                    stringResource(R.string.regattalink_open_settings)
+                TextButton(
+                    onClick = { settingsMenuExpanded = true },
+                    modifier = Modifier.semantics {
+                        contentDescription = openSettingsDescription
+                    }
+                ) {
+                    Text("⋮", fontSize = 24.sp)
+                }
+                DropdownMenu(
+                    expanded = settingsMenuExpanded,
+                    onDismissRequest = { settingsMenuExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                stringResource(
+                                    R.string.regattalink_settings_title
+                                )
+                            )
+                        },
+                        onClick = {
+                            settingsMenuExpanded = false
+                            settingsSheetOpen = true
+                        }
+                    )
+                }
+            }
+        }
 
         if (nameDialogOpen) {
             AlertDialog(
@@ -503,17 +581,18 @@ fun RegattaLinkScreen(
                     )
                 }
                 if (connected && configurationState.deviceControlSupported) {
-                    val controlEnabled = configEnabled &&
-                        !configurationState.deviceControlBusy &&
-                        !configurationState.diagnosticLogLoading &&
-                        !nmeaState.rawCanReading
-                    val controlStatus = configurationState.deviceControlStatus
-                    val boatFrameValid = controlStatus?.boatFrameValid == true
-                    val trimEnabled = controlEnabled && boatFrameValid
                     Text(
                         stringResource(R.string.regattalink_device_control),
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(top = 12.dp)
+                    )
+                    telemetryValue(
+                        label = stringResource(R.string.regattalink_boat_frame),
+                        value = if (boatFrameValid) {
+                            stringResource(R.string.regattalink_ready)
+                        } else {
+                            stringResource(R.string.regattalink_not_set)
+                        }
                     )
                     Text(
                         text = stringResource(
@@ -523,81 +602,33 @@ fun RegattaLinkScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Button(
-                        onClick = { onDeviceControl(RegattaLinkDeviceControlOpcode.SET_UPRIGHT, 0) },
-                        enabled = controlEnabled
-                    ) { Text(stringResource(R.string.regattalink_set_upright)) }
-
-                    RegattaLinkTrimControl(
-                        label = stringResource(R.string.regattalink_forward_trim),
-                        value = controlStatus?.forwardTrimDeg,
-                        leftLabel = stringResource(R.string.regattalink_one_degree_port),
-                        leftDelta = regattaLinkTrimDelta(
-                            RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
-                            RegattaLinkTrimDirection.PORT
-                        ),
-                        rightLabel = stringResource(R.string.regattalink_one_degree_starboard),
-                        rightDelta = regattaLinkTrimDelta(
-                            RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
-                            RegattaLinkTrimDirection.STARBOARD
-                        ),
-                        enabled = trimEnabled,
-                        onAdjust = {
+                        onClick = {
                             onDeviceControl(
-                                RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
-                                it
+                                RegattaLinkDeviceControlOpcode.SET_UPRIGHT,
+                                0
                             )
-                        }
-                    )
-                    RegattaLinkTrimControl(
-                        label = stringResource(R.string.regattalink_heel),
-                        value = controlStatus?.heelTrimDeg,
-                        leftLabel = stringResource(R.string.regattalink_one_degree_port),
-                        leftDelta = regattaLinkTrimDelta(
-                            RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
-                            RegattaLinkTrimDirection.PORT
-                        ),
-                        rightLabel = stringResource(R.string.regattalink_one_degree_starboard),
-                        rightDelta = regattaLinkTrimDelta(
-                            RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
-                            RegattaLinkTrimDirection.STARBOARD
-                        ),
-                        enabled = trimEnabled,
-                        onAdjust = {
-                            onDeviceControl(
-                                RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
-                                it
-                            )
-                        }
-                    )
-                    RegattaLinkTrimControl(
-                        label = stringResource(R.string.regattalink_pitch),
-                        value = controlStatus?.pitchTrimDeg,
-                        leftLabel = stringResource(R.string.regattalink_one_degree_front),
-                        leftDelta = regattaLinkTrimDelta(
-                            RegattaLinkDeviceControlOpcode.ADJUST_PITCH,
-                            RegattaLinkTrimDirection.FRONT
-                        ),
-                        rightLabel = stringResource(R.string.regattalink_one_degree_back),
-                        rightDelta = regattaLinkTrimDelta(
-                            RegattaLinkDeviceControlOpcode.ADJUST_PITCH,
-                            RegattaLinkTrimDirection.BACK
-                        ),
-                        enabled = trimEnabled,
-                        onAdjust = {
-                            onDeviceControl(
-                                RegattaLinkDeviceControlOpcode.ADJUST_PITCH,
-                                it
-                            )
-                        }
-                    )
+                        },
+                        enabled = deviceControlEnabled
+                    ) {
+                        Text(stringResource(R.string.regattalink_set_upright))
+                    }
 
                     controlStatus?.let { status ->
-                        Text("${status.phase} · ${status.result}")
+                        Text(
+                            "${status.phase} · ${status.result}",
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
                     }
                     if (configurationState.deviceControlError.isNotBlank()) {
-                        Text(configurationState.deviceControlError, color = MaterialTheme.colorScheme.error)
+                        Text(
+                            configurationState.deviceControlError,
+                            color = MaterialTheme.colorScheme.error
+                        )
                     }
-                    TextButton(onClick = { resetDialogOpen = true }, enabled = controlEnabled) {
+                    TextButton(
+                        onClick = { resetDialogOpen = true },
+                        enabled = deviceControlEnabled
+                    ) {
                         Text(stringResource(R.string.regattalink_factory_reset))
                     }
                 }
@@ -1322,46 +1353,409 @@ private fun DetailsToggle(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun RegattaLinkTrimControl(
-    label: String,
-    value: Int?,
-    leftLabel: String,
-    leftDelta: Int,
-    rightLabel: String,
-    rightDelta: Int,
-    enabled: Boolean,
-    onAdjust: (Int) -> Unit
+private fun RegattaLinkSettingsSheet(
+    controlStatus: RegattaLinkDeviceControlStatus?,
+    controlsEnabled: Boolean,
+    deviceControlBusy: Boolean,
+    deviceControlError: String,
+    onAdjust: (RegattaLinkDeviceControlOpcode, Int) -> Unit,
+    onDismiss: () -> Unit
 ) {
-    Text(
-        text = label,
-        fontWeight = FontWeight.Medium,
-        modifier = Modifier.padding(top = 10.dp)
-    )
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Button(
-            onClick = { onAdjust(leftDelta) },
-            enabled = enabled,
-            modifier = Modifier.weight(1f)
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 24.dp)
+                .verticalScroll(rememberScrollState())
         ) {
-            Text(leftLabel)
-        }
-        Text(
-            text = value?.let { "${it}°" } ?: "—",
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 12.dp)
-        )
-        Button(
-            onClick = { onAdjust(rightDelta) },
-            enabled = enabled,
-            modifier = Modifier.weight(1f)
-        ) {
-            Text(rightLabel)
+            Text(
+                text = stringResource(R.string.regattalink_settings_title),
+                fontSize = 22.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = stringResource(
+                    R.string.regattalink_installation_orientation
+                ),
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 18.dp)
+            )
+            Text(
+                text = stringResource(
+                    R.string.regattalink_installation_orientation_help
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+
+            if (controlStatus?.boatFrameValid != true) {
+                Text(
+                    text = stringResource(
+                        R.string.regattalink_orientation_requires_boat_frame
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 10.dp)
+                )
+            }
+
+            RegattaLinkOrientationControl(
+                status = controlStatus,
+                enabled = controlsEnabled,
+                onAdjust = onAdjust,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 14.dp)
+            )
+
+            Text(
+                text = stringResource(
+                    R.string.regattalink_orientation_set_upright_resets
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 14.dp)
+            )
+
+            if (deviceControlBusy && controlStatus != null) {
+                Text(
+                    text = "${controlStatus.phase} · ${controlStatus.result}",
+                    modifier = Modifier.padding(top = 10.dp)
+                )
+            }
+            if (deviceControlError.isNotBlank()) {
+                Text(
+                    text = deviceControlError,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .align(Alignment.End)
+                    .padding(top = 12.dp)
+            ) {
+                Text(stringResource(R.string.close))
+            }
         }
     }
 }
+
+@Composable
+private fun RegattaLinkOrientationControl(
+    status: RegattaLinkDeviceControlStatus?,
+    enabled: Boolean,
+    onAdjust: (RegattaLinkDeviceControlOpcode, Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val port = stringResource(R.string.regattalink_port)
+    val starboard = stringResource(R.string.regattalink_starboard)
+    val bow = stringResource(R.string.regattalink_bow)
+    val stern = stringResource(R.string.regattalink_stern)
+
+    val forwardValue = formatRegattaLinkDirectionalTrim(
+        valueDeg = status?.forwardTrimDeg,
+        positiveDirectionLabel = starboard,
+        negativeDirectionLabel = port
+    )
+    val heelValue = formatRegattaLinkDirectionalTrim(
+        valueDeg = status?.heelTrimDeg,
+        positiveDirectionLabel = port,
+        negativeDirectionLabel = starboard
+    )
+    val pitchValue = formatRegattaLinkDirectionalTrim(
+        valueDeg = status?.pitchTrimDeg,
+        positiveDirectionLabel = bow,
+        negativeDirectionLabel = stern
+    )
+
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = stringResource(R.string.regattalink_forward_alignment),
+            fontWeight = FontWeight.Medium
+        )
+        Text(
+            text = forwardValue,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 2.dp)
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            RegattaLinkOrientationActionButton(
+                text = "↶ " + stringResource(
+                    R.string.regattalink_one_degree_port
+                ),
+                contentDescription = stringResource(
+                    R.string.regattalink_adjust_forward_port
+                ),
+                enabled = enabled,
+                onClick = {
+                    onAdjust(
+                        RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
+                        regattaLinkTrimDelta(
+                            RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
+                            RegattaLinkTrimDirection.PORT
+                        )
+                    )
+                },
+                modifier = Modifier.weight(1f)
+            )
+            RegattaLinkOrientationActionButton(
+                text = stringResource(
+                    R.string.regattalink_one_degree_starboard
+                ) + " ↷",
+                contentDescription = stringResource(
+                    R.string.regattalink_adjust_forward_starboard
+                ),
+                enabled = enabled,
+                onClick = {
+                    onAdjust(
+                        RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
+                        regattaLinkTrimDelta(
+                            RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
+                            RegattaLinkTrimDirection.STARBOARD
+                        )
+                    )
+                },
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Text(
+            text = stringResource(R.string.regattalink_pitch),
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(top = 18.dp)
+        )
+        Text(
+            text = pitchValue,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 2.dp)
+        )
+
+        RegattaLinkOrientationActionButton(
+            text = "↑ " + stringResource(R.string.regattalink_one_degree_bow),
+            contentDescription = stringResource(
+                R.string.regattalink_adjust_pitch_bow
+            ),
+            enabled = enabled,
+            onClick = {
+                onAdjust(
+                    RegattaLinkDeviceControlOpcode.ADJUST_PITCH,
+                    regattaLinkTrimDelta(
+                        RegattaLinkDeviceControlOpcode.ADJUST_PITCH,
+                        RegattaLinkTrimDirection.FRONT
+                    )
+                )
+            },
+            modifier = Modifier.padding(top = 8.dp)
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = stringResource(R.string.regattalink_heel),
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = heelValue,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+                RegattaLinkOrientationActionButton(
+                    text = "← " + stringResource(
+                        R.string.regattalink_one_degree_port
+                    ),
+                    contentDescription = stringResource(
+                        R.string.regattalink_adjust_heel_port
+                    ),
+                    enabled = enabled,
+                    onClick = {
+                        onAdjust(
+                            RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
+                            regattaLinkTrimDelta(
+                                RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
+                                RegattaLinkTrimDirection.PORT
+                            )
+                        )
+                    },
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+
+            RegattaLinkBoatTopView(
+                modifier = Modifier.size(width = 124.dp, height = 176.dp)
+            )
+
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = stringResource(R.string.regattalink_heel),
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = heelValue,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+                RegattaLinkOrientationActionButton(
+                    text = stringResource(
+                        R.string.regattalink_one_degree_starboard
+                    ) + " →",
+                    contentDescription = stringResource(
+                        R.string.regattalink_adjust_heel_starboard
+                    ),
+                    enabled = enabled,
+                    onClick = {
+                        onAdjust(
+                            RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
+                            regattaLinkTrimDelta(
+                                RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
+                                RegattaLinkTrimDirection.STARBOARD
+                            )
+                        )
+                    },
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+        }
+
+        RegattaLinkOrientationActionButton(
+            text = "↓ " + stringResource(R.string.regattalink_one_degree_stern),
+            contentDescription = stringResource(
+                R.string.regattalink_adjust_pitch_stern
+            ),
+            enabled = enabled,
+            onClick = {
+                onAdjust(
+                    RegattaLinkDeviceControlOpcode.ADJUST_PITCH,
+                    regattaLinkTrimDelta(
+                        RegattaLinkDeviceControlOpcode.ADJUST_PITCH,
+                        RegattaLinkTrimDirection.BACK
+                    )
+                )
+            },
+            modifier = Modifier.padding(top = 8.dp)
+        )
+    }
+}
+
+@Composable
+private fun RegattaLinkOrientationActionButton(
+    text: String,
+    contentDescription: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.semantics {
+            this.contentDescription = contentDescription
+        }
+    ) {
+        Text(text)
+    }
+}
+
+@Composable
+private fun RegattaLinkBoatTopView(
+    modifier: Modifier = Modifier
+) {
+    val outlineColor = MaterialTheme.colorScheme.onSurface
+    val guideColor = MaterialTheme.colorScheme.primary
+
+    Canvas(modifier = modifier) {
+        val stroke = 2.dp.toPx()
+        val hull = Path().apply {
+            moveTo(size.width * 0.50f, size.height * 0.08f)
+            quadraticBezierTo(
+                size.width * 0.16f,
+                size.height * 0.28f,
+                size.width * 0.27f,
+                size.height * 0.74f
+            )
+            quadraticBezierTo(
+                size.width * 0.32f,
+                size.height * 0.91f,
+                size.width * 0.50f,
+                size.height * 0.94f
+            )
+            quadraticBezierTo(
+                size.width * 0.68f,
+                size.height * 0.91f,
+                size.width * 0.73f,
+                size.height * 0.74f
+            )
+            quadraticBezierTo(
+                size.width * 0.84f,
+                size.height * 0.28f,
+                size.width * 0.50f,
+                size.height * 0.08f
+            )
+            close()
+        }
+        drawPath(
+            path = hull,
+            color = outlineColor,
+            style = Stroke(width = stroke)
+        )
+        drawLine(
+            color = outlineColor,
+            start = Offset(size.width * 0.50f, size.height * 0.13f),
+            end = Offset(size.width * 0.50f, size.height * 0.89f),
+            strokeWidth = stroke
+        )
+
+        val arcSize = Size(size.width * 0.92f, size.width * 0.92f)
+        val arcTopLeft = Offset(
+            x = (size.width - arcSize.width) / 2f,
+            y = 0f
+        )
+        drawArc(
+            color = guideColor,
+            startAngle = 205f,
+            sweepAngle = -58f,
+            useCenter = false,
+            topLeft = arcTopLeft,
+            size = arcSize,
+            style = Stroke(width = stroke)
+        )
+        drawArc(
+            color = guideColor,
+            startAngle = 335f,
+            sweepAngle = 58f,
+            useCenter = false,
+            topLeft = arcTopLeft,
+            size = arcSize,
+            style = Stroke(width = stroke)
+        )
+    }
+}
+
 
 @Composable
 private fun BoatStateValues(state: RegattaLinkBoatState) {

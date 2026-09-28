@@ -331,6 +331,94 @@ class RegattaLinkDeviceControlTest {
     }
 
     @Test
+    fun directionalTrimFormattingMatchesPhysicalBoatDirections() {
+        assertEquals(
+            "0°",
+            formatRegattaLinkDirectionalTrim(0, "Starboard", "Port")
+        )
+        assertEquals(
+            "8° Starboard",
+            formatRegattaLinkDirectionalTrim(8, "Starboard", "Port")
+        )
+        assertEquals(
+            "8° Port",
+            formatRegattaLinkDirectionalTrim(-8, "Starboard", "Port")
+        )
+        assertEquals(
+            "2° Port",
+            formatRegattaLinkDirectionalTrim(2, "Port", "Starboard")
+        )
+        assertEquals(
+            "2° Starboard",
+            formatRegattaLinkDirectionalTrim(-2, "Port", "Starboard")
+        )
+        assertEquals(
+            "3° Bow",
+            formatRegattaLinkDirectionalTrim(3, "Bow", "Stern")
+        )
+        assertEquals(
+            "3° Stern",
+            formatRegattaLinkDirectionalTrim(-3, "Bow", "Stern")
+        )
+        assertEquals(
+            "—",
+            formatRegattaLinkDirectionalTrim(null, "Bow", "Stern")
+        )
+    }
+
+    @Test
+    fun forwardAlignmentTopViewUsesPortCounterClockwiseStarboardClockwise() {
+        // Bow is drawn at the top. Firmware sign contract: +Z rotates
+        // physical FRONT toward Boat Starboard, i.e. clockwise in top view.
+        assertEquals(
+            -1,
+            regattaLinkTrimDelta(
+                RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
+                RegattaLinkTrimDirection.PORT
+            )
+        )
+        assertEquals(
+            1,
+            regattaLinkTrimDelta(
+                RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
+                RegattaLinkTrimDirection.STARBOARD
+            )
+        )
+    }
+
+    @Test
+    fun orientationControlsRequireValidBoatFrameAndIdleDeviceControl() {
+        assertFalse(
+            regattaLinkOrientationControlsEnabled(
+                baseControlsEnabled = true,
+                boatFrameValid = false,
+                deviceControlBusy = false
+            )
+        )
+        assertFalse(
+            regattaLinkOrientationControlsEnabled(
+                baseControlsEnabled = true,
+                boatFrameValid = true,
+                deviceControlBusy = true
+            )
+        )
+        assertFalse(
+            regattaLinkOrientationControlsEnabled(
+                baseControlsEnabled = false,
+                boatFrameValid = true,
+                deviceControlBusy = false
+            )
+        )
+        assertTrue(
+            regattaLinkOrientationControlsEnabled(
+                baseControlsEnabled = true,
+                boatFrameValid = true,
+                deviceControlBusy = false
+            )
+        )
+    }
+
+    @Test
     fun factoryResetCalibrationRejectsStillContinueToBondReset() {
         listOf(
             RegattaLinkDeviceControlResult.MOTION_REJECT,
