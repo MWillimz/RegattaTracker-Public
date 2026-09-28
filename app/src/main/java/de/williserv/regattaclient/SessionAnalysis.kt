@@ -1,12 +1,22 @@
 package de.williserv.regattaclient
 
+import java.time.LocalDateTime
+import java.time.ZoneOffset
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.sin
 
 internal const val MPS_TO_KNOTS = 1.9438444924406
+internal const val DEFAULT_GPS_MANEUVER_SMOOTHING_SECONDS = 3.0
+internal const val DEFAULT_GPS_MANEUVER_WINDOW_SECONDS = 5.0
+internal const val DEFAULT_GPS_MANEUVER_THRESHOLD_DEG = 20.0
+internal const val DEFAULT_ANALYSIS_RECOVERY_SECONDS = 5.0
+internal const val DEFAULT_IMU_STEADY_ATTITUDE_RATE_DPS = 1.5
+private const val IMU_HEEL_KEY = "regattalink.summary.heel_filtered_deg"
+private const val IMU_TRIM_KEY = "regattalink.summary.trim_filtered_deg"
 
 enum class AnalysisMetricUse {
     ANGLE,
@@ -43,10 +53,26 @@ data class AnalysisMetric(
 }
 
 data class PreparedAnalysisSample(
+    val timestampMs: Long?,
     val cogDeg: Double,
     val sogMps: Double,
     val measurements: Map<String, Double>
 )
+
+sealed interface AnalysisSampleFilter
+
+data class GpsManeuverAnalysisFilter(
+    val smoothingSeconds: Double = DEFAULT_GPS_MANEUVER_SMOOTHING_SECONDS,
+    val changeWindowSeconds: Double = DEFAULT_GPS_MANEUVER_WINDOW_SECONDS,
+    val changeThresholdDeg: Double = DEFAULT_GPS_MANEUVER_THRESHOLD_DEG,
+    val recoverySeconds: Double = DEFAULT_ANALYSIS_RECOVERY_SECONDS
+) : AnalysisSampleFilter
+
+data class ImuStabilityAnalysisFilter(
+    val maxAttitudeRateDps: Double =
+        DEFAULT_IMU_STEADY_ATTITUDE_RATE_DPS,
+    val recoverySeconds: Double = DEFAULT_ANALYSIS_RECOVERY_SECONDS
+) : AnalysisSampleFilter
 
 data class AnalysisRangeFilter(
     val metricId: String,
@@ -74,17 +100,270 @@ data class SessionAnalysisCapabilities(
     val colorMetrics: List<AnalysisMetric>,
     val filterMetrics: List<AnalysisMetric>,
     val defaultAngleId: String,
-    val defaultRadiusId: String
+    val defaultRadiusId: String,
+    val gpsManeuverFilterAvailable: Boolean = false,
+    val imuStabilityFilterAvailable: Boolean = false
 )
 
 internal fun prepareAnalysisSamples(
     samples: List<SessionTrackingSample>
 ): List<PreparedAnalysisSample> = samples.map { sample ->
     PreparedAnalysisSample(
+        timestampMs = analysisSampleTimestampMs(sample),
         cogDeg = sample.cog.toDouble(),
         sogMps = sample.sog.toDouble(),
         measurements = sessionNumericMeasurementValues(sample)
     )
+}
+
+private fun analysisSampleTimestampMs(sample: SessionTrackingSample): Long? {
+    return runCatching {
+        val local = LocalDateTime.parse(sample.timestamp)
+        val offsetSeconds = (sample.utcOffsetMinutes ?: 0) * 60
+        local.toInstant(ZoneOffset.ofTotalSeconds(offsetSeconds)).toEpochMilli()
+    }.getOrNull()
+}
+
+internal fun applyAnalysisSampleFilters(
+    samples: List<PreparedAnalysisSample>,
+    filters: List<AnalysisSampleFilter>
+): List<PreparedAnalysisSample> {
+    if (samples.isEmpty() || filters.isEmpty()) return samples
+
+    val excluded = BooleanArray(samples.size)
+    filters.forEach { filter ->
+        val mask = when (filter) {
+            is GpsManeuverAnalysisFilter ->
+                gpsManeuverExclusionMask(samples, filter)
+            is ImuStabilityAnalysisFilter ->
+                imuStabilityExclusionMask(samples, filter)
+        }
+        for (index in excluded.indices) {
+            excluded[index] = excluded[index] || mask[index]
+        }
+    }
+
+    return samples.filterIndexed { index, _ -> !excluded[index] }
+}
+
+internal fun hasGpsManeuverFilterData(
+    samples: List<PreparedAnalysisSample>
+): Boolean =
+    samples.count { it.timestampMs != null && it.cogDeg.isFinite() } >= 2
+
+internal fun hasImuStabilityFilterData(
+    samples: List<PreparedAnalysisSample>
+): Boolean =
+    samples.count { sample ->
+        sample.timestampMs != null &&
+            sample.measurements[IMU_HEEL_KEY]?.isFinite() == true
+    } >= 2
+
+private fun gpsManeuverExclusionMask(
+    samples: List<PreparedAnalysisSample>,
+    filter: GpsManeuverAnalysisFilter
+): BooleanArray {
+    require(filter.smoothingSeconds > 0.0)
+    require(filter.changeWindowSeconds > 0.0)
+    require(filter.changeThresholdDeg > 0.0)
+    require(filter.recoverySeconds >= 0.0)
+
+    val excluded = BooleanArray(samples.size)
+    val smoothingMs = (filter.smoothingSeconds * 1_000.0).toLong()
+    val changeWindowMs = (filter.changeWindowSeconds * 1_000.0).toLong()
+    val smoothedCog = DoubleArray(samples.size) { Double.NaN }
+
+    samples.indices.forEach { index ->
+        val time = samples[index].timestampMs
+        val cog = samples[index].cogDeg
+        if (time == null || !cog.isFinite()) {
+            excluded[index] = true
+            return@forEach
+        }
+
+        var sumSin = 0.0
+        var sumCos = 0.0
+        var count = 0
+        var cursor = index
+        while (cursor >= 0) {
+            val candidateTime = samples[cursor].timestampMs ?: break
+            if (candidateTime > time || time - candidateTime > smoothingMs) break
+            val candidateCog = samples[cursor].cogDeg
+            if (candidateCog.isFinite()) {
+                val radians = normalizeAnalysisAngle(
+                    candidateCog,
+                    AnalysisAngleKind.COMPASS
+                ) * PI / 180.0
+                sumSin += sin(radians)
+                sumCos += cos(radians)
+                count += 1
+            }
+            cursor -= 1
+        }
+
+        if (count > 0 && (sumSin != 0.0 || sumCos != 0.0)) {
+            val degrees = atan2(sumSin, sumCos) * 180.0 / PI
+            smoothedCog[index] = normalizeAnalysisAngle(
+                degrees,
+                AnalysisAngleKind.COMPASS
+            )
+        }
+    }
+
+    samples.indices.forEach { index ->
+        val time = samples[index].timestampMs ?: return@forEach
+        val currentCog = smoothedCog[index]
+        if (!currentCog.isFinite()) {
+            excluded[index] = true
+            return@forEach
+        }
+
+        val targetTime = time - changeWindowMs
+        var baselineIndex = index - 1
+        while (baselineIndex >= 0) {
+            val baselineTime = samples[baselineIndex].timestampMs
+            if (baselineTime == null) {
+                baselineIndex -= 1
+                continue
+            }
+            if (baselineTime <= targetTime) break
+            baselineIndex -= 1
+        }
+        if (baselineIndex < 0) return@forEach
+
+        val baselineCog = smoothedCog[baselineIndex]
+        if (!baselineCog.isFinite()) return@forEach
+
+        if (
+            abs(shortestAnalysisAngleDeltaDeg(currentCog, baselineCog)) >=
+            filter.changeThresholdDeg
+        ) {
+            for (affected in baselineIndex..index) {
+                excluded[affected] = true
+            }
+        }
+    }
+
+    extendAnalysisExclusionForward(
+        excluded = excluded,
+        samples = samples,
+        recoverySeconds = filter.recoverySeconds
+    )
+    return excluded
+}
+
+private fun imuStabilityExclusionMask(
+    samples: List<PreparedAnalysisSample>,
+    filter: ImuStabilityAnalysisFilter
+): BooleanArray {
+    require(filter.maxAttitudeRateDps > 0.0)
+    require(filter.recoverySeconds >= 0.0)
+
+    val excluded = BooleanArray(samples.size)
+    var previousIndex: Int? = null
+
+    samples.forEachIndexed { index, sample ->
+        val time = sample.timestampMs
+        val heel = sample.measurements[IMU_HEEL_KEY]
+        if (time == null || heel == null || !heel.isFinite()) {
+            excluded[index] = true
+            previousIndex = null
+            return@forEachIndexed
+        }
+
+        val previous = previousIndex
+        if (previous != null) {
+            val previousSample = samples[previous]
+            val previousTime = previousSample.timestampMs
+            val previousHeel = previousSample.measurements[IMU_HEEL_KEY]
+            if (
+                previousTime != null &&
+                previousHeel != null &&
+                previousHeel.isFinite()
+            ) {
+                val dtSeconds = (time - previousTime) / 1_000.0
+                if (dtSeconds > 0.0 && dtSeconds <= 3.0) {
+                    val heelRate = abs(
+                        shortestAnalysisAngleDeltaDeg(heel, previousHeel)
+                    ) / dtSeconds
+
+                    val trim = sample.measurements[IMU_TRIM_KEY]
+                    val previousTrim =
+                        previousSample.measurements[IMU_TRIM_KEY]
+                    val trimRate =
+                        if (
+                            trim != null &&
+                            previousTrim != null &&
+                            trim.isFinite() &&
+                            previousTrim.isFinite()
+                        ) {
+                            abs(trim - previousTrim) / dtSeconds
+                        } else {
+                            0.0
+                        }
+
+                    if (
+                        max(heelRate, trimRate) >
+                        filter.maxAttitudeRateDps
+                    ) {
+                        /*
+                         * The transition spans both 1 Hz summary samples.
+                         * Exclude both endpoints, then apply the configured
+                         * recovery tail below.
+                         */
+                        excluded[previous] = true
+                        excluded[index] = true
+                    }
+                } else {
+                    excluded[index] = true
+                }
+            }
+        }
+
+        previousIndex = index
+    }
+
+    extendAnalysisExclusionForward(
+        excluded = excluded,
+        samples = samples,
+        recoverySeconds = filter.recoverySeconds
+    )
+    return excluded
+}
+
+private fun extendAnalysisExclusionForward(
+    excluded: BooleanArray,
+    samples: List<PreparedAnalysisSample>,
+    recoverySeconds: Double
+) {
+    if (recoverySeconds <= 0.0) return
+    val recoveryMs = (recoverySeconds * 1_000.0).toLong()
+    val sourceExclusions = excluded.copyOf()
+    var blockedUntil = Long.MIN_VALUE
+
+    samples.indices.forEach { index ->
+        val time = samples[index].timestampMs
+        if (time == null) {
+            excluded[index] = true
+            return@forEach
+        }
+        if (sourceExclusions[index]) {
+            blockedUntil = max(blockedUntil, time + recoveryMs)
+        }
+        if (time <= blockedUntil) {
+            excluded[index] = true
+        }
+    }
+}
+
+internal fun shortestAnalysisAngleDeltaDeg(
+    firstDeg: Double,
+    secondDeg: Double
+): Double {
+    val first = normalizeAnalysisAngle(firstDeg, AnalysisAngleKind.COMPASS)
+    val second = normalizeAnalysisAngle(secondDeg, AnalysisAngleKind.COMPASS)
+    if (!first.isFinite() || !second.isFinite()) return Double.NaN
+    return ((first - second + 540.0) % 360.0) - 180.0
 }
 
 internal fun discoverSessionAnalysisCapabilities(
@@ -169,7 +448,7 @@ internal fun discoverSessionAnalysisCapabilities(
         ),
         knownMetric(
             key = "regattalink.summary.trim_filtered_deg",
-            label = "Trim",
+            label = "Pitch",
             unit = "deg",
             recommended = setOf(AnalysisMetricUse.COLOR)
         ),
@@ -259,7 +538,10 @@ internal fun discoverSessionAnalysisCapabilities(
         colorMetrics = colorMetrics.distinctBy { it.id },
         filterMetrics = filterMetrics.distinctBy { it.id },
         defaultAngleId = defaultAngle,
-        defaultRadiusId = defaultRadius
+        defaultRadiusId = defaultRadius,
+        gpsManeuverFilterAvailable = hasGpsManeuverFilterData(preparedSamples),
+        imuStabilityFilterAvailable =
+            hasImuStabilityFilterData(preparedSamples)
     )
 }
 

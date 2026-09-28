@@ -416,6 +416,11 @@
     <string name="session_analysis_show_filters">Show filters</string>
     <string name="session_analysis_hide_filters">Hide filters</string>
     <string name="session_analysis_filter_range">%1$s–%2$s %3$s</string>
+    <string name="session_analysis_gps_maneuver_filter">GPS maneuver filter</string>
+    <string name="session_analysis_gps_maneuver_threshold">Course change: %1$d° / 5 s</string>
+    <string name="session_analysis_imu_stability_filter">IMU stability filter</string>
+    <string name="session_analysis_imu_attitude_limit">Maximum heel/trim change: %1$s °/s</string>
+    <string name="session_analysis_recovery_seconds">Exclude for %1$d s afterwards</string>
     <string name="session_analysis_color_legend">Color: %1$s</string>
     <string name="session_analysis_points">%1$d visible points</string>
     <string name="session_replay_button">Replay</string>
@@ -500,6 +505,9 @@
     <string name="regattalink_roll_rate">Roll rate</string>
     <string name="regattalink_pitch_rate">Pitch rate</string>
     <string name="regattalink_yaw_rate">Yaw rate</string>
+    <string name="regattalink_encounter_period">Encounter period</string>
+    <string name="regattalink_pitch_peak_to_peak">Pitch motion p-p</string>
+    <string name="regattalink_roll_peak_to_peak">Roll motion p-p</string>
     <string name="regattalink_vertical_accel">Vertical acceleration</string>
     <string name="regattalink_calibration_title">Sensor orientation / calibration</string>
     <string name="regattalink_confidence_overall">Overall confidence</string>
@@ -548,6 +556,8 @@
     <string name="regattalink_confidence">Confidence</string>
     <string name="regattalink_settings_title">Settings</string>
     <string name="regattalink_led_brightness">LED brightness</string>
+    <string name="regattalink_motion_damping">Damping</string>
+    <string name="regattalink_motion_damping_value">%1$d s</string>
     <string name="regattalink_led_brightness_unavailable">LED brightness is not supported by this firmware.</string>
     <string name="regattalink_saving">Saving…</string>
     <string name="regattalink_nmea_title">NMEA2000</string>
@@ -605,7 +615,7 @@
     <string name="regattalink_not_set">Not set</string>
     <string name="regattalink_not_valid">Not valid</string>
     <string name="regattalink_factory_reset">Factory reset</string>
-    <string name="regattalink_factory_reset_warning">This resets the RegattaLink name, LED brightness, calibration and Bluetooth pairings. The connection will close and the device must be paired again. If Android still shows the old pairing, remove RegattaLink in Android Bluetooth settings before searching again.</string>
+    <string name="regattalink_factory_reset_warning">This resets the RegattaLink name, LED brightness, motion damping, calibration and Bluetooth pairings. The connection will close and the device must be paired again. If Android still shows the old pairing, remove RegattaLink in Android Bluetooth settings before searching again.</string>
     <string name="regattalink_read_diagnostic_log">Read diagnostic log</string>
     <string name="regattalink_loading_diagnostic_log">Reading diagnostic log…</string>
 </resources>

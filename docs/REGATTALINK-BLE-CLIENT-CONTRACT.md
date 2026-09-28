@@ -12,10 +12,10 @@ The current BLE contract contains four RegattaLink service families. Firmware co
 
 | Area | Service suffix | Firmware contract | Current RegattaTracker consumption |
 | --- | ---: | --- | --- |
-| configuration/device information | 0001 | implemented; frozen at 0002-0006 | 0002-0006 discovered and consumed |
+| configuration/device information | 0001 | implemented with 0002-0006 plus Motion Damping 0009 in schema 10 | 0002-0006 and 0009 discovered and consumed |
 | OTA | 0010 | implemented | implemented |
-| telemetry | 0020 | implemented with IMU 0021-0023 and normalized NMEA Boat State 0024 | 0021-0024 consumed; 0024 discovered independently of the IMU capability bit |
-| post-core extensions | 0030 | implemented; 0007 diagnostic log and 0008 Device Control live here from schema 9 | 0007 bounded user-triggered drain plus complete 0008 Set Upright, trim and Factory Reset lifecycle/UI; legacy 0001 fallback retained for schema 8 |
+| telemetry | 0020 | implemented with legacy IMU 0021-0023, normalized NMEA Boat State 0024, and specified Motion 1 Hz 0025 | normal IMU flow consumes only 0025; 0024 remains NMEA Boat State; 0021-0023 are not continuously subscribed |
+| post-core extensions | 0030 | implemented; 0007 diagnostic log and 0008 Device Control live here | 0007 bounded user-triggered drain plus complete 0008 Set Upright, trim and Factory Reset lifecycle/UI |
 
 The firmware contract currently defines four NMEA2000-facing BLE surfaces/behaviors relevant to clients:
 
@@ -43,17 +43,19 @@ Base UUID:
 | NMEA2000 raw CAN FIFO | 0005 | encrypted/bonded read | implemented | implemented as explicit bounded diagnostic read |
 | Global LED brightness | 0006 | encrypted/bonded read + write | additive contract in RegattaLink #135 / PR #136; optional by discovery | implemented when discovered |
 | Diagnostic log FIFO | 0007 | encrypted/bonded read in service 0030 | implemented; optional by discovery | implemented as explicit bounded 20-read drain with UI presentation |
-| Device Control | 0008 | encrypted/bonded read + write with response in service 0030 | implemented; optional by discovery | request/status engine, Set Upright, direction-labelled trims and Factory Reset lifecycle/UI implemented |
+| Device Control | 0008 | encrypted/bonded read + write with response in service 0030 | implemented | request/status engine, Set Upright, direction-labelled trims and Factory Reset lifecycle/UI implemented |
+| Motion damping | 0009 | encrypted/bonded read + write in service 0001 | implemented in RegattaLink #164, 1 byte 1..10 s | implemented |
 | OTA service | 0010 | service | implemented | implemented |
 | OTA control | 0011 | encrypted/bonded write with response | implemented | implemented |
 | OTA DATA | 0012 | encrypted/bonded write; no-response preferred, response supported | implemented | implemented |
 | OTA status | 0013 | encrypted/bonded read + notify | implemented | implemented |
 | Telemetry service | 0020 | service | implemented | implemented |
-| Fast motion telemetry | 0021 | encrypted/bonded read + notify | implemented | implemented |
-| Motion summary telemetry | 0022 | encrypted/bonded read + notify | implemented | implemented |
-| Calibration diagnostics telemetry | 0023 | encrypted/bonded read + notify | implemented | implemented |
+| Fast motion telemetry | 0021 | encrypted/bonded read + notify | implemented | parser retained; not subscribed in normal flow |
+| Motion summary telemetry | 0022 | encrypted/bonded read + notify | implemented | parser retained; not subscribed in normal flow |
+| Calibration diagnostics telemetry | 0023 | encrypted/bonded read + notify | implemented | parser retained; not subscribed in normal flow |
 | Normalized NMEA Boat State v1 | 0024 | encrypted/bonded read + notify | implemented | implemented; UUID-discovered independently of IMU capability |
-| Extension service | 0030 | service | implemented | discovery anchor for 0007/0008 from schema 9 |
+| Motion 1 Hz | 0025 | encrypted/bonded read + notify | implemented by RegattaLink #165 / PR #166, fixed 20-byte v1 | required normal IMU/motion subscription |
+| Extension service | 0030 | service | implemented | discovery anchor for 0007/0008 |
 
 All multibyte integers in custom RegattaLink records are little-endian unless stated otherwise.
 
@@ -76,22 +78,38 @@ New pairing is accepted only during the firmware pairing window. The current pai
 Android clients must serialize standard GATT Service Changed handling and must not
 continue using cached handles while service rediscovery is pending. Schema-aware
 firmware advertises its monotonic GATT schema generation in Device Info bits 24..31.
-RegattaTracker persists the accepted generation per stable device ID.
+RegattaTracker persists accepted nonzero generations per stable device ID. Generation
+0 means legacy/unspecified and is never trusted across an app restart.
 
 On a restored bond with a different generation, RegattaTracker writes the reserved
 two-byte value `00 <reported-generation>` to the long-lived writable Device Name
-0002 characteristic, waits for the Service Changed callback, completes service
-rediscovery, re-reads Device Info, and only then releases the connection to
-OTA/telemetry. A Service Changed callback
-without the subsequent rediscovery is not sufficient. Legacy schema-0 firmware uses
-its existing migration Service Changed and is likewise gated before movable handles
-are used. The old fixed 500 ms OTA reconnect quiet-time heuristic is not part of the
-schema-aware path.
+0002 characteristic and waits for Service Changed. For an explicit schema
+reconciliation, RegattaTracker then closes that GATT instance and reconnects before
+rediscovery; it does not rely on same-connection rediscovery to flush Android's ATT
+cache. The callback/reconnect sequence is necessary but is not accepted as proof by
+itself: before persisting or trusting a generation, each app process performs real I/O
+against the OTA Status characteristic and its CCCD. This is the same downstream
+descriptor path that exposes a stale Android ATT cache as
+`GATT_WRITE_NOT_PERMITTED`.
 
-Current firmware emits the automatic migration safeguard only on a boot that actually
-crossed a persisted schema generation; it no longer invalidates Android's cache on
-every ordinary reboot. A firmware replacement may still add, remove or move
-characteristics, but clients must discover by UUID and never by hard-coded ATT handle.
+If that proof fails, or Service Changed never completes, RegattaTracker clears its
+accepted-generation hint and performs at most one local Android GATT-cache refresh,
+then reconnects, rediscovers, and repeats the real GATT proof. The local refresh does
+not delete the bond. A second failure is terminal and retains the concrete GATT
+failure instead of entering a reconnect loop.
+
+Legacy schema-0 firmware uses its existing migration Service Changed and is likewise
+gated before movable handles are used. After successful real GATT proof, schema 0 is
+accepted only for the lifetime of the current app process, which allows the mandatory
+fresh pre-transfer OTA reconnect to reuse the corrected Android ATT cache without
+persisting an unverifiable legacy generation. The old fixed 500 ms OTA reconnect
+quiet-time heuristic is not part of the reconciliation path.
+
+Schema 11 is the current target generation after schema 10 added configuration
+characteristic 0009 and schema 11 appended Motion 1 Hz 0025. Clients must continue
+to treat the advertised generation as authoritative and reconcile any change before
+using downstream handles. RegattaTracker discovers every characteristic by UUID
+rather than hard-coded ATT handle.
 
 ## 4. Configuration and extension services
 
@@ -522,17 +540,42 @@ calibration indicators. Trim controls remain disabled until Boat Frame is valid.
 Hardware validation of reset/re-pair behavior is still required on the real target
 Android device; that validation status is separate from implementation status.
 
+### 4.8 Motion damping 0009
+
+Full UUID:
+
+7f2c4b10-6f63-4a8d-9a3e-2e5d6b710009
+
+Properties:
+
+- read;
+- write with response;
+- encrypted/bonded access required.
+
+Wire value: exactly one unsigned byte containing whole seconds.
+
+Valid range: 1..10 seconds. Current firmware default: 3 seconds.
+
+The value is persistent in RegattaLink. A successful write changes the firmware-side
+Heel/Pitch presentation damping. Android must not duplicate this filter. Configuration
+writes share the existing serialized mutation/OTA exclusion policy.
+
+
 ## 5. Telemetry service 0020
 
 Full service UUID:
 
 7f2c4b10-6f63-4a8d-9a3e-2e5d6b710020
 
-The telemetry service carries both RegattaLink IMU/motion state (0021-0023) and normalized NMEA2000 Boat State v1 (0024).
+The telemetry service carries legacy RegattaLink IMU/motion state (0021-0023),
+normalized NMEA2000 Boat State v1 (0024), and the compact Motion 1 Hz record (0025).
 
 All application characteristic values require an encrypted persistent bond. Presence is discovered by UUID.
 
-For the IMU characteristics 0021-0023:
+RegattaTracker normal operation subscribes only to 0025 for IMU/motion data. It does
+not continuously subscribe to 0021, 0022 or 0023.
+
+For the legacy IMU characteristics 0021-0023:
 
 - Device Info capability bit 3 indicates IMU telemetry availability;
 - each characteristic is read + notify;
@@ -547,9 +590,10 @@ Telemetry notifications are paused during active OTA PREPARING/RECEIVING/VERIFYI
 Current publication behavior:
 
 - fast motion: target approximately 10 Hz;
-- summary: target approximately 1 Hz;
+- legacy summary: target approximately 1 Hz;
 - calibration diagnostics: target approximately 1 Hz;
-- Boat State: complete change-coalesced snapshots, capped at 10 Hz.
+- Boat State: complete change-coalesced snapshots, capped at 10 Hz;
+- Motion 1 Hz: 1 Hz.
 
 Notification delivery is best effort. Read access can obtain a current record when needed.
 
@@ -840,6 +884,54 @@ Reference mapping is semantic rather than positional:
 - unsupported or unavailable references are not relabelled as MAG, AWA or TWA.
 
 Transport/debug metadata is intentionally not copied into session measurements: Boat State sequence, Boat State timestamp, validity bitmap, BLE state, PGN inventory and raw CAN FIFO data remain diagnostics only.
+
+### 5.5 Motion 1 Hz 0025
+
+Full UUID:
+
+7f2c4b10-6f63-4a8d-9a3e-2e5d6b710025
+
+Properties:
+
+- read;
+- notify;
+- encrypted/bonded access required.
+
+Record size: exactly 20 bytes, little-endian schema v1.
+
+| Offset | Width | Type | Meaning / scale |
+| ---: | ---: | --- | --- |
+| 0 | 1 | u8 | schema version = 1 |
+| 1 | 1 | u8 | validity flags |
+| 2 | 2 | u16 | sequence |
+| 4 | 4 | u32 | RegattaLink monotonic timestamp, ms |
+| 8 | 2 | i16 | Heel, degrees x 100 |
+| 10 | 2 | i16 | Pitch, degrees x 100 |
+| 12 | 2 | i16 | signed Yaw Rate, deg/s x 100 |
+| 14 | 2 | u16 | Encounter Period, seconds x 100 |
+| 16 | 2 | u16 | Pitch peak-to-peak, degrees x 100 |
+| 18 | 2 | u16 | Roll peak-to-peak, degrees x 100 |
+
+Validity flags:
+
+- bit 0: Heel/Pitch valid;
+- bit 1: Yaw Rate valid;
+- bit 2: Encounter Period valid;
+- bit 3: Pitch peak-to-peak valid;
+- bit 4: Roll peak-to-peak valid.
+
+A cleared validity bit makes the corresponding engineering value unavailable
+regardless of the numeric bytes. RegattaTracker stores unavailable derived values by
+omitting them, never by fabricating zero.
+
+For session compatibility, valid 0025 Heel/Pitch are persisted under the existing
+measurement keys `regattalink.summary.heel_filtered_deg` and
+`regattalink.summary.trim_filtered_deg`; the latter is presented to users as
+Pitch. Derived fields use `regattalink.motion.*` keys.
+
+RegattaTracker considers the last received Motion 1 Hz record fresh for 3000 ms of
+phone monotonic time.
+
 
 ## 6. OTA service 0010
 

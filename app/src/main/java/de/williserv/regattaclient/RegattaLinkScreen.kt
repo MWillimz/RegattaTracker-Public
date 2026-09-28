@@ -67,6 +67,7 @@ fun RegattaLinkScreen(
     onCancelOta: () -> Unit,
     onChangeName: (String) -> Unit,
     onSetLedBrightness: (Int) -> Unit,
+    onSetMotionDamping: (Int) -> Unit,
     onDrainDiagnosticLog: () -> Unit,
     onDeviceControl: (RegattaLinkDeviceControlOpcode, Int) -> Unit,
     onRefreshPgnInventory: () -> Unit,
@@ -107,6 +108,9 @@ fun RegattaLinkScreen(
     var nameDraft by rememberSaveable { mutableStateOf("") }
     var brightnessDraft by remember(configurationState.ledBrightnessPct) {
         mutableStateOf((configurationState.ledBrightnessPct ?: 0).toFloat())
+    }
+    var dampingDraft by remember(configurationState.motionDampingSeconds) {
+        mutableStateOf((configurationState.motionDampingSeconds ?: 3).toFloat())
     }
     var rawCaptureNowElapsedMs by remember {
         mutableStateOf(SystemClock.elapsedRealtime())
@@ -303,22 +307,10 @@ fun RegattaLinkScreen(
                 }
 
                 if (telemetryState.supported) {
-                    val fastIsStale = rememberTelemetryStale(
-                        telemetryState.fastReceivedAtElapsedMs,
-                        REGATTALINK_FAST_STALE_MS
+                    val motionIsStale = rememberTelemetryStale(
+                        telemetryState.motionOneHzReceivedAtElapsedMs,
+                        REGATTALINK_MOTION_ONE_HZ_STALE_MS
                     )
-                    val summaryIsStale = rememberTelemetryStale(
-                        telemetryState.summaryReceivedAtElapsedMs,
-                        REGATTALINK_SLOW_STALE_MS
-                    )
-                    val calibrationIsStale = rememberTelemetryStale(
-                        telemetryState.calibrationReceivedAtElapsedMs,
-                        REGATTALINK_SLOW_STALE_MS
-                    )
-                    val fastStale = telemetryState.fast != null && fastIsStale
-                    val summaryStale = telemetryState.summary != null && summaryIsStale
-                    val calibrationStale =
-                        telemetryState.calibration != null && calibrationIsStale
 
                     Text(
                         text = stringResource(R.string.regattalink_motion_title),
@@ -332,154 +324,66 @@ fun RegattaLinkScreen(
                             modifier = Modifier.padding(top = 6.dp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                    } else if (summaryStale || fastStale) {
+                    } else if (
+                        telemetryState.motionOneHz != null &&
+                        motionIsStale
+                    ) {
                         Text(
                             text = stringResource(R.string.regattalink_telemetry_stale),
                             modifier = Modifier.padding(top = 6.dp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    } else if (telemetryState.motionOneHz == null) {
+                        Text(
+                            text = stringResource(R.string.regattalink_telemetry_waiting),
+                            modifier = Modifier.padding(top = 6.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
 
-                    telemetryState.summary?.let { summary ->
+                    telemetryState.motionOneHz?.let { motion ->
                         telemetryValue(
                             label = stringResource(R.string.regattalink_heel),
-                            value = formatTelemetry(summary.heelFilteredDeg, "°")
+                            value = motion.heelDeg?.let {
+                                formatTelemetry(it, "°")
+                            } ?: "--"
                         )
                         telemetryValue(
-                            label = stringResource(R.string.regattalink_trim),
-                            value = formatTelemetry(summary.trimFilteredDeg, "°")
+                            label = stringResource(R.string.regattalink_pitch),
+                            value = motion.pitchDeg?.let {
+                                formatTelemetry(it, "°")
+                            } ?: "--"
                         )
                         telemetryValue(
-                            label = stringResource(R.string.regattalink_confidence),
-                            value = "${summary.confidencePct} %"
+                            label = stringResource(R.string.regattalink_yaw_rate),
+                            value = motion.yawRateDps?.let {
+                                formatTelemetry(it, "°/s")
+                            } ?: "--"
                         )
-
-                        if (technicalDetailsExpanded) {
-                            telemetryValue(
-                                label = stringResource(R.string.regattalink_roll_rms),
-                                value = formatTelemetry(summary.rollRmsDeg, "°")
-                            )
-                            telemetryValue(
-                                label = stringResource(R.string.regattalink_pitch_rms),
-                                value = formatTelemetry(summary.pitchRmsDeg, "°")
-                            )
-                            telemetryValue(
-                                label = stringResource(R.string.regattalink_vertical_rms),
-                                value = formatTelemetry(
-                                    summary.verticalAccelRmsG,
-                                    " g",
-                                    3
-                                )
-                            )
-                            telemetryValue(
-                                label = stringResource(
-                                    R.string.regattalink_motion_intensity
-                                ),
-                                value = summary.motionIntensity.toString()
-                            )
-
-                            telemetryState.fast?.let { fast ->
-                                Text(
-                                    text = stringResource(
-                                        R.string.regattalink_live_motion
-                                    ),
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.padding(top = 10.dp)
-                                )
-                                telemetryValue(
-                                    label = stringResource(R.string.regattalink_roll),
-                                    value = formatTelemetry(fast.rollDeg, "°")
-                                )
-                                telemetryValue(
-                                    label = stringResource(R.string.regattalink_pitch),
-                                    value = formatTelemetry(fast.pitchDeg, "°")
-                                )
-                                telemetryValue(
-                                    label = stringResource(
-                                        R.string.regattalink_roll_rate
-                                    ),
-                                    value = formatTelemetry(
-                                        fast.rollRateDps,
-                                        "°/s"
-                                    )
-                                )
-                                telemetryValue(
-                                    label = stringResource(
-                                        R.string.regattalink_pitch_rate
-                                    ),
-                                    value = formatTelemetry(
-                                        fast.pitchRateDps,
-                                        "°/s"
-                                    )
-                                )
-                                telemetryValue(
-                                    label = stringResource(
-                                        R.string.regattalink_yaw_rate
-                                    ),
-                                    value = formatTelemetry(
-                                        fast.yawRateDps,
-                                        "°/s"
-                                    )
-                                )
-                                telemetryValue(
-                                    label = stringResource(
-                                        R.string.regattalink_vertical_accel
-                                    ),
-                                    value = formatTelemetry(
-                                        fast.verticalAccelG,
-                                        " g",
-                                        3
-                                    )
-                                )
-                            }
-                        }
-                    }
-
-                    Text(
-                        text = stringResource(R.string.regattalink_calibration_title),
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(top = 12.dp)
-                    )
-
-                    if (calibrationStale && !telemetryState.pausedForOta) {
-                        Text(
-                            text = stringResource(R.string.regattalink_telemetry_stale),
-                            modifier = Modifier.padding(top = 6.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    telemetryState.calibration?.let { calibration ->
                         telemetryValue(
-                            label = stringResource(R.string.regattalink_boat_frame),
-                            value = if (calibration.boatFrameValid) {
-                                stringResource(R.string.regattalink_ready)
-                            } else {
-                                stringResource(R.string.regattalink_not_set)
-                            }
+                            label = stringResource(
+                                R.string.regattalink_encounter_period
+                            ),
+                            value = motion.encounterPeriodS?.let {
+                                formatTelemetry(it, " s")
+                            } ?: "--"
                         )
-                        if (technicalDetailsExpanded) {
-                            telemetryValue(
-                                label = stringResource(R.string.regattalink_gyro_bias),
-                                value = if (calibration.gyroBiasValid) {
-                                    stringResource(R.string.regattalink_valid)
-                                } else {
-                                    stringResource(R.string.regattalink_not_valid)
-                                }
-                            )
-                            telemetryValue(
-                                label = stringResource(
-                                    R.string.regattalink_mounting_epoch
-                                ),
-                                value = calibration.mountingEpoch.toString()
-                            )
-                            telemetryValue(
-                                label = stringResource(
-                                    R.string.regattalink_calibration_revision
-                                ),
-                                value = calibration.calibrationRevision.toString()
-                            )
-                        }
+                        telemetryValue(
+                            label = stringResource(
+                                R.string.regattalink_pitch_peak_to_peak
+                            ),
+                            value = motion.pitchPeakToPeakDeg?.let {
+                                formatTelemetry(it, "°")
+                            } ?: "--"
+                        )
+                        telemetryValue(
+                            label = stringResource(
+                                R.string.regattalink_roll_peak_to_peak
+                            ),
+                            value = motion.rollPeakToPeakDeg?.let {
+                                formatTelemetry(it, "°")
+                            } ?: "--"
+                        )
                     }
 
                     if (telemetryState.error.isNotBlank()) {
@@ -517,6 +421,43 @@ fun RegattaLinkScreen(
                             }
                         },
                         valueRange = 0f..100f,
+                        enabled = configEnabled
+                    )
+                }
+
+                if (
+                    connected &&
+                    configurationState.motionDampingSupported &&
+                    configurationState.motionDampingSeconds != null
+                ) {
+                    val shownDamping = dampingDraft
+                        .roundToInt()
+                        .coerceIn(1, 10)
+                    telemetryValue(
+                        label = stringResource(
+                            R.string.regattalink_motion_damping
+                        ),
+                        value = stringResource(
+                            R.string.regattalink_motion_damping_value,
+                            shownDamping
+                        )
+                    )
+                    Slider(
+                        value = dampingDraft.coerceIn(1f, 10f),
+                        onValueChange = { dampingDraft = it },
+                        onValueChangeFinished = {
+                            val value = dampingDraft
+                                .roundToInt()
+                                .coerceIn(1, 10)
+                            if (
+                                value !=
+                                configurationState.motionDampingSeconds
+                            ) {
+                                onSetMotionDamping(value)
+                            }
+                        },
+                        valueRange = 1f..10f,
+                        steps = 8,
                         enabled = configEnabled
                     )
                 }
