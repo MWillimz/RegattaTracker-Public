@@ -44,6 +44,21 @@ class TelemetryMetadataPayloadTest {
     }
 
     @Test
+    fun `fixed one-second tracking profile uploads unchanged`() {
+        val payload = buildTelemetryUploadPayload(
+            sample = sample(
+                batteryPercent = null,
+                batteryCharging = null,
+                trackingProfile = "fixed_1s",
+                utcOffsetMinutes = null
+            ),
+            client = client
+        )
+
+        assertEquals("fixed_1s", payload.getString("tracking_profile"))
+    }
+
+    @Test
     fun `optional metadata is omitted when sample did not contain it`() {
         val payload = buildTelemetryUploadPayload(
             sample = sample(
