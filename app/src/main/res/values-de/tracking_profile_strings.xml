@@ -3,5 +3,6 @@
     <string name="tracking_profile_title">Trackingprofil</string>
     <string name="tracking_profile_normal">Normal</string>
     <string name="tracking_profile_battery_saver">Akkusparmodus</string>
-    <string name="tracking_profile_description">Der Akkusparmodus reduziert die Tracking-Auflösung in größerer Entfernung zu Kurselementen, um die Akkulaufzeit zu verlängern.</string>
+    <string name="tracking_profile_fixed_1s">Fest 1 s</string>
+    <string name="tracking_profile_description">Normal passt die Rate an die Entfernung zu Kurselementen an. Der Akkusparmodus reduziert sie stärker. Fest 1 s zeichnet unabhängig von der Entfernung jede Sekunde auf.</string>
 </resources>
