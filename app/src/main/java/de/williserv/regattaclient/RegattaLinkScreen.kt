@@ -251,6 +251,7 @@ fun RegattaLinkScreen(
         RegattaLinkSetupDestination.NMEA -> {
             RegattaLinkNmeaSetupSheet(
                 nmeaState = nmeaState,
+                connected = connected,
                 otaActive = otaState.isActive,
                 rawCaptureActive = rawCaptureState.isActive,
                 onRefreshPgnInventory = onRefreshPgnInventory,
@@ -706,15 +707,16 @@ private fun rememberRawCaptureRemainingSeconds(
 @Composable
 private fun RegattaLinkNmeaSetupSheet(
     nmeaState: RegattaLinkNmeaState,
+    connected: Boolean,
     otaActive: Boolean,
     rawCaptureActive: Boolean,
     onRefreshPgnInventory: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val nmeaAvailable =
-        nmeaState.boatStateSupported ||
-            nmeaState.pgnInventorySupported ||
-            nmeaState.rawCanSupported
+        connected &&
+            (nmeaState.boatStateSupported ||
+                nmeaState.pgnInventorySupported)
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -748,7 +750,7 @@ private fun RegattaLinkNmeaSetupSheet(
                 )
             }
 
-            if (nmeaState.boatStateSupported) {
+            if (connected && nmeaState.boatStateSupported) {
                 Text(
                     text = stringResource(R.string.regattalink_boat_state_title),
                     fontSize = 18.sp,
@@ -787,7 +789,7 @@ private fun RegattaLinkNmeaSetupSheet(
                 }
             }
 
-            if (nmeaState.pgnInventorySupported) {
+            if (connected && nmeaState.pgnInventorySupported) {
                 Text(
                     text = stringResource(R.string.regattalink_pgns_seen),
                     fontSize = 18.sp,
@@ -1223,7 +1225,8 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
                 Button(
                     onClick = onReadRawFrames,
                     enabled =
-                        !otaActive &&
+                        connected &&
+                            !otaActive &&
                             !rawCaptureState.isActive &&
                             !nmeaState.rawCanReading,
                     modifier = Modifier
