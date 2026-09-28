@@ -28,8 +28,8 @@ data class RegattaLinkConfigurationState(
     val deviceControlStatus: RegattaLinkDeviceControlStatus? = null,
     val deviceControlError: String = "",
     val busy: Boolean = false,
-    val userMessage: RegattaLinkUiMessage? = null,
-    val error: String = ""
+    val error: String = "",
+    val userMessage: RegattaLinkUiMessage? = null
 )
 
 internal fun regattaLinkConfigurationMutationBlocked(
@@ -125,8 +125,8 @@ data class RegattaLinkNmeaState(
     val boatState: RegattaLinkBoatState? = null,
     val boatStateReceivedAtElapsedMs: Long? = null,
     val pausedForOta: Boolean = false,
-    val userMessage: RegattaLinkUiMessage? = null,
-    val error: String = ""
+    val error: String = "",
+    val userMessage: RegattaLinkUiMessage? = null
 )
 
 internal enum class RegattaLinkDeviceNameValidationError {
