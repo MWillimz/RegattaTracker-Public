@@ -462,3 +462,45 @@ internal fun regattaLinkDeviceControlFailureText(
     RegattaLinkDeviceControlResult.TIMEOUT ->
         "RegattaLink calibration timed out"
 }
+
+
+internal fun regattaLinkDeviceControlUiMessage(
+    status: RegattaLinkDeviceControlStatus?,
+    hasError: Boolean
+): RegattaLinkUiMessage? {
+    if (!hasError) return null
+    if (status?.phase != RegattaLinkDeviceControlPhase.ERROR) {
+        return RegattaLinkUiMessage.CONFIGURATION_FAILED
+    }
+
+    return when (status.applicationErrorCode) {
+        2 -> RegattaLinkUiMessage.DEVICE_CONTROL_UNSUPPORTED
+        3 -> RegattaLinkUiMessage.DEVICE_CONTROL_BUSY
+        4 -> RegattaLinkUiMessage.DEVICE_CONTROL_NOT_READY
+        5 -> RegattaLinkUiMessage.DEVICE_CONTROL_REJECTED
+        null -> when (status.result) {
+            RegattaLinkDeviceControlResult.BUSY ->
+                RegattaLinkUiMessage.DEVICE_CONTROL_BUSY
+            RegattaLinkDeviceControlResult.INVALID ->
+                RegattaLinkUiMessage.DEVICE_CONTROL_REJECTED
+            RegattaLinkDeviceControlResult.MOTION_REJECT ->
+                RegattaLinkUiMessage.CALIBRATION_MOTION_REJECTED
+            RegattaLinkDeviceControlResult.ORIENTATION_REJECT ->
+                RegattaLinkUiMessage.CALIBRATION_ORIENTATION_REJECTED
+            RegattaLinkDeviceControlResult.PERSIST_ERROR ->
+                RegattaLinkUiMessage.CALIBRATION_PERSIST_FAILED
+            RegattaLinkDeviceControlResult.CONFIG_ERROR ->
+                RegattaLinkUiMessage.FACTORY_RESET_CONFIG_FAILED
+            RegattaLinkDeviceControlResult.BOND_RESET_ERROR ->
+                RegattaLinkUiMessage.FACTORY_RESET_BOND_FAILED
+            RegattaLinkDeviceControlResult.INTERNAL_ERROR ->
+                RegattaLinkUiMessage.DEVICE_CONTROL_INTERNAL_FAILED
+            RegattaLinkDeviceControlResult.TIMEOUT ->
+                RegattaLinkUiMessage.CALIBRATION_TIMEOUT
+            RegattaLinkDeviceControlResult.NONE,
+            RegattaLinkDeviceControlResult.OK ->
+                RegattaLinkUiMessage.CONFIGURATION_FAILED
+        }
+        else -> RegattaLinkUiMessage.DEVICE_CONTROL_REJECTED
+    }
+}
