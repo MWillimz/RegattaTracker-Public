@@ -190,10 +190,21 @@ fun RegattaLinkScreen(
         )
     val nameValidationError =
         if (nameDraft.isBlank()) {
-            stringResource(R.string.regattalink_name_required)
+            RegattaLinkDeviceNameValidationError.EMPTY
         } else {
             validateRegattaLinkDeviceName(nameDraft)
         }
+    val nameValidationErrorText = when (nameValidationError) {
+        RegattaLinkDeviceNameValidationError.EMPTY ->
+            stringResource(R.string.regattalink_name_validation_empty)
+        RegattaLinkDeviceNameValidationError.TOO_LONG_UTF8 ->
+            stringResource(R.string.regattalink_name_validation_too_long_utf8)
+        RegattaLinkDeviceNameValidationError.UNSUPPORTED_CONTROL_CHARACTER ->
+            stringResource(
+                R.string.regattalink_name_validation_unsupported_control_character
+            )
+        null -> null
+    }
 
     val nmeaSetupOpen =
         activeSetupDestination == RegattaLinkSetupDestination.NMEA &&
@@ -426,9 +437,9 @@ fun RegattaLinkScreen(
                                 Text(stringResource(R.string.regattalink_name))
                             }
                         )
-                        if (nameValidationError != null) {
+                        if (nameValidationErrorText != null) {
                             Text(
-                                text = nameValidationError,
+                                text = nameValidationErrorText,
                                 color = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.padding(top = 6.dp)
                             )
