@@ -237,12 +237,20 @@ fun RegattaLinkScreen(
     }
 
     if (settingsSheetOpen) {
-        RegattaLinkSettingsSheet(
+        RegattaLinkImuSetupSheet(
             controlStatus = controlStatus,
+            telemetryState = telemetryState,
             boatFramePresentation = boatFramePresentation,
             controlsEnabled = orientationControlsEnabled,
+            setUprightEnabled = deviceControlEnabled,
             deviceControlBusy = configurationState.deviceControlBusy,
             deviceControlError = configurationState.deviceControlError,
+            onSetUpright = {
+                onDeviceControl(
+                    RegattaLinkDeviceControlOpcode.SET_UPRIGHT,
+                    0
+                )
+            },
             onAdjust = onDeviceControl,
             onDismiss = { settingsSheetOpen = false }
         )
@@ -1367,15 +1375,42 @@ private fun DetailsToggle(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun RegattaLinkSettingsSheet(
+private fun RegattaLinkImuSetupSheet(
     controlStatus: RegattaLinkDeviceControlStatus?,
+    telemetryState: RegattaLinkTelemetryState,
     boatFramePresentation: RegattaLinkBoatFramePresentation,
     controlsEnabled: Boolean,
+    setUprightEnabled: Boolean,
     deviceControlBusy: Boolean,
     deviceControlError: String,
+    onSetUpright: () -> Unit,
     onAdjust: (RegattaLinkDeviceControlOpcode, Int) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val motionIsStale = rememberTelemetryStale(
+        telemetryState.motionOneHzReceivedAtElapsedMs,
+        REGATTALINK_MOTION_ONE_HZ_STALE_MS
+    )
+    val liveMotion = telemetryState.motionOneHz.takeIf {
+        telemetryState.supported &&
+            !telemetryState.pausedForOta &&
+            !motionIsStale
+    }
+    val port = stringResource(R.string.regattalink_port)
+    val starboard = stringResource(R.string.regattalink_starboard)
+    val bowUp = stringResource(R.string.regattalink_bow_up)
+    val bowDown = stringResource(R.string.regattalink_bow_down)
+    val liveHeelValue = formatRegattaLinkDirectionalMeasurement(
+        valueDeg = liveMotion?.heelDeg,
+        positiveDirectionLabel = starboard,
+        negativeDirectionLabel = port
+    )
+    val livePitchValue = formatRegattaLinkDirectionalMeasurement(
+        valueDeg = liveMotion?.pitchDeg,
+        positiveDirectionLabel = bowUp,
+        negativeDirectionLabel = bowDown
+    )
+
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
@@ -1385,29 +1420,84 @@ private fun RegattaLinkSettingsSheet(
                 .verticalScroll(rememberScrollState())
         ) {
             Text(
-                text = stringResource(R.string.regattalink_settings_title),
+                text = stringResource(R.string.regattalink_setup_imu),
                 fontSize = 22.sp,
                 fontWeight = FontWeight.SemiBold
             )
+
             Text(
-                text = stringResource(
-                    R.string.regattalink_installation_orientation
-                ),
+                text = stringResource(R.string.regattalink_live_orientation),
                 fontSize = 18.sp,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(top = 18.dp)
             )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(20.dp)
+            ) {
+                RegattaLinkLiveOrientationValue(
+                    label = stringResource(R.string.regattalink_heel),
+                    value = liveHeelValue,
+                    modifier = Modifier.weight(1f)
+                )
+                RegattaLinkLiveOrientationValue(
+                    label = stringResource(R.string.regattalink_pitch),
+                    value = livePitchValue,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            val liveStatusText = when {
+                !telemetryState.supported ->
+                    stringResource(R.string.regattalink_unavailable)
+                telemetryState.pausedForOta ->
+                    stringResource(R.string.regattalink_telemetry_paused_ota)
+                telemetryState.motionOneHz == null ->
+                    stringResource(R.string.regattalink_telemetry_waiting)
+                motionIsStale ->
+                    stringResource(R.string.regattalink_telemetry_stale)
+                else -> null
+            }
+            liveStatusText?.let {
+                Text(
+                    text = it,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
+
+            Text(
+                text = stringResource(R.string.regattalink_set_upright),
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 22.dp)
+            )
+            Text(
+                text = stringResource(R.string.regattalink_set_upright_instruction),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp)
+            )
             Text(
                 text = stringResource(
-                    R.string.regattalink_installation_orientation_help
+                    R.string.regattalink_orientation_set_upright_resets
                 ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 6.dp)
             )
+            Button(
+                onClick = onSetUpright,
+                enabled = setUprightEnabled,
+                modifier = Modifier.padding(top = 10.dp)
+            ) {
+                Text(stringResource(R.string.regattalink_set_upright))
+            }
 
             if (
-                boatFramePresentation ==
-                RegattaLinkBoatFramePresentation.NOT_SET
+                !regattaLinkShouldShowManualOrientationControls(
+                    boatFramePresentation
+                )
             ) {
                 Text(
                     text = stringResource(
@@ -1416,24 +1506,31 @@ private fun RegattaLinkSettingsSheet(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 10.dp)
                 )
+            } else {
+                Text(
+                    text = stringResource(
+                        R.string.regattalink_manual_orientation_correction
+                    ),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 22.dp)
+                )
+                Text(
+                    text = stringResource(
+                        R.string.regattalink_installation_orientation_help
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+                RegattaLinkOrientationControl(
+                    status = controlStatus,
+                    enabled = controlsEnabled,
+                    onAdjust = onAdjust,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 14.dp)
+                )
             }
-
-            RegattaLinkOrientationControl(
-                status = controlStatus,
-                enabled = controlsEnabled,
-                onAdjust = onAdjust,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 14.dp)
-            )
-
-            Text(
-                text = stringResource(
-                    R.string.regattalink_orientation_set_upright_resets
-                ),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 14.dp)
-            )
 
             if (deviceControlBusy) {
                 Text(
@@ -1464,6 +1561,26 @@ private fun RegattaLinkSettingsSheet(
 }
 
 @Composable
+private fun RegattaLinkLiveOrientationValue(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        Text(
+            text = label,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = value,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(top = 2.dp)
+        )
+    }
+}
+
+@Composable
 private fun RegattaLinkOrientationControl(
     status: RegattaLinkDeviceControlStatus?,
     enabled: Boolean,
@@ -1474,6 +1591,7 @@ private fun RegattaLinkOrientationControl(
     val starboard = stringResource(R.string.regattalink_starboard)
     val bow = stringResource(R.string.regattalink_bow)
     val stern = stringResource(R.string.regattalink_stern)
+    val correction = stringResource(R.string.regattalink_correction)
 
     val forwardValue = formatRegattaLinkDirectionalTrim(
         valueDeg = status?.forwardTrimDeg,
@@ -1500,7 +1618,7 @@ private fun RegattaLinkOrientationControl(
             fontWeight = FontWeight.Medium
         )
         Text(
-            text = forwardValue,
+            text = "$correction: $forwardValue",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 2.dp)
         )
@@ -1557,7 +1675,7 @@ private fun RegattaLinkOrientationControl(
             modifier = Modifier.padding(top = 18.dp)
         )
         Text(
-            text = pitchValue,
+            text = "$correction: $pitchValue",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 2.dp)
         )
@@ -1580,6 +1698,17 @@ private fun RegattaLinkOrientationControl(
             modifier = Modifier.padding(top = 8.dp)
         )
 
+        Text(
+            text = stringResource(R.string.regattalink_heel),
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(top = 18.dp)
+        )
+        Text(
+            text = "$correction: $heelValue",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 2.dp)
+        )
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1587,77 +1716,49 @@ private fun RegattaLinkOrientationControl(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = stringResource(R.string.regattalink_heel),
-                    fontWeight = FontWeight.Medium
-                )
-                Text(
-                    text = heelValue,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-                RegattaLinkOrientationActionButton(
-                    text = "← " + stringResource(
-                        R.string.regattalink_one_degree_port
-                    ),
-                    contentDescription = stringResource(
-                        R.string.regattalink_adjust_heel_port
-                    ),
-                    enabled = enabled,
-                    onClick = {
-                        onAdjust(
+            RegattaLinkOrientationActionButton(
+                text = "← " + stringResource(
+                    R.string.regattalink_one_degree_port
+                ),
+                contentDescription = stringResource(
+                    R.string.regattalink_adjust_heel_port
+                ),
+                enabled = enabled,
+                onClick = {
+                    onAdjust(
+                        RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
+                        regattaLinkTrimDelta(
                             RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
-                            regattaLinkTrimDelta(
-                                RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
-                                RegattaLinkTrimDirection.PORT
-                            )
+                            RegattaLinkTrimDirection.PORT
                         )
-                    },
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-            }
+                    )
+                },
+                modifier = Modifier.weight(1f)
+            )
 
             RegattaLinkBoatTopView(
                 modifier = Modifier.size(width = 124.dp, height = 176.dp)
             )
 
-            Column(
-                modifier = Modifier.weight(1f),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = stringResource(R.string.regattalink_heel),
-                    fontWeight = FontWeight.Medium
-                )
-                Text(
-                    text = heelValue,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-                RegattaLinkOrientationActionButton(
-                    text = stringResource(
-                        R.string.regattalink_one_degree_starboard
-                    ) + " →",
-                    contentDescription = stringResource(
-                        R.string.regattalink_adjust_heel_starboard
-                    ),
-                    enabled = enabled,
-                    onClick = {
-                        onAdjust(
+            RegattaLinkOrientationActionButton(
+                text = stringResource(
+                    R.string.regattalink_one_degree_starboard
+                ) + " →",
+                contentDescription = stringResource(
+                    R.string.regattalink_adjust_heel_starboard
+                ),
+                enabled = enabled,
+                onClick = {
+                    onAdjust(
+                        RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
+                        regattaLinkTrimDelta(
                             RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
-                            regattaLinkTrimDelta(
-                                RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
-                                RegattaLinkTrimDirection.STARBOARD
-                            )
+                            RegattaLinkTrimDirection.STARBOARD
                         )
-                    },
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-            }
+                    )
+                },
+                modifier = Modifier.weight(1f)
+            )
         }
 
         RegattaLinkOrientationActionButton(
@@ -1709,30 +1810,35 @@ private fun RegattaLinkBoatTopView(
     Canvas(modifier = modifier) {
         val stroke = 2.dp.toPx()
         val hull = Path().apply {
-            moveTo(size.width * 0.50f, size.height * 0.08f)
-            quadraticBezierTo(
-                size.width * 0.16f,
-                size.height * 0.28f,
-                size.width * 0.27f,
-                size.height * 0.74f
+            moveTo(size.width * 0.50f, size.height * 0.06f)
+            cubicTo(
+                size.width * 0.33f,
+                size.height * 0.17f,
+                size.width * 0.22f,
+                size.height * 0.39f,
+                size.width * 0.20f,
+                size.height * 0.70f
             )
             quadraticBezierTo(
-                size.width * 0.32f,
-                size.height * 0.91f,
-                size.width * 0.50f,
+                size.width * 0.20f,
+                size.height * 0.86f,
+                size.width * 0.28f,
                 size.height * 0.94f
             )
+            lineTo(size.width * 0.72f, size.height * 0.94f)
             quadraticBezierTo(
-                size.width * 0.68f,
-                size.height * 0.91f,
-                size.width * 0.73f,
-                size.height * 0.74f
+                size.width * 0.80f,
+                size.height * 0.86f,
+                size.width * 0.80f,
+                size.height * 0.70f
             )
-            quadraticBezierTo(
-                size.width * 0.84f,
-                size.height * 0.28f,
+            cubicTo(
+                size.width * 0.78f,
+                size.height * 0.39f,
+                size.width * 0.67f,
+                size.height * 0.17f,
                 size.width * 0.50f,
-                size.height * 0.08f
+                size.height * 0.06f
             )
             close()
         }
@@ -1743,8 +1849,8 @@ private fun RegattaLinkBoatTopView(
         )
         drawLine(
             color = outlineColor,
-            start = Offset(size.width * 0.50f, size.height * 0.13f),
-            end = Offset(size.width * 0.50f, size.height * 0.89f),
+            start = Offset(size.width * 0.50f, size.height * 0.12f),
+            end = Offset(size.width * 0.50f, size.height * 0.90f),
             strokeWidth = stroke
         )
 
@@ -1773,7 +1879,6 @@ private fun RegattaLinkBoatTopView(
         )
     }
 }
-
 
 @Composable
 private fun BoatStateValues(state: RegattaLinkBoatState) {
