@@ -740,6 +740,67 @@ class RegattaLinkDeviceControlTest {
     }
 
     @Test
+    fun rejectedBeforeStartClearsBusyAndPreservesConfirmedStatus() {
+        val confirmedStatus = RegattaLinkDeviceControlStatus(
+            opcode = RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
+            phase = RegattaLinkDeviceControlPhase.SUCCESS,
+            result = RegattaLinkDeviceControlResult.OK,
+            requestId = 12u,
+            forwardTrimDeg = 1,
+            heelTrimDeg = -2,
+            pitchTrimDeg = 3,
+            boatFrameValid = true,
+            gyroBiasValid = true,
+            mountingEpoch = 4u
+        )
+        val state = RegattaLinkConfigurationState(
+            deviceControlSupported = true,
+            deviceControlBusy = true,
+            deviceControlAcceptedOpcode =
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+            deviceControlAcceptedRequestId = 55u,
+            factoryResetWriteAcceptedRequestId = 55u,
+            factoryResetAwaitingDisconnect = true,
+            deviceControlStatus = confirmedStatus
+        )
+
+        val rejected = regattaLinkDeviceControlRejectedBeforeStartState(
+            state = state,
+            errorMessage = "connection no longer ready"
+        )
+
+        assertFalse(rejected.deviceControlBusy)
+        assertNull(rejected.deviceControlAcceptedOpcode)
+        assertNull(rejected.deviceControlAcceptedRequestId)
+        assertNull(rejected.factoryResetWriteAcceptedRequestId)
+        assertFalse(rejected.factoryResetAwaitingDisconnect)
+        assertEquals(confirmedStatus, rejected.deviceControlStatus)
+        assertEquals("connection no longer ready", rejected.deviceControlError)
+    }
+
+    @Test
+    fun staleDeviceControlExecutionCannotReleaseNewerLease() {
+        val guard = RegattaLinkDeviceControlExecutionGuard<Any>()
+        val firstSession = Any()
+        val secondSession = Any()
+
+        val first = requireNotNull(guard.tryAcquire(firstSession))
+        assertTrue(guard.isActive())
+        assertNull(guard.tryAcquire(firstSession))
+
+        guard.clear()
+
+        val second = requireNotNull(guard.tryAcquire(secondSession))
+        assertTrue(guard.owns(second))
+        assertFalse(guard.release(first))
+        assertTrue(guard.owns(second))
+        assertTrue(guard.isActive())
+
+        assertTrue(guard.release(second))
+        assertFalse(guard.isActive())
+    }
+
+    @Test
     fun acceptedFactoryResetOwnsManualDisconnectUntilConsumedOrExpired() {
         var now = 2_000L
         val tracker = RegattaLinkFactoryResetDisconnectTracker<Any>(
