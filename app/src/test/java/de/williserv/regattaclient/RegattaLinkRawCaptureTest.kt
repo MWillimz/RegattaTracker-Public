@@ -83,6 +83,31 @@ class RegattaLinkRawCaptureTest {
                 rawCaptureState = idleCapture
             )
         )
+        assertFalse(
+            regattaLinkRawCaptureStartAllowed(
+                connected = true,
+                otaActive = false,
+                configurationState = idleConfiguration,
+                nmeaState = supportedNmea,
+                rawCaptureState =
+                    RegattaLinkRawCaptureState(
+                        phase = RegattaLinkRawCapturePhase.CAPTURING
+                    )
+            )
+        )
+        assertFalse(
+            regattaLinkRawCaptureStartAllowed(
+                connected = true,
+                otaActive = false,
+                configurationState = idleConfiguration,
+                nmeaState = supportedNmea,
+                rawCaptureState =
+                    RegattaLinkRawCaptureState(
+                        phase = RegattaLinkRawCapturePhase.COMPLETED,
+                        filePath = "/tmp/existing.csv"
+                    )
+            )
+        )
     }
 
     @Test
