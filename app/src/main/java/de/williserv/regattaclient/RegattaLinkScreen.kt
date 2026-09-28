@@ -49,6 +49,23 @@ internal fun shouldAutoRefreshPgnInventory(
         !otaActive &&
         !alreadyRequested
 
+internal data class RegattaLinkConfigSliderSubmission(
+    val requestedValue: Int,
+    val confirmedDraft: Float
+)
+
+internal fun prepareRegattaLinkConfigSliderSubmission(
+    draftValue: Float,
+    confirmedValue: Int,
+    validRange: IntRange
+): RegattaLinkConfigSliderSubmission {
+    val requestedValue = draftValue.roundToInt().coerceIn(validRange)
+    return RegattaLinkConfigSliderSubmission(
+        requestedValue = requestedValue,
+        confirmedDraft = confirmedValue.coerceIn(validRange).toFloat()
+    )
+}
+
 @Composable
 fun RegattaLinkScreen(
     state: RegattaLinkClientState,
@@ -413,11 +430,19 @@ fun RegattaLinkScreen(
                         value = brightnessDraft.coerceIn(0f, 100f),
                         onValueChange = { brightnessDraft = it },
                         onValueChangeFinished = {
-                            val value = brightnessDraft
-                                .roundToInt()
-                                .coerceIn(0, 100)
-                            if (value != configurationState.ledBrightnessPct) {
-                                onSetLedBrightness(value)
+                            val submission =
+                                prepareRegattaLinkConfigSliderSubmission(
+                                    draftValue = brightnessDraft,
+                                    confirmedValue =
+                                        configurationState.ledBrightnessPct,
+                                    validRange = 0..100
+                                )
+                            brightnessDraft = submission.confirmedDraft
+                            if (
+                                submission.requestedValue !=
+                                configurationState.ledBrightnessPct
+                            ) {
+                                onSetLedBrightness(submission.requestedValue)
                             }
                         },
                         valueRange = 0f..100f,
@@ -446,14 +471,19 @@ fun RegattaLinkScreen(
                         value = dampingDraft.coerceIn(1f, 10f),
                         onValueChange = { dampingDraft = it },
                         onValueChangeFinished = {
-                            val value = dampingDraft
-                                .roundToInt()
-                                .coerceIn(1, 10)
+                            val submission =
+                                prepareRegattaLinkConfigSliderSubmission(
+                                    draftValue = dampingDraft,
+                                    confirmedValue =
+                                        configurationState.motionDampingSeconds,
+                                    validRange = 1..10
+                                )
+                            dampingDraft = submission.confirmedDraft
                             if (
-                                value !=
+                                submission.requestedValue !=
                                 configurationState.motionDampingSeconds
                             ) {
-                                onSetMotionDamping(value)
+                                onSetMotionDamping(submission.requestedValue)
                             }
                         },
                         valueRange = 1f..10f,
