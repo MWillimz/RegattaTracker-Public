@@ -410,7 +410,7 @@
     <string name="regattalink_error_telemetry_invalid">Télémétrie RegattaLink non valide reçue.</string>
     <string name="regattalink_error_configuration_failed">Impossible de lire ou de modifier les réglages du RegattaLink.</string>
     <string name="regattalink_error_name_change_failed">Impossible de modifier le nom du RegattaLink.</string>
-    <string name="regattalink_error_led_brightness_range">La luminosité LED doit être comprise entre 0 et 100 %.</string>
+    <string name="regattalink_error_led_brightness_range">La luminosité LED doit être comprise entre 0 et 100 pour cent.</string>
     <string name="regattalink_error_motion_damping_range">L’amortissement du mouvement doit être compris entre 1 et 10 secondes.</string>
     <string name="regattalink_error_nmea_failed">Le diagnostic NMEA2000 a échoué.</string>
     <string name="regattalink_error_nmea_notifications_failed">Impossible d’activer les données NMEA2000 en direct.</string>
