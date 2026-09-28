@@ -242,8 +242,12 @@ internal class RegattaLinkLoadPacketAssembler(
 }
 
 internal class RegattaLinkLoadAliasStore(context: Context) {
+    companion object {
+        internal const val PREFS_NAME = "regattalink_load_aliases"
+    }
+
     private val prefs = context.applicationContext.getSharedPreferences(
-        "regattalink_load_aliases",
+        PREFS_NAME,
         Context.MODE_PRIVATE
     )
 

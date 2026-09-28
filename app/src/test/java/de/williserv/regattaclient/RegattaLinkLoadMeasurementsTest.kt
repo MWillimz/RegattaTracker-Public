@@ -187,6 +187,75 @@ class RegattaLinkLoadMeasurementsTest {
     }
 
     @Test
+    fun resetRequiresFreshCatalogBeforeReconnectSamplesAreAccepted() {
+        val assembler = RegattaLinkLoadPacketAssembler()
+        val catalogFrame = catalog(
+            epoch = 3,
+            slot = 0,
+            stable = true,
+            kind = 2,
+            id = byteArrayOf(1, 0, 0, 0, 0, 0, 0, 0, 0)
+        )
+        assembler.accept(catalogFrame)
+        assertTrue(
+            requireNotNull(
+                assembler.accept(
+                    sample(
+                        epoch = 3,
+                        sequence = 1,
+                        x10 = false,
+                        entries = listOf(0 to 50)
+                    )
+                )
+            ).isNotEmpty()
+        )
+
+        assembler.reset()
+
+        assertNull(
+            assembler.accept(
+                sample(
+                    epoch = 3,
+                    sequence = 2,
+                    x10 = false,
+                    entries = listOf(0 to 99)
+                )
+            )
+        )
+        assembler.accept(catalogFrame)
+        assertEquals(
+            99.0,
+            requireNotNull(
+                assembler.accept(
+                    sample(
+                        epoch = 3,
+                        sequence = 3,
+                        x10 = false,
+                        entries = listOf(0 to 99)
+                    )
+                )
+            ).single().loadKg,
+            0.0001
+        )
+    }
+
+    @Test
+    fun aliasRenameDoesNotChangeMeasurementKey() {
+        val original = RegattaLinkLoadSensor(
+            identityKey = "stable:nmea:0123456789abcdef.0",
+            measurementKey = "nmea.load.0123456789abcdef.0",
+            defaultLabel = "Load 0",
+            alias = "Vorstag",
+            loadKg = 70.5,
+            stableIdentity = true
+        )
+        val renamed = original.copy(alias = "Forestay")
+
+        assertEquals(original.measurementKey, renamed.measurementKey)
+        assertEquals("Forestay", renamed.label)
+    }
+
+    @Test
     fun snapshotStoreWritesExistingDynamicMeasurementContract() {
         RegattaLinkLoadSnapshotStore.update(
             listOf(
