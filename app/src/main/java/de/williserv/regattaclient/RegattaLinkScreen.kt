@@ -69,6 +69,33 @@ internal data class RegattaLinkConfigSliderSubmission(
     val confirmedDraft: Float
 )
 
+@Composable
+private fun regattaLinkRuntimeMessageText(
+    userMessage: RegattaLinkUiMessage?,
+    hasTechnicalError: Boolean,
+    fallback: RegattaLinkUiMessage
+): String? =
+    (userMessage ?: fallback.takeIf { hasTechnicalError })?.let { message ->
+        stringResource(regattaLinkUiMessageResource(message))
+    }
+
+@Composable
+private fun RegattaLinkTechnicalDetail(
+    detail: String,
+    modifier: Modifier = Modifier
+) {
+    if (detail.isBlank()) return
+    Text(
+        text = stringResource(
+            R.string.regattalink_technical_detail_value,
+            detail
+        ),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        fontSize = 12.sp,
+        modifier = modifier
+    )
+}
+
 internal fun prepareRegattaLinkConfigSliderSubmission(
     draftValue: Float,
     confirmedValue: Int?,
@@ -519,9 +546,13 @@ fun RegattaLinkScreen(
                     )
                 }
 
-                if (state.error.isNotBlank()) {
+                regattaLinkRuntimeMessageText(
+                    userMessage = state.userMessage,
+                    hasTechnicalError = state.error.isNotBlank(),
+                    fallback = RegattaLinkUiMessage.CONNECTION_FAILED
+                )?.let { message ->
                     Text(
-                        text = state.error,
+                        text = message,
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(top = 8.dp)
                     )
@@ -591,18 +622,26 @@ fun RegattaLinkScreen(
                         )
                     }
 
-                    if (telemetryState.error.isNotBlank()) {
+                    regattaLinkRuntimeMessageText(
+                        userMessage = telemetryState.userMessage,
+                        hasTechnicalError = telemetryState.error.isNotBlank(),
+                        fallback = RegattaLinkUiMessage.TELEMETRY_FAILED
+                    )?.let { message ->
                         Text(
-                            text = telemetryState.error,
+                            text = message,
                             modifier = Modifier.padding(top = 8.dp),
                             color = MaterialTheme.colorScheme.error
                         )
                     }
                 }
 
-                if (configurationState.error.isNotBlank()) {
+                regattaLinkRuntimeMessageText(
+                    userMessage = configurationState.userMessage,
+                    hasTechnicalError = configurationState.error.isNotBlank(),
+                    fallback = RegattaLinkUiMessage.CONFIGURATION_FAILED
+                )?.let { message ->
                     Text(
-                        text = configurationState.error,
+                        text = message,
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(top = 8.dp)
                     )
@@ -888,9 +927,13 @@ private fun RegattaLinkNmeaSetupSheet(
                     }
             }
 
-            if (nmeaState.error.isNotBlank()) {
+            regattaLinkRuntimeMessageText(
+                userMessage = nmeaState.userMessage,
+                hasTechnicalError = nmeaState.error.isNotBlank(),
+                fallback = RegattaLinkUiMessage.NMEA_FAILED
+            )?.let { message ->
                 Text(
-                    text = nmeaState.error,
+                    text = message,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(top = 10.dp)
                 )
@@ -1122,15 +1165,10 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
                         modifier = Modifier.padding(top = 3.dp)
                     )
                 }
-                if (
-                    configurationState.diagnosticLogError.isNotBlank()
-                ) {
-                    Text(
-                        configurationState.diagnosticLogError,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(top = 6.dp)
-                    )
-                }
+                RegattaLinkTechnicalDetail(
+                    detail = configurationState.diagnosticLogError,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
             }
 
             if (nmeaState.rawCanSupported) {
@@ -1227,9 +1265,13 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
                     Button(
                         onClick = onStartRawCapture,
                         enabled =
-                            connected &&
-                                !otaActive &&
-                                !nmeaState.rawCanReading,
+                            regattaLinkRawCaptureStartAllowed(
+                                connected = connected,
+                                otaActive = otaActive,
+                                configurationState = configurationState,
+                                nmeaState = nmeaState,
+                                rawCaptureState = rawCaptureState
+                            ),
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 10.dp)
@@ -1275,13 +1317,21 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
                     }
                 }
 
-                if (rawCaptureState.error.isNotBlank()) {
+                regattaLinkRuntimeMessageText(
+                    userMessage = rawCaptureState.userMessage,
+                    hasTechnicalError = rawCaptureState.error.isNotBlank(),
+                    fallback = RegattaLinkUiMessage.RAW_CAPTURE_FAILED
+                )?.let { message ->
                     Text(
-                        text = rawCaptureState.error,
+                        text = message,
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(top = 6.dp)
                     )
                 }
+                RegattaLinkTechnicalDetail(
+                    detail = rawCaptureState.error,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
 
                 Button(
                     onClick = onReadRawFrames,
@@ -1340,27 +1390,44 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
                 }
             }
 
-            if (configurationState.deviceControlError.isNotBlank()) {
+            RegattaLinkTechnicalDetail(
+                detail = configurationState.deviceControlError,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+            regattaLinkRuntimeMessageText(
+                userMessage = configurationState.userMessage,
+                hasTechnicalError = configurationState.error.isNotBlank(),
+                fallback = RegattaLinkUiMessage.CONFIGURATION_FAILED
+            )?.let { message ->
                 Text(
-                    text = configurationState.deviceControlError,
+                    text = message,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(top = 6.dp)
                 )
             }
-            if (configurationState.error.isNotBlank()) {
+            RegattaLinkTechnicalDetail(
+                detail = configurationState.error,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            regattaLinkRuntimeMessageText(
+                userMessage = nmeaState.userMessage,
+                hasTechnicalError = nmeaState.error.isNotBlank(),
+                fallback = RegattaLinkUiMessage.NMEA_FAILED
+            )?.let { message ->
                 Text(
-                    text = configurationState.error,
+                    text = message,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(top = 6.dp)
                 )
             }
-            if (nmeaState.error.isNotBlank()) {
-                Text(
-                    text = nmeaState.error,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(top = 6.dp)
-                )
-            }
+            RegattaLinkTechnicalDetail(
+                detail = nmeaState.error,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            RegattaLinkTechnicalDetail(
+                detail = state.error,
+                modifier = Modifier.padding(top = 4.dp)
+            )
 
             TextButton(
                 onClick = onDismiss,
@@ -1481,14 +1548,19 @@ private fun RegattaLinkFirmwareSheet(
                         )
                     }
                     RegattaLinkFirmwareStatus.ERROR -> {
+                        val message =
+                            firmwareState.userMessage
+                                ?: RegattaLinkUiMessage.FIRMWARE_CHECK_FAILED
                         Text(
-                            text = firmwareState.error.ifBlank {
-                                stringResource(
-                                    R.string.regattalink_firmware_check_failed
-                                )
-                            },
+                            text = stringResource(
+                                regattaLinkUiMessageResource(message)
+                            ),
                             color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.padding(top = 8.dp)
+                        )
+                        RegattaLinkTechnicalDetail(
+                            detail = firmwareState.error,
+                            modifier = Modifier.padding(top = 4.dp)
                         )
                     }
                 }
@@ -1582,20 +1654,21 @@ private fun RegattaLinkFirmwareSheet(
                         )
                     }
 
-                    if (otaState.detail.isNotBlank()) {
+                    regattaLinkRuntimeMessageText(
+                        userMessage = otaState.userMessage,
+                        hasTechnicalError = otaState.error.isNotBlank(),
+                        fallback = RegattaLinkUiMessage.OTA_FAILED
+                    )?.let { message ->
                         Text(
-                            text = otaState.detail,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-
-                    if (otaState.error.isNotBlank()) {
-                        Text(
-                            text = otaState.error,
+                            text = message,
                             color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.padding(top = 8.dp)
                         )
                     }
+                    RegattaLinkTechnicalDetail(
+                        detail = otaState.error,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
                 }
 
                 if (
@@ -1890,7 +1963,11 @@ private fun RegattaLinkImuSetupSheet(
             }
             if (deviceControlError.isNotBlank()) {
                 Text(
-                    text = deviceControlError,
+                    text = stringResource(
+                        regattaLinkUiMessageResource(
+                            RegattaLinkUiMessage.CONFIGURATION_FAILED
+                        )
+                    ),
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(top = 8.dp)
                 )

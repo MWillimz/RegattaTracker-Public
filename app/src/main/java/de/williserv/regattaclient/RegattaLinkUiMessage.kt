@@ -1,0 +1,41 @@
+package de.williserv.regattaclient
+
+/**
+ * Stable presentation semantics for expected RegattaLink user-facing messages.
+ *
+ * Lower BLE/protocol/storage layers may keep raw exception text in their existing
+ * error/detail fields for diagnostics, but normal UI copy is selected from this
+ * enum and localized in the presentation layer.
+ */
+enum class RegattaLinkUiMessage {
+    BLUETOOTH_PERMISSION_DENIED,
+    BLUETOOTH_UNAVAILABLE,
+    CONNECTION_FAILED,
+    CONNECTION_TIMEOUT,
+    PAIRING_START_FAILED,
+    CONNECTION_OPEN_FAILED,
+    TELEMETRY_FAILED,
+    TELEMETRY_UNAVAILABLE,
+    TELEMETRY_INVALID,
+    CONFIGURATION_FAILED,
+    NAME_CHANGE_FAILED,
+    LED_BRIGHTNESS_RANGE,
+    MOTION_DAMPING_RANGE,
+    NMEA_FAILED,
+    NMEA_NOTIFICATIONS_FAILED,
+    NMEA_BOAT_STATE_READ_FAILED,
+    NMEA_PGN_INVENTORY_READ_FAILED,
+    NMEA_RAW_CAN_READ_FAILED,
+    RAW_CAPTURE_FAILED,
+    RAW_CAPTURE_DIRECTORY_FAILED,
+    RAW_CAPTURE_FILE_FAILED,
+    RAW_CAPTURE_START_FAILED,
+    RAW_CAPTURE_EXPORT_FAILED,
+    OTA_WAIT_FACTORY_RESET,
+    OTA_WAIT_CONFIGURATION,
+    OTA_CONNECT_FIRST,
+    OTA_FAILED,
+    FIRMWARE_CONNECT_FIRST,
+    FIRMWARE_SERVER_REQUIRED,
+    FIRMWARE_CHECK_FAILED
+}

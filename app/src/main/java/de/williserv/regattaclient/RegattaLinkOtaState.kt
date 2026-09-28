@@ -24,7 +24,8 @@ data class RegattaLinkOtaUiState(
     val throughputKibPerSec: Double? = null,
     val transport: String = "",
     val detail: String = "",
-    val error: String = ""
+    val error: String = "",
+    val userMessage: RegattaLinkUiMessage? = null
 ) {
     val progress: Float
         get() = if (totalBytes > 0) {

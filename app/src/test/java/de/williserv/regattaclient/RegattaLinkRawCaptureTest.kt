@@ -9,6 +9,108 @@ import org.junit.Test
 class RegattaLinkRawCaptureTest {
 
     @Test
+    fun captureStartPolicyMatchesUiAndManagerGuards() {
+        val idleConfiguration = RegattaLinkConfigurationState()
+        val supportedNmea = RegattaLinkNmeaState(rawCanSupported = true)
+        val idleCapture = RegattaLinkRawCaptureState()
+
+        assertTrue(
+            regattaLinkRawCaptureStartAllowed(
+                connected = true,
+                otaActive = false,
+                configurationState = idleConfiguration,
+                nmeaState = supportedNmea,
+                rawCaptureState = idleCapture
+            )
+        )
+        assertFalse(
+            regattaLinkRawCaptureStartAllowed(
+                connected = true,
+                otaActive = true,
+                configurationState = idleConfiguration,
+                nmeaState = supportedNmea,
+                rawCaptureState = idleCapture
+            )
+        )
+        assertFalse(
+            regattaLinkRawCaptureStartAllowed(
+                connected = true,
+                otaActive = false,
+                configurationState = idleConfiguration,
+                nmeaState = supportedNmea.copy(rawCanReading = true),
+                rawCaptureState = idleCapture
+            )
+        )
+        assertFalse(
+            regattaLinkRawCaptureStartAllowed(
+                connected = true,
+                otaActive = false,
+                configurationState =
+                    RegattaLinkConfigurationState(
+                        diagnosticLogLoading = true
+                    ),
+                nmeaState = supportedNmea,
+                rawCaptureState = idleCapture
+            )
+        )
+        assertFalse(
+            regattaLinkRawCaptureStartAllowed(
+                connected = true,
+                otaActive = false,
+                configurationState =
+                    RegattaLinkConfigurationState(
+                        deviceControlBusy = true
+                    ),
+                nmeaState = supportedNmea,
+                rawCaptureState = idleCapture
+            )
+        )
+        assertFalse(
+            regattaLinkRawCaptureStartAllowed(
+                connected = false,
+                otaActive = false,
+                configurationState = idleConfiguration,
+                nmeaState = supportedNmea,
+                rawCaptureState = idleCapture
+            )
+        )
+        assertFalse(
+            regattaLinkRawCaptureStartAllowed(
+                connected = true,
+                otaActive = false,
+                configurationState = idleConfiguration,
+                nmeaState = RegattaLinkNmeaState(rawCanSupported = false),
+                rawCaptureState = idleCapture
+            )
+        )
+        assertFalse(
+            regattaLinkRawCaptureStartAllowed(
+                connected = true,
+                otaActive = false,
+                configurationState = idleConfiguration,
+                nmeaState = supportedNmea,
+                rawCaptureState =
+                    RegattaLinkRawCaptureState(
+                        phase = RegattaLinkRawCapturePhase.CAPTURING
+                    )
+            )
+        )
+        assertFalse(
+            regattaLinkRawCaptureStartAllowed(
+                connected = true,
+                otaActive = false,
+                configurationState = idleConfiguration,
+                nmeaState = supportedNmea,
+                rawCaptureState =
+                    RegattaLinkRawCaptureState(
+                        phase = RegattaLinkRawCapturePhase.COMPLETED,
+                        filePath = "/tmp/existing.csv"
+                    )
+            )
+        )
+    }
+
+    @Test
     fun decodesBroadcastNmea2000CanId() {
         val canId =
             (3L shl 26) or
