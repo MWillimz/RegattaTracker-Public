@@ -80,6 +80,7 @@ class MainActivity : ComponentActivity() {
     private var pendingTrackingAction: PendingTrackingAction? = null
 
     private val showBoatConfirmDialog = mutableStateOf(false)
+    private val showRegistrationReminderDialog = mutableStateOf(false)
 
     private val raceLegalHash = mutableStateOf("")
     private val raceLegalVersion = mutableStateOf("")
@@ -995,6 +996,14 @@ class MainActivity : ComponentActivity() {
                         }
                     )
                 }
+                if (showRegistrationReminderDialog.value) {
+                    RegistrationReminderDialog(
+                        onOk = {
+                            showRegistrationReminderDialog.value = false
+                        }
+                    )
+                }
+
                 if (showFinishDetectedDialog.value) {
                     FinishDetectedDialog(
                         onStopTracking = {
@@ -2663,6 +2672,7 @@ class MainActivity : ComponentActivity() {
                     if (responseCode in 200..299) {
                         raceRegistered.value = true
                         registerRaceStatusText.value = getString(R.string.registered_for_race)
+                        showRegistrationReminderDialog.value = true
                         onSuccess?.invoke()
                     } else {
                         registerRaceStatusText.value =
@@ -3966,6 +3976,26 @@ fun RetireConfirmDialog(
         dismissButton = {
             TextButton(onClick = onCancel) {
                 Text(stringResource(R.string.cancel))
+            }
+        }
+    )
+}
+
+@Composable
+fun RegistrationReminderDialog(
+    onOk: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onOk,
+        title = {
+            Text(stringResource(R.string.registration_reminder_title))
+        },
+        text = {
+            Text(stringResource(R.string.registration_reminder_message))
+        },
+        confirmButton = {
+            TextButton(onClick = onOk) {
+                Text(stringResource(R.string.ok))
             }
         }
     )
