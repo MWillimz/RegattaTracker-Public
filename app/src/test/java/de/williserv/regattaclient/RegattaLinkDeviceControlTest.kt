@@ -7,6 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.Locale
 
 class RegattaLinkDeviceControlTest {
 
@@ -363,6 +364,88 @@ class RegattaLinkDeviceControlTest {
         assertEquals(
             "—",
             formatRegattaLinkDirectionalTrim(null, "Bow", "Stern")
+        )
+    }
+
+    @Test
+    fun liveOrientationFormattingUsesPhysicalDirections() {
+        assertEquals(
+            "3° Starboard",
+            formatRegattaLinkDirectionalMeasurement(
+                3.0,
+                "Starboard",
+                "Port",
+                Locale.US
+            )
+        )
+        assertEquals(
+            "3° Port",
+            formatRegattaLinkDirectionalMeasurement(
+                -3.0,
+                "Starboard",
+                "Port",
+                Locale.US
+            )
+        )
+        assertEquals(
+            "2.3° Bow up",
+            formatRegattaLinkDirectionalMeasurement(
+                2.34,
+                "Bow up",
+                "Bow down",
+                Locale.US
+            )
+        )
+        assertEquals(
+            "2.3° Bow down",
+            formatRegattaLinkDirectionalMeasurement(
+                -2.34,
+                "Bow up",
+                "Bow down",
+                Locale.US
+            )
+        )
+        assertEquals(
+            "0°",
+            formatRegattaLinkDirectionalMeasurement(
+                0.01,
+                "Starboard",
+                "Port",
+                Locale.US
+            )
+        )
+        assertEquals(
+            "—",
+            formatRegattaLinkDirectionalMeasurement(
+                null,
+                "Starboard",
+                "Port",
+                Locale.US
+            )
+        )
+    }
+
+    @Test
+    fun manualOrientationControlsAreRenderedOnlyForReadyBoatFrame() {
+        assertFalse(
+            regattaLinkShouldShowManualOrientationControls(
+                RegattaLinkBoatFramePresentation.UNKNOWN
+            )
+        )
+        assertFalse(
+            regattaLinkShouldShowManualOrientationControls(
+                RegattaLinkBoatFramePresentation.PENDING
+            )
+        )
+        assertFalse(
+            regattaLinkShouldShowManualOrientationControls(
+                RegattaLinkBoatFramePresentation.NOT_SET
+            )
+        )
+        assertTrue(
+            regattaLinkShouldShowManualOrientationControls(
+                RegattaLinkBoatFramePresentation.READY
+            )
         )
     }
 
