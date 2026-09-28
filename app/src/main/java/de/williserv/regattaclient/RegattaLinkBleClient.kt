@@ -215,7 +215,8 @@ internal class RegattaLinkBleClient(
     private val rawCaptureRunning = AtomicBoolean(false)
     private val diagnosticLogRunning = AtomicBoolean(false)
     private val configurationMutationRunning = AtomicBoolean(false)
-    private val deviceControlRunning = AtomicBoolean(false)
+    private val deviceControlExecutionGuard =
+        RegattaLinkDeviceControlExecutionGuard<BluetoothGatt>()
     private var nextDeviceControlRequestId = 1u
     private val rawCaptureStopReason =
         AtomicReference<RegattaLinkRawCaptureStopReason?>(null)
@@ -882,7 +883,7 @@ internal class RegattaLinkBleClient(
         clearConfiguration()
         clearNmea()
         diagnosticLogRunning.set(false)
-        deviceControlRunning.set(false)
+        deviceControlExecutionGuard.clear()
         selectedDeviceAddress = null
         attemptedDiscoveryAddresses.clear()
         discoveryInProgress = true
@@ -950,7 +951,7 @@ internal class RegattaLinkBleClient(
         if (
             diagnosticLogRunning.get() ||
             configurationMutationRunning.get() ||
-            deviceControlRunning.get()
+            deviceControlExecutionGuard.isActive()
         ) {
             emitOta(
                 RegattaLinkOtaUiState(
@@ -1090,7 +1091,7 @@ internal class RegattaLinkBleClient(
         clearConfiguration()
         clearNmea()
         diagnosticLogRunning.set(false)
-        deviceControlRunning.set(false)
+        deviceControlExecutionGuard.clear()
         currentDevice = null
         discoveryInProgress = false
         discoveryCandidateInProgress = false
@@ -1115,7 +1116,7 @@ internal class RegattaLinkBleClient(
         clearConfiguration()
         clearNmea()
         diagnosticLogRunning.set(false)
-        deviceControlRunning.set(false)
+        deviceControlExecutionGuard.clear()
         currentDevice = null
         discoveryInProgress = false
         discoveryCandidateInProgress = false
@@ -2678,7 +2679,7 @@ internal class RegattaLinkBleClient(
             state = lastConfigurationState,
             factoryResetOwned =
                 factoryResetDisconnectTracker.ownsLifecycle(activeGatt),
-            deviceControlRunning = deviceControlRunning.get()
+            deviceControlRunning = deviceControlExecutionGuard.isActive()
         )
 
     override fun setDeviceName(name: String): Boolean {
@@ -2913,7 +2914,7 @@ internal class RegattaLinkBleClient(
             !lastConfigurationState.diagnosticLogSupported ||
             otaRunning.get() ||
             rawCaptureRunning.get() ||
-            deviceControlRunning.get() ||
+            deviceControlExecutionGuard.isActive() ||
             !isConnected() ||
             !diagnosticLogRunning.compareAndSet(false, true)
         ) {
@@ -2987,20 +2988,24 @@ internal class RegattaLinkBleClient(
             rawCaptureRunning.get() ||
             diagnosticLogRunning.get() ||
             configurationMutationRunning.get() ||
-            !isConnected() ||
-            !deviceControlRunning.compareAndSet(false, true)
+            !isConnected()
         ) {
             return false
         }
 
-        val activeGatt = gatt ?: run {
-            deviceControlRunning.set(false)
+        val activeGatt = gatt ?: return false
+        val execution =
+            deviceControlExecutionGuard.tryAcquire(activeGatt)
+                ?: return false
+
+        if (!isConnected() || gatt !== activeGatt) {
+            deviceControlExecutionGuard.release(execution)
             return false
         }
 
         otaExecutor.execute {
             if (!optionalFeatureWorkAllowed(activeGatt)) {
-                deviceControlRunning.set(false)
+                rejectDeviceControlBeforeStart(execution)
                 return@execute
             }
 
@@ -3271,8 +3276,6 @@ internal class RegattaLinkBleClient(
                     } else {
                         error.message ?: "RegattaLink Device Control failed"
                     }
-            } finally {
-                deviceControlRunning.set(false)
             }
 
             if (
@@ -3289,9 +3292,16 @@ internal class RegattaLinkBleClient(
                 }
             }
 
-            if (gatt === activeGatt && connected) {
-                updateConfiguration {
-                    it.copy(
+            if (
+                deviceControlExecutionGuard.owns(execution) &&
+                gatt === activeGatt &&
+                connected
+            ) {
+                updateConfiguration { current ->
+                    if (!deviceControlExecutionGuard.owns(execution)) {
+                        current
+                    } else {
+                        current.copy(
                         deviceControlSupported = true,
                         deviceControlBusy = false,
                         deviceControlAcceptedOpcode = null,
@@ -3320,13 +3330,39 @@ internal class RegattaLinkBleClient(
                                             ::regattaLinkFactoryResetContinuesToBondReset
                                         ) == true
                                     ),
-                        deviceControlStatus = finalStatus,
-                        deviceControlError = errorMessage
+                            deviceControlStatus = finalStatus,
+                            deviceControlError = errorMessage
+                        )
+                    }
+                }
+            }
+
+            deviceControlExecutionGuard.release(execution)
+        }
+        return true
+    }
+
+    private fun rejectDeviceControlBeforeStart(
+        execution: RegattaLinkDeviceControlExecutionGuard.Lease<BluetoothGatt>
+    ) {
+        val activeGatt = execution.session
+        if (
+            deviceControlExecutionGuard.owns(execution) &&
+            gatt === activeGatt
+        ) {
+            updateConfiguration { current ->
+                if (!deviceControlExecutionGuard.owns(execution)) {
+                    current
+                } else {
+                    regattaLinkDeviceControlRejectedBeforeStartState(
+                        state = current,
+                        errorMessage =
+                            "RegattaLink Device Control could not start because the connection is no longer ready"
                     )
                 }
             }
         }
-        return true
+        deviceControlExecutionGuard.release(execution)
     }
 
     private fun nextDeviceControlRequestId(): UInt {
@@ -3454,7 +3490,7 @@ internal class RegattaLinkBleClient(
         if (
             otaRunning.get() ||
             diagnosticLogRunning.get() ||
-            deviceControlRunning.get() ||
+            deviceControlExecutionGuard.isActive() ||
             !isConnected() ||
             !rawCaptureRunning.compareAndSet(false, true)
         ) {
