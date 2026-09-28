@@ -38,6 +38,7 @@ data class RegattaLinkRawCaptureState(
     val frameCount: Int = 0,
     val fileName: String = "",
     val filePath: String? = null,
+    val userMessage: RegattaLinkUiMessage? = null,
     val error: String = ""
 ) {
     val isActive: Boolean
