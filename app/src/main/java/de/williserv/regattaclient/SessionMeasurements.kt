@@ -35,10 +35,14 @@ internal fun discoverSessionNumericMeasurements(
 
             val unit = measurement.optString("unit")
                 .takeIf { it.isNotBlank() }
+            val explicitLabel = measurement.optString("label")
+                .trim()
+                .takeIf { it.isNotBlank() }
 
             discovered[key] = SessionNumericMeasurement(
                 key = key,
-                label = prettySessionMeasurementLabel(key, group, unit),
+                label = explicitLabel
+                    ?: prettySessionMeasurementLabel(key, group, unit),
                 unit = unit,
                 group = group
             )

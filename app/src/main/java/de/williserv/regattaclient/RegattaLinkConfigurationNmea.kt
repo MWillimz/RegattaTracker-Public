@@ -15,6 +15,8 @@ data class RegattaLinkConfigurationState(
     val ledBrightnessPct: Int? = null,
     val motionDampingSupported: Boolean = false,
     val motionDampingSeconds: Int? = null,
+    val loadPrecisionSupported: Boolean = false,
+    val loadPrecisionX10: Boolean? = null,
     val diagnosticLogSupported: Boolean = false,
     val diagnosticLogLoading: Boolean = false,
     val diagnosticLogEntries: List<RegattaLinkDiagnosticLogEntry> = emptyList(),
@@ -127,6 +129,9 @@ data class RegattaLinkNmeaState(
     val boatStateLiveNotifications: Boolean = false,
     val boatState: RegattaLinkBoatState? = null,
     val boatStateReceivedAtElapsedMs: Long? = null,
+    val loadSupported: Boolean = false,
+    val loadSubscribed: Boolean = false,
+    val loadSensors: List<RegattaLinkLoadSensor> = emptyList(),
     val pausedForOta: Boolean = false,
     val error: String = "",
     val userMessage: RegattaLinkUiMessage? = null
@@ -180,6 +185,15 @@ internal fun parseRegattaLinkMotionDamping(raw: ByteArray): Int {
     val value = raw[0].toInt() and 0xff
     require(value in 1..10) { "Invalid RegattaLink motion damping $value s" }
     return value
+}
+
+internal fun parseRegattaLinkLoadPrecision(raw: ByteArray): Boolean {
+    require(raw.size == 1) {
+        "RegattaLink load precision must be exactly one byte"
+    }
+    val value = raw[0].toInt() and 0xff
+    require(value in 0..1) { "Invalid RegattaLink load precision $value" }
+    return value == 1
 }
 
 internal fun parseRegattaLinkPgnInventory(

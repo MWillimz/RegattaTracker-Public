@@ -1326,7 +1326,8 @@ class RegattaTrackingService : Service() {
             utcOffsetMinutes = sampleTime.utcOffsetMinutes,
             measurementsJson = mergeMeasurementsJson(
                 RegattaLinkTelemetrySnapshotStore.measurementsJson(),
-                RegattaLinkNmeaSnapshotStore.measurementsJson()
+                RegattaLinkNmeaSnapshotStore.measurementsJson(),
+                RegattaLinkLoadSnapshotStore.measurementsJson()
             )
         )
 
