@@ -509,6 +509,7 @@
     <string name="regattalink_product_profile">Producto / perfil</string>
     <string name="regattalink_ota_capability">OTA</string>
     <string name="regattalink_available">Disponible</string>
+    <string name="regattalink_updating">Actualizando…</string>
     <string name="regattalink_unavailable">No disponible</string>
     <string name="regattalink_confidence">Confianza</string>
     <string name="regattalink_settings_title">Ajustes</string>
