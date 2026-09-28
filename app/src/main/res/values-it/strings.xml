@@ -513,6 +513,12 @@
     <string name="regattalink_unavailable">Non disponibile</string>
     <string name="regattalink_confidence">Confidenza</string>
     <string name="regattalink_settings_title">Impostazioni</string>
+    <string name="regattalink_setup_imu">Configura IMU</string>
+    <string name="regattalink_live_orientation">Orientamento in tempo reale</string>
+    <string name="regattalink_manual_orientation_correction">Correzione manuale dell’installazione</string>
+    <string name="regattalink_correction">Correzione</string>
+    <string name="regattalink_bow_up">Prua su</string>
+    <string name="regattalink_bow_down">Prua giù</string>
     <string name="regattalink_open_settings">Apri impostazioni RegattaLink</string>
     <string name="regattalink_installation_orientation">Orientamento di installazione</string>
     <string name="regattalink_installation_orientation_help">Correggi solo se il RegattaLink non è montato esattamente allineato con la barca. Imposta posizione verticale determina il livello; questi controlli correggono direzione e allineamento fine del dispositivo rispetto alla barca.</string>
