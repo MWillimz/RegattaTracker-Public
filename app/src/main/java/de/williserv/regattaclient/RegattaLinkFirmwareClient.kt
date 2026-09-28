@@ -16,8 +16,8 @@ data class RegattaLinkFirmwareUiState(
     val availableBuild: String = "",
     val direction: RegattaLinkFirmwareDirection? = null,
     val signed: Boolean = false,
-    val userMessage: RegattaLinkUiMessage? = null,
-    val error: String = ""
+    val error: String = "",
+    val userMessage: RegattaLinkUiMessage? = null
 )
 
 internal fun versionedRegattaLinkFirmwareDownloadUrl(
