@@ -132,6 +132,18 @@ internal fun regattaLinkOrientationControlsEnabled(
         boatFrameValid &&
         !deviceControlBusy
 
+internal fun regattaLinkDeviceControlRejectedBeforeStartState(
+    state: RegattaLinkConfigurationState,
+    errorMessage: String
+): RegattaLinkConfigurationState =
+    state.copy(
+        deviceControlBusy = false,
+        deviceControlAcceptedOpcode = null,
+        deviceControlAcceptedRequestId = null,
+        factoryResetWriteAcceptedRequestId = null,
+        deviceControlError = errorMessage
+    )
+
 enum class RegattaLinkDeviceControlPhase(val wireValue: Int) {
     IDLE(0),
     PENDING(1),
@@ -209,6 +221,30 @@ internal fun <T : Any> consumeRegattaLinkFactoryResetFallback(
     tracker: RegattaLinkFactoryResetDisconnectTracker<T>
 ): Boolean =
     sessionStillCurrent && tracker.consumeDisconnect(session)
+
+internal class RegattaLinkDeviceControlExecutionGuard<T : Any> {
+    internal class Lease<T : Any> internal constructor(
+        val session: T
+    )
+
+    private val active = AtomicReference<Lease<T>?>(null)
+
+    fun tryAcquire(session: T): Lease<T>? {
+        val lease = Lease(session)
+        return if (active.compareAndSet(null, lease)) lease else null
+    }
+
+    fun isActive(): Boolean = active.get() != null
+
+    fun owns(lease: Lease<T>): Boolean = active.get() === lease
+
+    fun release(lease: Lease<T>): Boolean =
+        active.compareAndSet(lease, null)
+
+    fun clear() {
+        active.set(null)
+    }
+}
 
 internal class RegattaLinkFactoryResetDisconnectTracker<T : Any>(
     private val nowElapsedMs: () -> Long,
