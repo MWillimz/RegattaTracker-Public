@@ -688,4 +688,12 @@
     <string name="regattalink_factory_reset_warning">This resets the RegattaLink name, LED brightness, motion damping, calibration and Bluetooth pairings. The connection will close and the device must be paired again. If Android still shows the old pairing, remove RegattaLink in Android Bluetooth settings before searching again.</string>
     <string name="regattalink_read_diagnostic_log">Read diagnostic log</string>
     <string name="regattalink_loading_diagnostic_log">Reading diagnostic log…</string>
+    <string name="regattalink_load_precision">Load sensor resolution</string>
+    <string name="regattalink_load_precision_x1">×1 · 1 kg resolution</string>
+    <string name="regattalink_load_precision_x10">×10 · 0.1 kg resolution</string>
+    <string name="regattalink_load_sensors">Load sensors</string>
+    <string name="regattalink_load_waiting">Waiting for load sensor data…</string>
+    <string name="regattalink_load_not_subscribed">Load sensor notifications are unavailable.</string>
+    <string name="regattalink_load_alias">Optional name</string>
+    <string name="regattalink_load_identity_temporary">Temporary NMEA identity; naming is available once the stable NMEA2000 NAME is known.</string>
 </resources>
