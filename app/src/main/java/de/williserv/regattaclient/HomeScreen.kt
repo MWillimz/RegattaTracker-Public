@@ -197,6 +197,7 @@ fun HomeScreen(
 
     val raceHomeStatus = resolveRaceHomeStatus(
         raceStatusCode = raceStatusCode,
+        raceStatusDisplayText = raceStatusDisplayText,
         raceDataReady = raceDataReady,
         raceConfigured = raceEvent.isNotBlank(),
         inRace = inRace,
