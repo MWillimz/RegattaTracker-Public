@@ -188,6 +188,81 @@ class RegattaLinkDeviceControlTest {
     }
 
     @Test
+    fun deviceControlFailuresKeepActionableTypedUiSemantics() {
+        fun status(
+            result: RegattaLinkDeviceControlResult,
+            applicationErrorCode: Int? = null
+        ) = RegattaLinkDeviceControlStatus(
+            opcode = RegattaLinkDeviceControlOpcode.SET_UPRIGHT,
+            phase = RegattaLinkDeviceControlPhase.ERROR,
+            result = result,
+            requestId = 12u,
+            forwardTrimDeg = 0,
+            heelTrimDeg = 0,
+            pitchTrimDeg = 0,
+            boatFrameValid = false,
+            gyroBiasValid = true,
+            mountingEpoch = 3u,
+            applicationErrorCode = applicationErrorCode
+        )
+
+        assertEquals(
+            RegattaLinkUiMessage.CALIBRATION_MOTION_REJECTED,
+            regattaLinkDeviceControlUiMessage(
+                status(RegattaLinkDeviceControlResult.MOTION_REJECT),
+                hasError = true
+            )
+        )
+        assertEquals(
+            RegattaLinkUiMessage.CALIBRATION_ORIENTATION_REJECTED,
+            regattaLinkDeviceControlUiMessage(
+                status(RegattaLinkDeviceControlResult.ORIENTATION_REJECT),
+                hasError = true
+            )
+        )
+        assertEquals(
+            RegattaLinkUiMessage.CALIBRATION_TIMEOUT,
+            regattaLinkDeviceControlUiMessage(
+                status(RegattaLinkDeviceControlResult.TIMEOUT),
+                hasError = true
+            )
+        )
+        assertEquals(
+            RegattaLinkUiMessage.DEVICE_CONTROL_BUSY,
+            regattaLinkDeviceControlUiMessage(
+                status(
+                    RegattaLinkDeviceControlResult.BUSY,
+                    applicationErrorCode = 3
+                ),
+                hasError = true
+            )
+        )
+        assertEquals(
+            RegattaLinkUiMessage.DEVICE_CONTROL_NOT_READY,
+            regattaLinkDeviceControlUiMessage(
+                status(
+                    RegattaLinkDeviceControlResult.INVALID,
+                    applicationErrorCode = 4
+                ),
+                hasError = true
+            )
+        )
+        assertEquals(
+            RegattaLinkUiMessage.CONFIGURATION_FAILED,
+            regattaLinkDeviceControlUiMessage(
+                status = null,
+                hasError = true
+            )
+        )
+        assertNull(
+            regattaLinkDeviceControlUiMessage(
+                status(RegattaLinkDeviceControlResult.MOTION_REJECT),
+                hasError = false
+            )
+        )
+    }
+
+    @Test
     fun requestAcceptanceRequiresMatchingNonRejected0008Status() {
         val accepted = RegattaLinkDeviceControlStatus(
             opcode = RegattaLinkDeviceControlOpcode.FACTORY_RESET,
