@@ -773,7 +773,7 @@ class RegattaLinkDeviceControlTest {
         assertNull(rejected.deviceControlAcceptedOpcode)
         assertNull(rejected.deviceControlAcceptedRequestId)
         assertNull(rejected.factoryResetWriteAcceptedRequestId)
-        assertFalse(rejected.factoryResetAwaitingDisconnect)
+        assertTrue(rejected.factoryResetAwaitingDisconnect)
         assertEquals(confirmedStatus, rejected.deviceControlStatus)
         assertEquals("connection no longer ready", rejected.deviceControlError)
     }
