@@ -367,6 +367,59 @@ class RegattaLinkDeviceControlTest {
     }
 
     @Test
+    fun boatFramePresentationDistinguishesPendingUnknownAndConfirmedState() {
+        val valid = RegattaLinkDeviceControlStatus(
+            opcode = RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
+            phase = RegattaLinkDeviceControlPhase.SUCCESS,
+            result = RegattaLinkDeviceControlResult.OK,
+            requestId = 10u,
+            forwardTrimDeg = 0,
+            heelTrimDeg = 0,
+            pitchTrimDeg = 0,
+            boatFrameValid = true,
+            gyroBiasValid = true,
+            mountingEpoch = 1u
+        )
+        val invalid = valid.copy(boatFrameValid = false)
+
+        assertEquals(
+            RegattaLinkBoatFramePresentation.PENDING,
+            regattaLinkBoatFramePresentation(
+                status = null,
+                deviceControlBusy = true
+            )
+        )
+        assertEquals(
+            RegattaLinkBoatFramePresentation.UNKNOWN,
+            regattaLinkBoatFramePresentation(
+                status = null,
+                deviceControlBusy = false
+            )
+        )
+        assertEquals(
+            RegattaLinkBoatFramePresentation.NOT_SET,
+            regattaLinkBoatFramePresentation(
+                status = invalid,
+                deviceControlBusy = false
+            )
+        )
+        assertEquals(
+            RegattaLinkBoatFramePresentation.READY,
+            regattaLinkBoatFramePresentation(
+                status = valid,
+                deviceControlBusy = false
+            )
+        )
+        assertEquals(
+            RegattaLinkBoatFramePresentation.READY,
+            regattaLinkBoatFramePresentation(
+                status = valid,
+                deviceControlBusy = true
+            )
+        )
+    }
+
+    @Test
     fun forwardAlignmentTopViewUsesPortCounterClockwiseStarboardClockwise() {
         // Bow is drawn at the top. Firmware sign contract: +Z rotates
         // physical FRONT toward Boat Starboard, i.e. clockwise in top view.
