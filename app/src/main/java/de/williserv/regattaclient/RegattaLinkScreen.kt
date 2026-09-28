@@ -1165,15 +1165,10 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
                         modifier = Modifier.padding(top = 3.dp)
                     )
                 }
-                if (
-                    configurationState.diagnosticLogError.isNotBlank()
-                ) {
-                    Text(
-                        configurationState.diagnosticLogError,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(top = 6.dp)
-                    )
-                }
+                RegattaLinkTechnicalDetail(
+                    detail = configurationState.diagnosticLogError,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
             }
 
             if (nmeaState.rawCanSupported) {
