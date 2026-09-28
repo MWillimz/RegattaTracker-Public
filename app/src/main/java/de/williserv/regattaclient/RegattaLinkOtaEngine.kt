@@ -193,6 +193,7 @@ internal class RegattaLinkOtaEngine(
             onTerminalDisconnect()
             emitState(
                 phase = RegattaLinkOtaPhase.ERROR,
+                userMessage = RegattaLinkUiMessage.OTA_FAILED,
                 error = error.message ?: "RegattaLink OTA failed",
                 detail = "Firmware update failed"
             )
@@ -1003,6 +1004,7 @@ internal class RegattaLinkOtaEngine(
         throughputKibPerSec: Double? = lastUiState.throughputKibPerSec,
         detail: String = lastUiState.detail,
         transport: String = lastUiState.transport,
+        userMessage: RegattaLinkUiMessage? = null,
         error: String = ""
     ) {
         lastUiState = RegattaLinkOtaUiState(
@@ -1014,6 +1016,7 @@ internal class RegattaLinkOtaEngine(
             throughputKibPerSec = throughputKibPerSec,
             transport = transport,
             detail = detail,
+            userMessage = userMessage,
             error = error
         )
         emit(lastUiState)
