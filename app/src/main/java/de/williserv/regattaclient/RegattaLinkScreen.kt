@@ -149,7 +149,7 @@ fun RegattaLinkScreen(
     }
 
     var settingsMenuExpanded by rememberSaveable { mutableStateOf(false) }
-    var activeSetupDestination by remember {
+    var activeSetupDestination by rememberSaveable {
         mutableStateOf<RegattaLinkSetupDestination?>(null)
     }
     var pgnInventoryAutoRefreshRequested by remember(state.deviceAddress) {
