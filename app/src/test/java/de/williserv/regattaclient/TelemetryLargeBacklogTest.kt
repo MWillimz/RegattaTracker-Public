@@ -4,6 +4,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteStatement
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -65,6 +66,58 @@ class TelemetryLargeBacklogTest {
 
             assertEquals(SAMPLE_COUNT, sampleCount)
             assertEquals(130, pageCount)
+        } finally {
+            helper.close()
+        }
+    }
+
+    @Test
+    fun uploadPage_preservesCogValidityAndFollowingColumnAlignment() {
+        val helper = TrackingDbHelper(context)
+        try {
+            val accessContextId = requireNotNull(
+                helper.getOrCreateAccessContext(
+                    serverUrl = "https://raceoffice.example.org",
+                    accessIdentifier = "COG Event",
+                    accessSecret = "cog-secret"
+                )
+            )
+            helper.insertSample(
+                sequenceId = 7L,
+                timestamp = "2026-09-28T15:00:00",
+                boatName = "COG Boat",
+                captainName = "Skipper",
+                hullColor = "white",
+                sailNumber = "GER 7",
+                yardstick = 100.0,
+                boatType = "Test",
+                lat = 53.5,
+                lon = 10.0,
+                accuracy = 4f,
+                cog = 0f,
+                sog = 3.5f,
+                cogValid = false,
+                batteryPercent = 73,
+                batteryCharging = true,
+                trackingProfile = "fixed_1s",
+                accessContextId = accessContextId,
+                utcOffsetMinutes = 120
+            )
+
+            val sample = getTelemetryUploadPage(
+                db = helper,
+                afterLocalId = 0L,
+                limit = 10
+            ).single()
+
+            assertFalse(requireNotNull(sample.cogValid))
+            assertEquals(3.5f, sample.sog, 0.001f)
+            assertEquals(73, sample.batteryPercent)
+            assertEquals(true, sample.batteryCharging)
+            assertEquals("fixed_1s", sample.trackingProfile)
+            assertEquals(120, sample.utcOffsetMinutes)
+            assertEquals("COG Event", sample.accessContext.accessIdentifier)
+            assertEquals("cog-secret", sample.accessContext.accessSecret)
         } finally {
             helper.close()
         }
