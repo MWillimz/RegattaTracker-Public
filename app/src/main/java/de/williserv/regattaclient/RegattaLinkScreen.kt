@@ -56,13 +56,16 @@ internal data class RegattaLinkConfigSliderSubmission(
 
 internal fun prepareRegattaLinkConfigSliderSubmission(
     draftValue: Float,
-    confirmedValue: Int,
+    confirmedValue: Int?,
     validRange: IntRange
 ): RegattaLinkConfigSliderSubmission {
     val requestedValue = draftValue.roundToInt().coerceIn(validRange)
+    val confirmedDraft = (confirmedValue ?: requestedValue)
+        .coerceIn(validRange)
+        .toFloat()
     return RegattaLinkConfigSliderSubmission(
         requestedValue = requestedValue,
-        confirmedDraft = confirmedValue.coerceIn(validRange).toFloat()
+        confirmedDraft = confirmedDraft
     )
 }
 
