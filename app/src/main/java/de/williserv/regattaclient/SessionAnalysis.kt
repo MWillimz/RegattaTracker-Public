@@ -17,7 +17,6 @@ internal const val DEFAULT_ANALYSIS_RECOVERY_SECONDS = 5.0
 internal const val DEFAULT_IMU_STEADY_ATTITUDE_RATE_DPS = 1.5
 internal const val ANALYSIS_ACCELERATION_LOOKBACK_MS = 5_000L
 internal const val ANALYSIS_AGGREGATION_WINDOW_MS = 10_000L
-private const val ANALYSIS_CONTINUITY_MAX_GAP_MS = 2_000L
 
 enum class AnalysisMetricUse {
     ANGLE,
@@ -143,10 +142,8 @@ private fun analysisSamplesAreContinuous(
 ): Boolean {
     val previousTime = previous.timestampMs ?: return false
     val currentTime = current.timestampMs ?: return false
-    val deltaMs = currentTime - previousTime
-    if (deltaMs <= 0L || deltaMs >= ANALYSIS_CONTINUITY_MAX_GAP_MS) {
-        return false
-    }
+    if (currentTime <= previousTime) return false
+
     return previous.sourceIndex < 0 ||
         current.sourceIndex < 0 ||
         current.sourceIndex == previous.sourceIndex + 1
@@ -170,7 +167,9 @@ private fun analysisAccelerationOverLookback(
 
         val currentSampleTime = current.timestampMs ?: return null
         val previousTime = previous.timestampMs ?: return null
-        val dtSeconds = (currentSampleTime - previousTime) / 1_000.0
+        val deltaMs = currentSampleTime - previousTime
+        if (deltaMs > lookbackMs) return null
+        val dtSeconds = deltaMs / 1_000.0
         if (
             !current.sogMps.isFinite() ||
             !previous.sogMps.isFinite() ||
@@ -840,11 +839,13 @@ private fun aggregateContinuousAnalysisSegment(
         if (boundaryTime < windowEnd) break
 
         val window = segment.subList(start, boundary)
-        aggregateAnalysisWindow(
-            window = window,
-            angleKind = angleKind,
-            colorRequired = colorRequired
-        )?.let(destination::add)
+        if (window.size >= 2) {
+            aggregateAnalysisWindow(
+                window = window,
+                angleKind = angleKind,
+                colorRequired = colorRequired
+            )?.let(destination::add)
+        }
 
         start = boundary
     }
