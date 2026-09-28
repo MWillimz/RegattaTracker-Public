@@ -409,6 +409,17 @@
     <string name="regattalink_error_telemetry_unavailable">La telemetría de RegattaLink no está disponible.</string>
     <string name="regattalink_error_telemetry_invalid">Se recibió telemetría de RegattaLink no válida.</string>
     <string name="regattalink_error_configuration_failed">No se pudieron leer o cambiar los ajustes de RegattaLink.</string>
+    <string name="regattalink_error_device_control_unsupported">Este RegattaLink no admite esta acción de configuración.</string>
+    <string name="regattalink_error_device_control_busy">La configuración de RegattaLink está ocupada. Vuelve a intentarlo en unos instantes.</string>
+    <string name="regattalink_error_device_control_not_ready">RegattaLink aún no está listo para esta acción de configuración.</string>
+    <string name="regattalink_error_device_control_rejected">RegattaLink rechazó la acción de configuración.</string>
+    <string name="regattalink_error_calibration_motion_rejected">La calibración falló porque el barco se movió. Mantén el barco quieto y vuelve a intentarlo.</string>
+    <string name="regattalink_error_calibration_orientation_rejected">La calibración falló porque la orientación del sensor no es válida.</string>
+    <string name="regattalink_error_calibration_persist_failed">RegattaLink no pudo guardar la calibración.</string>
+    <string name="regattalink_error_factory_reset_config_failed">RegattaLink no pudo restablecer su configuración.</string>
+    <string name="regattalink_error_factory_reset_bond_failed">RegattaLink no pudo restablecer los emparejamientos Bluetooth.</string>
+    <string name="regattalink_error_device_control_internal_failed">El control del dispositivo RegattaLink falló internamente.</string>
+    <string name="regattalink_error_calibration_timeout">Se agotó el tiempo de calibración. Vuelve a intentarlo.</string>
     <string name="regattalink_error_name_change_failed">No se pudo cambiar el nombre de RegattaLink.</string>
     <string name="regattalink_error_led_brightness_range">El brillo LED debe estar entre 0 y 100 por ciento.</string>
     <string name="regattalink_error_motion_damping_range">La amortiguación de movimiento debe estar entre 1 y 10 segundos.</string>
