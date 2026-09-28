@@ -127,16 +127,28 @@ data class RegattaLinkNmeaState(
     val error: String = ""
 )
 
-internal fun validateRegattaLinkDeviceName(name: String): String? {
+internal enum class RegattaLinkDeviceNameValidationError {
+    EMPTY,
+    TOO_LONG_UTF8,
+    UNSUPPORTED_CONTROL_CHARACTER
+}
+
+internal fun validateRegattaLinkDeviceName(
+    name: String
+): RegattaLinkDeviceNameValidationError? {
     val bytes = name.toByteArray(Charsets.UTF_8)
-    if (bytes.isEmpty()) return "Name must not be empty"
-    if (bytes.size > 24) return "Name must be at most 24 UTF-8 bytes"
+    if (bytes.isEmpty()) {
+        return RegattaLinkDeviceNameValidationError.EMPTY
+    }
+    if (bytes.size > 24) {
+        return RegattaLinkDeviceNameValidationError.TOO_LONG_UTF8
+    }
     if (bytes.any { byte ->
             val value = byte.toInt() and 0xff
             value == 0 || value < 0x20 || value == 0x7f
         }
     ) {
-        return "Name contains unsupported control characters"
+        return RegattaLinkDeviceNameValidationError.UNSUPPORTED_CONTROL_CHARACTER
     }
     return null
 }
