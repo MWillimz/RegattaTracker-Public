@@ -242,7 +242,8 @@ fun SessionAnalysisScreen(
                     radiusMetric = radiusMetric,
                     colorMetric = colorMetric,
                     filters = activeFilters,
-                    metricsById = metricsById
+                    metricsById = metricsById,
+                    aggregationWindowMs = ANALYSIS_AGGREGATION_WINDOW_MS
                 )
             }
 

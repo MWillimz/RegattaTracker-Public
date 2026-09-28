@@ -377,7 +377,7 @@
     <string name="session_analysis_gps_maneuver_filter">Filtro de maniobras GPS</string>
     <string name="session_analysis_gps_maneuver_threshold">Cambio de rumbo: %1$d° / 5 s</string>
     <string name="session_analysis_imu_stability_filter">Filtro de estabilidad IMU</string>
-    <string name="session_analysis_imu_attitude_limit">Cambio máximo de escora/asiento: %1$s °/s</string>
+    <string name="session_analysis_imu_attitude_limit">Cambio máximo de escora/cabeceo: %1$s °/s</string>
     <string name="session_analysis_recovery_seconds">Excluir durante %1$d s después</string>
     <string name="session_analysis_color_legend">Color: %1$s</string>
     <string name="session_analysis_points">%1$d puntos visibles</string>

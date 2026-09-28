@@ -377,7 +377,7 @@
     <string name="session_analysis_gps_maneuver_filter">Filtre de manœuvre GPS</string>
     <string name="session_analysis_gps_maneuver_threshold">Changement de cap : %1$d° / 5 s</string>
     <string name="session_analysis_imu_stability_filter">Filtre de stabilité IMU</string>
-    <string name="session_analysis_imu_attitude_limit">Variation maximale gîte/assiette : %1$s °/s</string>
+    <string name="session_analysis_imu_attitude_limit">Variation maximale gîte/tangage : %1$s °/s</string>
     <string name="session_analysis_recovery_seconds">Exclure pendant %1$d s ensuite</string>
     <string name="session_analysis_color_legend">Couleur : %1$s</string>
     <string name="session_analysis_points">%1$d points visibles</string>
