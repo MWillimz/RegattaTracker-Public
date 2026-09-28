@@ -2630,9 +2630,7 @@ internal class RegattaLinkBleClient(
         )
 
     override fun setDeviceName(name: String): Boolean {
-        val validationError = validateRegattaLinkDeviceName(name)
-        if (validationError != null) {
-            updateConfiguration { it.copy(error = validationError) }
+        if (validateRegattaLinkDeviceName(name) != null) {
             return false
         }
         if (otaRunning.get() || !isConnected()) return false
