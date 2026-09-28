@@ -61,6 +61,26 @@ internal fun regattaLinkTrimDelta(
     else -> error("Opcode $opcode is not a trim command")
 }
 
+internal fun formatRegattaLinkDirectionalTrim(
+    valueDeg: Int?,
+    positiveDirectionLabel: String,
+    negativeDirectionLabel: String
+): String = when {
+    valueDeg == null -> "—"
+    valueDeg == 0 -> "0°"
+    valueDeg > 0 -> "${valueDeg}° $positiveDirectionLabel"
+    else -> "${-valueDeg}° $negativeDirectionLabel"
+}
+
+internal fun regattaLinkOrientationControlsEnabled(
+    baseControlsEnabled: Boolean,
+    boatFrameValid: Boolean,
+    deviceControlBusy: Boolean
+): Boolean =
+    baseControlsEnabled &&
+        boatFrameValid &&
+        !deviceControlBusy
+
 enum class RegattaLinkDeviceControlPhase(val wireValue: Int) {
     IDLE(0),
     PENDING(1),
