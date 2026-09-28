@@ -86,8 +86,8 @@ data class RegattaLinkTelemetryState(
     val calibration: RegattaLinkCalibrationDiagnostics? = null,
     val calibrationReceivedAtElapsedMs: Long? = null,
     val pausedForOta: Boolean = false,
-    val userMessage: RegattaLinkUiMessage? = null,
-    val error: String = ""
+    val error: String = "",
+    val userMessage: RegattaLinkUiMessage? = null
 )
 
 internal fun parseRegattaLinkFastMotion(raw: ByteArray): RegattaLinkFastMotion {
