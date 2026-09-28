@@ -2678,7 +2678,8 @@ internal class RegattaLinkBleClient(
             state = lastConfigurationState,
             factoryResetOwned =
                 factoryResetDisconnectTracker.ownsLifecycle(activeGatt),
-            deviceControlRunning = deviceControlRunning.get()
+            deviceControlRunning = deviceControlRunning.get(),
+            diagnosticLogRunning = diagnosticLogRunning.get()
         )
 
     override fun setDeviceName(name: String): Boolean {
@@ -2914,6 +2915,7 @@ internal class RegattaLinkBleClient(
             otaRunning.get() ||
             rawCaptureRunning.get() ||
             deviceControlRunning.get() ||
+            configurationMutationRunning.get() ||
             !isConnected() ||
             !diagnosticLogRunning.compareAndSet(false, true)
         ) {
@@ -2925,18 +2927,23 @@ internal class RegattaLinkBleClient(
             return false
         }
 
+        updateConfiguration {
+            it.copy(
+                diagnosticLogLoading = true,
+                diagnosticLogEntries = emptyList(),
+                diagnosticLogError = ""
+            )
+        }
+
         otaExecutor.execute {
             if (!optionalFeatureWorkAllowed(activeGatt)) {
                 diagnosticLogRunning.set(false)
+                if (gatt === activeGatt && connected) {
+                    updateConfiguration {
+                        it.copy(diagnosticLogLoading = false)
+                    }
+                }
                 return@execute
-            }
-
-            updateConfiguration {
-                it.copy(
-                    diagnosticLogLoading = true,
-                    diagnosticLogEntries = emptyList(),
-                    diagnosticLogError = ""
-                )
             }
 
             val entries = mutableListOf<RegattaLinkDiagnosticLogEntry>()
@@ -2998,24 +3005,29 @@ internal class RegattaLinkBleClient(
             return false
         }
 
+        updateConfiguration {
+            it.copy(
+                deviceControlBusy = true,
+                deviceControlAcceptedOpcode = null,
+                deviceControlAcceptedRequestId = null,
+                factoryResetWriteAcceptedRequestId = null,
+                deviceControlStatus = null,
+                deviceControlError = ""
+            )
+        }
+
         otaExecutor.execute {
             if (!optionalFeatureWorkAllowed(activeGatt)) {
                 deviceControlRunning.set(false)
+                if (gatt === activeGatt && connected) {
+                    updateConfiguration {
+                        it.copy(deviceControlBusy = false)
+                    }
+                }
                 return@execute
             }
 
             val requestId = nextDeviceControlRequestId()
-            updateConfiguration {
-                it.copy(
-                    deviceControlBusy = true,
-                    deviceControlAcceptedOpcode = null,
-                    deviceControlAcceptedRequestId = null,
-                    factoryResetWriteAcceptedRequestId = null,
-                    deviceControlStatus = null,
-                    deviceControlError = ""
-                )
-            }
-
             var finalStatus: RegattaLinkDeviceControlStatus? = null
             var errorMessage = ""
             var factoryResetFinalizationDeadline: Long? = null
