@@ -2,8 +2,6 @@
 <resources>
     <string name="register_with_race_committee">S’inscrire auprès du comité de course</string>
     <string name="registered_with_race_committee">Inscrit auprès du comité de course</string>
-    <string name="registration_reminder_title">Inscription réussie</string>
-    <string name="registration_reminder_message">Votre bateau est inscrit à cette course. Le suivi n’a pas encore démarré.\n\nAppuyez sur « Entrer en course » peu avant la course pour démarrer le suivi.</string>
     <string name="enter_race_available_24h">« Entrer en course » est disponible 24 heures avant le départ.</string>
     <string name="status_checking">Vérification…</string>
     <string name="status_not_entered">Pas encore en course</string>
