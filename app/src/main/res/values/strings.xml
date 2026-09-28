@@ -556,6 +556,17 @@
     <string name="regattalink_unavailable">Unavailable</string>
     <string name="regattalink_confidence">Confidence</string>
     <string name="regattalink_settings_title">Settings</string>
+    <string name="regattalink_setup_imu">Setup IMU</string>
+    <string name="regattalink_setup_nmea">Setup NMEA</string>
+    <string name="regattalink_advanced_diagnostics">Advanced / Diagnostics</string>
+    <string name="regattalink_device_settings">Device settings</string>
+    <string name="regattalink_technical_details">Technical details</string>
+    <string name="regattalink_diagnostics_title">Diagnostics</string>
+    <string name="regattalink_live_orientation">Live orientation</string>
+    <string name="regattalink_manual_orientation_correction">Manual installation correction</string>
+    <string name="regattalink_correction">Correction</string>
+    <string name="regattalink_bow_up">Bow up</string>
+    <string name="regattalink_bow_down">Bow down</string>
     <string name="regattalink_open_settings">Open RegattaLink settings</string>
     <string name="regattalink_installation_orientation">Installation orientation</string>
     <string name="regattalink_installation_orientation_help">Correct this only if the RegattaLink is not mounted exactly aligned with the boat. Set Upright determines level; these controls correct the device direction and fine alignment relative to the boat.</string>

@@ -2,7 +2,10 @@ package de.williserv.regattaclient
 
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.text.NumberFormat
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.math.abs
 
 internal const val REGATTALINK_DIAGNOSTIC_LOG_RECORD_SIZE = 22
 internal const val REGATTALINK_DIAGNOSTIC_LOG_MAX_READS = 20
@@ -71,6 +74,32 @@ internal fun formatRegattaLinkDirectionalTrim(
     valueDeg > 0 -> "${valueDeg}° $positiveDirectionLabel"
     else -> "${-valueDeg}° $negativeDirectionLabel"
 }
+
+internal fun formatRegattaLinkDirectionalMeasurement(
+    valueDeg: Double?,
+    positiveDirectionLabel: String,
+    negativeDirectionLabel: String,
+    locale: Locale = Locale.getDefault()
+): String {
+    if (valueDeg == null) return "—"
+
+    val magnitude = abs(valueDeg)
+    if (magnitude < 0.05) return "0°"
+
+    val formatter = NumberFormat.getNumberInstance(locale).apply {
+        minimumFractionDigits = 0
+        maximumFractionDigits = 1
+    }
+    val direction =
+        if (valueDeg > 0.0) positiveDirectionLabel else negativeDirectionLabel
+
+    return "${formatter.format(magnitude)}° $direction"
+}
+
+internal fun regattaLinkShouldShowManualOrientationControls(
+    boatFramePresentation: RegattaLinkBoatFramePresentation
+): Boolean =
+    boatFramePresentation == RegattaLinkBoatFramePresentation.READY
 
 internal enum class RegattaLinkBoatFramePresentation {
     UNKNOWN,
