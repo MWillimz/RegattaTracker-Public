@@ -70,6 +70,7 @@ data class SessionTrackingSample(
     val accuracy: Float,
     val cog: Float,
     val sog: Float,
+    val cogValid: Boolean? = null,
     val measurementsJson: String? = null,
     val raceContextId: Long? = null,
     val resolvedEventName: String? = null,
@@ -113,7 +114,7 @@ internal fun normalizeAccessContextKey(
 }
 
 class TrackingDbHelper(context: Context) :
-    SQLiteOpenHelper(context, "regatta_tracking.db", null, 12) {
+    SQLiteOpenHelper(context, "regatta_tracking.db", null, 13) {
 
     private val appContext = context.applicationContext
     private var lastBatteryReadAtMs: Long? = null
@@ -160,6 +161,9 @@ class TrackingDbHelper(context: Context) :
         }
         if (oldVersion < 12 && newVersion >= 12) {
             migrateToVersion12(db)
+        }
+        if (oldVersion < 13 && newVersion >= 13) {
+            migrateToVersion13(db)
         }
     }
 
@@ -487,7 +491,8 @@ class TrackingDbHelper(context: Context) :
                 samples.race_context_id,
                 race_contexts.resolved_event_name,
                 race_contexts.course_json,
-                race_contexts.course_map_viewport_json
+                race_contexts.course_map_viewport_json,
+                samples.cog_valid
             FROM tracking_samples AS samples
             LEFT JOIN race_contexts
                 ON race_contexts.id = samples.race_context_id
@@ -511,7 +516,8 @@ class TrackingDbHelper(context: Context) :
                         raceContextId = if (cursor.isNull(9)) null else cursor.getLong(9),
                         resolvedEventName = if (cursor.isNull(10)) null else cursor.getString(10),
                         courseJson = if (cursor.isNull(11)) null else cursor.getString(11),
-                        courseMapViewportJson = if (cursor.isNull(12)) null else cursor.getString(12)
+                        courseMapViewportJson = if (cursor.isNull(12)) null else cursor.getString(12),
+                        cogValid = if (cursor.isNull(13)) null else cursor.getInt(13) != 0
                     )
                 )
             }
@@ -654,6 +660,7 @@ class TrackingDbHelper(context: Context) :
         accuracy: Float,
         cog: Float,
         sog: Float,
+        cogValid: Boolean? = null,
         batteryPercent: Int? = null,
         batteryCharging: Boolean? = null,
         trackingProfile: String? = null,
@@ -703,6 +710,11 @@ class TrackingDbHelper(context: Context) :
             put("accuracy", accuracy)
             put("cog", cog)
             put("sog", sog)
+            if (cogValid != null) {
+                put("cog_valid", if (cogValid) 1 else 0)
+            } else {
+                putNull("cog_valid")
+            }
 
             val effectiveBatteryPercent = batteryPercent ?: automaticBattery?.percent
             val effectiveBatteryCharging = batteryCharging ?: automaticBattery?.charging
@@ -1067,6 +1079,16 @@ class TrackingDbHelper(context: Context) :
         createTrackingSampleIndexes(db)
     }
 
+    private fun migrateToVersion13(db: SQLiteDatabase) {
+        if (!tableExists(db, "tracking_samples")) {
+            createTrackingSamplesTable(db)
+            return
+        }
+        if (!columnExists(db, "tracking_samples", "cog_valid")) {
+            db.execSQL("ALTER TABLE tracking_samples ADD COLUMN cog_valid INTEGER")
+        }
+    }
+
     private fun migrateToVersion10(db: SQLiteDatabase) {
         createRaceContextsTable(db)
 
@@ -1193,6 +1215,7 @@ class TrackingDbHelper(context: Context) :
                 accuracy REAL NOT NULL,
                 cog REAL NOT NULL,
                 sog REAL NOT NULL,
+                cog_valid INTEGER,
                 uploaded INTEGER NOT NULL DEFAULT 0,
                 access_context_id INTEGER,
                 battery_percent INTEGER,
