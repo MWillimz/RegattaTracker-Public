@@ -965,7 +965,7 @@ Sample frame: `[header, epoch, sequence, fragment_info, {slot,u16 load}...]`. Th
 
 At x1 each count is 1 kg. At x10 each count is 0.1 kg. The scale bit in each sample is authoritative; decoding must not depend on cached configuration.
 
-A complete sample replaces the current fresh sensor set. Missing sensors therefore stop being persisted. An empty sample clears the set. As a transport fail-safe, Tracker also stops persisting the last non-empty 0026 snapshot after 3500 ms without another complete load sample; this protects against loss of the firmware's one empty transition notification and does not redefine per-sensor freshness. Disconnect, device/reconnect setup and OTA pause clear both the load catalog assembler and the current load snapshot.
+A complete sample replaces the current fresh sensor set. Missing sensors therefore stop being persisted. An empty sample clears the set. As a transport fail-safe, after 3500 ms without another complete load sample Tracker both stops persisting the last non-empty 0026 snapshot and clears the visible current load values in the NMEA setup; this protects against loss of the firmware's one empty transition notification and does not redefine per-sensor freshness. Disconnect, device/reconnect setup and OTA pause clear both the load catalog assembler and the current load snapshot.
 
 #### Load precision configuration 000A
 
