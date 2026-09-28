@@ -368,6 +368,19 @@ class RegattaLinkDeviceControlTest {
     }
 
     @Test
+    fun setupDestinationOrderMatchesMenuContract() {
+        assertEquals(
+            listOf(
+                RegattaLinkSetupDestination.IMU,
+                RegattaLinkSetupDestination.NMEA,
+                RegattaLinkSetupDestination.ADVANCED_DIAGNOSTICS,
+                RegattaLinkSetupDestination.FIRMWARE
+            ),
+            regattaLinkSetupDestinations()
+        )
+    }
+
+    @Test
     fun liveOrientationFormattingUsesPhysicalDirections() {
         assertEquals(
             "3° Starboard",
