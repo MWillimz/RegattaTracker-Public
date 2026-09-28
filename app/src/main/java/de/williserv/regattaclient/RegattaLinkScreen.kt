@@ -196,7 +196,8 @@ fun RegattaLinkScreen(
         }
 
     val nmeaSetupOpen =
-        activeSetupDestination == RegattaLinkSetupDestination.NMEA
+        activeSetupDestination == RegattaLinkSetupDestination.NMEA &&
+            connected
 
     LaunchedEffect(
         nmeaSetupOpen,
