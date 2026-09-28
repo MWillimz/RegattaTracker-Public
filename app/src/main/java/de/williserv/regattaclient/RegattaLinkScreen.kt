@@ -1,21 +1,29 @@
 package de.williserv.regattaclient
 
 import android.os.SystemClock
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -25,8 +33,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -120,6 +135,8 @@ fun RegattaLinkScreen(
 
     var technicalDetailsExpanded by rememberSaveable { mutableStateOf(false) }
     var nmeaDetailsExpanded by rememberSaveable { mutableStateOf(false) }
+    var settingsMenuExpanded by rememberSaveable { mutableStateOf(false) }
+    var settingsSheetOpen by rememberSaveable { mutableStateOf(false) }
     var pgnInventoryAutoRefreshRequested by remember(state.deviceAddress) {
         mutableStateOf(false)
     }
@@ -165,6 +182,21 @@ fun RegattaLinkScreen(
             !rawCaptureState.isActive &&
             !configurationState.busy &&
             !regattaLinkConfigurationMutationBlocked(configurationState)
+    val deviceControlBaseEnabled =
+        configEnabled &&
+            !configurationState.diagnosticLogLoading &&
+            !nmeaState.rawCanReading
+    val deviceControlEnabled =
+        deviceControlBaseEnabled &&
+            !configurationState.deviceControlBusy
+    val controlStatus = configurationState.deviceControlStatus
+    val boatFrameValid = controlStatus?.boatFrameValid == true
+    val orientationControlsEnabled =
+        regattaLinkOrientationControlsEnabled(
+            baseControlsEnabled = deviceControlBaseEnabled,
+            boatFrameValid = boatFrameValid,
+            deviceControlBusy = configurationState.deviceControlBusy
+        )
     val nameValidationError =
         if (nameDraft.isBlank()) {
             stringResource(R.string.regattalink_name_required)
@@ -199,16 +231,63 @@ fun RegattaLinkScreen(
         }
     }
 
+    if (settingsSheetOpen) {
+        RegattaLinkSettingsSheet(
+            controlStatus = controlStatus,
+            controlsEnabled = orientationControlsEnabled,
+            deviceControlBusy = configurationState.deviceControlBusy,
+            deviceControlError = configurationState.deviceControlError,
+            onAdjust = onDeviceControl,
+            onDismiss = { settingsSheetOpen = false }
+        )
+    }
+
     Column(
         modifier = modifier
             .padding(24.dp)
             .verticalScroll(rememberScrollState())
     ) {
-        Text(
-            text = stringResource(R.string.regattalink_title),
-            fontSize = 26.sp,
-            fontWeight = FontWeight.SemiBold
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(R.string.regattalink_title),
+                fontSize = 26.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Box {
+                val openSettingsDescription =
+                    stringResource(R.string.regattalink_open_settings)
+                TextButton(
+                    onClick = { settingsMenuExpanded = true },
+                    modifier = Modifier.semantics {
+                        contentDescription = openSettingsDescription
+                    }
+                ) {
+                    Text("⋮", fontSize = 24.sp)
+                }
+                DropdownMenu(
+                    expanded = settingsMenuExpanded,
+                    onDismissRequest = { settingsMenuExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                stringResource(
+                                    R.string.regattalink_settings_title
+                                )
+                            )
+                        },
+                        onClick = {
+                            settingsMenuExpanded = false
+                            settingsSheetOpen = true
+                        }
+                    )
+                }
+            }
+        }
 
         if (nameDialogOpen) {
             AlertDialog(
@@ -503,17 +582,18 @@ fun RegattaLinkScreen(
                     )
                 }
                 if (connected && configurationState.deviceControlSupported) {
-                    val controlEnabled = configEnabled &&
-                        !configurationState.deviceControlBusy &&
-                        !configurationState.diagnosticLogLoading &&
-                        !nmeaState.rawCanReading
-                    val controlStatus = configurationState.deviceControlStatus
-                    val boatFrameValid = controlStatus?.boatFrameValid == true
-                    val trimEnabled = controlEnabled && boatFrameValid
                     Text(
                         stringResource(R.string.regattalink_device_control),
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(top = 12.dp)
+                    )
+                    telemetryValue(
+                        label = stringResource(R.string.regattalink_boat_frame),
+                        value = if (boatFrameValid) {
+                            stringResource(R.string.regattalink_ready)
+                        } else {
+                            stringResource(R.string.regattalink_not_set)
+                        }
                     )
                     Text(
                         text = stringResource(
@@ -523,81 +603,33 @@ fun RegattaLinkScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Button(
-                        onClick = { onDeviceControl(RegattaLinkDeviceControlOpcode.SET_UPRIGHT, 0) },
-                        enabled = controlEnabled
-                    ) { Text(stringResource(R.string.regattalink_set_upright)) }
-
-                    RegattaLinkTrimControl(
-                        label = stringResource(R.string.regattalink_forward_trim),
-                        value = controlStatus?.forwardTrimDeg,
-                        leftLabel = stringResource(R.string.regattalink_one_degree_port),
-                        leftDelta = regattaLinkTrimDelta(
-                            RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
-                            RegattaLinkTrimDirection.PORT
-                        ),
-                        rightLabel = stringResource(R.string.regattalink_one_degree_starboard),
-                        rightDelta = regattaLinkTrimDelta(
-                            RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
-                            RegattaLinkTrimDirection.STARBOARD
-                        ),
-                        enabled = trimEnabled,
-                        onAdjust = {
+                        onClick = {
                             onDeviceControl(
-                                RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
-                                it
+                                RegattaLinkDeviceControlOpcode.SET_UPRIGHT,
+                                0
                             )
-                        }
-                    )
-                    RegattaLinkTrimControl(
-                        label = stringResource(R.string.regattalink_heel),
-                        value = controlStatus?.heelTrimDeg,
-                        leftLabel = stringResource(R.string.regattalink_one_degree_port),
-                        leftDelta = regattaLinkTrimDelta(
-                            RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
-                            RegattaLinkTrimDirection.PORT
-                        ),
-                        rightLabel = stringResource(R.string.regattalink_one_degree_starboard),
-                        rightDelta = regattaLinkTrimDelta(
-                            RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
-                            RegattaLinkTrimDirection.STARBOARD
-                        ),
-                        enabled = trimEnabled,
-                        onAdjust = {
-                            onDeviceControl(
-                                RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
-                                it
-                            )
-                        }
-                    )
-                    RegattaLinkTrimControl(
-                        label = stringResource(R.string.regattalink_pitch),
-                        value = controlStatus?.pitchTrimDeg,
-                        leftLabel = stringResource(R.string.regattalink_one_degree_front),
-                        leftDelta = regattaLinkTrimDelta(
-                            RegattaLinkDeviceControlOpcode.ADJUST_PITCH,
-                            RegattaLinkTrimDirection.FRONT
-                        ),
-                        rightLabel = stringResource(R.string.regattalink_one_degree_back),
-                        rightDelta = regattaLinkTrimDelta(
-                            RegattaLinkDeviceControlOpcode.ADJUST_PITCH,
-                            RegattaLinkTrimDirection.BACK
-                        ),
-                        enabled = trimEnabled,
-                        onAdjust = {
-                            onDeviceControl(
-                                RegattaLinkDeviceControlOpcode.ADJUST_PITCH,
-                                it
-                            )
-                        }
-                    )
+                        },
+                        enabled = deviceControlEnabled
+                    ) {
+                        Text(stringResource(R.string.regattalink_set_upright))
+                    }
 
                     controlStatus?.let { status ->
-                        Text("${status.phase} · ${status.result}")
+                        Text(
+                            "${status.phase} · ${status.result}",
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
                     }
                     if (configurationState.deviceControlError.isNotBlank()) {
-                        Text(configurationState.deviceControlError, color = MaterialTheme.colorScheme.error)
+                        Text(
+                            configurationState.deviceControlError,
+                            color = MaterialTheme.colorScheme.error
+                        )
                     }
-                    TextButton(onClick = { resetDialogOpen = true }, enabled = controlEnabled) {
+                    TextButton(
+                        onClick = { resetDialogOpen = true },
+                        enabled = deviceControlEnabled
+                    ) {
                         Text(stringResource(R.string.regattalink_factory_reset))
                     }
                 }
