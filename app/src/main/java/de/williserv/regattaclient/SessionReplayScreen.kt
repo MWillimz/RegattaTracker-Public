@@ -707,11 +707,10 @@ private fun ReplayTrackCanvas(
 
             if (selected.hasUsableGpsPosition()) {
                 point(selected)?.let { center ->
-                    val bearing = cogDegreesForDisplay(selected.cog.toDouble())?.toFloat() ?: 0f
                     drawReplayBoat(
                         center = center,
                         radius = sizing.boatRadiusPx,
-                        bearingDegrees = bearing,
+                        bearingDegrees = replayBoatBearingDegrees(selected.cog),
                         color = markerColor,
                         outlineWidth = sizing.boatOutlineWidthPx
                     )
@@ -799,7 +798,7 @@ private fun ReplayTimeline(
             drawReplayBoat(
                 center = Offset(x, selectedFraction * size.height),
                 radius = timelineBoatRadiusPx,
-                bearingDegrees = 180f,
+                bearingDegrees = replayBoatBearingDegrees(samples[selectedIndex].cog),
                 color = markerColor,
                 outlineWidth = timelineBoatOutlineWidthPx
             )
@@ -951,6 +950,9 @@ internal fun replaySpeedFraction(speedMps: Double, maxSpeedMps: Double): Float {
     }
     return (speedMps / maxSpeedMps).toFloat().coerceIn(0f, 1f)
 }
+
+internal fun replayBoatBearingDegrees(cogDegrees: Float): Float =
+    normalizeBearingDegrees(cogDegrees.toDouble())?.toFloat() ?: 0f
 
 private fun replaySpeedColor(speedMps: Double, maxSpeedMps: Double): Color {
     val fraction = replaySpeedFraction(speedMps, maxSpeedMps)
