@@ -590,6 +590,8 @@ internal class RegattaLinkBleClient(
                             pausedForOta = true
                         )
                     }
+                    loadPacketAssembler.reset()
+                    RegattaLinkLoadSnapshotStore.clear()
                     emitNmea(
                         RegattaLinkNmeaState(
                             pausedForOta = true

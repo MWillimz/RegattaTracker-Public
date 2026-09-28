@@ -110,7 +110,7 @@ internal interface RegattaLinkConnectionClient {
     fun setDeviceName(name: String): Boolean
     fun setLedBrightness(percent: Int): Boolean
     fun setMotionDamping(seconds: Int): Boolean
-    fun setLoadPrecisionX10(enabled: Boolean): Boolean
+    fun setLoadPrecisionX10(enabled: Boolean): Boolean = false
     fun drainDiagnosticLog(): Boolean = false
     fun executeDeviceControl(
         opcode: RegattaLinkDeviceControlOpcode,
