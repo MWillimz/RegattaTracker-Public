@@ -1445,7 +1445,10 @@ internal class RegattaLinkBleClient(
                     null
                 }
             if (activeScanner == null) {
-                finishManualDiscovery("Bluetooth LE is unavailable")
+                finishManualDiscovery(
+                    "Bluetooth LE is unavailable",
+                    RegattaLinkUiMessage.BLUETOOTH_UNAVAILABLE
+                )
                 return@post
             }
 
