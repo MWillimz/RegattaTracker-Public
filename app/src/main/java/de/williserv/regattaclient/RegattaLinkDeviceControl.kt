@@ -141,7 +141,6 @@ internal fun regattaLinkDeviceControlRejectedBeforeStartState(
         deviceControlAcceptedOpcode = null,
         deviceControlAcceptedRequestId = null,
         factoryResetWriteAcceptedRequestId = null,
-        factoryResetAwaitingDisconnect = false,
         deviceControlError = errorMessage
     )
 
