@@ -72,6 +72,23 @@ internal fun formatRegattaLinkDirectionalTrim(
     else -> "${-valueDeg}° $negativeDirectionLabel"
 }
 
+internal enum class RegattaLinkBoatFramePresentation {
+    UNKNOWN,
+    PENDING,
+    READY,
+    NOT_SET
+}
+
+internal fun regattaLinkBoatFramePresentation(
+    status: RegattaLinkDeviceControlStatus?,
+    deviceControlBusy: Boolean
+): RegattaLinkBoatFramePresentation = when {
+    status?.boatFrameValid == true -> RegattaLinkBoatFramePresentation.READY
+    status != null -> RegattaLinkBoatFramePresentation.NOT_SET
+    deviceControlBusy -> RegattaLinkBoatFramePresentation.PENDING
+    else -> RegattaLinkBoatFramePresentation.UNKNOWN
+}
+
 internal fun regattaLinkOrientationControlsEnabled(
     baseControlsEnabled: Boolean,
     boatFrameValid: Boolean,
