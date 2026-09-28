@@ -78,6 +78,79 @@ class SessionReplayTest {
     }
 
     @Test
+    fun replayBoatBearing_usesRecordedCogWhenAvailable() {
+        val samples = listOf(
+            sample(id = 1, seconds = 0).copy(cog = 123f),
+            sample(id = 2, seconds = 1).copy(cog = 123f)
+        )
+
+        assertEquals(123f, replayBoatBearingDegrees(samples, 0), 0.0001f)
+    }
+
+    @Test
+    fun replayBoatBearing_preservesValidZeroDegreeCog() {
+        val samples = listOf(
+            sample(id = 1, seconds = 0).copy(
+                lat = 51.0,
+                lon = 12.0,
+                cog = 0f,
+                cogValid = true
+            ),
+            sample(id = 2, seconds = 1).copy(
+                lat = 51.0,
+                lon = 12.001,
+                cog = 0f,
+                cogValid = true
+            )
+        )
+
+        assertEquals(0f, replayBoatBearingDegrees(samples, 0), 0.0001f)
+        assertEquals(0f, replayBoatBearingDegrees(samples, 1), 0.0001f)
+    }
+
+    @Test
+    fun replayBoatBearing_fallsBackToTrackForExplicitlyInvalidBearing() {
+        val samples = listOf(
+            sample(id = 1, seconds = 0).copy(
+                lat = 51.0,
+                lon = 12.0,
+                cog = 0f,
+                cogValid = false
+            ),
+            sample(id = 2, seconds = 1).copy(
+                lat = 51.0,
+                lon = 12.001,
+                cog = 0f,
+                cogValid = false
+            )
+        )
+
+        assertEquals(90f, replayBoatBearingDegrees(samples, 0), 0.5f)
+        assertEquals(90f, replayBoatBearingDegrees(samples, 1), 0.5f)
+    }
+
+    @Test
+    fun replayBoatBearing_preservesLegacyZeroDegreeCogWithoutValidityBit() {
+        val samples = listOf(
+            sample(id = 1, seconds = 0).copy(
+                lat = 51.0,
+                lon = 12.0,
+                cog = 0f,
+                cogValid = null
+            ),
+            sample(id = 2, seconds = 1).copy(
+                lat = 51.0,
+                lon = 12.001,
+                cog = 0f,
+                cogValid = null
+            )
+        )
+
+        assertEquals(0f, replayBoatBearingDegrees(samples, 0), 0.0001f)
+        assertEquals(0f, replayBoatBearingDegrees(samples, 1), 0.0001f)
+    }
+
+    @Test
     fun replayCanvasSizing_keepsLogicalSizeStableAcrossDensities() {
         val mdpi = replayCanvasSizing(canvasScalePx = 600f, density = 1f)
         val xxhdpi = replayCanvasSizing(canvasScalePx = 1800f, density = 3f)

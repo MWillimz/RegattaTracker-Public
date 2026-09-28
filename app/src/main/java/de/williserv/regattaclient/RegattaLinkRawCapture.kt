@@ -38,7 +38,8 @@ data class RegattaLinkRawCaptureState(
     val frameCount: Int = 0,
     val fileName: String = "",
     val filePath: String? = null,
-    val error: String = ""
+    val error: String = "",
+    val userMessage: RegattaLinkUiMessage? = null
 ) {
     val isActive: Boolean
         get() = phase == RegattaLinkRawCapturePhase.FLUSHING ||
@@ -47,6 +48,23 @@ data class RegattaLinkRawCaptureState(
     val hasFile: Boolean
         get() = !filePath.isNullOrBlank()
 }
+
+internal fun regattaLinkRawCaptureStartAllowed(
+    connected: Boolean,
+    otaActive: Boolean,
+    configurationState: RegattaLinkConfigurationState,
+    nmeaState: RegattaLinkNmeaState,
+    rawCaptureState: RegattaLinkRawCaptureState
+): Boolean =
+    connected &&
+        nmeaState.rawCanSupported &&
+        !otaActive &&
+        !rawCaptureState.isActive &&
+        !rawCaptureState.hasFile &&
+        !nmeaState.rawCanReading &&
+        !configurationState.diagnosticLogLoading &&
+        !configurationState.deviceControlBusy
+
 
 internal data class Nmea2000CanIdFields(
     val priority: Int,

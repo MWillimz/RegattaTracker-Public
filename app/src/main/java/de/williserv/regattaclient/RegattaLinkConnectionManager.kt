@@ -400,7 +400,17 @@ internal class RegattaLinkConnectionManager(
         ) {
             return false
         }
-        return client.drainDiagnosticLog()
+        val accepted = client.drainDiagnosticLog()
+        if (accepted) {
+            handleConfigurationState(
+                configurationState.copy(
+                    diagnosticLogLoading = true,
+                    diagnosticLogEntries = emptyList(),
+                    diagnosticLogError = ""
+                )
+            )
+        }
+        return accepted
     }
 
     fun executeDeviceControl(
@@ -425,7 +435,21 @@ internal class RegattaLinkConnectionManager(
         ) {
             return false
         }
-        return client.executeDeviceControl(opcode, value)
+
+        val accepted = client.executeDeviceControl(opcode, value)
+        if (accepted) {
+            handleConfigurationState(
+                configurationState.copy(
+                    deviceControlBusy = true,
+                    deviceControlAcceptedOpcode = null,
+                    deviceControlAcceptedRequestId = null,
+                    factoryResetWriteAcceptedRequestId = null,
+                    deviceControlStatus = null,
+                    deviceControlError = ""
+                )
+            )
+        }
+        return accepted
     }
 
     fun refreshPgnInventory(): Boolean {
@@ -440,13 +464,14 @@ internal class RegattaLinkConnectionManager(
 
     fun startRawCanCapture(): Boolean {
         if (
-            otaState.isActive ||
-            rawCaptureState.isActive ||
-            rawCaptureState.hasFile ||
-            configurationState.diagnosticLogLoading ||
-            configurationState.deviceControlBusy ||
-            connectionState.status != RegattaLinkConnectionStatus.CONNECTED ||
-            !nmeaState.rawCanSupported
+            !regattaLinkRawCaptureStartAllowed(
+                connected =
+                    connectionState.status == RegattaLinkConnectionStatus.CONNECTED,
+                otaActive = otaState.isActive,
+                configurationState = configurationState,
+                nmeaState = nmeaState,
+                rawCaptureState = rawCaptureState
+            )
         ) {
             return false
         }
@@ -456,6 +481,7 @@ internal class RegattaLinkConnectionManager(
             emitRawCapture(
                 RegattaLinkRawCaptureState(
                     phase = RegattaLinkRawCapturePhase.ERROR,
+                    userMessage = RegattaLinkUiMessage.RAW_CAPTURE_DIRECTORY_FAILED,
                     error = "Could not create raw CAN capture directory"
                 )
             )
@@ -473,6 +499,7 @@ internal class RegattaLinkConnectionManager(
             emitRawCapture(
                 RegattaLinkRawCaptureState(
                     phase = RegattaLinkRawCapturePhase.ERROR,
+                    userMessage = RegattaLinkUiMessage.RAW_CAPTURE_FILE_FAILED,
                     error = error.message ?: "Could not create raw CAN capture file"
                 )
             )
@@ -500,6 +527,7 @@ internal class RegattaLinkConnectionManager(
                 emitRawCapture(
                     rawCaptureState.copy(
                         phase = RegattaLinkRawCapturePhase.CAPTURING,
+                        userMessage = null,
                         error = ""
                     )
                 )
@@ -528,6 +556,7 @@ internal class RegattaLinkConnectionManager(
                         rawCaptureState.copy(
                             phase = RegattaLinkRawCapturePhase.CAPTURING,
                             frameCount = frameCount,
+                            userMessage = null,
                             error = ""
                         )
                     )
@@ -554,6 +583,9 @@ internal class RegattaLinkConnectionManager(
                     rawCaptureState.copy(
                         phase = phase,
                         frameCount = finalCount,
+                        userMessage =
+                            RegattaLinkUiMessage.RAW_CAPTURE_FAILED
+                                .takeIf { error.isNotBlank() },
                         error = error
                     )
                 )
@@ -569,6 +601,7 @@ internal class RegattaLinkConnectionManager(
             emitRawCapture(
                 RegattaLinkRawCaptureState(
                     phase = RegattaLinkRawCapturePhase.ERROR,
+                    userMessage = RegattaLinkUiMessage.RAW_CAPTURE_START_FAILED,
                     error = "Could not start raw CAN capture"
                 )
             )
@@ -608,11 +641,14 @@ internal class RegattaLinkConnectionManager(
                     input.copyTo(output)
                 } ?: throw IllegalStateException("Could not open export destination")
             }
-            emitRawCapture(rawCaptureState.copy(error = ""))
+            emitRawCapture(
+                rawCaptureState.copy(userMessage = null, error = "")
+            )
             true
         } catch (error: Exception) {
             emitRawCapture(
                 rawCaptureState.copy(
+                    userMessage = RegattaLinkUiMessage.RAW_CAPTURE_EXPORT_FAILED,
                     error = error.message ?: "Could not export raw CAN capture"
                 )
             )

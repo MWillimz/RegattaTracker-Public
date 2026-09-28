@@ -17,13 +17,13 @@ class SessionReplayFieldsTest {
         val sample = sample(
             measurementsJson = """
                 {
-                  "regattalink.fast.roll_deg": {
-                    "value": 12.34,
+                  "regattalink.motion.heel_deg": {
+                    "value": -8.5,
                     "unit": "deg",
                     "group": "regattalink"
                   },
-                  "regattalink.summary.heel_filtered_deg": {
-                    "value": -8.5,
+                  "regattalink.motion.pitch_deg": {
+                    "value": 2.25,
                     "unit": "deg",
                     "group": "regattalink"
                   },
@@ -69,15 +69,17 @@ class SessionReplayFieldsTest {
         assertTrue(fields.all { it.recommended })
 
         val heel = fields.single {
-            it.id == "measurement:regattalink.summary.heel_filtered_deg"
+            it.id == "measurement:regattalink.motion.heel_deg"
         }
         assertEquals("Heel", heel.label)
         assertEquals("deg", heel.unit)
 
-        val roll = fields.single { it.id == "measurement:regattalink.fast.roll_deg" }
-        assertEquals("Roll", roll.label)
-        assertEquals("deg", roll.unit)
-        assertEquals("regattalink", roll.measurementGroup)
+        val pitch = fields.single {
+            it.id == "measurement:regattalink.motion.pitch_deg"
+        }
+        assertEquals("Pitch", pitch.label)
+        assertEquals("deg", pitch.unit)
+        assertEquals("regattalink", pitch.measurementGroup)
 
         val stw = fields.single { it.id == "measurement:nmea.stw_mps" }
         assertEquals("STW", stw.label)
@@ -95,7 +97,7 @@ class SessionReplayFieldsTest {
         val sample = sample(
             measurementsJson = """
                 {
-                  "regattalink.fast.roll_deg": {
+                  "regattalink.motion.pitch_deg": {
                     "value": -14.5,
                     "unit": "deg",
                     "group": "regattalink"
@@ -105,14 +107,18 @@ class SessionReplayFieldsTest {
         )
         val fields = discoverReplayExtraFields(listOf(sample))
 
-        val roll = fields.single { it.id == "measurement:regattalink.fast.roll_deg" }
-        assertEquals("Roll", roll.label)
-        assertTrue(replayExtraFieldValue(sample, roll)?.contains("-14.50") == true)
+        val pitch = fields.single {
+            it.id == "measurement:regattalink.motion.pitch_deg"
+        }
+        assertEquals("Pitch", pitch.label)
+        assertTrue(
+            replayExtraFieldValue(sample, pitch)?.contains("-14.50") == true
+        )
 
         assertNull(
             replayExtraFieldValue(
                 sample.copy(measurementsJson = null),
-                roll
+                pitch
             )
         )
     }

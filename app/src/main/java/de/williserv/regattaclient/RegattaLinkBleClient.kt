@@ -50,7 +50,8 @@ data class RegattaLinkClientState(
     val deviceName: String = "",
     val deviceAddress: String = "",
     val deviceInfo: RegattaLinkDeviceInfo? = null,
-    val error: String = ""
+    val error: String = "",
+    val userMessage: RegattaLinkUiMessage? = null
 )
 
 @SuppressLint(
@@ -301,7 +302,11 @@ internal class RegattaLinkBleClient(
             if (discoveryInProgress) {
                 retryDiscoveryAfterCandidateFailure()
             } else {
-                emitError(device, "RegattaLink connection timed out")
+                emitError(
+                    device,
+                    "RegattaLink connection timed out",
+                    RegattaLinkUiMessage.CONNECTION_TIMEOUT
+                )
                 if (
                     shouldStartRegattaLinkOutageReconnect(
                         connectionWasReady = wasEstablishedConnection,
@@ -902,7 +907,10 @@ internal class RegattaLinkBleClient(
         scanner = adapter.bluetoothLeScanner
         val activeScanner = scanner
         if (activeScanner == null) {
-            finishManualDiscovery("Bluetooth LE is unavailable")
+            finishManualDiscovery(
+                "Bluetooth LE is unavailable",
+                RegattaLinkUiMessage.BLUETOOTH_UNAVAILABLE
+            )
             return true
         }
 
@@ -930,6 +938,7 @@ internal class RegattaLinkBleClient(
             emitOta(
                 RegattaLinkOtaUiState(
                     phase = RegattaLinkOtaPhase.ERROR,
+                    userMessage = RegattaLinkUiMessage.OTA_WAIT_FACTORY_RESET,
                     error = "Wait for Factory Reset to finish before OTA"
                 )
             )
@@ -946,6 +955,7 @@ internal class RegattaLinkBleClient(
             emitOta(
                 RegattaLinkOtaUiState(
                     phase = RegattaLinkOtaPhase.ERROR,
+                    userMessage = RegattaLinkUiMessage.OTA_WAIT_CONFIGURATION,
                     error = "Wait for RegattaLink configuration work to finish before OTA"
                 )
             )
@@ -963,6 +973,7 @@ internal class RegattaLinkBleClient(
             emitOta(
                 RegattaLinkOtaUiState(
                     phase = RegattaLinkOtaPhase.ERROR,
+                    userMessage = RegattaLinkUiMessage.OTA_CONNECT_FIRST,
                     error = "Connect RegattaLink before installing firmware"
                 )
             )
@@ -985,6 +996,7 @@ internal class RegattaLinkBleClient(
                     phase = RegattaLinkOtaPhase.ERROR,
                     installedBuild = info.runningBuild.toString(),
                     targetBuild = artifact.manifest.buildNumber.toString(),
+                    userMessage = RegattaLinkUiMessage.OTA_FAILED,
                     error = validationFailure.message
                         ?: "Firmware is not compatible with this RegattaLink"
                 )
@@ -1341,7 +1353,10 @@ internal class RegattaLinkBleClient(
         }
     }
 
-    private fun finishManualDiscovery(message: String) {
+    private fun finishManualDiscovery(
+        message: String,
+        userMessage: RegattaLinkUiMessage = RegattaLinkUiMessage.CONNECTION_FAILED
+    ) {
         stopScan()
         handler.removeCallbacks(bondPoll)
         handler.removeCallbacks(gattTimeout)
@@ -1357,6 +1372,7 @@ internal class RegattaLinkBleClient(
         emit(
             RegattaLinkClientState(
                 status = RegattaLinkConnectionStatus.ERROR,
+                userMessage = userMessage,
                 error = message
             )
         )
@@ -1429,7 +1445,10 @@ internal class RegattaLinkBleClient(
                     null
                 }
             if (activeScanner == null) {
-                finishManualDiscovery("Bluetooth LE is unavailable")
+                finishManualDiscovery(
+                    "Bluetooth LE is unavailable",
+                    RegattaLinkUiMessage.BLUETOOTH_UNAVAILABLE
+                )
                 return@post
             }
 
@@ -1521,7 +1540,11 @@ internal class RegattaLinkBleClient(
             } else if (discoveryInProgress) {
                 retryDiscoveryAfterCandidateFailure()
             } else {
-                emitError(device, "Could not start RegattaLink pairing")
+                emitError(
+                    device,
+                    "Could not start RegattaLink pairing",
+                    RegattaLinkUiMessage.PAIRING_START_FAILED
+                )
             }
             return
         }
@@ -1555,7 +1578,11 @@ internal class RegattaLinkBleClient(
             } else if (discoveryInProgress) {
                 retryDiscoveryAfterCandidateFailure()
             } else {
-                emitError(device, "Could not open RegattaLink connection")
+                emitError(
+                    device,
+                    "Could not open RegattaLink connection",
+                    RegattaLinkUiMessage.CONNECTION_OPEN_FAILED
+                )
             }
         } else {
             handler.postDelayed(gattTimeout, currentGattTimeoutMs())
@@ -2306,7 +2333,14 @@ internal class RegattaLinkBleClient(
         }
 
         if (gatt === activeGatt && connected) {
-            emitConfiguration(next.copy(error = errorMessage))
+            emitConfiguration(
+                next.copy(
+                    userMessage =
+                        RegattaLinkUiMessage.CONFIGURATION_FAILED
+                            .takeIf { errorMessage.isNotBlank() },
+                    error = errorMessage
+                )
+            )
         }
     }
 
@@ -2396,6 +2430,14 @@ internal class RegattaLinkBleClient(
                         } else {
                             it.boatStateReceivedAtElapsedMs
                         },
+                    userMessage =
+                        if (errorMessage.isBlank()) {
+                            null
+                        } else if (!subscribed) {
+                            RegattaLinkUiMessage.NMEA_NOTIFICATIONS_FAILED
+                        } else {
+                            RegattaLinkUiMessage.NMEA_BOAT_STATE_READ_FAILED
+                        },
                     error = errorMessage
                 )
             }
@@ -2428,6 +2470,7 @@ internal class RegattaLinkBleClient(
                 it.copy(
                     supported = true,
                     subscribed = false,
+                    userMessage = RegattaLinkUiMessage.TELEMETRY_UNAVAILABLE,
                     error = "RegattaLink Motion 1 Hz telemetry is unavailable"
                 )
             }
@@ -2456,6 +2499,7 @@ internal class RegattaLinkBleClient(
                 it.copy(
                     supported = true,
                     subscribed = true,
+                    userMessage = null,
                     error = ""
                 )
             }
@@ -2474,6 +2518,7 @@ internal class RegattaLinkBleClient(
                     it.copy(
                         supported = true,
                         subscribed = false,
+                        userMessage = RegattaLinkUiMessage.TELEMETRY_FAILED,
                         error = error.message
                             ?: "RegattaLink Motion 1 Hz subscription failed"
                     )
@@ -2517,6 +2562,7 @@ internal class RegattaLinkBleClient(
                             mtu >= REGATTALINK_BOAT_STATE_NOTIFICATION_MTU,
                         boatState = boatState,
                         boatStateReceivedAtElapsedMs = receivedAt,
+                        userMessage = null,
                         error = ""
                     )
                 }
@@ -2524,6 +2570,7 @@ internal class RegattaLinkBleClient(
                 updateNmea {
                     it.copy(
                         boatStateSupported = true,
+                        userMessage = RegattaLinkUiMessage.NMEA_BOAT_STATE_READ_FAILED,
                         error = error.message ?: "Invalid RegattaLink Boat State record"
                     )
                 }
@@ -2555,6 +2602,7 @@ internal class RegattaLinkBleClient(
                                 supported = true,
                                 motionOneHz = parsed,
                                 motionOneHzReceivedAtElapsedMs = receivedAt,
+                                userMessage = null,
                                 error = ""
                             )
                         }
@@ -2571,6 +2619,7 @@ internal class RegattaLinkBleClient(
                                 supported = true,
                                 fast = parsed,
                                 fastReceivedAtElapsedMs = receivedAt,
+                                userMessage = null,
                                 error = ""
                             )
                         }
@@ -2587,6 +2636,7 @@ internal class RegattaLinkBleClient(
                                 supported = true,
                                 summary = parsed,
                                 summaryReceivedAtElapsedMs = receivedAt,
+                                userMessage = null,
                                 error = ""
                             )
                         }
@@ -2603,6 +2653,7 @@ internal class RegattaLinkBleClient(
                                 supported = true,
                                 calibration = parsed,
                                 calibrationReceivedAtElapsedMs = receivedAt,
+                                userMessage = null,
                                 error = ""
                             )
                         }
@@ -2613,6 +2664,7 @@ internal class RegattaLinkBleClient(
             updateTelemetry {
                 it.copy(
                     supported = true,
+                    userMessage = RegattaLinkUiMessage.TELEMETRY_INVALID,
                     error = error.message ?: "Invalid RegattaLink telemetry record"
                 )
             }
@@ -2630,9 +2682,7 @@ internal class RegattaLinkBleClient(
         )
 
     override fun setDeviceName(name: String): Boolean {
-        val validationError = validateRegattaLinkDeviceName(name)
-        if (validationError != null) {
-            updateConfiguration { it.copy(error = validationError) }
+        if (validateRegattaLinkDeviceName(name) != null) {
             return false
         }
         if (otaRunning.get() || !isConnected()) return false
@@ -2652,7 +2702,9 @@ internal class RegattaLinkBleClient(
                 ) {
                     return@execute
                 }
-                updateConfiguration { it.copy(busy = true, error = "") }
+                updateConfiguration {
+                    it.copy(busy = true, userMessage = null, error = "")
+                }
                 try {
                     val characteristic = activeGatt
                         .getService(CONFIG_SERVICE_UUID)
@@ -2671,6 +2723,7 @@ internal class RegattaLinkBleClient(
                             deviceNameSupported = true,
                             deviceName = name,
                             busy = false,
+                            userMessage = null,
                             error = ""
                         )
                     }
@@ -2678,6 +2731,7 @@ internal class RegattaLinkBleClient(
                     updateConfiguration {
                         it.copy(
                             busy = false,
+                            userMessage = RegattaLinkUiMessage.NAME_CHANGE_FAILED,
                             error = error.message ?: "Could not change RegattaLink name"
                         )
                     }
@@ -2692,7 +2746,10 @@ internal class RegattaLinkBleClient(
     override fun setLedBrightness(percent: Int): Boolean {
         if (percent !in 0..100) {
             updateConfiguration {
-                it.copy(error = "LED brightness must be between 0 and 100")
+                it.copy(
+                    userMessage = RegattaLinkUiMessage.LED_BRIGHTNESS_RANGE,
+                    error = "LED brightness must be between 0 and 100"
+                )
             }
             return false
         }
@@ -2713,7 +2770,7 @@ internal class RegattaLinkBleClient(
                 ) {
                     return@execute
                 }
-                updateConfiguration { it.copy(busy = true, error = "") }
+                updateConfiguration { it.copy(busy = true, userMessage = null, error = "") }
                 try {
                     val characteristic = activeGatt
                         .getService(CONFIG_SERVICE_UUID)
@@ -2732,6 +2789,7 @@ internal class RegattaLinkBleClient(
                             ledBrightnessSupported = true,
                             ledBrightnessPct = percent,
                             busy = false,
+                            userMessage = null,
                             error = ""
                         )
                     }
@@ -2754,6 +2812,7 @@ internal class RegattaLinkBleClient(
                         it.copy(
                             ledBrightnessPct = reread ?: it.ledBrightnessPct,
                             busy = false,
+                            userMessage = RegattaLinkUiMessage.CONFIGURATION_FAILED,
                             error = error.message
                                 ?: "Could not change RegattaLink LED brightness"
                         )
@@ -2769,7 +2828,10 @@ internal class RegattaLinkBleClient(
     override fun setMotionDamping(seconds: Int): Boolean {
         if (seconds !in 1..10) {
             updateConfiguration {
-                it.copy(error = "Motion damping must be between 1 and 10 seconds")
+                it.copy(
+                    userMessage = RegattaLinkUiMessage.MOTION_DAMPING_RANGE,
+                    error = "Motion damping must be between 1 and 10 seconds"
+                )
             }
             return false
         }
@@ -2790,7 +2852,7 @@ internal class RegattaLinkBleClient(
                 ) {
                     return@execute
                 }
-                updateConfiguration { it.copy(busy = true, error = "") }
+                updateConfiguration { it.copy(busy = true, userMessage = null, error = "") }
                 try {
                     val characteristic = activeGatt
                         .getService(CONFIG_SERVICE_UUID)
@@ -2809,6 +2871,7 @@ internal class RegattaLinkBleClient(
                             motionDampingSupported = true,
                             motionDampingSeconds = seconds,
                             busy = false,
+                            userMessage = null,
                             error = ""
                         )
                     }
@@ -2832,6 +2895,7 @@ internal class RegattaLinkBleClient(
                             motionDampingSeconds =
                                 reread ?: it.motionDampingSeconds,
                             busy = false,
+                            userMessage = RegattaLinkUiMessage.CONFIGURATION_FAILED,
                             error = error.message
                                 ?: "Could not change RegattaLink motion damping"
                         )
@@ -3279,7 +3343,13 @@ internal class RegattaLinkBleClient(
 
         otaExecutor.execute {
             if (!optionalFeatureWorkAllowed(activeGatt)) return@execute
-            updateNmea { it.copy(pgnInventoryLoading = true, error = "") }
+            updateNmea {
+                it.copy(
+                    pgnInventoryLoading = true,
+                    userMessage = null,
+                    error = ""
+                )
+            }
             try {
                 val characteristic = activeGatt
                     .getService(CONFIG_SERVICE_UUID)
@@ -3296,6 +3366,7 @@ internal class RegattaLinkBleClient(
                         pgnInventorySupported = true,
                         pgnInventoryLoading = false,
                         pgnInventory = inventory,
+                        userMessage = null,
                         error = ""
                     )
                 }
@@ -3303,6 +3374,7 @@ internal class RegattaLinkBleClient(
                 updateNmea {
                     it.copy(
                         pgnInventoryLoading = false,
+                        userMessage = RegattaLinkUiMessage.NMEA_PGN_INVENTORY_READ_FAILED,
                         error = error.message ?: "Could not read RegattaLink PGN inventory"
                     )
                 }
@@ -3321,6 +3393,7 @@ internal class RegattaLinkBleClient(
                 it.copy(
                     rawCanReading = true,
                     rawFrames = emptyList(),
+                    userMessage = null,
                     error = ""
                 )
             }
@@ -3363,6 +3436,9 @@ internal class RegattaLinkBleClient(
                         rawCanSupported = true,
                         rawCanReading = false,
                         rawFrames = frames,
+                        userMessage =
+                            RegattaLinkUiMessage.NMEA_RAW_CAN_READ_FAILED
+                                .takeIf { errorMessage.isNotBlank() },
                         error = errorMessage
                     )
                 }
@@ -4377,13 +4453,15 @@ internal class RegattaLinkBleClient(
 
     private fun emitError(
         device: BluetoothDevice,
-        message: String
+        message: String,
+        userMessage: RegattaLinkUiMessage = RegattaLinkUiMessage.CONNECTION_FAILED
     ) {
         emit(
             RegattaLinkClientState(
                 status = RegattaLinkConnectionStatus.ERROR,
                 deviceName = deviceName(device),
                 deviceAddress = device.address,
+                userMessage = userMessage,
                 error = message
             )
         )

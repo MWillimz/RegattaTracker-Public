@@ -1258,6 +1258,7 @@ class RegattaTrackingService : Service() {
         val lon = location?.longitude ?: 0.0
         val accuracy = location?.accuracy ?: 9999f
         val cog = location?.bearing ?: 0f
+        val cogValid = location?.hasBearing() == true
         val sog = location?.speed ?: 0f
 
         if (!manualRecording) {
@@ -1318,6 +1319,7 @@ class RegattaTrackingService : Service() {
             accuracy = accuracy,
             cog = cog,
             sog = sog,
+            cogValid = cogValid,
             accessContextId = sampleAccessContextId,
             sessionId = activeSessionId,
             raceContextId = sampleRaceContextId,

@@ -407,7 +407,7 @@ class MainActivity : ComponentActivity() {
             } else {
                 regattaLinkState.value = RegattaLinkClientState(
                     status = RegattaLinkConnectionStatus.ERROR,
-                    error = getString(R.string.regattalink_permission_denied)
+                    userMessage = RegattaLinkUiMessage.BLUETOOTH_PERMISSION_DENIED
                 )
             }
         }
@@ -2876,7 +2876,7 @@ class MainActivity : ComponentActivity() {
         if (deviceInfo == null) {
             regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState(
                 status = RegattaLinkFirmwareStatus.ERROR,
-                error = getString(R.string.regattalink_connect_before_firmware)
+                userMessage = RegattaLinkUiMessage.FIRMWARE_CONNECT_FIRST
             )
             return
         }
@@ -2885,7 +2885,7 @@ class MainActivity : ComponentActivity() {
         if (firmwareServer.isBlank()) {
             regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState(
                 status = RegattaLinkFirmwareStatus.ERROR,
-                error = getString(R.string.regattalink_firmware_server_required)
+                userMessage = RegattaLinkUiMessage.FIRMWARE_SERVER_REQUIRED
             )
             return
         }
@@ -2928,7 +2928,8 @@ class MainActivity : ComponentActivity() {
                     regattaLinkFirmwareArtifact = null
                     regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState(
                         status = RegattaLinkFirmwareStatus.ERROR,
-                        error = error.message ?: getString(R.string.regattalink_firmware_check_failed)
+                        userMessage = RegattaLinkUiMessage.FIRMWARE_CHECK_FAILED,
+                        error = error.message ?: "Firmware check failed"
                     )
                 }
             }

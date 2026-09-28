@@ -25,19 +25,11 @@ private data class ReplayMeasurementDefinition(
 
 private val REPLAY_RECOMMENDED_MEASUREMENTS = listOf(
     ReplayMeasurementDefinition(
-        key = "regattalink.summary.heel_filtered_deg",
+        key = REGATTALINK_MOTION_HEEL_KEY,
         label = "Heel"
     ),
     ReplayMeasurementDefinition(
-        key = "regattalink.summary.trim_filtered_deg",
-        label = "Trim"
-    ),
-    ReplayMeasurementDefinition(
-        key = "regattalink.fast.roll_deg",
-        label = "Roll"
-    ),
-    ReplayMeasurementDefinition(
-        key = "regattalink.fast.pitch_deg",
+        key = REGATTALINK_MOTION_PITCH_KEY,
         label = "Pitch"
     ),
     ReplayMeasurementDefinition(

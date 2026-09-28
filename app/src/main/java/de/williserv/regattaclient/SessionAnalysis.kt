@@ -15,8 +15,8 @@ internal const val DEFAULT_GPS_MANEUVER_WINDOW_SECONDS = 5.0
 internal const val DEFAULT_GPS_MANEUVER_THRESHOLD_DEG = 20.0
 internal const val DEFAULT_ANALYSIS_RECOVERY_SECONDS = 5.0
 internal const val DEFAULT_IMU_STEADY_ATTITUDE_RATE_DPS = 1.5
-private const val IMU_HEEL_KEY = "regattalink.summary.heel_filtered_deg"
-private const val IMU_TRIM_KEY = "regattalink.summary.trim_filtered_deg"
+internal const val ANALYSIS_ACCELERATION_LOOKBACK_MS = 5_000L
+internal const val ANALYSIS_AGGREGATION_WINDOW_MS = 10_000L
 
 enum class AnalysisMetricUse {
     ANGLE,
@@ -35,7 +35,8 @@ enum class AnalysisMetricSource {
     GPS_COG,
     GPS_SOG,
     MEASUREMENT,
-    DERIVED_VMG
+    DERIVED_VMG,
+    DERIVED_ACCELERATION
 }
 
 data class AnalysisMetric(
@@ -56,7 +57,9 @@ data class PreparedAnalysisSample(
     val timestampMs: Long?,
     val cogDeg: Double,
     val sogMps: Double,
-    val measurements: Map<String, Double>
+    val measurements: Map<String, Double>,
+    val sourceIndex: Int = -1,
+    val acceleration5sMps2: Double? = null
 )
 
 sealed interface AnalysisSampleFilter
@@ -107,13 +110,22 @@ data class SessionAnalysisCapabilities(
 
 internal fun prepareAnalysisSamples(
     samples: List<SessionTrackingSample>
-): List<PreparedAnalysisSample> = samples.map { sample ->
-    PreparedAnalysisSample(
-        timestampMs = analysisSampleTimestampMs(sample),
-        cogDeg = sample.cog.toDouble(),
-        sogMps = sample.sog.toDouble(),
-        measurements = sessionNumericMeasurementValues(sample)
-    )
+): List<PreparedAnalysisSample> {
+    val prepared = samples.mapIndexed { index, sample ->
+        PreparedAnalysisSample(
+            timestampMs = analysisSampleTimestampMs(sample),
+            cogDeg = sample.cog.toDouble(),
+            sogMps = sample.sog.toDouble(),
+            measurements = sessionNumericMeasurementValues(sample),
+            sourceIndex = index
+        )
+    }
+    return prepared.mapIndexed { index, sample ->
+        sample.copy(
+            acceleration5sMps2 =
+                analysisAccelerationOverLookback(prepared, index)
+        )
+    }
 }
 
 private fun analysisSampleTimestampMs(sample: SessionTrackingSample): Long? {
@@ -122,6 +134,66 @@ private fun analysisSampleTimestampMs(sample: SessionTrackingSample): Long? {
         val offsetSeconds = (sample.utcOffsetMinutes ?: 0) * 60
         local.toInstant(ZoneOffset.ofTotalSeconds(offsetSeconds)).toEpochMilli()
     }.getOrNull()
+}
+
+private fun analysisSamplesAreContinuous(
+    previous: PreparedAnalysisSample,
+    current: PreparedAnalysisSample
+): Boolean {
+    val previousTime = previous.timestampMs ?: return false
+    val currentTime = current.timestampMs ?: return false
+    if (currentTime <= previousTime) return false
+
+    return previous.sourceIndex < 0 ||
+        current.sourceIndex < 0 ||
+        current.sourceIndex == previous.sourceIndex + 1
+}
+
+/*
+ * Use the already-persisted GPS SOG series for the analysis acceleration
+ * signal. This is gravity-free by construction and avoids reintroducing
+ * RegattaLink Fast Motion into normal session analysis.
+ */
+private fun analysisAccelerationOverLookback(
+    samples: List<PreparedAnalysisSample>,
+    index: Int,
+    lookbackMs: Long = ANALYSIS_ACCELERATION_LOOKBACK_MS
+): Double? {
+    if (index !in samples.indices || lookbackMs <= 0L) return null
+    val currentTime = samples[index].timestampMs ?: return null
+    val targetTime = currentTime - lookbackMs
+    var cursor = index
+    var maxAcceleration = 0.0
+
+    while (cursor > 0) {
+        val current = samples[cursor]
+        val previous = samples[cursor - 1]
+        if (!analysisSamplesAreContinuous(previous, current)) return null
+
+        val currentSampleTime = current.timestampMs ?: return null
+        val previousTime = previous.timestampMs ?: return null
+        val deltaMs = currentSampleTime - previousTime
+        if (deltaMs > lookbackMs) return null
+        val dtSeconds = deltaMs / 1_000.0
+        if (
+            !current.sogMps.isFinite() ||
+            !previous.sogMps.isFinite() ||
+            dtSeconds <= 0.0
+        ) {
+            return null
+        }
+
+        maxAcceleration = max(
+            maxAcceleration,
+            abs(current.sogMps - previous.sogMps) / dtSeconds
+        )
+        if (previousTime <= targetTime) {
+            return maxAcceleration
+        }
+        cursor -= 1
+    }
+
+    return null
 }
 
 internal fun applyAnalysisSampleFilters(
@@ -156,7 +228,7 @@ internal fun hasImuStabilityFilterData(
 ): Boolean =
     samples.count { sample ->
         sample.timestampMs != null &&
-            sample.measurements[IMU_HEEL_KEY]?.isFinite() == true
+            sample.measurements[REGATTALINK_MOTION_HEEL_KEY]?.isFinite() == true
     } >= 2
 
 private fun gpsManeuverExclusionMask(
@@ -264,7 +336,7 @@ private fun imuStabilityExclusionMask(
 
     samples.forEachIndexed { index, sample ->
         val time = sample.timestampMs
-        val heel = sample.measurements[IMU_HEEL_KEY]
+        val heel = sample.measurements[REGATTALINK_MOTION_HEEL_KEY]
         if (time == null || heel == null || !heel.isFinite()) {
             excluded[index] = true
             previousIndex = null
@@ -275,7 +347,7 @@ private fun imuStabilityExclusionMask(
         if (previous != null) {
             val previousSample = samples[previous]
             val previousTime = previousSample.timestampMs
-            val previousHeel = previousSample.measurements[IMU_HEEL_KEY]
+            val previousHeel = previousSample.measurements[REGATTALINK_MOTION_HEEL_KEY]
             if (
                 previousTime != null &&
                 previousHeel != null &&
@@ -287,27 +359,28 @@ private fun imuStabilityExclusionMask(
                         shortestAnalysisAngleDeltaDeg(heel, previousHeel)
                     ) / dtSeconds
 
-                    val trim = sample.measurements[IMU_TRIM_KEY]
-                    val previousTrim =
-                        previousSample.measurements[IMU_TRIM_KEY]
-                    val trimRate =
+                    val pitch =
+                        sample.measurements[REGATTALINK_MOTION_PITCH_KEY]
+                    val previousPitch =
+                        previousSample.measurements[REGATTALINK_MOTION_PITCH_KEY]
+                    val pitchRate =
                         if (
-                            trim != null &&
-                            previousTrim != null &&
-                            trim.isFinite() &&
-                            previousTrim.isFinite()
+                            pitch != null &&
+                            previousPitch != null &&
+                            pitch.isFinite() &&
+                            previousPitch.isFinite()
                         ) {
-                            abs(trim - previousTrim) / dtSeconds
+                            abs(pitch - previousPitch) / dtSeconds
                         } else {
                             0.0
                         }
 
                     if (
-                        max(heelRate, trimRate) >
+                        max(heelRate, pitchRate) >
                         filter.maxAttitudeRateDps
                     ) {
                         /*
-                         * The transition spans both 1 Hz summary samples.
+                         * The transition spans both 1 Hz Motion samples.
                          * Exclude both endpoints, then apply the configured
                          * recovery tail below.
                          */
@@ -441,13 +514,13 @@ internal fun discoverSessionAnalysisCapabilities(
             displayScale = MPS_TO_KNOTS
         ),
         knownMetric(
-            key = "regattalink.summary.heel_filtered_deg",
+            key = REGATTALINK_MOTION_HEEL_KEY,
             label = "Heel",
             unit = "deg",
             recommended = setOf(AnalysisMetricUse.COLOR)
         ),
         knownMetric(
-            key = "regattalink.summary.trim_filtered_deg",
+            key = REGATTALINK_MOTION_PITCH_KEY,
             label = "Pitch",
             unit = "deg",
             recommended = setOf(AnalysisMetricUse.COLOR)
@@ -496,6 +569,16 @@ internal fun discoverSessionAnalysisCapabilities(
         )
     }
 
+    if (preparedSamples.any { it.acceleration5sMps2?.isFinite() == true }) {
+        metrics += AnalysisMetric(
+            id = "derived.acceleration_5s",
+            label = "Acceleration (5 s)",
+            unit = "m/s²",
+            source = AnalysisMetricSource.DERIVED_ACCELERATION,
+            recommendedUses = setOf(AnalysisMetricUse.FILTER)
+        )
+    }
+
     val angleMetrics = metrics.filter { metric ->
         metric.source == AnalysisMetricSource.GPS_COG ||
             metric.angleKind != null
@@ -510,11 +593,19 @@ internal fun discoverSessionAnalysisCapabilities(
     }
 
     val colorMetrics = metrics.filter { metric ->
-        metric.source != AnalysisMetricSource.DERIVED_VMG ||
-            preparedSamples.any { metricValue(metric, it) != null }
+        metric.source != AnalysisMetricSource.DERIVED_ACCELERATION &&
+            (
+                metric.source != AnalysisMetricSource.DERIVED_VMG ||
+                    preparedSamples.any { metricValue(metric, it) != null }
+                )
     }
 
-    val filterMetrics = colorMetrics
+    val filterMetrics = (
+        colorMetrics +
+            metrics.filter {
+                it.source == AnalysisMetricSource.DERIVED_ACCELERATION
+            }
+        ).distinctBy { it.id }
 
     val hasTwa = angleMetrics.any { it.id == "measurement:nmea.twa_deg" }
     val hasAwa = angleMetrics.any { it.id == "measurement:nmea.awa_deg" }
@@ -581,6 +672,8 @@ internal fun metricValue(
                 abs(stw * cos(twa * PI / 180.0)) * MPS_TO_KNOTS
             }
         }
+        AnalysisMetricSource.DERIVED_ACCELERATION ->
+            sample.acceleration5sMps2
     } ?: return null
 
     if (!raw.isFinite()) return null
@@ -615,15 +708,24 @@ internal fun projectAnalysisAngleDegrees(
     return sin(radians) to -cos(radians)
 }
 
+private data class EligibleAnalysisPoint(
+    val sample: PreparedAnalysisSample,
+    val angleDeg: Double,
+    val radius: Double,
+    val colorValue: Double?
+)
+
 internal fun buildSessionAnalysisDataset(
     samples: List<PreparedAnalysisSample>,
     angleMetric: AnalysisMetric,
     radiusMetric: AnalysisMetric,
     colorMetric: AnalysisMetric?,
     filters: List<AnalysisRangeFilter>,
-    metricsById: Map<String, AnalysisMetric>
+    metricsById: Map<String, AnalysisMetric>,
+    aggregationWindowMs: Long = 0L
 ): SessionAnalysisDataset {
-    val points = buildList {
+    val kind = angleMetric.angleKind
+    val eligible = buildList {
         samples.forEach { sample ->
             val passes = filters.all { filter ->
                 val metric = metricsById[filter.metricId] ?: return@all false
@@ -633,8 +735,8 @@ internal fun buildSessionAnalysisDataset(
             if (!passes) return@forEach
 
             val rawAngle = metricValue(angleMetric, sample) ?: return@forEach
-            val kind = angleMetric.angleKind ?: return@forEach
-            val angle = normalizeAnalysisAngle(rawAngle, kind)
+            val angleKind = kind ?: return@forEach
+            val angle = normalizeAnalysisAngle(rawAngle, angleKind)
             if (!angle.isFinite()) return@forEach
 
             val radius = metricValue(radiusMetric, sample) ?: return@forEach
@@ -642,7 +744,8 @@ internal fun buildSessionAnalysisDataset(
 
             val color = colorMetric?.let { metricValue(it, sample) }
             add(
-                AnalysisPoint(
+                EligibleAnalysisPoint(
+                    sample = sample,
                     angleDeg = angle,
                     radius = radius,
                     colorValue = color?.takeIf { it.isFinite() }
@@ -650,6 +753,24 @@ internal fun buildSessionAnalysisDataset(
             )
         }
     }
+
+    val points =
+        if (aggregationWindowMs > 0L && kind != null) {
+            aggregateAnalysisPoints(
+                eligible = eligible,
+                angleKind = kind,
+                windowMs = aggregationWindowMs,
+                colorRequired = colorMetric != null
+            )
+        } else {
+            eligible.map {
+                AnalysisPoint(
+                    angleDeg = it.angleDeg,
+                    radius = it.radius,
+                    colorValue = it.colorValue
+                )
+            }
+        }
 
     val observedRadius = points.maxOfOrNull { it.radius } ?: 0.0
     val radiusMax = niceAnalysisRadiusMax(observedRadius)
@@ -660,6 +781,123 @@ internal fun buildSessionAnalysisDataset(
         radiusMax = radiusMax,
         colorMin = colors.minOrNull(),
         colorMax = colors.maxOrNull()
+    )
+}
+
+private fun aggregateAnalysisPoints(
+    eligible: List<EligibleAnalysisPoint>,
+    angleKind: AnalysisAngleKind,
+    windowMs: Long,
+    colorRequired: Boolean
+): List<AnalysisPoint> {
+    if (eligible.isEmpty() || windowMs <= 0L) return emptyList()
+
+    val points = mutableListOf<AnalysisPoint>()
+    var segmentStart = 0
+    while (segmentStart < eligible.size) {
+        var segmentEnd = segmentStart + 1
+        while (
+            segmentEnd < eligible.size &&
+            analysisSamplesAreContinuous(
+                eligible[segmentEnd - 1].sample,
+                eligible[segmentEnd].sample
+            )
+        ) {
+            segmentEnd += 1
+        }
+
+        aggregateContinuousAnalysisSegment(
+            segment = eligible.subList(segmentStart, segmentEnd),
+            angleKind = angleKind,
+            windowMs = windowMs,
+            colorRequired = colorRequired,
+            destination = points
+        )
+        segmentStart = segmentEnd
+    }
+    return points
+}
+
+private fun aggregateContinuousAnalysisSegment(
+    segment: List<EligibleAnalysisPoint>,
+    angleKind: AnalysisAngleKind,
+    windowMs: Long,
+    colorRequired: Boolean,
+    destination: MutableList<AnalysisPoint>
+) {
+    var start = 0
+    while (start < segment.size) {
+        val startTime = segment[start].sample.timestampMs ?: break
+        val windowEnd = startTime + windowMs
+        var boundary = start + 1
+        while (boundary < segment.size) {
+            val time = segment[boundary].sample.timestampMs ?: break
+            if (time >= windowEnd) break
+            boundary += 1
+        }
+
+        // A sample at or beyond the window boundary proves that this
+        // continuous segment actually covers the full aggregation period.
+        if (boundary >= segment.size) break
+
+        val boundaryTime = segment[boundary].sample.timestampMs ?: break
+        if (boundaryTime < windowEnd) break
+
+        val window = segment.subList(start, boundary)
+        if (window.size >= 2) {
+            aggregateAnalysisWindow(
+                window = window,
+                angleKind = angleKind,
+                colorRequired = colorRequired
+            )?.let(destination::add)
+        }
+
+        start = boundary
+    }
+}
+
+private fun aggregateAnalysisWindow(
+    window: List<EligibleAnalysisPoint>,
+    angleKind: AnalysisAngleKind,
+    colorRequired: Boolean
+): AnalysisPoint? {
+    if (window.isEmpty()) return null
+
+    var sumSin = 0.0
+    var sumCos = 0.0
+    var radiusSum = 0.0
+    var colorSum = 0.0
+    var colorCount = 0
+
+    window.forEach { point ->
+        val radians = point.angleDeg * PI / 180.0
+        sumSin += sin(radians)
+        sumCos += cos(radians)
+        radiusSum += point.radius
+        point.colorValue?.let {
+            colorSum += it
+            colorCount += 1
+        }
+    }
+
+    if (abs(sumSin) < 1e-12 && abs(sumCos) < 1e-12) return null
+    val meanAngle = normalizeAnalysisAngle(
+        atan2(sumSin, sumCos) * 180.0 / PI,
+        angleKind
+    )
+    if (!meanAngle.isFinite()) return null
+
+    val color =
+        if (!colorRequired || colorCount == window.size) {
+            if (colorRequired) colorSum / colorCount else null
+        } else {
+            null
+        }
+
+    return AnalysisPoint(
+        angleDeg = meanAngle,
+        radius = radiusSum / window.size,
+        colorValue = color
     )
 }
 

@@ -676,7 +676,7 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
-    fun factoryResetQueuedButNotAcceptedDoesNotClaimOtaLifecycle() {
+    fun acceptedFactoryResetImmediatelyReservesOtaAdmission() {
         fakeClient.emitConfiguration(
             RegattaLinkConfigurationState(deviceControlSupported = true)
         )
@@ -689,7 +689,7 @@ class RegattaLinkConnectionManagerTest {
         )
         manager.startOta(testFirmwareArtifact())
 
-        assertEquals(1, fakeClient.otaStartCalls)
+        assertEquals(0, fakeClient.otaStartCalls)
     }
 
     @Test
@@ -961,6 +961,12 @@ class RegattaLinkConnectionManagerTest {
         )
 
         assertTrue(manager.drainDiagnosticLog())
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                diagnosticLogSupported = true,
+                deviceControlSupported = true
+            )
+        )
         assertTrue(
             manager.executeDeviceControl(
                 RegattaLinkDeviceControlOpcode.SET_UPRIGHT,
@@ -1102,6 +1108,105 @@ class RegattaLinkConnectionManagerTest {
             )
         )
         assertEquals(0, fakeClient.deviceControlCalls)
+    }
+
+    @Test
+    fun acceptedOptionalWorkImmediatelyReservesRawCaptureAdmission() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED
+            )
+        )
+        fakeClient.emitNmea(
+            RegattaLinkNmeaState(rawCanSupported = true)
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                diagnosticLogSupported = true,
+                deviceControlSupported = true
+            )
+        )
+
+        assertTrue(manager.drainDiagnosticLog())
+        assertEquals(1, fakeClient.diagnosticDrainCalls)
+
+        // The fake client deliberately does not publish diagnosticLogLoading.
+        // The manager must still reserve the accepted operation immediately.
+        assertFalse(manager.startRawCanCapture())
+        assertEquals(0, fakeClient.captureStartCalls)
+        assertEquals(
+            RegattaLinkRawCapturePhase.IDLE,
+            manager.currentRawCaptureState().phase
+        )
+
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                diagnosticLogSupported = true,
+                deviceControlSupported = true
+            )
+        )
+
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.SET_UPRIGHT,
+                0
+            )
+        )
+        assertEquals(1, fakeClient.deviceControlCalls)
+
+        // Likewise, do not wait for the BLE executor to publish deviceControlBusy.
+        assertFalse(manager.startRawCanCapture())
+        assertEquals(0, fakeClient.captureStartCalls)
+        assertEquals(
+            RegattaLinkRawCapturePhase.IDLE,
+            manager.currentRawCaptureState().phase
+        )
+    }
+
+    @Test
+    fun rawCaptureStartUsesSharedDiagnosticExclusionPolicy() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED
+            )
+        )
+        fakeClient.emitNmea(
+            RegattaLinkNmeaState(rawCanSupported = true)
+        )
+
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(diagnosticLogLoading = true)
+        )
+        assertFalse(manager.startRawCanCapture())
+        assertEquals(0, fakeClient.captureStartCalls)
+
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlBusy = true)
+        )
+        assertFalse(manager.startRawCanCapture())
+        assertEquals(0, fakeClient.captureStartCalls)
+
+        fakeClient.emitConfiguration(RegattaLinkConfigurationState())
+        fakeClient.emitNmea(
+            RegattaLinkNmeaState(
+                rawCanSupported = true,
+                rawCanReading = true
+            )
+        )
+        assertFalse(manager.startRawCanCapture())
+        assertEquals(0, fakeClient.captureStartCalls)
+
+        fakeClient.emitNmea(
+            RegattaLinkNmeaState(rawCanSupported = true)
+        )
+        assertTrue(manager.startRawCanCapture())
+        assertEquals(1, fakeClient.captureStartCalls)
+
+        fakeClient.captureFinished?.invoke(
+            RegattaLinkRawCaptureEndReason.USER_STOP,
+            ""
+        )
+        assertTrue(manager.discardRawCanCapture())
     }
 
     @Test
