@@ -110,6 +110,7 @@ internal interface RegattaLinkConnectionClient {
     fun setDeviceName(name: String): Boolean
     fun setLedBrightness(percent: Int): Boolean
     fun setMotionDamping(seconds: Int): Boolean
+    fun setLoadPrecisionX10(enabled: Boolean): Boolean
     fun drainDiagnosticLog(): Boolean = false
     fun executeDeviceControl(
         opcode: RegattaLinkDeviceControlOpcode,
@@ -198,6 +199,7 @@ internal class RegattaLinkConnectionManager(
     private val handler = Handler(Looper.getMainLooper())
     private val listeners = CopyOnWriteArraySet<RegattaLinkConnectionListener>()
     private val configuredDeviceStore = RegattaLinkConfiguredDeviceStore(appContext)
+    private val loadAliasStore = RegattaLinkLoadAliasStore(appContext)
     private val startupReconnectRequested = AtomicBoolean(false)
 
     @Volatile
@@ -389,6 +391,40 @@ internal class RegattaLinkConnectionManager(
             return false
         }
         return client.setMotionDamping(seconds)
+    }
+
+    fun setLoadPrecisionX10(enabled: Boolean): Boolean {
+        if (
+            otaState.isActive ||
+            rawCaptureState.isActive ||
+            regattaLinkConfigurationMutationBlocked(
+                state = configurationState,
+                factoryResetOwned = factoryResetPending
+            )
+        ) {
+            return false
+        }
+        return client.setLoadPrecisionX10(enabled)
+    }
+
+    fun setLoadSensorAlias(identityKey: String, alias: String): Boolean {
+        val sensor = nmeaState.loadSensors.firstOrNull {
+            it.identityKey == identityKey
+        } ?: return false
+        if (!sensor.stableIdentity) return false
+        if (!loadAliasStore.set(identityKey, alias)) return false
+
+        val persistedAlias = loadAliasStore.get(identityKey)
+        val sensors = nmeaState.loadSensors.map {
+            if (it.identityKey == identityKey) {
+                it.copy(alias = persistedAlias)
+            } else {
+                it
+            }
+        }
+        RegattaLinkLoadSnapshotStore.update(sensors)
+        handleNmeaState(nmeaState.copy(loadSensors = sensors))
+        return true
     }
 
     fun drainDiagnosticLog(): Boolean {
