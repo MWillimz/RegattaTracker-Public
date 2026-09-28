@@ -557,13 +557,13 @@ fun RegattaLinkScreen(
                         telemetryValue(
                             label = stringResource(R.string.regattalink_heel),
                             value = motion.heelDeg?.let {
-                                formatTelemetry(it, "°")
+                                formatRegattaLinkWholeDegreeAngle(it)
                             } ?: "--"
                         )
                         telemetryValue(
                             label = stringResource(R.string.regattalink_pitch),
                             value = motion.pitchDeg?.let {
-                                formatTelemetry(it, "°")
+                                formatRegattaLinkWholeDegreeAngle(it)
                             } ?: "--"
                         )
                         telemetryValue(
@@ -603,10 +603,12 @@ fun RegattaLinkScreen(
 
                 if (configurationState.deviceControlBusy) {
                     Text(
-                        text = configurationState.deviceControlStatus?.let {
-                            "${stringResource(R.string.regattalink_device_control)}: " +
-                                "${it.phase} · ${it.result}"
-                        } ?: stringResource(R.string.regattalink_updating),
+                        text = configurationState.deviceControlStatus
+                            ?.takeIf { !it.phase.isTerminal }
+                            ?.let {
+                                "${stringResource(R.string.regattalink_device_control)}: " +
+                                    "${it.phase} · ${it.result}"
+                            } ?: stringResource(R.string.regattalink_updating),
                         modifier = Modifier.padding(top = 8.dp)
                     )
                 }
@@ -1744,30 +1746,6 @@ private fun RegattaLinkImuSetupSheet(
                 fontWeight = FontWeight.SemiBold
             )
 
-            Text(
-                text = stringResource(R.string.regattalink_live_orientation),
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(top = 18.dp)
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(20.dp)
-            ) {
-                RegattaLinkLiveOrientationValue(
-                    label = stringResource(R.string.regattalink_heel),
-                    value = liveHeelValue,
-                    modifier = Modifier.weight(1f)
-                )
-                RegattaLinkLiveOrientationValue(
-                    label = stringResource(R.string.regattalink_pitch),
-                    value = livePitchValue,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
             val liveStatusText = when {
                 !telemetryState.supported ->
                     stringResource(R.string.regattalink_unavailable)
@@ -1899,6 +1877,8 @@ private fun RegattaLinkImuSetupSheet(
                 )
                 RegattaLinkOrientationControl(
                     status = controlStatus,
+                    liveHeelValue = liveHeelValue,
+                    livePitchValue = livePitchValue,
                     enabled = controlsEnabled,
                     onAdjust = onAdjust,
                     modifier = Modifier
@@ -1909,9 +1889,10 @@ private fun RegattaLinkImuSetupSheet(
 
             if (deviceControlBusy) {
                 Text(
-                    text = controlStatus?.let {
-                        "${it.phase} · ${it.result}"
-                    } ?: stringResource(R.string.regattalink_updating),
+                    text = controlStatus
+                        ?.takeIf { !it.phase.isTerminal }
+                        ?.let { "${it.phase} · ${it.result}" }
+                        ?: stringResource(R.string.regattalink_updating),
                     modifier = Modifier.padding(top = 10.dp)
                 )
             }
@@ -1963,6 +1944,8 @@ private fun RegattaLinkLiveOrientationValue(
 @Composable
 private fun RegattaLinkOrientationControl(
     status: RegattaLinkDeviceControlStatus?,
+    liveHeelValue: String,
+    livePitchValue: String,
     enabled: Boolean,
     onAdjust: (RegattaLinkDeviceControlOpcode, Int) -> Unit,
     modifier: Modifier = Modifier
@@ -2049,9 +2032,9 @@ private fun RegattaLinkOrientationControl(
             )
         }
 
-        Text(
-            text = stringResource(R.string.regattalink_pitch),
-            fontWeight = FontWeight.Medium,
+        RegattaLinkLiveOrientationValue(
+            label = stringResource(R.string.regattalink_pitch),
+            value = livePitchValue,
             modifier = Modifier.padding(top = 18.dp)
         )
         Text(
@@ -2078,9 +2061,9 @@ private fun RegattaLinkOrientationControl(
             modifier = Modifier.padding(top = 8.dp)
         )
 
-        Text(
-            text = stringResource(R.string.regattalink_heel),
-            fontWeight = FontWeight.Medium,
+        RegattaLinkLiveOrientationValue(
+            label = stringResource(R.string.regattalink_heel),
+            value = liveHeelValue,
             modifier = Modifier.padding(top = 18.dp)
         )
         Text(
