@@ -400,7 +400,17 @@ internal class RegattaLinkConnectionManager(
         ) {
             return false
         }
-        return client.drainDiagnosticLog()
+        val accepted = client.drainDiagnosticLog()
+        if (accepted) {
+            handleConfigurationState(
+                configurationState.copy(
+                    diagnosticLogLoading = true,
+                    diagnosticLogEntries = emptyList(),
+                    diagnosticLogError = ""
+                )
+            )
+        }
+        return accepted
     }
 
     fun executeDeviceControl(
@@ -425,7 +435,21 @@ internal class RegattaLinkConnectionManager(
         ) {
             return false
         }
-        return client.executeDeviceControl(opcode, value)
+
+        val accepted = client.executeDeviceControl(opcode, value)
+        if (accepted) {
+            handleConfigurationState(
+                configurationState.copy(
+                    deviceControlBusy = true,
+                    deviceControlAcceptedOpcode = null,
+                    deviceControlAcceptedRequestId = null,
+                    factoryResetWriteAcceptedRequestId = null,
+                    deviceControlStatus = null,
+                    deviceControlError = ""
+                )
+            )
+        }
+        return accepted
     }
 
     fun refreshPgnInventory(): Boolean {
