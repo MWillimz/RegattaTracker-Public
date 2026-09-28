@@ -443,7 +443,7 @@ class RegattaLinkDeviceControlTest {
     }
 
     @Test
-    fun setupDestinationOrderMatchesMenuContract() {
+    fun setupMenuItemsMatchDestinationAndLabelContract() {
         assertEquals(
             listOf(
                 RegattaLinkSetupDestination.IMU,
@@ -451,7 +451,16 @@ class RegattaLinkDeviceControlTest {
                 RegattaLinkSetupDestination.ADVANCED_DIAGNOSTICS,
                 RegattaLinkSetupDestination.FIRMWARE
             ),
-            regattaLinkSetupDestinations()
+            regattaLinkSetupMenuItems.map { it.destination }
+        )
+        assertEquals(
+            listOf(
+                R.string.regattalink_setup_imu,
+                R.string.regattalink_setup_nmea,
+                R.string.regattalink_advanced_diagnostics,
+                R.string.regattalink_firmware_title
+            ),
+            regattaLinkSetupMenuItems.map { it.labelResId }
         )
     }
 

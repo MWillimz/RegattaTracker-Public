@@ -18,7 +18,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -118,13 +117,29 @@ internal enum class RegattaLinkSetupDestination {
     FIRMWARE
 }
 
-internal fun regattaLinkSetupDestinations(): List<RegattaLinkSetupDestination> =
-    listOf(
+internal data class RegattaLinkSetupMenuItem(
+    val destination: RegattaLinkSetupDestination,
+    val labelResId: Int
+)
+
+internal val regattaLinkSetupMenuItems = listOf(
+    RegattaLinkSetupMenuItem(
         RegattaLinkSetupDestination.IMU,
+        R.string.regattalink_setup_imu
+    ),
+    RegattaLinkSetupMenuItem(
         RegattaLinkSetupDestination.NMEA,
+        R.string.regattalink_setup_nmea
+    ),
+    RegattaLinkSetupMenuItem(
         RegattaLinkSetupDestination.ADVANCED_DIAGNOSTICS,
-        RegattaLinkSetupDestination.FIRMWARE
+        R.string.regattalink_advanced_diagnostics
+    ),
+    RegattaLinkSetupMenuItem(
+        RegattaLinkSetupDestination.FIRMWARE,
+        R.string.regattalink_firmware_title
     )
+)
 
 @Composable
 fun RegattaLinkScreen(
@@ -360,87 +375,26 @@ fun RegattaLinkScreen(
                 fontWeight = FontWeight.SemiBold
             )
             Box {
-                val openSettingsDescription =
-                    stringResource(R.string.regattalink_open_settings)
-                IconButton(
-                    onClick = { settingsMenuExpanded = true },
-                    modifier = Modifier.semantics {
-                        contentDescription = openSettingsDescription
-                    }
+                Button(
+                    onClick = { settingsMenuExpanded = true }
                 ) {
-                    val dotColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    Canvas(modifier = Modifier.size(28.dp)) {
-                        val radius = 2.2.dp.toPx()
-                        val x = size.width / 2f
-                        drawCircle(
-                            color = dotColor,
-                            radius = radius,
-                            center = Offset(x, size.height * 0.24f)
-                        )
-                        drawCircle(
-                            color = dotColor,
-                            radius = radius,
-                            center = Offset(x, size.height * 0.50f)
-                        )
-                        drawCircle(
-                            color = dotColor,
-                            radius = radius,
-                            center = Offset(x, size.height * 0.76f)
-                        )
-                    }
+                    Text(stringResource(R.string.regattalink_setup))
                 }
                 DropdownMenu(
                     expanded = settingsMenuExpanded,
                     onDismissRequest = { settingsMenuExpanded = false }
                 ) {
-                    DropdownMenuItem(
-                        text = {
-                            Text(stringResource(R.string.regattalink_setup_imu))
-                        },
-                        onClick = {
-                            settingsMenuExpanded = false
-                            activeSetupDestination =
-                                RegattaLinkSetupDestination.IMU
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = {
-                            Text(stringResource(R.string.regattalink_setup_nmea))
-                        },
-                        onClick = {
-                            settingsMenuExpanded = false
-                            activeSetupDestination =
-                                RegattaLinkSetupDestination.NMEA
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                stringResource(
-                                    R.string.regattalink_advanced_diagnostics
-                                )
-                            )
-                        },
-                        onClick = {
-                            settingsMenuExpanded = false
-                            activeSetupDestination =
-                                RegattaLinkSetupDestination.ADVANCED_DIAGNOSTICS
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                stringResource(
-                                    R.string.regattalink_firmware_title
-                                )
-                            )
-                        },
-                        onClick = {
-                            settingsMenuExpanded = false
-                            activeSetupDestination =
-                                RegattaLinkSetupDestination.FIRMWARE
-                        }
-                    )
+                    regattaLinkSetupMenuItems.forEach { menuItem ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(stringResource(menuItem.labelResId))
+                            },
+                            onClick = {
+                                settingsMenuExpanded = false
+                                activeSetupDestination = menuItem.destination
+                            }
+                        )
+                    }
                 }
             }
         }
