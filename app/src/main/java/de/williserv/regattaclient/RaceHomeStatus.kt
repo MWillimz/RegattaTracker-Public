@@ -13,6 +13,7 @@ internal enum class RaceHomeStatus {
 
 internal fun resolveRaceHomeStatus(
     raceStatusCode: String,
+    raceStatusDisplayText: String,
     raceDataReady: Boolean,
     raceConfigured: Boolean,
     inRace: Boolean,
@@ -20,7 +21,11 @@ internal fun resolveRaceHomeStatus(
     millisToStart: Long?
 ): RaceHomeStatus {
     if (!raceDataReady) {
-        return if (raceConfigured && raceStatusCode.isBlank()) {
+        return if (
+            raceConfigured &&
+            raceStatusCode.isBlank() &&
+            raceStatusDisplayText.isBlank()
+        ) {
             RaceHomeStatus.CHECKING
         } else {
             RaceHomeStatus.SERVER_STATUS
