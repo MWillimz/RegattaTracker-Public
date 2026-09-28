@@ -514,6 +514,11 @@
     <string name="regattalink_confidence">Confiance</string>
     <string name="regattalink_settings_title">Paramètres</string>
     <string name="regattalink_setup_imu">Configurer l’IMU</string>
+    <string name="regattalink_setup_nmea">Configurer NMEA</string>
+    <string name="regattalink_advanced_diagnostics">Avancé / Diagnostic</string>
+    <string name="regattalink_device_settings">Paramètres de l’appareil</string>
+    <string name="regattalink_technical_details">Détails techniques</string>
+    <string name="regattalink_diagnostics_title">Diagnostic</string>
     <string name="regattalink_live_orientation">Orientation en direct</string>
     <string name="regattalink_manual_orientation_correction">Correction manuelle de l’installation</string>
     <string name="regattalink_correction">Correction</string>
