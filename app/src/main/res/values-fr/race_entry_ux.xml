@@ -7,7 +7,6 @@
     <string name="status_checking">Vérification…</string>
     <string name="status_not_entered">Pas encore en course</string>
     <string name="status_registered_not_entered">Inscrit · Pas encore en course</string>
-    <string name="status_ready">Prêt</string>
     <string name="registration_reminder_title">Inscription terminée</string>
     <string name="registration_reminder_message">Vous êtes inscrit à cette course, mais le suivi n’a pas encore démarré. Appuyez plus tard sur « Entrer en course », peu avant le départ ou au quai, pour démarrer le suivi.</string>
 </resources>
