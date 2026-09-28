@@ -963,8 +963,15 @@ internal fun replayBoatBearingDegrees(
     val selected = samples[index]
     val recorded = normalizeBearingDegrees(selected.cog.toDouble())?.toFloat()
 
-    if (recorded != null && recorded != 0f) {
-        return recorded
+    /*
+     * A recorded COG of 0° is a valid northbound course. New samples persist
+     * Android's bearing-validity bit so only an explicitly unavailable bearing
+     * uses the adjacent GPS track as a fallback. Legacy samples have no
+     * validity bit; preserve their stored COG rather than guessing that 0°
+     * means "missing".
+     */
+    if (selected.cogValid != false) {
+        return recorded ?: 0f
     }
 
     return replayTrackBearingDegrees(samples, index)
