@@ -595,6 +595,52 @@ fun RegattaLinkScreen(
                         modifier = Modifier.padding(top = 8.dp)
                     )
                 }
+
+                if (configurationState.deviceControlBusy) {
+                    Text(
+                        text = configurationState.deviceControlStatus?.let {
+                            "${stringResource(R.string.regattalink_device_control)}: " +
+                                "${it.phase} · ${it.result}"
+                        } ?: stringResource(R.string.regattalink_updating),
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+
+                if (rawCaptureState.isActive) {
+                    Text(
+                        text = stringResource(
+                            R.string.regattalink_raw_capture_active
+                        ),
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.regattalink_raw_capture_frames,
+                            rawCaptureState.frameCount
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+
+                if (otaState.isActive) {
+                    Text(
+                        text = "${stringResource(R.string.regattalink_ota_title)}: " +
+                            regattaLinkOtaPhaseText(otaState.phase),
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    if (
+                        otaState.phase == RegattaLinkOtaPhase.TRANSFERRING ||
+                        otaState.committedBytes > 0
+                    ) {
+                        LinearProgressIndicator(
+                            progress = { otaState.progress },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 6.dp)
+                        )
+                    }
+                }
             }
         }
 
@@ -913,9 +959,12 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    telemetryValue(
-                        label = stringResource(R.string.regattalink_name),
-                        value = displayedName
+                    Text(
+                        text = "${stringResource(R.string.regattalink_name)}: " +
+                            displayedName,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(top = 4.dp)
                     )
                     if (
                         configurationState.deviceNameSupported &&
