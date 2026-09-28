@@ -78,12 +78,32 @@ class SessionReplayTest {
     }
 
     @Test
-    fun replayBoatBearing_followsCogAndNormalizes() {
-        assertEquals(0f, replayBoatBearingDegrees(0f), 0.0001f)
-        assertEquals(90f, replayBoatBearingDegrees(90f), 0.0001f)
-        assertEquals(270f, replayBoatBearingDegrees(-90f), 0.0001f)
-        assertEquals(5f, replayBoatBearingDegrees(365f), 0.0001f)
-        assertEquals(0f, replayBoatBearingDegrees(Float.NaN), 0.0001f)
+    fun replayBoatBearing_usesRecordedCogWhenAvailable() {
+        val samples = listOf(
+            sample(id = 1, seconds = 0).copy(cog = 123f),
+            sample(id = 2, seconds = 1).copy(cog = 123f)
+        )
+
+        assertEquals(123f, replayBoatBearingDegrees(samples, 0), 0.0001f)
+    }
+
+    @Test
+    fun replayBoatBearing_fallsBackToTrackDirectionForMissingZeroCog() {
+        val samples = listOf(
+            sample(id = 1, seconds = 0).copy(
+                lat = 51.0,
+                lon = 12.0,
+                cog = 0f
+            ),
+            sample(id = 2, seconds = 1).copy(
+                lat = 51.0,
+                lon = 12.001,
+                cog = 0f
+            )
+        )
+
+        assertEquals(90f, replayBoatBearingDegrees(samples, 0), 0.5f)
+        assertEquals(90f, replayBoatBearingDegrees(samples, 1), 0.5f)
     }
 
     @Test
