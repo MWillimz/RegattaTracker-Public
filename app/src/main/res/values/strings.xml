@@ -419,7 +419,7 @@
     <string name="session_analysis_gps_maneuver_filter">GPS maneuver filter</string>
     <string name="session_analysis_gps_maneuver_threshold">Course change: %1$d° / 5 s</string>
     <string name="session_analysis_imu_stability_filter">IMU stability filter</string>
-    <string name="session_analysis_imu_attitude_limit">Maximum heel/trim change: %1$s °/s</string>
+    <string name="session_analysis_imu_attitude_limit">Maximum heel/pitch change: %1$s °/s</string>
     <string name="session_analysis_recovery_seconds">Exclude for %1$d s afterwards</string>
     <string name="session_analysis_color_legend">Color: %1$s</string>
     <string name="session_analysis_points">%1$d visible points</string>
