@@ -189,7 +189,13 @@ fun RegattaLinkScreen(
         deviceControlBaseEnabled &&
             !configurationState.deviceControlBusy
     val controlStatus = configurationState.deviceControlStatus
-    val boatFrameValid = controlStatus?.boatFrameValid == true
+    val boatFramePresentation =
+        regattaLinkBoatFramePresentation(
+            status = controlStatus,
+            deviceControlBusy = configurationState.deviceControlBusy
+        )
+    val boatFrameValid =
+        boatFramePresentation == RegattaLinkBoatFramePresentation.READY
     val orientationControlsEnabled =
         regattaLinkOrientationControlsEnabled(
             baseControlsEnabled = deviceControlBaseEnabled,
@@ -233,6 +239,7 @@ fun RegattaLinkScreen(
     if (settingsSheetOpen) {
         RegattaLinkSettingsSheet(
             controlStatus = controlStatus,
+            boatFramePresentation = boatFramePresentation,
             controlsEnabled = orientationControlsEnabled,
             deviceControlBusy = configurationState.deviceControlBusy,
             deviceControlError = configurationState.deviceControlError,
@@ -588,10 +595,15 @@ fun RegattaLinkScreen(
                     )
                     telemetryValue(
                         label = stringResource(R.string.regattalink_boat_frame),
-                        value = if (boatFrameValid) {
-                            stringResource(R.string.regattalink_ready)
-                        } else {
-                            stringResource(R.string.regattalink_not_set)
+                        value = when (boatFramePresentation) {
+                            RegattaLinkBoatFramePresentation.READY ->
+                                stringResource(R.string.regattalink_ready)
+                            RegattaLinkBoatFramePresentation.NOT_SET ->
+                                stringResource(R.string.regattalink_not_set)
+                            RegattaLinkBoatFramePresentation.PENDING ->
+                                stringResource(R.string.regattalink_updating)
+                            RegattaLinkBoatFramePresentation.UNKNOWN ->
+                                stringResource(R.string.regattalink_unavailable)
                         }
                     )
                     Text(
@@ -1357,6 +1369,7 @@ private fun DetailsToggle(
 @Composable
 private fun RegattaLinkSettingsSheet(
     controlStatus: RegattaLinkDeviceControlStatus?,
+    boatFramePresentation: RegattaLinkBoatFramePresentation,
     controlsEnabled: Boolean,
     deviceControlBusy: Boolean,
     deviceControlError: String,
@@ -1392,7 +1405,10 @@ private fun RegattaLinkSettingsSheet(
                 modifier = Modifier.padding(top = 6.dp)
             )
 
-            if (controlStatus?.boatFrameValid != true) {
+            if (
+                boatFramePresentation ==
+                RegattaLinkBoatFramePresentation.NOT_SET
+            ) {
                 Text(
                     text = stringResource(
                         R.string.regattalink_orientation_requires_boat_frame
@@ -1419,9 +1435,11 @@ private fun RegattaLinkSettingsSheet(
                 modifier = Modifier.padding(top = 14.dp)
             )
 
-            if (deviceControlBusy && controlStatus != null) {
+            if (deviceControlBusy) {
                 Text(
-                    text = "${controlStatus.phase} · ${controlStatus.result}",
+                    text = controlStatus?.let {
+                        "${it.phase} · ${it.result}"
+                    } ?: stringResource(R.string.regattalink_updating),
                     modifier = Modifier.padding(top = 10.dp)
                 )
             }
