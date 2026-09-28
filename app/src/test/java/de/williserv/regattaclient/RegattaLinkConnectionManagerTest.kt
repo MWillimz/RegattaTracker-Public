@@ -1105,6 +1105,59 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun acceptedOptionalWorkImmediatelyReservesRawCaptureAdmission() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED
+            )
+        )
+        fakeClient.emitNmea(
+            RegattaLinkNmeaState(rawCanSupported = true)
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                diagnosticLogSupported = true,
+                deviceControlSupported = true
+            )
+        )
+
+        assertTrue(manager.drainDiagnosticLog())
+        assertEquals(1, fakeClient.diagnosticDrainCalls)
+
+        // The fake client deliberately does not publish diagnosticLogLoading.
+        // The manager must still reserve the accepted operation immediately.
+        assertFalse(manager.startRawCanCapture())
+        assertEquals(0, fakeClient.captureStartCalls)
+        assertEquals(
+            RegattaLinkRawCapturePhase.IDLE,
+            manager.currentRawCaptureState().phase
+        )
+
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                diagnosticLogSupported = true,
+                deviceControlSupported = true
+            )
+        )
+
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.SET_UPRIGHT,
+                0
+            )
+        )
+        assertEquals(1, fakeClient.deviceControlCalls)
+
+        // Likewise, do not wait for the BLE executor to publish deviceControlBusy.
+        assertFalse(manager.startRawCanCapture())
+        assertEquals(0, fakeClient.captureStartCalls)
+        assertEquals(
+            RegattaLinkRawCapturePhase.IDLE,
+            manager.currentRawCaptureState().phase
+        )
+    }
+
+    @Test
     fun rawCaptureStartUsesSharedDiagnosticExclusionPolicy() {
         fakeClient.emitConnection(
             RegattaLinkClientState(
