@@ -4,6 +4,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
+import android.net.ConnectivityManager
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -22,6 +23,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 internal enum class TelemetryUploadAttemptResult {
     SUCCESS,
@@ -142,6 +144,49 @@ internal enum class TelemetryUploadScheduleKind {
     RECOVERY,
     CONTINUATION
 }
+
+
+internal enum class TelemetryLiveWakeupDecision {
+    ENQUEUE,
+    ENQUEUE_FIRST_OFFLINE,
+    SKIP_REDUNDANT_OFFLINE
+}
+
+internal class TelemetryOfflineWakeupGate {
+    private val offlineWakeupEnsured = AtomicBoolean(false)
+
+    fun decide(hasActiveNetwork: Boolean?): TelemetryLiveWakeupDecision =
+        when (hasActiveNetwork) {
+            false ->
+                if (offlineWakeupEnsured.compareAndSet(false, true)) {
+                    TelemetryLiveWakeupDecision.ENQUEUE_FIRST_OFFLINE
+                } else {
+                    TelemetryLiveWakeupDecision.SKIP_REDUNDANT_OFFLINE
+                }
+
+            true,
+            null -> {
+                offlineWakeupEnsured.set(false)
+                TelemetryLiveWakeupDecision.ENQUEUE
+            }
+        }
+
+    fun clear() {
+        offlineWakeupEnsured.set(false)
+    }
+}
+
+internal fun telemetryHasActiveNetwork(context: Context): Boolean? =
+    try {
+        val manager = context.applicationContext
+            .getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return null
+        manager.activeNetwork != null
+    } catch (_: SecurityException) {
+        null
+    } catch (_: RuntimeException) {
+        null
+    }
 
 internal fun telemetryUploadExistingWorkPolicy(
     kind: TelemetryUploadScheduleKind
@@ -324,9 +369,11 @@ internal object TelemetryUploadStatusStore {
     const val ALL_SENT = "all sent"
 
     fun write(context: Context, status: String) {
-        context.applicationContext
+        val prefs = context.applicationContext
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
+        if (prefs.getString(STATUS_KEY, null) == status) return
+
+        prefs.edit()
             .putString(STATUS_KEY, status)
             .apply()
     }
@@ -339,6 +386,12 @@ object TelemetryUploadScheduler {
     internal const val AFTER_LOCAL_ID_KEY = "after_local_id"
     internal const val SHOW_RECOVERY_NOTIFICATION_KEY =
         "show_recovery_notification"
+
+    private val offlineWakeupGate = TelemetryOfflineWakeupGate()
+
+    internal fun onWorkerStarted() {
+        offlineWakeupGate.clear()
+    }
 
     internal fun buildRequest(
         afterLocalId: Long = 0L,
@@ -365,10 +418,13 @@ object TelemetryUploadScheduler {
     }
 
     fun enqueueWakeup(context: Context) {
-        TelemetryUploadStatusStore.write(context, TelemetryUploadStatusStore.WAITING)
+        val appContext = context.applicationContext
+        TelemetryUploadStatusStore.write(
+            appContext,
+            TelemetryUploadStatusStore.WAITING
+        )
 
         if (context is RegattaTrackingService) {
-            val appContext = context.applicationContext
             val serverUrl = appContext
                 .getSharedPreferences(RACE_SETUP_PREFS_NAME, Context.MODE_PRIVATE)
                 .getString(RACE_SERVER_KEY, "")
@@ -384,14 +440,51 @@ object TelemetryUploadScheduler {
             }
         }
 
-        WorkManager.getInstance(context.applicationContext)
-            .enqueueUniqueWork(
-                UNIQUE_WORK_NAME,
-                telemetryUploadExistingWorkPolicy(
-                    TelemetryUploadScheduleKind.LIVE_WAKEUP
-                ),
-                buildRequest()
+        val decision = offlineWakeupGate.decide(
+            telemetryHasActiveNetwork(appContext)
+        )
+        if (
+            decision ==
+            TelemetryLiveWakeupDecision.SKIP_REDUNDANT_OFFLINE
+        ) {
+            return
+        }
+
+        val operation = try {
+            WorkManager.getInstance(appContext)
+                .enqueueUniqueWork(
+                    UNIQUE_WORK_NAME,
+                    telemetryUploadExistingWorkPolicy(
+                        TelemetryUploadScheduleKind.LIVE_WAKEUP
+                    ),
+                    buildRequest()
+                )
+        } catch (error: RuntimeException) {
+            if (
+                decision ==
+                TelemetryLiveWakeupDecision.ENQUEUE_FIRST_OFFLINE
+            ) {
+                offlineWakeupGate.clear()
+            }
+            throw error
+        }
+
+        if (
+            decision ==
+            TelemetryLiveWakeupDecision.ENQUEUE_FIRST_OFFLINE
+        ) {
+            operation.result.addListener(
+                {
+                    if (
+                        runCatching { operation.result.get() }
+                            .exceptionOrNull() != null
+                    ) {
+                        offlineWakeupGate.clear()
+                    }
+                },
+                TELEMETRY_UPLOAD_ENQUEUE_RESULT_EXECUTOR
             )
+        }
     }
 
     fun enqueueRecoveryIfNeeded(context: Context): Operation? {
@@ -486,6 +579,8 @@ private const val TELEMETRY_RECOVERY_NOTIFICATION_CHANNEL_ID =
 private const val TELEMETRY_RECOVERY_NOTIFICATION_ID = 1002
 private const val TELEMETRY_UPLOAD_LOG_TAG = "TelemetryUploadWorker"
 private val TELEMETRY_RECOVERY_NOTIFICATION_EXECUTOR =
+    Executor { command -> command.run() }
+private val TELEMETRY_UPLOAD_ENQUEUE_RESULT_EXECUTOR =
     Executor { command -> command.run() }
 
 internal fun handleTelemetryRecoveryPersistenceResult(
@@ -651,6 +746,7 @@ class TelemetryUploadWorker(
         ).result.get()
     }
     override fun doWork(): Result {
+        TelemetryUploadScheduler.onWorkerStarted()
         uploadStartedAtElapsedMs = elapsedRealtimeProvider()
 
         if (showRecoveryNotification) {
