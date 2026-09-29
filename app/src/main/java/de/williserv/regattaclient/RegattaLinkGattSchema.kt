@@ -4,6 +4,25 @@ import android.content.Context
 
 internal const val REGATTALINK_GATT_SCHEMA_RECONCILE_TIMEOUT_MS = 10_000L
 
+internal enum class RegattaLinkGattReconnectAction {
+    REBUILD_CONNECTION,
+    REFRESH_CACHE_AFTER_DISCONNECT,
+    FAIL_CACHE_REFRESH
+}
+
+internal fun regattaLinkGattReconnectAction(
+    cacheRefreshPlanned: Boolean,
+    disconnectConfirmed: Boolean
+): RegattaLinkGattReconnectAction =
+    when {
+        !cacheRefreshPlanned ->
+            RegattaLinkGattReconnectAction.REBUILD_CONNECTION
+        disconnectConfirmed ->
+            RegattaLinkGattReconnectAction.REFRESH_CACHE_AFTER_DISCONNECT
+        else ->
+            RegattaLinkGattReconnectAction.FAIL_CACHE_REFRESH
+    }
+
 internal data class RegattaLinkGattSchemaDecision(
     val waitForRediscovery: Boolean,
     val requestServiceChanged: Boolean,
