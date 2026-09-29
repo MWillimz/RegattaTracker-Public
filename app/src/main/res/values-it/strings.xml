@@ -675,4 +675,21 @@
     <string name="regattalink_nmea_attitude_disable_pending">Disattivazione Sbandamento / Assetto salvata. PGN 127257 può restare attivo fino al riavvio.</string>
     <string name="regattalink_nmea_attitude_tx_inactive">Selezionato per questo avvio, ma l’uscita PGN 127257 non è abilitata a runtime.</string>
     <string name="regattalink_nmea_runtime_unknown_restart">Lo stato TX NMEA2000 applicato non è disponibile con questo firmware. Riavvia RegattaLink per sincronizzare le impostazioni selezionate.</string>
+
+    <string name="session_metric_cog">COG</string>
+    <string name="session_metric_sog">SOG</string>
+    <string name="session_metric_mag">MAG</string>
+    <string name="session_metric_awa">AWA</string>
+    <string name="session_metric_twa">TWA</string>
+    <string name="session_metric_stw">STW</string>
+    <string name="session_metric_aws">AWS</string>
+    <string name="session_metric_tws">TWS</string>
+    <string name="session_metric_vmg">VMG</string>
+    <string name="session_metric_heel">Sbandamento</string>
+    <string name="session_metric_pitch">Beccheggio</string>
+    <string name="session_metric_depth">Profondità</string>
+    <string name="session_metric_water_temperature">Temperatura dell’acqua</string>
+    <string name="session_metric_acceleration_5s">Accelerazione (5 s)</string>
+    <string name="session_metric_magnetic_heading">Prua magnetica</string>
+    <string name="session_metric_true_heading">Prua vera</string>
 </resources>

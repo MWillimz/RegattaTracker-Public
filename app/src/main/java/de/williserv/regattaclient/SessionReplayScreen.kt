@@ -387,7 +387,8 @@ private fun ReplayFieldConfigRow(
             }
         }
         ?: stringResource(R.string.session_replay_field_source_measurements)
-    val label = field.unit?.let { "${field.label} ($it)" } ?: field.label
+    val fieldLabel = replayExtraFieldLabel(field)
+    val label = field.unit?.let { "$fieldLabel ($it)" } ?: fieldLabel
 
     Row(
         modifier = Modifier
@@ -509,8 +510,36 @@ private fun replayExtraFieldReplayLabel(field: ReplayExtraField): String {
             }
         }
         ?: stringResource(R.string.session_replay_field_source_measurements)
-    return "$source · ${field.label}"
+    return "$source · ${replayExtraFieldLabel(field)}"
 }
+
+@Composable
+private fun replayExtraFieldLabel(field: ReplayExtraField): String =
+    when (field.measurementKey) {
+        REGATTALINK_MOTION_HEEL_KEY ->
+            stringResource(R.string.session_metric_heel)
+        REGATTALINK_MOTION_PITCH_KEY ->
+            stringResource(R.string.session_metric_pitch)
+        "nmea.heading_magnetic_deg" ->
+            stringResource(R.string.session_metric_magnetic_heading)
+        "nmea.heading_true_deg" ->
+            stringResource(R.string.session_metric_true_heading)
+        "nmea.stw_mps" ->
+            stringResource(R.string.session_metric_stw)
+        "nmea.depth_m" ->
+            stringResource(R.string.session_metric_depth)
+        "nmea.water_temperature_c" ->
+            stringResource(R.string.session_metric_water_temperature)
+        "nmea.aws_mps" ->
+            stringResource(R.string.session_metric_aws)
+        "nmea.awa_deg" ->
+            stringResource(R.string.session_metric_awa)
+        "nmea.tws_mps" ->
+            stringResource(R.string.session_metric_tws)
+        "nmea.twa_deg" ->
+            stringResource(R.string.session_metric_twa)
+        else -> field.label
+    }
 
 @Composable
 private fun ReplayValue(

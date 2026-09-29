@@ -718,4 +718,21 @@
     <string name="regattalink_nmea_attitude_disable_pending">Heel / Trim disabled setting saved. PGN 127257 may remain enabled until restart.</string>
     <string name="regattalink_nmea_attitude_tx_inactive">Selected for this boot, but PGN 127257 output is not runtime-enabled.</string>
     <string name="regattalink_nmea_runtime_unknown_restart">Applied NMEA2000 TX state is unavailable on this firmware. Restart RegattaLink to synchronize the selected settings.</string>
+
+    <string name="session_metric_cog">COG</string>
+    <string name="session_metric_sog">SOG</string>
+    <string name="session_metric_mag">MAG</string>
+    <string name="session_metric_awa">AWA</string>
+    <string name="session_metric_twa">TWA</string>
+    <string name="session_metric_stw">STW</string>
+    <string name="session_metric_aws">AWS</string>
+    <string name="session_metric_tws">TWS</string>
+    <string name="session_metric_vmg">VMG</string>
+    <string name="session_metric_heel">Heel</string>
+    <string name="session_metric_pitch">Pitch</string>
+    <string name="session_metric_depth">Depth</string>
+    <string name="session_metric_water_temperature">Water temperature</string>
+    <string name="session_metric_acceleration_5s">Acceleration (5 s)</string>
+    <string name="session_metric_magnetic_heading">Magnetic heading</string>
+    <string name="session_metric_true_heading">True heading</string>
 </resources>

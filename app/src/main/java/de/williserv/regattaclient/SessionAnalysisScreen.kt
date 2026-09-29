@@ -424,7 +424,7 @@ private fun AnalysisMetricSelector(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    selected?.let(::analysisMetricDisplayName)
+                    selected?.let { analysisMetricDisplayName(it) }
                         ?: stringResource(R.string.session_analysis_none)
                 )
             }
@@ -883,7 +883,8 @@ private fun SessionPolarPlot(
         }
 
         Text(
-            text = "${angleMetric.label} · ${radiusMetric.label}",
+            text = "${analysisMetricLabel(angleMetric)} · " +
+                analysisMetricLabel(radiusMetric),
             modifier = Modifier.align(Alignment.CenterHorizontally),
             fontWeight = FontWeight.Medium
         )
@@ -952,7 +953,7 @@ private fun AnalysisColorLegend(
         Text(
             text = stringResource(
                 R.string.session_analysis_color_legend,
-                metric.label
+                analysisMetricLabel(metric)
             ),
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -981,10 +982,45 @@ private fun AnalysisColorLegend(
     }
 }
 
-private fun analysisMetricDisplayName(metric: AnalysisMetric): String =
-    metric.unit?.takeIf { it.isNotBlank() }
-        ?.let { "${metric.label} ($it)" }
-        ?: metric.label
+@Composable
+private fun analysisMetricLabel(metric: AnalysisMetric): String =
+    when (metric.id) {
+        "gps.cog" -> stringResource(R.string.session_metric_cog)
+        "gps.sog" -> stringResource(R.string.session_metric_sog)
+        "measurement:nmea.heading_magnetic_deg" ->
+            stringResource(R.string.session_metric_mag)
+        "measurement:nmea.awa_deg" ->
+            stringResource(R.string.session_metric_awa)
+        "measurement:nmea.twa_deg" ->
+            stringResource(R.string.session_metric_twa)
+        "measurement:nmea.stw_mps" ->
+            stringResource(R.string.session_metric_stw)
+        "measurement:nmea.aws_mps" ->
+            stringResource(R.string.session_metric_aws)
+        "measurement:nmea.tws_mps" ->
+            stringResource(R.string.session_metric_tws)
+        "measurement:regattalink.motion.heel_deg" ->
+            stringResource(R.string.session_metric_heel)
+        "measurement:regattalink.motion.pitch_deg" ->
+            stringResource(R.string.session_metric_pitch)
+        "measurement:nmea.depth_m" ->
+            stringResource(R.string.session_metric_depth)
+        "measurement:nmea.water_temperature_c" ->
+            stringResource(R.string.session_metric_water_temperature)
+        "derived.vmg" ->
+            stringResource(R.string.session_metric_vmg)
+        "derived.acceleration_5s" ->
+            stringResource(R.string.session_metric_acceleration_5s)
+        else -> metric.label
+    }
+
+@Composable
+private fun analysisMetricDisplayName(metric: AnalysisMetric): String {
+    val label = analysisMetricLabel(metric)
+    return metric.unit?.takeIf { it.isNotBlank() }
+        ?.let { "$label ($it)" }
+        ?: label
+}
 
 private fun formatAnalysisNumber(value: Double): String =
     String.format(Locale.getDefault(), "%.1f", value)
