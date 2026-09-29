@@ -115,6 +115,237 @@ class RegattaLinkConfigurationNmeaTest {
     }
 
     @Test
+    fun parsesNmeaTxSettingsStrictlyAndTracksRestartRequirement() {
+        assertFalse(parseRegattaLinkNmeaTxEnabled(byteArrayOf(0)))
+        assertTrue(parseRegattaLinkNmeaTxEnabled(byteArrayOf(1)))
+        assertFalse(parseRegattaLinkNmeaAttitudeTxEnabled(byteArrayOf(0)))
+        assertTrue(parseRegattaLinkNmeaAttitudeTxEnabled(byteArrayOf(1)))
+
+        assertFalse(regattaLinkNmeaRestartRequired(RegattaLinkConfigurationState()))
+        assertTrue(
+            regattaLinkNmeaRestartRequired(
+                RegattaLinkConfigurationState(nmeaTxRestartRequired = true)
+            )
+        )
+        assertTrue(
+            regattaLinkNmeaRestartRequired(
+                RegattaLinkConfigurationState(
+                    nmeaAttitudeTxRestartRequired = true
+                )
+            )
+        )
+    }
+
+    @Test
+    fun parsesNmeaRuntimeStatusAndPreservesFutureOutputBits() {
+        val parsed = parseRegattaLinkNmeaTxRuntimeStatus(
+            byteArrayOf(
+                1,
+                0x03,
+                (
+                    REGATTALINK_NMEA_TX_OUTPUT_ATTITUDE or
+                        REGATTALINK_NMEA_TX_OUTPUT_TRACKER_GNSS
+                    ).toByte(),
+                REGATTALINK_NMEA_TX_OUTPUT_ATTITUDE.toByte()
+            )
+        )
+
+        assertTrue(parsed.bootMasterSelected)
+        assertTrue(parsed.masterActive)
+        assertTrue(parsed.bootAttitudeSelected)
+        assertTrue(parsed.attitudeActive)
+        assertTrue(
+            parsed.bootOutputMask and REGATTALINK_NMEA_TX_OUTPUT_TRACKER_GNSS != 0
+        )
+        assertFalse(
+            parsed.activeOutputMask and REGATTALINK_NMEA_TX_OUTPUT_TRACKER_GNSS != 0
+        )
+    }
+
+    @Test
+    fun selectedAndBootAppliedNmeaStateRemainSeparateAcrossRestartLifecycle() {
+        val bootOff = regattaLinkApplyNmeaTxRuntimeStatus(
+            RegattaLinkConfigurationState(
+                nmeaTxSupported = true,
+                nmeaTxEnabled = false,
+                nmeaAttitudeTxSupported = true,
+                nmeaAttitudeTxEnabled = false
+            ),
+            RegattaLinkNmeaTxRuntimeStatus(
+                bootMasterSelected = false,
+                masterActive = false,
+                bootOutputMask = 0,
+                activeOutputMask = 0
+            )
+        )
+        assertFalse(regattaLinkNmeaRestartRequired(bootOff))
+
+        val selectedOn = regattaLinkReconcileNmeaTxState(
+            bootOff.copy(
+                nmeaTxEnabled = true,
+                nmeaAttitudeTxEnabled = true
+            )
+        )
+        assertTrue(selectedOn.nmeaTxRestartRequired)
+        assertTrue(selectedOn.nmeaAttitudeTxRestartRequired)
+
+        val afterRestart = regattaLinkApplyNmeaTxRuntimeStatus(
+            selectedOn,
+            RegattaLinkNmeaTxRuntimeStatus(
+                bootMasterSelected = true,
+                masterActive = true,
+                bootOutputMask = REGATTALINK_NMEA_TX_OUTPUT_ATTITUDE,
+                activeOutputMask = REGATTALINK_NMEA_TX_OUTPUT_ATTITUDE
+            )
+        )
+        assertFalse(regattaLinkNmeaRestartRequired(afterRestart))
+        assertEquals(true, afterRestart.nmeaTxActive)
+    }
+
+    @Test
+    fun factoryResetSelectionDoesNotHideStillAppliedTxBootState() {
+        val afterFactoryResetReconnect = regattaLinkApplyNmeaTxRuntimeStatus(
+            RegattaLinkConfigurationState(
+                nmeaTxSupported = true,
+                nmeaTxEnabled = false,
+                nmeaAttitudeTxSupported = true,
+                nmeaAttitudeTxEnabled = false
+            ),
+            RegattaLinkNmeaTxRuntimeStatus(
+                bootMasterSelected = true,
+                masterActive = true,
+                bootOutputMask = REGATTALINK_NMEA_TX_OUTPUT_ATTITUDE,
+                activeOutputMask = REGATTALINK_NMEA_TX_OUTPUT_ATTITUDE
+            )
+        )
+
+        assertTrue(afterFactoryResetReconnect.nmeaTxRestartRequired)
+        assertTrue(afterFactoryResetReconnect.nmeaAttitudeTxRestartRequired)
+        assertEquals(true, afterFactoryResetReconnect.nmeaTxActive)
+    }
+
+    @Test
+    fun missingRuntimeStatusDoesNotInventAppliedState() {
+        val pending = regattaLinkReconcileNmeaTxState(
+            RegattaLinkConfigurationState(
+                nmeaTxSupported = true,
+                nmeaTxEnabled = false,
+                nmeaTxRestartRequired = true,
+                nmeaTxRuntimeStatusSupported = false
+            )
+        )
+
+        assertTrue(pending.nmeaTxRestartRequired)
+        assertNull(pending.nmeaTxBootSelected)
+        assertNull(pending.nmeaTxActive)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsWrongNmeaRuntimeStatusLength() {
+        parseRegattaLinkNmeaTxRuntimeStatus(byteArrayOf(1, 0, 0))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsUnknownNmeaRuntimeStatusVersion() {
+        parseRegattaLinkNmeaTxRuntimeStatus(byteArrayOf(2, 0, 0, 0))
+    }
+
+    @Test
+    fun successfulNmeaMasterWriteUpdatesConfirmedSelectionAndRequiresRestart() {
+        val initial = regattaLinkApplyNmeaTxRuntimeStatus(
+            RegattaLinkConfigurationState(
+                nmeaTxSupported = true,
+                nmeaTxEnabled = false
+            ),
+            RegattaLinkNmeaTxRuntimeStatus(
+                bootMasterSelected = false,
+                masterActive = false,
+                bootOutputMask = 0,
+                activeOutputMask = 0
+            )
+        )
+
+        val updated = regattaLinkNmeaSelectionAfterWriteSuccess(
+            state = initial,
+            attitudeSelector = false,
+            enabled = true
+        )
+
+        assertEquals(true, updated.nmeaTxEnabled)
+        assertTrue(updated.nmeaTxRestartRequired)
+        assertEquals(false, updated.nmeaTxBootSelected)
+    }
+
+    @Test
+    fun failedNmeaMasterWriteKeepsConfirmedSelectionWhenRereadUnavailable() {
+        val initial = regattaLinkApplyNmeaTxRuntimeStatus(
+            RegattaLinkConfigurationState(
+                nmeaTxSupported = true,
+                nmeaTxEnabled = false
+            ),
+            RegattaLinkNmeaTxRuntimeStatus(
+                bootMasterSelected = false,
+                masterActive = false,
+                bootOutputMask = 0,
+                activeOutputMask = 0
+            )
+        )
+
+        val afterFailure = regattaLinkNmeaSelectionAfterWriteFailure(
+            state = initial,
+            attitudeSelector = false,
+            rereadValue = null
+        )
+
+        assertEquals(false, afterFailure.nmeaTxEnabled)
+        assertFalse(afterFailure.nmeaTxRestartRequired)
+    }
+
+    @Test
+    fun failedNmeaWriteUsesAuthoritativeRereadInsteadOfRequestedValue() {
+        val initial = regattaLinkApplyNmeaTxRuntimeStatus(
+            RegattaLinkConfigurationState(
+                nmeaTxSupported = true,
+                nmeaTxEnabled = false,
+                nmeaAttitudeTxSupported = true,
+                nmeaAttitudeTxEnabled = false
+            ),
+            RegattaLinkNmeaTxRuntimeStatus(
+                bootMasterSelected = false,
+                masterActive = false,
+                bootOutputMask = 0,
+                activeOutputMask = 0
+            )
+        )
+
+        val master = regattaLinkNmeaSelectionAfterWriteFailure(
+            state = initial,
+            attitudeSelector = false,
+            rereadValue = true
+        )
+        val attitude = regattaLinkNmeaSelectionAfterWriteFailure(
+            state = initial,
+            attitudeSelector = true,
+            rereadValue = true
+        )
+
+        assertEquals(true, master.nmeaTxEnabled)
+        assertTrue(master.nmeaTxRestartRequired)
+        assertEquals(true, attitude.nmeaAttitudeTxEnabled)
+        assertTrue(attitude.nmeaAttitudeTxRestartRequired)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsInvalidNmeaTxSetting() {
+        parseRegattaLinkNmeaTxEnabled(byteArrayOf(2))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsInvalidNmeaAttitudeTxSettingLength() {
+        parseRegattaLinkNmeaAttitudeTxEnabled(byteArrayOf(0, 1))
+    }
+
+    @Test
     fun parsesMotionDampingStrictly() {
         assertEquals(1, parseRegattaLinkMotionDamping(byteArrayOf(1)))
         assertEquals(3, parseRegattaLinkMotionDamping(byteArrayOf(3)))
@@ -159,6 +390,13 @@ class RegattaLinkConfigurationNmeaTest {
             regattaLinkConfigurationMutationBlocked(
                 RegattaLinkConfigurationState(
                     factoryResetWriteAcceptedRequestId = 9u
+                )
+            )
+        )
+        assertTrue(
+            regattaLinkConfigurationMutationBlocked(
+                RegattaLinkConfigurationState(
+                    restartAwaitingDisconnect = true
                 )
             )
         )

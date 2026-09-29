@@ -62,14 +62,16 @@ class FinishDirectionRegressionTest {
         setField(service, "finishLine", FINISH_LINE)
         setField(
             service,
-            "courseMarks",
+            "coursePositions",
             listOf(
-                CourseMark(
+                CoursePosition(
                     order = 1,
                     name = "Last mark",
-                    point = APPROACH_POINT,
+                    kind = CoursePositionKind.MARK,
+                    omitWhenShortened = false,
+                    markPoint = APPROACH_POINT,
                     radiusM = 10.0
-                )
+            )
             )
         )
         setField(service, "raceStarted", true)

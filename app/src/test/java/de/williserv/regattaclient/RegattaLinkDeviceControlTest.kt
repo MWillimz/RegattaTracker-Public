@@ -80,6 +80,28 @@ class RegattaLinkDeviceControlTest {
     }
 
     @Test
+    fun restartRequestUsesOpcodeSixAndRequiresZeroValue() {
+        val raw = buildRegattaLinkDeviceControlRequest(
+            opcode = RegattaLinkDeviceControlOpcode.RESTART,
+            requestId = 7u,
+            value = 0
+        )
+
+        assertEquals(6, raw[1].toInt() and 0xff)
+        assertEquals(0, raw[6].toInt() and 0xff)
+        assertEquals(0, raw[7].toInt() and 0xff)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun restartRejectsNonZeroValue() {
+        buildRegattaLinkDeviceControlRequest(
+            RegattaLinkDeviceControlOpcode.RESTART,
+            7u,
+            1
+        )
+    }
+
+    @Test
     fun deviceControlStatusParsesSignedTrimsFlagsAndUnsignedFields() {
         val raw = ByteArray(REGATTALINK_DEVICE_CONTROL_STATUS_SIZE)
         val buffer = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
@@ -899,6 +921,69 @@ class RegattaLinkDeviceControlTest {
 
         assertFalse(tracker.consumeDisconnect(session))
         assertFalse(tracker.isExpected(session, 41u))
+    }
+
+    @Test
+    fun restartDisconnectIsOwnedOnlyAfterConfirmedRestartAndExpires() {
+        var now = 1_000L
+        val tracker = RegattaLinkRestartDisconnectTracker<Any>(
+            nowElapsedMs = { now },
+            expectedDisconnectTimeoutMs = 5_000L
+        )
+        val session = Any()
+        val other = Any()
+
+        assertFalse(tracker.consumeDisconnect(session))
+        tracker.markExpected(session)
+        assertFalse(tracker.consumeDisconnect(other))
+        assertTrue(tracker.consumeDisconnect(session))
+
+        tracker.markExpected(session)
+        now += 5_001L
+        assertFalse(tracker.consumeDisconnect(session))
+    }
+
+    @Test
+    fun restartSuccessWithoutDisconnectTimesOutAndUnblocksConfiguration() {
+        var now = 1_000L
+        val tracker = RegattaLinkRestartDisconnectTracker<Any>(
+            nowElapsedMs = { now },
+            expectedDisconnectTimeoutMs = 5_000L
+        )
+        val session = Any()
+        val success = RegattaLinkDeviceControlStatus(
+            opcode = RegattaLinkDeviceControlOpcode.RESTART,
+            phase = RegattaLinkDeviceControlPhase.SUCCESS,
+            result = RegattaLinkDeviceControlResult.OK,
+            requestId = 51u,
+            forwardTrimDeg = 0,
+            heelTrimDeg = 0,
+            pitchTrimDeg = 0,
+            boatFrameValid = true,
+            gyroBiasValid = true,
+            mountingEpoch = 7u
+        )
+        val awaiting = RegattaLinkConfigurationState(
+            deviceControlSupported = true,
+            restartAwaitingDisconnect = true,
+            deviceControlStatus = success
+        )
+
+        tracker.markExpected(session)
+        now += 4_999L
+        assertFalse(tracker.consumeTimeout(session))
+
+        now += 1L
+        assertTrue(tracker.consumeTimeout(session))
+        assertFalse(tracker.consumeDisconnect(session))
+
+        val timedOut = regattaLinkRestartDisconnectTimedOutState(awaiting)
+        assertFalse(timedOut.restartAwaitingDisconnect)
+        assertEquals(success, timedOut.deviceControlStatus)
+        assertEquals(
+            REGATTALINK_RESTART_DISCONNECT_TIMEOUT_ERROR,
+            timedOut.deviceControlError
+        )
     }
 
     @Test

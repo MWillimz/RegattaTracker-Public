@@ -33,6 +33,23 @@ class TrackingDbHelperTest {
     }
 
     @Test
+    fun storageCounts_returnTotalAndPendingTogether() {
+        val helper = TrackingDbHelper(context)
+        val contextId = createAccessContext(helper, "Event A", "secret-a")
+
+        val first = insertSample(helper, sequenceId = 1L, accessContextId = contextId)
+        insertSample(helper, sequenceId = 2L, accessContextId = contextId)
+        insertSample(helper, sequenceId = 3L, accessContextId = null)
+        helper.markUploaded(first)
+
+        val counts = helper.getStorageCounts()
+
+        assertEquals(3L, counts.total)
+        assertEquals(2L, counts.pending)
+        helper.close()
+    }
+
+    @Test
     fun identicalSequenceIds_markOnlyRequestedLocalRowUploaded() {
         val helper = TrackingDbHelper(context)
         val contextId = createAccessContext(helper, "Event A", "secret-a")

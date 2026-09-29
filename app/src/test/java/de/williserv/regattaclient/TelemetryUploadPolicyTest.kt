@@ -24,6 +24,7 @@ class TelemetryUploadPolicyTest {
     fun setUp() {
         context = RuntimeEnvironment.getApplication()
         context.deleteDatabase(DB_NAME)
+        TelemetryUploadScheduler.resetLiveWakeupCoalescing()
     }
 
     @After
@@ -130,6 +131,109 @@ class TelemetryUploadPolicyTest {
                     ExistingWorkPolicy.REPLACE
             )
         }
+    }
+
+    @Test
+    fun offlineWakeupGate_coalescesRepeatedOfflineSamples() {
+        val gate = TelemetryOfflineWakeupGate()
+
+        assertEquals(
+            TelemetryLiveWakeupDecisionKind.ENQUEUE_FIRST_OFFLINE,
+            gate.decide(hasActiveNetwork = false).kind
+        )
+        repeat(99) {
+            assertEquals(
+                TelemetryLiveWakeupDecisionKind.SKIP_REDUNDANT_OFFLINE,
+                gate.decide(hasActiveNetwork = false).kind
+            )
+        }
+
+        assertEquals(
+            TelemetryLiveWakeupDecisionKind.ENQUEUE,
+            gate.decide(hasActiveNetwork = true).kind
+        )
+        assertEquals(
+            TelemetryLiveWakeupDecisionKind.ENQUEUE_FIRST_OFFLINE,
+            gate.decide(hasActiveNetwork = false).kind
+        )
+    }
+
+    @Test
+    fun offlineWakeupGate_failsOpenForUnknownNetworkState() {
+        val gate = TelemetryOfflineWakeupGate()
+
+        assertEquals(
+            TelemetryLiveWakeupDecisionKind.ENQUEUE_FIRST_OFFLINE,
+            gate.decide(hasActiveNetwork = false).kind
+        )
+        assertEquals(
+            TelemetryLiveWakeupDecisionKind.ENQUEUE,
+            gate.decide(hasActiveNetwork = null).kind
+        )
+        assertEquals(
+            TelemetryLiveWakeupDecisionKind.ENQUEUE_FIRST_OFFLINE,
+            gate.decide(hasActiveNetwork = false).kind
+        )
+    }
+
+    @Test
+    fun offlineWakeupGate_canRetryAfterEnqueuePersistenceFailure() {
+        val gate = TelemetryOfflineWakeupGate()
+
+        assertEquals(
+            TelemetryLiveWakeupDecisionKind.ENQUEUE_FIRST_OFFLINE,
+            gate.decide(hasActiveNetwork = false).kind
+        )
+        gate.clear()
+
+        assertEquals(
+            TelemetryLiveWakeupDecisionKind.ENQUEUE_FIRST_OFFLINE,
+            gate.decide(hasActiveNetwork = false).kind
+        )
+    }
+
+    @Test
+    fun offlineWakeupPersistence_appendsFallbackWhenKeepLostToRunningWorker() {
+        assertEquals(
+            TelemetryOfflineWakeupPersistenceAction.APPEND_SERIAL_FALLBACK,
+            telemetryOfflineWakeupPersistenceAction(
+                requestPersisted = false,
+                hasQueuedFutureWork = false,
+                hasRunningWork = true
+            )
+        )
+    }
+
+    @Test
+    fun offlineWakeupPersistence_keepsClaimWhenFutureWorkAlreadyExists() {
+        assertEquals(
+            TelemetryOfflineWakeupPersistenceAction.KEEP_CLAIM,
+            telemetryOfflineWakeupPersistenceAction(
+                requestPersisted = false,
+                hasQueuedFutureWork = true,
+                hasRunningWork = true
+            )
+        )
+        assertEquals(
+            TelemetryOfflineWakeupPersistenceAction.KEEP_CLAIM,
+            telemetryOfflineWakeupPersistenceAction(
+                requestPersisted = true,
+                hasQueuedFutureWork = false,
+                hasRunningWork = false
+            )
+        )
+    }
+
+    @Test
+    fun offlineWakeupPersistence_clearsClaimWhenNoWorkWasPersisted() {
+        assertEquals(
+            TelemetryOfflineWakeupPersistenceAction.CLEAR_CLAIM,
+            telemetryOfflineWakeupPersistenceAction(
+                requestPersisted = false,
+                hasQueuedFutureWork = false,
+                hasRunningWork = false
+            )
+        )
     }
 
     @Test

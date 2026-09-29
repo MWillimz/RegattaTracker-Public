@@ -6,6 +6,11 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import java.util.Locale
 
+data class TrackingStorageCounts(
+    val total: Long,
+    val pending: Long
+)
+
 data class PendingTrackingSample(
     val localId: Long,
     val accessContext: AccessContext,
@@ -767,6 +772,27 @@ class TrackingDbHelper(context: Context) :
         ).use { cursor ->
             cursor.moveToFirst()
             return cursor.getLong(0)
+        }
+    }
+
+    fun getStorageCounts(): TrackingStorageCounts {
+        readableDatabase.rawQuery(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM tracking_samples) AS total,
+                (
+                    SELECT COUNT(*)
+                    FROM tracking_samples
+                    WHERE uploaded = 0
+                ) AS pending
+            """.trimIndent(),
+            null
+        ).use { cursor ->
+            cursor.moveToFirst()
+            return TrackingStorageCounts(
+                total = cursor.getLong(0),
+                pending = cursor.getLong(1)
+            )
         }
     }
 

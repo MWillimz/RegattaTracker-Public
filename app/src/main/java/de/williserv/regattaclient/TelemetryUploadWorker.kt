@@ -4,6 +4,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
+import android.net.ConnectivityManager
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -13,6 +14,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequest
 import androidx.work.Operation
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
@@ -22,6 +24,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 
 internal enum class TelemetryUploadAttemptResult {
     SUCCESS,
@@ -142,6 +145,100 @@ internal enum class TelemetryUploadScheduleKind {
     RECOVERY,
     CONTINUATION
 }
+
+
+internal enum class TelemetryLiveWakeupDecisionKind {
+    ENQUEUE,
+    ENQUEUE_FIRST_OFFLINE,
+    SKIP_REDUNDANT_OFFLINE
+}
+
+internal data class TelemetryLiveWakeupDecision(
+    val kind: TelemetryLiveWakeupDecisionKind,
+    val offlineClaimId: Long? = null
+)
+
+internal enum class TelemetryOfflineWakeupPersistenceAction {
+    KEEP_CLAIM,
+    APPEND_SERIAL_FALLBACK,
+    CLEAR_CLAIM
+}
+
+internal fun telemetryOfflineWakeupPersistenceAction(
+    requestPersisted: Boolean,
+    hasQueuedFutureWork: Boolean,
+    hasRunningWork: Boolean
+): TelemetryOfflineWakeupPersistenceAction {
+    if (requestPersisted || hasQueuedFutureWork) {
+        return TelemetryOfflineWakeupPersistenceAction.KEEP_CLAIM
+    }
+    return if (hasRunningWork) {
+        TelemetryOfflineWakeupPersistenceAction.APPEND_SERIAL_FALLBACK
+    } else {
+        TelemetryOfflineWakeupPersistenceAction.CLEAR_CLAIM
+    }
+}
+
+internal class TelemetryOfflineWakeupGate {
+    private val offlineWakeupClaim = AtomicLong(0L)
+    private val nextClaimId = AtomicLong(0L)
+
+    fun decide(hasActiveNetwork: Boolean?): TelemetryLiveWakeupDecision {
+        return when (hasActiveNetwork) {
+            false -> {
+                while (true) {
+                    if (offlineWakeupClaim.get() != 0L) {
+                        return TelemetryLiveWakeupDecision(
+                            TelemetryLiveWakeupDecisionKind.SKIP_REDUNDANT_OFFLINE
+                        )
+                    }
+
+                    var claimId = nextClaimId.incrementAndGet()
+                    if (claimId == 0L) {
+                        claimId = nextClaimId.incrementAndGet()
+                    }
+                    if (offlineWakeupClaim.compareAndSet(0L, claimId)) {
+                        return TelemetryLiveWakeupDecision(
+                            kind = TelemetryLiveWakeupDecisionKind.ENQUEUE_FIRST_OFFLINE,
+                            offlineClaimId = claimId
+                        )
+                    }
+                }
+
+                @Suppress("UNREACHABLE_CODE")
+                error("unreachable")
+            }
+
+            true,
+            null -> {
+                offlineWakeupClaim.set(0L)
+                TelemetryLiveWakeupDecision(
+                    TelemetryLiveWakeupDecisionKind.ENQUEUE
+                )
+            }
+        }
+    }
+
+    fun clear(claimId: Long? = null) {
+        if (claimId == null) {
+            offlineWakeupClaim.set(0L)
+        } else {
+            offlineWakeupClaim.compareAndSet(claimId, 0L)
+        }
+    }
+}
+
+internal fun telemetryHasActiveNetwork(context: Context): Boolean? =
+    try {
+        val manager = context.applicationContext
+            .getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return null
+        manager.activeNetwork != null
+    } catch (_: SecurityException) {
+        null
+    } catch (_: RuntimeException) {
+        null
+    }
 
 internal fun telemetryUploadExistingWorkPolicy(
     kind: TelemetryUploadScheduleKind
@@ -324,9 +421,11 @@ internal object TelemetryUploadStatusStore {
     const val ALL_SENT = "all sent"
 
     fun write(context: Context, status: String) {
-        context.applicationContext
+        val prefs = context.applicationContext
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
+        if (prefs.getString(STATUS_KEY, null) == status) return
+
+        prefs.edit()
             .putString(STATUS_KEY, status)
             .apply()
     }
@@ -339,6 +438,16 @@ object TelemetryUploadScheduler {
     internal const val AFTER_LOCAL_ID_KEY = "after_local_id"
     internal const val SHOW_RECOVERY_NOTIFICATION_KEY =
         "show_recovery_notification"
+
+    private val offlineWakeupGate = TelemetryOfflineWakeupGate()
+
+    internal fun resetLiveWakeupCoalescing() {
+        offlineWakeupGate.clear()
+    }
+
+    internal fun onWorkerStarted() {
+        resetLiveWakeupCoalescing()
+    }
 
     internal fun buildRequest(
         afterLocalId: Long = 0L,
@@ -365,10 +474,13 @@ object TelemetryUploadScheduler {
     }
 
     fun enqueueWakeup(context: Context) {
-        TelemetryUploadStatusStore.write(context, TelemetryUploadStatusStore.WAITING)
+        val appContext = context.applicationContext
+        TelemetryUploadStatusStore.write(
+            appContext,
+            TelemetryUploadStatusStore.WAITING
+        )
 
         if (context is RegattaTrackingService) {
-            val appContext = context.applicationContext
             val serverUrl = appContext
                 .getSharedPreferences(RACE_SETUP_PREFS_NAME, Context.MODE_PRIVATE)
                 .getString(RACE_SERVER_KEY, "")
@@ -384,14 +496,122 @@ object TelemetryUploadScheduler {
             }
         }
 
-        WorkManager.getInstance(context.applicationContext)
-            .enqueueUniqueWork(
-                UNIQUE_WORK_NAME,
-                telemetryUploadExistingWorkPolicy(
-                    TelemetryUploadScheduleKind.LIVE_WAKEUP
-                ),
-                buildRequest()
+        val decision = offlineWakeupGate.decide(
+            telemetryHasActiveNetwork(appContext)
+        )
+        if (
+            decision.kind ==
+            TelemetryLiveWakeupDecisionKind.SKIP_REDUNDANT_OFFLINE
+        ) {
+            return
+        }
+
+        val request = buildRequest()
+        val operation = try {
+            WorkManager.getInstance(appContext)
+                .enqueueUniqueWork(
+                    UNIQUE_WORK_NAME,
+                    telemetryUploadExistingWorkPolicy(
+                        TelemetryUploadScheduleKind.LIVE_WAKEUP
+                    ),
+                    request
+                )
+        } catch (error: RuntimeException) {
+            decision.offlineClaimId?.let(offlineWakeupGate::clear)
+            throw error
+        }
+
+        val offlineClaimId = decision.offlineClaimId
+        if (offlineClaimId != null) {
+            verifyOfflineWakeupPersistence(
+                appContext = appContext,
+                request = request,
+                claimId = offlineClaimId,
+                operation = operation
             )
+        }
+    }
+
+    private fun verifyOfflineWakeupPersistence(
+        appContext: Context,
+        request: OneTimeWorkRequest,
+        claimId: Long,
+        operation: Operation
+    ) {
+        operation.result.addListener(operationListener@{
+            if (
+                runCatching { operation.result.get() }
+                    .exceptionOrNull() != null
+            ) {
+                offlineWakeupGate.clear(claimId)
+                return@operationListener
+            }
+
+            val workManager = WorkManager.getInstance(appContext)
+            val infosFuture = workManager.getWorkInfosForUniqueWork(UNIQUE_WORK_NAME)
+            infosFuture.addListener(infoListener@{
+                val infos = runCatching { infosFuture.get() }.getOrElse {
+                    offlineWakeupGate.clear(claimId)
+                    return@infoListener
+                }
+
+                val requestPersisted = infos.any { info ->
+                    info.id == request.id &&
+                        (
+                            info.state == WorkInfo.State.ENQUEUED ||
+                                info.state == WorkInfo.State.BLOCKED ||
+                                info.state == WorkInfo.State.RUNNING
+                            )
+                }
+                val hasQueuedFutureWork = infos.any { info ->
+                    info.id != request.id &&
+                        (
+                            info.state == WorkInfo.State.ENQUEUED ||
+                                info.state == WorkInfo.State.BLOCKED
+                            )
+                }
+                val hasRunningWork = infos.any { info ->
+                    info.id != request.id &&
+                        info.state == WorkInfo.State.RUNNING
+                }
+
+                when (
+                    telemetryOfflineWakeupPersistenceAction(
+                        requestPersisted = requestPersisted,
+                        hasQueuedFutureWork = hasQueuedFutureWork,
+                        hasRunningWork = hasRunningWork
+                    )
+                ) {
+                    TelemetryOfflineWakeupPersistenceAction.KEEP_CLAIM -> Unit
+
+                    TelemetryOfflineWakeupPersistenceAction.CLEAR_CLAIM -> {
+                        offlineWakeupGate.clear(claimId)
+                    }
+
+                    TelemetryOfflineWakeupPersistenceAction.APPEND_SERIAL_FALLBACK -> {
+                        val fallback = try {
+                            appendContinuation(
+                                context = appContext,
+                                afterLocalId = 0L,
+                                showRecoveryNotification = false
+                            )
+                        } catch (_: RuntimeException) {
+                            offlineWakeupGate.clear(claimId)
+                            return@infoListener
+                        }
+
+                        fallback.result.addListener(fallbackListener@{
+                            if (
+                                runCatching { fallback.result.get() }
+                                    .exceptionOrNull() != null
+                            ) {
+                                offlineWakeupGate.clear(claimId)
+                            }
+                        }, TELEMETRY_UPLOAD_ENQUEUE_RESULT_EXECUTOR)
+                    }
+                }
+            }, TELEMETRY_UPLOAD_ENQUEUE_RESULT_EXECUTOR)
+        }, TELEMETRY_UPLOAD_ENQUEUE_RESULT_EXECUTOR)
     }
 
     fun enqueueRecoveryIfNeeded(context: Context): Operation? {
@@ -486,6 +706,8 @@ private const val TELEMETRY_RECOVERY_NOTIFICATION_CHANNEL_ID =
 private const val TELEMETRY_RECOVERY_NOTIFICATION_ID = 1002
 private const val TELEMETRY_UPLOAD_LOG_TAG = "TelemetryUploadWorker"
 private val TELEMETRY_RECOVERY_NOTIFICATION_EXECUTOR =
+    Executor { command -> command.run() }
+private val TELEMETRY_UPLOAD_ENQUEUE_RESULT_EXECUTOR =
     Executor { command -> command.run() }
 
 internal fun handleTelemetryRecoveryPersistenceResult(
@@ -651,6 +873,7 @@ class TelemetryUploadWorker(
         ).result.get()
     }
     override fun doWork(): Result {
+        TelemetryUploadScheduler.onWorkerStarted()
         uploadStartedAtElapsedMs = elapsedRealtimeProvider()
 
         if (showRecoveryNotification) {

@@ -186,14 +186,16 @@ class FinishStopLifecycleTest {
         setField(service, "finishLine", finishLine)
         setField(
             service,
-            "courseMarks",
+            "coursePositions",
             listOf(
-                CourseMark(
+                CoursePosition(
                     order = 1,
                     name = "Last mark",
-                    point = approachPoint,
+                    kind = CoursePositionKind.MARK,
+                    omitWhenShortened = false,
+                    markPoint = approachPoint,
                     radiusM = 10.0
-                )
+            )
             )
         )
         setField(service, "raceStarted", true)

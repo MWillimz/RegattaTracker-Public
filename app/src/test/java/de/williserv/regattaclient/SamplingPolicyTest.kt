@@ -1,5 +1,7 @@
 package de.williserv.regattaclient
 
+import kotlin.math.PI
+import kotlin.math.cos
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -30,24 +32,20 @@ class SamplingPolicyTest {
     @Test
     fun `nearest later mark controls distance independent of course order`() {
         val position = GeoPoint(53.0000, 10.0000)
-        val farFirstMark = CourseMark(
-            order = 1,
-            name = "First",
-            point = GeoPoint(53.0200, 10.0000),
-            radiusM = 100.0
+        val farFirstMark = CoursePosition(
+            order = 1, name = "First", kind = CoursePositionKind.MARK,
+            omitWhenShortened = false, markPoint = GeoPoint(53.0200, 10.0000), radiusM = 100.0
         )
-        val closeLaterMark = CourseMark(
-            order = 5,
-            name = "Later",
-            point = GeoPoint(53.0010, 10.0000),
-            radiusM = 100.0
+        val closeLaterMark = CoursePosition(
+            order = 5, name = "Later", kind = CoursePositionKind.MARK,
+            omitWhenShortened = false, markPoint = GeoPoint(53.0010, 10.0000), radiusM = 100.0
         )
 
         val decision = SamplingPolicy.decide(
             position = position,
             startLine = null,
             finishLine = null,
-            courseMarks = listOf(farFirstMark, closeLaterMark),
+            coursePositions = listOf(farFirstMark, closeLaterMark),
             trackingProfile = TrackingProfile.NORMAL,
             sailNumber = "GER 1234",
             previousBand = null
@@ -70,10 +68,52 @@ class SamplingPolicyTest {
             position = pointBeyondEndpoint,
             startLine = line,
             finishLine = null,
-            courseMarks = emptyList()
+            coursePositions = emptyList()
         )
 
         assertTrue((distance ?: 0.0) > 500.0)
+    }
+
+    @Test
+    fun `gate sampling uses infinite detection line beyond buoy endpoints`() {
+        val origin = GeoPoint(53.0, 10.0)
+        val earthRadiusM = 6_371_000.0
+        fun localPoint(x: Double, y: Double): GeoPoint {
+            val lat = origin.lat + (y / earthRadiusM) * 180.0 / PI
+            val lon = origin.lon + (x / (earthRadiusM * cos(origin.lat * PI / 180.0))) * 180.0 / PI
+            return GeoPoint(lat, lon)
+        }
+        val gate = CoursePosition(
+            order = 1, name = "Gate", kind = CoursePositionKind.GATE,
+            omitWhenShortened = false,
+            gateRef = localPoint(-50.0, 0.0), gateMark = localPoint(50.0, 0.0),
+            gateDirection = GateDirection.POSITIVE, gateOffsetM = 0.0
+        )
+        val distance = SamplingPolicy.nearestRelevantCourseElementDistanceM(
+            position = localPoint(5_000.0, 100.0),
+            startLine = null,
+            finishLine = null,
+            coursePositions = listOf(gate)
+        )
+        assertEquals(100.0, requireNotNull(distance), 0.2)
+    }
+
+    @Test
+    fun `invalid gate geometry keeps fastest sampling band`() {
+        val gate = CoursePosition(
+            order = 1, name = "Broken", kind = CoursePositionKind.GATE,
+            omitWhenShortened = false,
+            gateRef = GeoPoint(53.0, 10.0), gateMark = GeoPoint(53.0, 10.001),
+            gateDirection = null, gateOffsetM = 30.0
+        )
+        val decision = SamplingPolicy.decide(
+            position = GeoPoint(53.02, 10.0), startLine = null, finishLine = null,
+            coursePositions = listOf(gate), trackingProfile = TrackingProfile.NORMAL,
+            sailNumber = "GER 1234", previousBand = SamplingDistanceBand.VERY_FAR
+        )
+        assertEquals(SamplingDistanceBand.NEAR, decision.band)
+        assertEquals(1_000L, decision.intervalMs)
+        assertNull(decision.nearestDistanceM)
     }
 
     @Test
@@ -98,7 +138,7 @@ class SamplingPolicyTest {
             position = GeoPoint(53.0, 10.0),
             startLine = null,
             finishLine = null,
-            courseMarks = emptyList(),
+            coursePositions = emptyList(),
             trackingProfile = TrackingProfile.NORMAL,
             sailNumber = "MARK:1",
             previousBand = SamplingDistanceBand.NEAR
@@ -107,7 +147,7 @@ class SamplingPolicyTest {
             position = GeoPoint(53.0, 10.0),
             startLine = null,
             finishLine = null,
-            courseMarks = emptyList(),
+            coursePositions = emptyList(),
             trackingProfile = TrackingProfile.BATTERY_SAVER,
             sailNumber = "MARK:1",
             previousBand = SamplingDistanceBand.NEAR
@@ -116,7 +156,7 @@ class SamplingPolicyTest {
             position = GeoPoint(53.0, 10.0),
             startLine = null,
             finishLine = null,
-            courseMarks = emptyList(),
+            coursePositions = emptyList(),
             trackingProfile = TrackingProfile.FIXED_1S,
             sailNumber = "MARK:1",
             previousBand = SamplingDistanceBand.NEAR
@@ -136,7 +176,7 @@ class SamplingPolicyTest {
             position = GeoPoint(53.0, 10.0),
             startLine = null,
             finishLine = null,
-            courseMarks = emptyList(),
+            coursePositions = emptyList(),
             trackingProfile = TrackingProfile.NORMAL,
             sailNumber = "GER 1234",
             previousBand = SamplingDistanceBand.VERY_FAR

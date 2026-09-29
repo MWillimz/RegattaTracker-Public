@@ -7,6 +7,32 @@ import org.junit.Test
 class RegattaLinkGattSchemaTest {
 
     @Test
+    fun cacheRefreshRequiresConfirmedGattDisconnect() {
+        assertTrue(
+            regattaLinkGattReconnectAction(
+                cacheRefreshPlanned = true,
+                disconnectConfirmed = true
+            ) == RegattaLinkGattReconnectAction.REFRESH_CACHE_AFTER_DISCONNECT
+        )
+        assertTrue(
+            regattaLinkGattReconnectAction(
+                cacheRefreshPlanned = true,
+                disconnectConfirmed = false
+            ) == RegattaLinkGattReconnectAction.FAIL_CACHE_REFRESH
+        )
+    }
+
+    @Test
+    fun serviceChangedReconnectCanStillForceRebuildWithoutDisconnectCallback() {
+        assertTrue(
+            regattaLinkGattReconnectAction(
+                cacheRefreshPlanned = false,
+                disconnectConfirmed = false
+            ) == RegattaLinkGattReconnectAction.REBUILD_CONNECTION
+        )
+    }
+
+    @Test
     fun persistedGenerationStillRequiresOneRealGattProofPerProcess() {
         assertTrue(
             shouldValidateRegattaLinkGattLayout(

@@ -162,6 +162,8 @@ fun RegattaLinkScreen(
     onSetLedBrightness: (Int) -> Unit,
     onSetMotionDamping: (Int) -> Unit,
     onSetLoadPrecisionX10: (Boolean) -> Unit = {},
+    onSetNmeaTxEnabled: (Boolean) -> Unit = {},
+    onSetNmeaAttitudeTxEnabled: (Boolean) -> Unit = {},
     onSetLoadSensorAlias: (String, String) -> Unit = { _, _ -> },
     onDrainDiagnosticLog: () -> Unit,
     onDeviceControl: (RegattaLinkDeviceControlOpcode, Int) -> Unit,
@@ -314,6 +316,11 @@ fun RegattaLinkScreen(
                 otaActive = otaState.isActive,
                 rawCaptureActive = rawCaptureState.isActive,
                 onSetLoadPrecisionX10 = onSetLoadPrecisionX10,
+                onSetNmeaTxEnabled = onSetNmeaTxEnabled,
+                onSetNmeaAttitudeTxEnabled = onSetNmeaAttitudeTxEnabled,
+                onRestart = {
+                    onDeviceControl(RegattaLinkDeviceControlOpcode.RESTART, 0)
+                },
                 onSetLoadSensorAlias = onSetLoadSensorAlias,
                 onRefreshPgnInventory = onRefreshPgnInventory,
                 onDismiss = { activeSetupDestination = null }
@@ -773,6 +780,9 @@ private fun RegattaLinkNmeaSetupSheet(
     otaActive: Boolean,
     rawCaptureActive: Boolean,
     onSetLoadPrecisionX10: (Boolean) -> Unit,
+    onSetNmeaTxEnabled: (Boolean) -> Unit,
+    onSetNmeaAttitudeTxEnabled: (Boolean) -> Unit,
+    onRestart: () -> Unit,
     onSetLoadSensorAlias: (String, String) -> Unit,
     onRefreshPgnInventory: () -> Unit,
     onDismiss: () -> Unit
@@ -782,7 +792,9 @@ private fun RegattaLinkNmeaSetupSheet(
             (
                 nmeaState.boatStateSupported ||
                     nmeaState.pgnInventorySupported ||
-                    nmeaState.loadSupported
+                    nmeaState.loadSupported ||
+                    configurationState.nmeaTxSupported ||
+                    configurationState.nmeaAttitudeTxSupported
                 )
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -814,6 +826,221 @@ private fun RegattaLinkNmeaSetupSheet(
                     ),
                     modifier = Modifier.padding(top = 8.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            val nmeaRuntimeKnown =
+                configurationState.nmeaTxRuntimeStatusSupported &&
+                    configurationState.nmeaTxBootSelected != null &&
+                    configurationState.nmeaTxActive != null
+            val nmeaAttitudeBootSelected =
+                configurationState.nmeaBootOutputMask?.let {
+                    it and REGATTALINK_NMEA_TX_OUTPUT_ATTITUDE != 0
+                }
+            val nmeaAttitudeRuntimeActive =
+                configurationState.nmeaActiveOutputMask?.let {
+                    it and REGATTALINK_NMEA_TX_OUTPUT_ATTITUDE != 0
+                }
+
+            if (connected && configurationState.nmeaTxSupported) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 18.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(
+                                R.string.regattalink_nmea_tx_title
+                            ),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = when {
+                                configurationState.nmeaTxEnabled == null ->
+                                    stringResource(
+                                        R.string.regattalink_nmea_tx_state_unavailable
+                                    )
+                                !nmeaRuntimeKnown ->
+                                    stringResource(
+                                        if (configurationState.nmeaTxEnabled) {
+                                            R.string.regattalink_nmea_tx_selected_on_runtime_unknown
+                                        } else {
+                                            R.string.regattalink_nmea_tx_selected_off_runtime_unknown
+                                        }
+                                    )
+                                configurationState.nmeaTxRestartRequired ->
+                                    stringResource(
+                                        if (configurationState.nmeaTxEnabled) {
+                                            R.string.regattalink_nmea_tx_enable_pending
+                                        } else {
+                                            R.string.regattalink_nmea_tx_disable_pending
+                                        }
+                                    )
+                                configurationState.nmeaTxActive == true ->
+                                    stringResource(
+                                        R.string.regattalink_nmea_tx_enabled
+                                    )
+                                configurationState.nmeaTxBootSelected == true ->
+                                    stringResource(
+                                        R.string.regattalink_nmea_tx_selected_but_inactive
+                                    )
+                                else ->
+                                    stringResource(
+                                        R.string.regattalink_nmea_tx_receive_only
+                                    )
+                            },
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = configurationState.nmeaTxEnabled == true,
+                        onCheckedChange = onSetNmeaTxEnabled,
+                        enabled =
+                            configEnabled &&
+                                configurationState.nmeaTxEnabled != null
+                    )
+                }
+            }
+
+            if (connected && configurationState.nmeaAttitudeTxSupported) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(
+                                R.string.regattalink_nmea_attitude_tx
+                            ),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = when {
+                                configurationState.nmeaAttitudeTxEnabled == null ->
+                                    stringResource(
+                                        R.string.regattalink_nmea_tx_state_unavailable
+                                    )
+                                nmeaAttitudeBootSelected == null ||
+                                    nmeaAttitudeRuntimeActive == null ->
+                                    stringResource(
+                                        if (configurationState.nmeaAttitudeTxEnabled) {
+                                            R.string.regattalink_nmea_attitude_selected_on_runtime_unknown
+                                        } else {
+                                            R.string.regattalink_nmea_attitude_selected_off_runtime_unknown
+                                        }
+                                    )
+                                configurationState.nmeaAttitudeTxRestartRequired ->
+                                    stringResource(
+                                        if (configurationState.nmeaAttitudeTxEnabled) {
+                                            R.string.regattalink_nmea_attitude_enable_pending
+                                        } else {
+                                            R.string.regattalink_nmea_attitude_disable_pending
+                                        }
+                                    )
+                                nmeaAttitudeRuntimeActive ->
+                                    stringResource(
+                                        R.string.regattalink_nmea_attitude_tx_enabled
+                                    )
+                                nmeaAttitudeBootSelected ->
+                                    stringResource(
+                                        R.string.regattalink_nmea_attitude_tx_inactive
+                                    )
+                                else ->
+                                    stringResource(
+                                        R.string.regattalink_nmea_attitude_tx_disabled
+                                    )
+                            },
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = configurationState.nmeaAttitudeTxEnabled == true,
+                        onCheckedChange = onSetNmeaAttitudeTxEnabled,
+                        enabled =
+                            configEnabled &&
+                                configurationState.nmeaAttitudeTxEnabled != null
+                    )
+                }
+            }
+
+            val nmeaAppliedStateUnknown =
+                connected &&
+                    !configurationState.nmeaTxRuntimeStatusSupported &&
+                    (
+                        configurationState.nmeaTxSupported ||
+                            configurationState.nmeaAttitudeTxSupported
+                        )
+            val nmeaRestartActionAvailable =
+                regattaLinkNmeaRestartRequired(configurationState) ||
+                    nmeaAppliedStateUnknown
+
+            if (
+                connected &&
+                (
+                    nmeaRestartActionAvailable ||
+                        configurationState.restartAwaitingDisconnect
+                    )
+            ) {
+                Text(
+                    text =
+                        when {
+                            configurationState.restartAwaitingDisconnect ->
+                                stringResource(R.string.regattalink_restarting)
+                            nmeaAppliedStateUnknown ->
+                                stringResource(
+                                    R.string.regattalink_nmea_runtime_unknown_restart
+                                )
+                            else ->
+                                stringResource(
+                                    R.string.regattalink_nmea_restart_required
+                                )
+                        },
+                    modifier = Modifier.padding(top = 14.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Button(
+                    onClick = onRestart,
+                    enabled =
+                        configEnabled &&
+                            configurationState.deviceControlSupported &&
+                            nmeaRestartActionAvailable &&
+                            !configurationState.restartAwaitingDisconnect,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                ) {
+                    Text(
+                        if (configurationState.restartAwaitingDisconnect) {
+                            stringResource(R.string.regattalink_restarting)
+                        } else {
+                            stringResource(R.string.regattalink_restart)
+                        }
+                    )
+                }
+            }
+
+            if (
+                connected &&
+                configurationState.deviceControlStatus?.opcode ==
+                    RegattaLinkDeviceControlOpcode.RESTART &&
+                configurationState.deviceControlError.isNotBlank()
+            ) {
+                Text(
+                    text = stringResource(
+                        R.string.regattalink_restart_timeout
+                    ),
+                    modifier = Modifier.padding(top = 10.dp),
+                    color = MaterialTheme.colorScheme.error
+                )
+                RegattaLinkTechnicalDetail(
+                    detail = configurationState.deviceControlError,
+                    modifier = Modifier.padding(top = 4.dp)
                 )
             }
 

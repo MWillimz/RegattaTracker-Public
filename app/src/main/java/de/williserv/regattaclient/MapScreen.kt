@@ -590,15 +590,34 @@ internal fun parseCourseOverlayPoints(
             addLineEndpoints(course.optJSONObject("start_line"), CourseOverlayKind.START)
             addLineEndpoints(course.optJSONObject("finish_line"), CourseOverlayKind.FINISH)
 
-            val marks = course.optJSONArray("marks")
-            if (marks != null) {
-                for (index in 0 until marks.length()) {
-                    val mark = marks.optJSONObject(index) ?: continue
-                    val point = mark.toCourseOverlayPoint(
-                        kind = CourseOverlayKind.MARK,
-                        inactive = courseShortened && mark.optBoolean("omit_when_shortened", false)
-                    )
-                    if (point != null) add(point)
+            parseCoursePositions(course).forEach { position ->
+                val inactive = courseShortened && position.omitWhenShortened
+                when (position.kind) {
+                    CoursePositionKind.MARK -> {
+                        position.markPoint?.let {
+                            add(
+                                CourseOverlayGeoPoint(
+                                    lat = it.lat,
+                                    lon = it.lon,
+                                    kind = CourseOverlayKind.MARK,
+                                    inactive = inactive
+                                )
+                            )
+                        }
+                    }
+
+                    CoursePositionKind.GATE -> {
+                        listOfNotNull(position.gateRef, position.gateMark).forEach {
+                            add(
+                                CourseOverlayGeoPoint(
+                                    lat = it.lat,
+                                    lon = it.lon,
+                                    kind = CourseOverlayKind.MARK,
+                                    inactive = inactive
+                                )
+                            )
+                        }
+                    }
                 }
             }
         }
