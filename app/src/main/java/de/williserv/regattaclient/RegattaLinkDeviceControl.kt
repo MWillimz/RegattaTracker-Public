@@ -26,7 +26,8 @@ enum class RegattaLinkDeviceControlOpcode(val wireValue: Int) {
     ADJUST_FORWARD(2),
     ADJUST_HEEL(3),
     ADJUST_PITCH(4),
-    FACTORY_RESET(5);
+    FACTORY_RESET(5),
+    RESTART(6);
 
     companion object {
         fun fromWire(value: Int): RegattaLinkDeviceControlOpcode? =
@@ -310,6 +311,43 @@ internal class RegattaLinkFactoryResetDisconnectTracker<T : Any>(
     }
 }
 
+internal class RegattaLinkRestartDisconnectTracker<T : Any>(
+    private val nowElapsedMs: () -> Long,
+    private val expectedDisconnectTimeoutMs: Long
+) {
+    private data class Expected<T : Any>(
+        val session: T,
+        val deadlineElapsedMs: Long
+    )
+
+    private val expected = AtomicReference<Expected<T>?>(null)
+
+    fun markExpected(session: T) {
+        expected.set(
+            Expected(
+                session = session,
+                deadlineElapsedMs = nowElapsedMs() + expectedDisconnectTimeoutMs
+            )
+        )
+    }
+
+    fun clearAll() {
+        expected.set(null)
+    }
+
+    fun consumeDisconnect(session: T): Boolean {
+        while (true) {
+            val current = expected.get() ?: return false
+            if (current.session !== session) return false
+            if (nowElapsedMs() > current.deadlineElapsedMs) {
+                if (expected.compareAndSet(current, null)) return false
+                continue
+            }
+            if (expected.compareAndSet(current, null)) return true
+        }
+    }
+}
+
 internal fun regattaLinkDeviceControlStatusConfirmsAcceptance(
     status: RegattaLinkDeviceControlStatus,
     requestId: UInt
@@ -380,7 +418,8 @@ internal fun buildRegattaLinkDeviceControlRequest(
     }
     if (
         opcode == RegattaLinkDeviceControlOpcode.SET_UPRIGHT ||
-        opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET
+        opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET ||
+        opcode == RegattaLinkDeviceControlOpcode.RESTART
     ) {
         require(value == 0) { "$opcode requires value 0" }
     }
@@ -473,7 +512,15 @@ internal fun regattaLinkDeviceControlFailureText(
     3 -> "RegattaLink Device Control is busy"
     4 -> "RegattaLink is not ready for this Device Control request"
     5 -> "RegattaLink rejected the Device Control request"
-    null -> regattaLinkDeviceControlFailureText(status.result)
+    null ->
+        if (
+            status.opcode == RegattaLinkDeviceControlOpcode.RESTART &&
+            status.result == RegattaLinkDeviceControlResult.TIMEOUT
+        ) {
+            "RegattaLink restart timed out"
+        } else {
+            regattaLinkDeviceControlFailureText(status.result)
+        }
     else -> "RegattaLink rejected Device Control (application error ${status.applicationErrorCode})"
 }
 
@@ -510,6 +557,9 @@ internal fun regattaLinkDeviceControlUiMessage(
     hasError: Boolean
 ): RegattaLinkUiMessage? {
     if (!hasError) return null
+    if (status?.opcode == RegattaLinkDeviceControlOpcode.RESTART) {
+        return RegattaLinkUiMessage.CONFIGURATION_FAILED
+    }
     if (status?.phase != RegattaLinkDeviceControlPhase.ERROR) {
         return RegattaLinkUiMessage.CONFIGURATION_FAILED
     }

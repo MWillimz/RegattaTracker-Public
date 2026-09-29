@@ -653,4 +653,26 @@
     <string name="regattalink_load_not_subscribed">Benachrichtigungen der Lastsensoren sind nicht verfügbar.</string>
     <string name="regattalink_load_alias">Optionaler Name</string>
     <string name="regattalink_load_identity_temporary">Temporäre NMEA-Identität; Benennung ist verfügbar, sobald der stabile NMEA2000-NAME bekannt ist.</string>
+    <string name="regattalink_nmea_tx_title">NMEA2000-Übertragung</string>
+    <string name="regattalink_nmea_tx_receive_only">Nur Empfang. RegattaLink sendet nicht auf NMEA2000.</string>
+    <string name="regattalink_nmea_tx_enabled">Übertragung erlaubt. Standard-NMEA2000-Verwaltungsverkehr kann gesendet werden.</string>
+    <string name="regattalink_nmea_tx_state_unavailable">Status konnte nicht von RegattaLink gelesen werden.</string>
+    <string name="regattalink_nmea_attitude_tx">Krängung / Trimm</string>
+    <string name="regattalink_nmea_attitude_tx_enabled">Lokale RegattaLink-IMU Pitch/Roll · PGN 127257 · 5 Hz</string>
+    <string name="regattalink_nmea_attitude_tx_disabled">PGN-127257-Ausgabe deaktiviert.</string>
+    <string name="regattalink_nmea_attitude_tx_master_off">Ausgewählt, aber solange die NMEA2000-Übertragung aus ist, ist keine Anwendungsübertragung aktiv.</string>
+    <string name="regattalink_nmea_restart_required">RegattaLink neu starten, um die NMEA2000-Änderungen anzuwenden.</string>
+    <string name="regattalink_restart">RegattaLink neu starten</string>
+    <string name="regattalink_restarting">RegattaLink wird neu gestartet…</string>
+    <string name="regattalink_nmea_tx_selected_on_runtime_unknown">Aktiviert ausgewählt. Der angewendete Zustand ist mit dieser RegattaLink-Firmware nicht verfügbar.</string>
+    <string name="regattalink_nmea_tx_selected_off_runtime_unknown">Deaktiviert ausgewählt. Der angewendete Zustand ist mit dieser RegattaLink-Firmware nicht verfügbar.</string>
+    <string name="regattalink_nmea_tx_enable_pending">Aktivierung gespeichert. RegattaLink neu starten, um sie anzuwenden.</string>
+    <string name="regattalink_nmea_tx_disable_pending">Deaktivierung gespeichert. RegattaLink kann bis zum Neustart weiterhin senden.</string>
+    <string name="regattalink_nmea_tx_selected_but_inactive">Für diesen Boot ausgewählt, aber die Übertragung ist nicht aktiv (Fail-Closed).</string>
+    <string name="regattalink_nmea_attitude_selected_on_runtime_unknown">Krängung / Trimm ausgewählt. Der angewendete Zustand ist mit dieser RegattaLink-Firmware nicht verfügbar.</string>
+    <string name="regattalink_nmea_attitude_selected_off_runtime_unknown">Krängung / Trimm nicht ausgewählt. Der angewendete Zustand ist mit dieser RegattaLink-Firmware nicht verfügbar.</string>
+    <string name="regattalink_nmea_attitude_enable_pending">Krängung / Trimm gespeichert. RegattaLink neu starten, um PGN 127257 zu aktivieren.</string>
+    <string name="regattalink_nmea_attitude_disable_pending">Krängung / Trimm deaktiviert gespeichert. PGN 127257 kann bis zum Neustart aktiv bleiben.</string>
+    <string name="regattalink_nmea_attitude_tx_inactive">Für diesen Boot ausgewählt, aber die PGN-127257-Ausgabe ist nicht runtime-aktiv.</string>
+    <string name="regattalink_nmea_runtime_unknown_restart">Der angewendete NMEA2000-TX-Zustand ist mit dieser Firmware nicht verfügbar. RegattaLink neu starten, um die ausgewählten Einstellungen zu synchronisieren.</string>
 </resources>

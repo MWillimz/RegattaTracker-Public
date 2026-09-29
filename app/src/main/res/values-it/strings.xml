@@ -653,4 +653,26 @@
     <string name="regattalink_load_not_subscribed">Le notifiche dei sensori di carico non sono disponibili.</string>
     <string name="regattalink_load_alias">Nome opzionale</string>
     <string name="regattalink_load_identity_temporary">Identità NMEA temporanea; il nome sarà disponibile quando sarà noto il NAME NMEA2000 stabile.</string>
+    <string name="regattalink_nmea_tx_title">Trasmissione NMEA2000</string>
+    <string name="regattalink_nmea_tx_receive_only">Solo ricezione. RegattaLink non trasmette su NMEA2000.</string>
+    <string name="regattalink_nmea_tx_enabled">Trasmissione consentita. Può essere inviato traffico standard di gestione NMEA2000.</string>
+    <string name="regattalink_nmea_tx_state_unavailable">Impossibile leggere lo stato da RegattaLink.</string>
+    <string name="regattalink_nmea_attitude_tx">Sbandamento / Assetto</string>
+    <string name="regattalink_nmea_attitude_tx_enabled">IMU locale RegattaLink Pitch/Roll · PGN 127257 · 5 Hz</string>
+    <string name="regattalink_nmea_attitude_tx_disabled">Uscita PGN 127257 disattivata.</string>
+    <string name="regattalink_nmea_attitude_tx_master_off">Selezionato, ma nessuna trasmissione applicativa è attiva mentre la trasmissione NMEA2000 è disattivata.</string>
+    <string name="regattalink_nmea_restart_required">Riavvia RegattaLink per applicare le modifiche alla trasmissione NMEA2000.</string>
+    <string name="regattalink_restart">Riavvia RegattaLink</string>
+    <string name="regattalink_restarting">Riavvio di RegattaLink…</string>
+    <string name="regattalink_nmea_tx_selected_on_runtime_unknown">Attivazione selezionata. Lo stato applicato non è disponibile con questo firmware RegattaLink.</string>
+    <string name="regattalink_nmea_tx_selected_off_runtime_unknown">Disattivazione selezionata. Lo stato applicato non è disponibile con questo firmware RegattaLink.</string>
+    <string name="regattalink_nmea_tx_enable_pending">Attivazione salvata. Riavvia RegattaLink per applicarla.</string>
+    <string name="regattalink_nmea_tx_disable_pending">Disattivazione salvata. RegattaLink può continuare a trasmettere fino al riavvio.</string>
+    <string name="regattalink_nmea_tx_selected_but_inactive">Selezionato per questo avvio, ma la trasmissione è inattiva (fail-closed).</string>
+    <string name="regattalink_nmea_attitude_selected_on_runtime_unknown">Sbandamento / Assetto selezionato. Lo stato applicato non è disponibile con questo firmware RegattaLink.</string>
+    <string name="regattalink_nmea_attitude_selected_off_runtime_unknown">Sbandamento / Assetto non selezionato. Lo stato applicato non è disponibile con questo firmware RegattaLink.</string>
+    <string name="regattalink_nmea_attitude_enable_pending">Sbandamento / Assetto salvato. Riavvia RegattaLink per attivare PGN 127257.</string>
+    <string name="regattalink_nmea_attitude_disable_pending">Disattivazione Sbandamento / Assetto salvata. PGN 127257 può restare attivo fino al riavvio.</string>
+    <string name="regattalink_nmea_attitude_tx_inactive">Selezionato per questo avvio, ma l’uscita PGN 127257 non è abilitata a runtime.</string>
+    <string name="regattalink_nmea_runtime_unknown_restart">Lo stato TX NMEA2000 applicato non è disponibile con questo firmware. Riavvia RegattaLink per sincronizzare le impostazioni selezionate.</string>
 </resources>

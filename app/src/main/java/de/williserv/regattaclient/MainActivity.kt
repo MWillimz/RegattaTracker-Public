@@ -779,6 +779,12 @@ class MainActivity : ComponentActivity() {
                             onSetLoadPrecisionX10 = { enabled ->
                                 regattaLinkManager.setLoadPrecisionX10(enabled)
                             },
+                            onSetNmeaTxEnabled = { enabled ->
+                                regattaLinkManager.setNmeaTxEnabled(enabled)
+                            },
+                            onSetNmeaAttitudeTxEnabled = { enabled ->
+                                regattaLinkManager.setNmeaAttitudeTxEnabled(enabled)
+                            },
                             onSetLoadSensorAlias = { identityKey, alias ->
                                 regattaLinkManager.setLoadSensorAlias(
                                     identityKey,
