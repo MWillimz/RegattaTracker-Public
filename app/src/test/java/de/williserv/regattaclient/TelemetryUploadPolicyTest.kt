@@ -138,23 +138,23 @@ class TelemetryUploadPolicyTest {
         val gate = TelemetryOfflineWakeupGate()
 
         assertEquals(
-            TelemetryLiveWakeupDecision.ENQUEUE_FIRST_OFFLINE,
-            gate.decide(hasActiveNetwork = false)
+            TelemetryLiveWakeupDecisionKind.ENQUEUE_FIRST_OFFLINE,
+            gate.decide(hasActiveNetwork = false).kind
         )
         repeat(99) {
             assertEquals(
-                TelemetryLiveWakeupDecision.SKIP_REDUNDANT_OFFLINE,
+                TelemetryLiveWakeupDecisionKind.SKIP_REDUNDANT_OFFLINE,
                 gate.decide(hasActiveNetwork = false)
             )
         }
 
         assertEquals(
-            TelemetryLiveWakeupDecision.ENQUEUE,
-            gate.decide(hasActiveNetwork = true)
+            TelemetryLiveWakeupDecisionKind.ENQUEUE,
+            gate.decide(hasActiveNetwork = true).kind
         )
         assertEquals(
-            TelemetryLiveWakeupDecision.ENQUEUE_FIRST_OFFLINE,
-            gate.decide(hasActiveNetwork = false)
+            TelemetryLiveWakeupDecisionKind.ENQUEUE_FIRST_OFFLINE,
+            gate.decide(hasActiveNetwork = false).kind
         )
     }
 
@@ -163,16 +163,16 @@ class TelemetryUploadPolicyTest {
         val gate = TelemetryOfflineWakeupGate()
 
         assertEquals(
-            TelemetryLiveWakeupDecision.ENQUEUE_FIRST_OFFLINE,
-            gate.decide(hasActiveNetwork = false)
+            TelemetryLiveWakeupDecisionKind.ENQUEUE_FIRST_OFFLINE,
+            gate.decide(hasActiveNetwork = false).kind
         )
         assertEquals(
-            TelemetryLiveWakeupDecision.ENQUEUE,
-            gate.decide(hasActiveNetwork = null)
+            TelemetryLiveWakeupDecisionKind.ENQUEUE,
+            gate.decide(hasActiveNetwork = null).kind
         )
         assertEquals(
-            TelemetryLiveWakeupDecision.ENQUEUE_FIRST_OFFLINE,
-            gate.decide(hasActiveNetwork = false)
+            TelemetryLiveWakeupDecisionKind.ENQUEUE_FIRST_OFFLINE,
+            gate.decide(hasActiveNetwork = false).kind
         )
     }
 
@@ -181,14 +181,58 @@ class TelemetryUploadPolicyTest {
         val gate = TelemetryOfflineWakeupGate()
 
         assertEquals(
-            TelemetryLiveWakeupDecision.ENQUEUE_FIRST_OFFLINE,
-            gate.decide(hasActiveNetwork = false)
+            TelemetryLiveWakeupDecisionKind.ENQUEUE_FIRST_OFFLINE,
+            gate.decide(hasActiveNetwork = false).kind
         )
         gate.clear()
 
         assertEquals(
-            TelemetryLiveWakeupDecision.ENQUEUE_FIRST_OFFLINE,
-            gate.decide(hasActiveNetwork = false)
+            TelemetryLiveWakeupDecisionKind.ENQUEUE_FIRST_OFFLINE,
+            gate.decide(hasActiveNetwork = false).kind
+        )
+    }
+
+    @Test
+    fun offlineWakeupPersistence_appendsFallbackWhenKeepLostToRunningWorker() {
+        assertEquals(
+            TelemetryOfflineWakeupPersistenceAction.APPEND_SERIAL_FALLBACK,
+            telemetryOfflineWakeupPersistenceAction(
+                requestPersisted = false,
+                hasQueuedFutureWork = false,
+                hasRunningWork = true
+            )
+        )
+    }
+
+    @Test
+    fun offlineWakeupPersistence_keepsClaimWhenFutureWorkAlreadyExists() {
+        assertEquals(
+            TelemetryOfflineWakeupPersistenceAction.KEEP_CLAIM,
+            telemetryOfflineWakeupPersistenceAction(
+                requestPersisted = false,
+                hasQueuedFutureWork = true,
+                hasRunningWork = true
+            )
+        )
+        assertEquals(
+            TelemetryOfflineWakeupPersistenceAction.KEEP_CLAIM,
+            telemetryOfflineWakeupPersistenceAction(
+                requestPersisted = true,
+                hasQueuedFutureWork = false,
+                hasRunningWork = false
+            )
+        )
+    }
+
+    @Test
+    fun offlineWakeupPersistence_clearsClaimWhenNoWorkWasPersisted() {
+        assertEquals(
+            TelemetryOfflineWakeupPersistenceAction.CLEAR_CLAIM,
+            telemetryOfflineWakeupPersistenceAction(
+                requestPersisted = false,
+                hasQueuedFutureWork = false,
+                hasRunningWork = false
+            )
         )
     }
 
