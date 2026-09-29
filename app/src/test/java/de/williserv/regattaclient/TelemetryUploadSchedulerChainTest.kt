@@ -33,6 +33,7 @@ class TelemetryUploadSchedulerChainTest {
         context.deleteDatabase(DB_NAME)
         WorkManagerTestInitHelper.initializeTestWorkManager(context)
         workManager = WorkManager.getInstance(context)
+        TelemetryUploadScheduler.resetLiveWakeupCoalescing()
     }
 
     @After
