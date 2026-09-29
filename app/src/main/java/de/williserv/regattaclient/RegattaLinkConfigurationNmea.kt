@@ -17,6 +17,13 @@ data class RegattaLinkConfigurationState(
     val motionDampingSeconds: Int? = null,
     val loadPrecisionSupported: Boolean = false,
     val loadPrecisionX10: Boolean? = null,
+    val nmeaTxSupported: Boolean = false,
+    val nmeaTxEnabled: Boolean? = null,
+    val nmeaTxRestartRequired: Boolean = false,
+    val nmeaAttitudeTxSupported: Boolean = false,
+    val nmeaAttitudeTxEnabled: Boolean? = null,
+    val nmeaAttitudeTxRestartRequired: Boolean = false,
+    val restartAwaitingDisconnect: Boolean = false,
     val diagnosticLogSupported: Boolean = false,
     val diagnosticLogLoading: Boolean = false,
     val diagnosticLogEntries: List<RegattaLinkDiagnosticLogEntry> = emptyList(),
@@ -46,6 +53,7 @@ internal fun regattaLinkConfigurationMutationBlocked(
         state.deviceControlBusy ||
         state.diagnosticLogLoading ||
         state.factoryResetAwaitingDisconnect ||
+        state.restartAwaitingDisconnect ||
         state.factoryResetWriteAcceptedRequestId != null
 
 internal fun regattaLinkFirmwareInstallBlocked(
@@ -55,6 +63,7 @@ internal fun regattaLinkFirmwareInstallBlocked(
         state.deviceControlBusy ||
         state.diagnosticLogLoading ||
         state.factoryResetAwaitingDisconnect ||
+        state.restartAwaitingDisconnect ||
         state.factoryResetWriteAcceptedRequestId != null
 
 data class RegattaLinkPgnInventoryEntry(
@@ -209,6 +218,29 @@ internal fun parseRegattaLinkLoadPrecision(raw: ByteArray): Boolean {
     require(value in 0..1) { "Invalid RegattaLink load precision $value" }
     return value == 1
 }
+
+private fun parseRegattaLinkBooleanConfig(
+    raw: ByteArray,
+    settingName: String
+): Boolean {
+    require(raw.size == 1) {
+        "$settingName must be exactly one byte"
+    }
+    val value = raw[0].toInt() and 0xff
+    require(value in 0..1) { "Invalid $settingName value $value" }
+    return value == 1
+}
+
+internal fun parseRegattaLinkNmeaTxEnabled(raw: ByteArray): Boolean =
+    parseRegattaLinkBooleanConfig(raw, "RegattaLink NMEA2000 TX setting")
+
+internal fun parseRegattaLinkNmeaAttitudeTxEnabled(raw: ByteArray): Boolean =
+    parseRegattaLinkBooleanConfig(raw, "RegattaLink NMEA2000 attitude TX setting")
+
+internal fun regattaLinkNmeaRestartRequired(
+    state: RegattaLinkConfigurationState
+): Boolean =
+    state.nmeaTxRestartRequired || state.nmeaAttitudeTxRestartRequired
 
 internal fun parseRegattaLinkPgnInventory(
     raw: ByteArray
