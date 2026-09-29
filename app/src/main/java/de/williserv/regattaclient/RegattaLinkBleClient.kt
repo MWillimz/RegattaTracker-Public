@@ -366,28 +366,11 @@ internal class RegattaLinkBleClient(
     private val gattSchemaReconnectFallback = Runnable {
         val activeGatt = gattSchemaReconnectGatt ?: return@Runnable
         val device = gattSchemaReconnectDevice ?: activeGatt.device
-        if (gattSchemaReconnectRefreshCache) {
-            val reason = gattSchemaReconnectRefreshReason
-                ?: "stale Android GATT cache"
-            Log.e(
-                LOG_TAG,
-                "Timed out waiting for GATT disconnect before cache refresh; " +
-                    "refusing to call BluetoothGatt.refresh() while connected"
-            )
-            clearGattSchemaReconnectState()
-            closeGattWithError(
-                activeGatt,
-                "RegattaLink GATT cache could not be refreshed after disconnect. " +
-                    "Forget/pair the RegattaLink once. Root cause: $reason"
-            )
-            return@Runnable
-        }
-
-        Log.w(
-            LOG_TAG,
-            "Timed out waiting for planned GATT schema disconnect; forcing close"
+        completePlannedGattSchemaDisconnect(
+            activeGatt,
+            device,
+            disconnectConfirmed = false
         )
-        completePlannedGattSchemaDisconnect(activeGatt, device)
     }
 
     private val serviceRediscovery = object : Runnable {
@@ -590,7 +573,8 @@ internal class RegattaLinkBleClient(
                 if (gattSchemaReconnectGatt === callbackGatt) {
                     completePlannedGattSchemaDisconnect(
                         callbackGatt,
-                        gattSchemaReconnectDevice ?: callbackGatt.device
+                        gattSchemaReconnectDevice ?: callbackGatt.device,
+                        disconnectConfirmed = true
                     )
                     return
                 }
@@ -1941,14 +1925,41 @@ internal class RegattaLinkBleClient(
 
     private fun completePlannedGattSchemaDisconnect(
         activeGatt: BluetoothGatt,
-        device: BluetoothDevice
+        device: BluetoothDevice,
+        disconnectConfirmed: Boolean
     ) {
         if (gattSchemaReconnectGatt !== activeGatt) return
 
         val refreshCache = gattSchemaReconnectRefreshCache
         val refreshKey = gattSchemaReconnectRefreshKey
         val refreshReason = gattSchemaReconnectRefreshReason
+        val reconnectAction = regattaLinkGattReconnectAction(
+            cacheRefreshPlanned = refreshCache,
+            disconnectConfirmed = disconnectConfirmed
+        )
         clearGattSchemaReconnectState()
+
+        if (reconnectAction == RegattaLinkGattReconnectAction.FAIL_CACHE_REFRESH) {
+            val reason = refreshReason ?: "stale Android GATT cache"
+            Log.e(
+                LOG_TAG,
+                "Timed out waiting for GATT disconnect before cache refresh; " +
+                    "refusing to call BluetoothGatt.refresh() while connected"
+            )
+            closeGattWithError(
+                activeGatt,
+                "RegattaLink GATT cache could not be refreshed after disconnect. " +
+                    "Forget/pair the RegattaLink once. Root cause: $reason"
+            )
+            return
+        }
+
+        if (!disconnectConfirmed) {
+            Log.w(
+                LOG_TAG,
+                "Timed out waiting for planned GATT schema disconnect; forcing close"
+            )
+        }
 
         connected = false
         establishedConnection = false
@@ -1964,7 +1975,9 @@ internal class RegattaLinkBleClient(
             )
         )
 
-        if (refreshCache) {
+        if (reconnectAction ==
+            RegattaLinkGattReconnectAction.REFRESH_CACHE_AFTER_DISCONNECT
+        ) {
             /*
              * Android's hidden BluetoothGatt.refresh() only reaches the path
              * which clears the cached attribute database once the GATT link is
@@ -2000,7 +2013,15 @@ internal class RegattaLinkBleClient(
         }
         mtu = 23
 
-        val reconnectDelayMs = if (refreshCache) 250L else 0L
+        val reconnectDelayMs =
+            if (
+                reconnectAction ==
+                RegattaLinkGattReconnectAction.REFRESH_CACHE_AFTER_DISCONNECT
+            ) {
+                250L
+            } else {
+                0L
+            }
         handler.postDelayed(
             {
                 if (gatt == null) {
