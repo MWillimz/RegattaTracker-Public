@@ -674,4 +674,5 @@
     <string name="regattalink_nmea_attitude_enable_pending">Escora / Trimado guardado. Reinicia RegattaLink para activar PGN 127257.</string>
     <string name="regattalink_nmea_attitude_disable_pending">Desactivación de Escora / Trimado guardada. PGN 127257 puede seguir activo hasta el reinicio.</string>
     <string name="regattalink_nmea_attitude_tx_inactive">Seleccionado para este arranque, pero la salida PGN 127257 no está habilitada en tiempo de ejecución.</string>
+    <string name="regattalink_nmea_runtime_unknown_restart">El estado NMEA2000 TX aplicado no está disponible con este firmware. Reinicia RegattaLink para sincronizar los ajustes seleccionados.</string>
 </resources>
