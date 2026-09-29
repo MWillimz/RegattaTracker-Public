@@ -23,7 +23,7 @@ The firmware contract currently defines seven NMEA2000-facing BLE surfaces relev
 - 0005 exposes an optional raw received-CAN FIFO for diagnostics;
 - 000B is the persistent, fail-closed master permission for RegattaLink NMEA2000 transmission;
 - 000C independently selects local RegattaLink IMU Heel/Trim output as PGN 127257;
-- 000D reports the boot-selected and runtime-enabled NMEA TX state without changing persistent configuration;
+- 000D reports the boot-selected and boot-applied NMEA TX gates without changing persistent configuration;
 - 0024 exposes normalized NMEA2000 Boat State v1 as read + notify telemetry;
 - 0026 exposes normalized multi-sensor load telemetry as catalog + compact 1 Hz snapshots;
 - RegattaLink, not Android, owns NMEA source selection/freshness for 0024, load freshness for 0026, and all persistent TX configuration state.
@@ -52,7 +52,7 @@ Base UUID:
 | Load telemetry precision | 000A | encrypted/bonded read + write in service 0001 | schema 12; 0 = 1 kg/count, 1 = 0.1 kg/count | implemented when discovered |
 | NMEA2000 TX master | 000B | encrypted/bonded read + write in service 0030 | schema 13; 0 = receive-only, 1 = TX explicitly permitted | implemented when discovered |
 | NMEA2000 Heel / Trim TX | 000C | encrypted/bonded read + write in service 0030 | schema 14; 0 = disabled, 1 = local IMU PGN 127257 selected | implemented when discovered |
-| NMEA2000 runtime TX status | 000D | encrypted/bonded read-only in service 0030 | schema 15; versioned master state + boot-selected/runtime-enabled application-output bitmaps | implemented when discovered |
+| NMEA2000 applied TX status | 000D | encrypted/bonded read-only in service 0030 | schema 15; versioned boot-selected and boot-applied application-output state | implemented when discovered |
 | OTA service | 0010 | service | implemented | implemented |
 | OTA control | 0011 | encrypted/bonded write with response | implemented | implemented |
 | OTA DATA | 0012 | encrypted/bonded write; no-response preferred, response supported | implemented | implemented |
@@ -611,12 +611,12 @@ firmware's receive-only/listen-only mode.
 
 A successful BLE write changes the persistent selected value but does not reconfigure
 the live CAN/NMEA transport in place. The selected value becomes boot-applied on the
-next RegattaLink reboot. Tracker therefore remembers only a connection-local
-boot-applied baseline, never a persistent Android source of truth. If the confirmed
-000B value differs from that baseline, the UI offers the explicit Device Control
-RESTART flow. An unrelated disconnect/reconnect must not falsely clear that pending
-state; after a confirmed RESTART disconnect, Tracker reconnects, rediscovers and
-re-reads 000B to establish the new authoritative baseline.
+next RegattaLink reboot. Tracker must not infer that boot-applied state from 000B
+itself; schema-15 firmware exposes it authoritatively through 000D. If the selected
+000B value differs from the 000D boot-selected master bit, the UI offers the explicit
+Device Control RESTART flow. An unrelated disconnect/reconnect must not falsely clear
+that pending state; after a confirmed RESTART disconnect, Tracker reconnects,
+rediscovers and re-reads 000B/000C/000D before clearing it.
 
 ### 4.10 NMEA2000 Heel / Trim TX selector 000C (extension service 0030)
 
@@ -690,9 +690,11 @@ but before the RLink reboot, and Factory Reset changes the persistent values wit
 restarting the current NMEA transport.
 
 Restart-required is therefore computed by comparing persistent selected values with
-000D boot-selected state. Runtime-active fields are used only for truthful live-state
-presentation. A selected master can be boot-selected but runtime-inactive when
-firmware fails closed because active-node identity/initialization is unavailable.
+000D boot-selected state. The 000D active/enabled fields describe the gates that were
+successfully applied for this boot; they are intentionally stable until reboot. A
+selected master can be boot-selected but applied-inactive when firmware fails closed
+because active-node identity/initialization is unavailable. Later transport-health
+faults and per-sample freshness are separate diagnostics and do not redefine 000D.
 
 A successful Device Control Restart is still not complete at ATT write time. Tracker
 requires matching terminal SUCCESS/OK, owns only the following expected disconnect,
@@ -1458,7 +1460,7 @@ Optional/current compatibility behavior:
 Current RegattaTracker consumption remains capability/UUID-driven:
 
 - Device Info, OTA and IMU telemetry 0021-0023 are consumed;
-- 0002, 0006, 000A, 000B and 000C are consumed as optional configuration surfaces; 000D is consumed as optional read-only applied/runtime TX state;
+- 0002, 0006, 000A, 000B and 000C are consumed as optional configuration surfaces; 000D is consumed as optional read-only boot-applied TX state;
 - 0004 is read explicitly for PGN inventory diagnostics;
 - 0005 is drained only after explicit user action and with a strict finite bound;
 - 0007 is consumed only by explicit bounded drain; 0008 has request-id-matched polling for Set Upright, direction-labelled trims, Factory Reset and Restart; only terminal Restart SUCCESS/OK grants expected-disconnect ownership, followed by normal configured-device reconnect;
@@ -1506,9 +1508,9 @@ A RegattaTracker change affecting RegattaLink BLE should verify, as applicable:
 - optional 0008 requires exact 8-byte request / 20-byte status parsing, matching request_id completion and explicit TIMEOUT handling;
 - RESTART uses opcode 6 with value 0; only matching terminal SUCCESS/OK marks its subsequent disconnect as expected, after which Tracker reconnects and re-reads authoritative configuration;
 - arbitrary BLE disconnect never proves Restart success or clears a pending boot-applied NMEA setting change;
-- 000B/000C parse exactly one byte 0/1 and remain the firmware-authoritative persistent selected values; 000D v1 parses exactly four bytes and is authoritative for boot-selected/runtime-enabled TX state;
+- 000B/000C parse exactly one byte 0/1 and remain the firmware-authoritative persistent selected values; 000D v1 parses exactly four bytes and is authoritative for boot-selected/boot-applied TX state;
 - Restart-required is derived from 000B/000C versus 000D boot-selected state when 000D exists; selected values must never be relabeled as applied state after app restart or Factory Reset;
-- future GNSS/load selectors use their own explicit opt-in UUIDs while 000D application-output bitmap bits 1/2 are already reserved for their applied/runtime status;
+- future GNSS/load selectors use their own explicit opt-in UUIDs while 000D application-output bitmap bits 1/2 are already reserved for their boot-applied status;
 - 000B/000C never auto-enable each other, and a confirmed selected value differing from boot-applied state requires the explicit Restart flow;
 - Factory Reset terminal status is read during the pre-bond-delete grace and its intentional disconnect is not treated as outage/OTA reconnect;
 - Factory Reset does not clear the configured-device association on transient rediscovery states and waits for the firmware-driven disconnect before clearing it;
