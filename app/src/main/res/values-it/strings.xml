@@ -674,4 +674,5 @@
     <string name="regattalink_nmea_attitude_enable_pending">Sbandamento / Assetto salvato. Riavvia RegattaLink per attivare PGN 127257.</string>
     <string name="regattalink_nmea_attitude_disable_pending">Disattivazione Sbandamento / Assetto salvata. PGN 127257 può restare attivo fino al riavvio.</string>
     <string name="regattalink_nmea_attitude_tx_inactive">Selezionato per questo avvio, ma l’uscita PGN 127257 non è abilitata a runtime.</string>
+    <string name="regattalink_nmea_runtime_unknown_restart">Lo stato TX NMEA2000 applicato non è disponibile con questo firmware. Riavvia RegattaLink per sincronizzare le impostazioni selezionate.</string>
 </resources>
