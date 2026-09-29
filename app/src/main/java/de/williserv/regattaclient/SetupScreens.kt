@@ -49,7 +49,6 @@ fun BoatDataScreen(
     setupConfirmed: Boolean,
     modifier: Modifier = Modifier,
     onConfirmSetup: (BoatSetupValues) -> Unit,
-    onRegattaLink: () -> Unit,
     onBack: () -> Unit
 ) {
     val confirmedValues = BoatSetupValues(
@@ -61,7 +60,7 @@ fun BoatDataScreen(
         boatType = boatType
     )
     // By design: unconfirmed boat-data edits are screen-local and are discarded when
-    // navigating away (including RegattaLink). Only Confirm Setup persists them.
+    // navigating away. Only Confirm Setup persists them.
     // See DOCUMENTATION.md ("Boat data draft semantics") and issue #221.
     var draft by remember(
         boatName,
@@ -142,16 +141,6 @@ fun BoatDataScreen(
         TrackingProfileSelector(
             modifier = Modifier.padding(top = 20.dp)
         )
-
-        Button(
-            onClick = onRegattaLink,
-            colors = primaryButtonColors(),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 16.dp)
-        ) {
-            Text(stringResource(R.string.regattalink_title))
-        }
 
         Button(
             onClick = {
