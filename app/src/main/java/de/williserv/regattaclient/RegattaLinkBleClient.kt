@@ -2007,6 +2007,29 @@ internal class RegattaLinkBleClient(
             )
         }
 
+        if (
+            reconnectAction ==
+            RegattaLinkGattReconnectAction.REFRESH_CACHE_AFTER_DISCONNECT
+        ) {
+            /*
+             * refresh() has no completion callback. Keep the now-disconnected
+             * BluetoothGatt alive briefly before close() so Android can process
+             * the cache invalidation request before a new GATT client is built.
+             */
+            handler.postDelayed(
+                {
+                    activeGatt.close()
+                    if (gatt === activeGatt) {
+                        gatt = null
+                        mtu = 23
+                        prepareDevice(device)
+                    }
+                },
+                250L
+            )
+            return
+        }
+
         if (!disconnectConfirmed) {
             runCatching { activeGatt.disconnect() }
         }
@@ -2015,24 +2038,11 @@ internal class RegattaLinkBleClient(
             gatt = null
         }
         mtu = 23
-
-        val reconnectDelayMs =
-            if (
-                reconnectAction ==
-                RegattaLinkGattReconnectAction.REFRESH_CACHE_AFTER_DISCONNECT
-            ) {
-                250L
-            } else {
-                0L
+        handler.post {
+            if (gatt == null) {
+                prepareDevice(device)
             }
-        handler.postDelayed(
-            {
-                if (gatt == null) {
-                    prepareDevice(device)
-                }
-            },
-            reconnectDelayMs
-        )
+        }
     }
 
     private fun validateGattSchemaThenComplete(
