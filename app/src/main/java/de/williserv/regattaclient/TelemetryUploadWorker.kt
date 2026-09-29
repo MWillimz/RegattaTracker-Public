@@ -183,8 +183,8 @@ internal class TelemetryOfflineWakeupGate {
     private val offlineWakeupClaim = AtomicLong(0L)
     private val nextClaimId = AtomicLong(0L)
 
-    fun decide(hasActiveNetwork: Boolean?): TelemetryLiveWakeupDecision =
-        when (hasActiveNetwork) {
+    fun decide(hasActiveNetwork: Boolean?): TelemetryLiveWakeupDecision {
+        return when (hasActiveNetwork) {
             false -> {
                 while (true) {
                     if (offlineWakeupClaim.get() != 0L) {
@@ -217,6 +217,7 @@ internal class TelemetryOfflineWakeupGate {
                 )
             }
         }
+    }
 
     fun clear(claimId: Long? = null) {
         if (claimId == null) {
