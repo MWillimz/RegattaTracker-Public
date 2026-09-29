@@ -274,6 +274,9 @@ internal class RegattaLinkBleClient(
     private var serviceRediscoveryGatt: BluetoothGatt? = null
     @Volatile private var gattSchemaReconnectGatt: BluetoothGatt? = null
     @Volatile private var gattSchemaReconnectDevice: BluetoothDevice? = null
+    @Volatile private var gattSchemaReconnectRefreshCache = false
+    @Volatile private var gattSchemaReconnectRefreshKey: String? = null
+    @Volatile private var gattSchemaReconnectRefreshReason: String? = null
     private var reconnectFuture: CompletableFuture<RegattaLinkDeviceInfo?>? = null
     private var selectedDeviceAddress: String? = null
     private val attemptedDiscoveryAddresses = mutableSetOf<String>()
@@ -363,6 +366,23 @@ internal class RegattaLinkBleClient(
     private val gattSchemaReconnectFallback = Runnable {
         val activeGatt = gattSchemaReconnectGatt ?: return@Runnable
         val device = gattSchemaReconnectDevice ?: activeGatt.device
+        if (gattSchemaReconnectRefreshCache) {
+            val reason = gattSchemaReconnectRefreshReason
+                ?: "stale Android GATT cache"
+            Log.e(
+                LOG_TAG,
+                "Timed out waiting for GATT disconnect before cache refresh; " +
+                    "refusing to call BluetoothGatt.refresh() while connected"
+            )
+            clearGattSchemaReconnectState()
+            closeGattWithError(
+                activeGatt,
+                "RegattaLink GATT cache could not be refreshed after disconnect. " +
+                    "Forget/pair the RegattaLink once. Root cause: $reason"
+            )
+            return@Runnable
+        }
+
         Log.w(
             LOG_TAG,
             "Timed out waiting for planned GATT schema disconnect; forcing close"
@@ -1896,6 +1916,9 @@ internal class RegattaLinkBleClient(
         handler.removeCallbacks(gattSchemaReconcileTimeout)
         gattSchemaReconnectGatt = activeGatt
         gattSchemaReconnectDevice = activeGatt.device
+        gattSchemaReconnectRefreshCache = false
+        gattSchemaReconnectRefreshKey = null
+        gattSchemaReconnectRefreshReason = null
         connectionSetupComplete = false
         Log.i(
             LOG_TAG,
@@ -1907,36 +1930,85 @@ internal class RegattaLinkBleClient(
         handler.postDelayed(gattSchemaReconnectFallback, 2_000L)
     }
 
+    private fun clearGattSchemaReconnectState() {
+        handler.removeCallbacks(gattSchemaReconnectFallback)
+        gattSchemaReconnectGatt = null
+        gattSchemaReconnectDevice = null
+        gattSchemaReconnectRefreshCache = false
+        gattSchemaReconnectRefreshKey = null
+        gattSchemaReconnectRefreshReason = null
+    }
+
     private fun completePlannedGattSchemaDisconnect(
         activeGatt: BluetoothGatt,
         device: BluetoothDevice
     ) {
         if (gattSchemaReconnectGatt !== activeGatt) return
 
-        handler.removeCallbacks(gattSchemaReconnectFallback)
-        gattSchemaReconnectGatt = null
-        gattSchemaReconnectDevice = null
+        val refreshCache = gattSchemaReconnectRefreshCache
+        val refreshKey = gattSchemaReconnectRefreshKey
+        val refreshReason = gattSchemaReconnectRefreshReason
+        clearGattSchemaReconnectState()
+
         connected = false
         establishedConnection = false
         resetServiceDiscoveryState()
         failPendingGattOperation(
             RegattaLinkOtaTransportException(
-                "GATT connection intentionally rebuilt after Service Changed",
+                if (refreshCache) {
+                    "GATT connection intentionally disconnected before cache refresh"
+                } else {
+                    "GATT connection intentionally rebuilt after Service Changed"
+                },
                 ambiguous = false
             )
         )
-        runCatching { activeGatt.disconnect() }
+
+        if (refreshCache) {
+            /*
+             * Android's hidden BluetoothGatt.refresh() only reaches the path
+             * which clears the cached attribute database once the GATT link is
+             * disconnected. Calling it while connected can merely trigger an
+             * in-place discovery and leave stale handles behind.
+             *
+             * This function is entered from STATE_DISCONNECTED for the normal
+             * path. The timeout fallback explicitly refuses to refresh.
+             */
+            val refreshed = refreshAndroidGattCache(activeGatt)
+            if (!refreshed) {
+                refreshKey?.let(gattCacheRefreshPendingValidation::remove)
+                closeGattWithError(
+                    activeGatt,
+                    "RegattaLink GATT cache refresh failed after disconnect. " +
+                        "Forget/pair the RegattaLink once. Root cause: " +
+                        (refreshReason ?: "stale Android GATT cache")
+                )
+                return
+            }
+
+            refreshKey?.let { gattCacheRefreshPendingValidation += it }
+            Log.w(
+                LOG_TAG,
+                "Android GATT cache refresh completed while disconnected; " +
+                    "closing stale GATT instance before reconnect"
+            )
+        }
+
         activeGatt.close()
         if (gatt === activeGatt) {
             gatt = null
         }
         mtu = 23
 
-        handler.post {
-            if (gatt == null) {
-                prepareDevice(device)
-            }
-        }
+        val reconnectDelayMs = if (refreshCache) 250L else 0L
+        handler.postDelayed(
+            {
+                if (gatt == null) {
+                    prepareDevice(device)
+                }
+            },
+            reconnectDelayMs
+        )
     }
 
     private fun validateGattSchemaThenComplete(
@@ -2179,33 +2251,28 @@ internal class RegattaLinkBleClient(
         verifiedGattSchemaThisProcess.remove(key)
         gattServiceChangedReconnectPendingValidation.remove(key)
 
-        if (
-            gattCacheRefreshAttemptsThisProcess.add(key) &&
-            refreshAndroidGattCache(activeGatt)
-        ) {
+        if (gattCacheRefreshAttemptsThisProcess.add(key)) {
             /*
-             * refresh() is deliberately a one-shot recovery path, not normal
-             * connection setup. It clears Android's local ATT cache without
-             * deleting the bond. Reconnect and prove the real CCCD/read path
-             * before accepting this generation again.
+             * refresh() must not run on the live connection. First request a
+             * clean disconnect and wait for STATE_DISCONNECTED. Only then can
+             * completePlannedGattSchemaDisconnect() clear Android's cached ATT
+             * database, close this BluetoothGatt and create a fresh instance.
              */
-            gattCacheRefreshPendingValidation += key
-            val device = activeGatt.device
+            gattSchemaReconnectGatt = activeGatt
+            gattSchemaReconnectDevice = activeGatt.device
+            gattSchemaReconnectRefreshCache = true
+            gattSchemaReconnectRefreshKey = key
+            gattSchemaReconnectRefreshReason = reason
+            connectionSetupComplete = false
             Log.w(
                 LOG_TAG,
-                "Refreshing stale Android GATT cache for RegattaLink " +
+                "Disconnecting before Android GATT cache refresh for RegattaLink " +
                     info.stableId + " schema=" + info.gattSchemaVersion +
                     "; reason=" + reason
             )
-            closeGatt()
-            handler.postDelayed(
-                {
-                    if (gatt == null) {
-                        prepareDevice(device)
-                    }
-                },
-                250L
-            )
+            activeGatt.disconnect()
+            handler.removeCallbacks(gattSchemaReconnectFallback)
+            handler.postDelayed(gattSchemaReconnectFallback, 2_000L)
             return
         }
 
@@ -4657,9 +4724,7 @@ internal class RegattaLinkBleClient(
     private fun closeGatt() {
         handler.removeCallbacks(gattTimeout)
         handler.removeCallbacks(gattSchemaReconcileTimeout)
-        handler.removeCallbacks(gattSchemaReconnectFallback)
-        gattSchemaReconnectGatt = null
-        gattSchemaReconnectDevice = null
+        clearGattSchemaReconnectState()
         gattSchemaReconciliationPending = false
         pendingGattSchemaVersion = 0
         pendingGattSchemaInfo = null
