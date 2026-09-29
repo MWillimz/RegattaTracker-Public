@@ -744,10 +744,6 @@ class MainActivity : ComponentActivity() {
                                     currentScreen.value = Screen.HOME
                                 }
                             },
-                            onRegattaLink = {
-                                regattaLinkReturnScreen = Screen.BOAT_DATA
-                                currentScreen.value = Screen.REGATTALINK
-                            },
                             onBack = ::navigateBack
                         )
 
