@@ -23,6 +23,11 @@ data class RegattaLinkConfigurationState(
     val nmeaAttitudeTxSupported: Boolean = false,
     val nmeaAttitudeTxEnabled: Boolean? = null,
     val nmeaAttitudeTxRestartRequired: Boolean = false,
+    val nmeaTxRuntimeStatusSupported: Boolean = false,
+    val nmeaTxBootSelected: Boolean? = null,
+    val nmeaTxActive: Boolean? = null,
+    val nmeaBootOutputMask: Int? = null,
+    val nmeaActiveOutputMask: Int? = null,
     val restartAwaitingDisconnect: Boolean = false,
     val diagnosticLogSupported: Boolean = false,
     val diagnosticLogLoading: Boolean = false,
@@ -236,6 +241,77 @@ internal fun parseRegattaLinkNmeaTxEnabled(raw: ByteArray): Boolean =
 
 internal fun parseRegattaLinkNmeaAttitudeTxEnabled(raw: ByteArray): Boolean =
     parseRegattaLinkBooleanConfig(raw, "RegattaLink NMEA2000 attitude TX setting")
+
+internal const val REGATTALINK_NMEA_TX_OUTPUT_ATTITUDE = 1 shl 0
+internal const val REGATTALINK_NMEA_TX_OUTPUT_TRACKER_GNSS = 1 shl 1
+internal const val REGATTALINK_NMEA_TX_OUTPUT_LOAD = 1 shl 2
+
+data class RegattaLinkNmeaTxRuntimeStatus(
+    val bootMasterSelected: Boolean,
+    val masterActive: Boolean,
+    val bootOutputMask: Int,
+    val activeOutputMask: Int
+) {
+    val bootAttitudeSelected: Boolean
+        get() = bootOutputMask and REGATTALINK_NMEA_TX_OUTPUT_ATTITUDE != 0
+
+    val attitudeActive: Boolean
+        get() = activeOutputMask and REGATTALINK_NMEA_TX_OUTPUT_ATTITUDE != 0
+}
+
+internal fun parseRegattaLinkNmeaTxRuntimeStatus(
+    raw: ByteArray
+): RegattaLinkNmeaTxRuntimeStatus {
+    require(raw.size == 4) {
+        "RegattaLink NMEA2000 runtime TX status must be exactly four bytes"
+    }
+    val version = raw[0].toInt() and 0xff
+    require(version == 1) {
+        "Unsupported RegattaLink NMEA2000 runtime TX status version $version"
+    }
+    val masterFlags = raw[1].toInt() and 0xff
+    return RegattaLinkNmeaTxRuntimeStatus(
+        bootMasterSelected = masterFlags and 0x01 != 0,
+        masterActive = masterFlags and 0x02 != 0,
+        bootOutputMask = raw[2].toInt() and 0xff,
+        activeOutputMask = raw[3].toInt() and 0xff
+    )
+}
+
+internal fun regattaLinkApplyNmeaTxRuntimeStatus(
+    state: RegattaLinkConfigurationState,
+    runtime: RegattaLinkNmeaTxRuntimeStatus
+): RegattaLinkConfigurationState =
+    regattaLinkReconcileNmeaTxState(
+        state.copy(
+            nmeaTxRuntimeStatusSupported = true,
+            nmeaTxBootSelected = runtime.bootMasterSelected,
+            nmeaTxActive = runtime.masterActive,
+            nmeaBootOutputMask = runtime.bootOutputMask,
+            nmeaActiveOutputMask = runtime.activeOutputMask
+        )
+    )
+
+internal fun regattaLinkReconcileNmeaTxState(
+    state: RegattaLinkConfigurationState
+): RegattaLinkConfigurationState {
+    val runtimeKnown =
+        state.nmeaTxRuntimeStatusSupported &&
+            state.nmeaTxBootSelected != null &&
+            state.nmeaBootOutputMask != null
+    if (!runtimeKnown) return state
+
+    val bootAttitudeSelected =
+        state.nmeaBootOutputMask!! and REGATTALINK_NMEA_TX_OUTPUT_ATTITUDE != 0
+    return state.copy(
+        nmeaTxRestartRequired =
+            state.nmeaTxEnabled != null &&
+                state.nmeaTxEnabled != state.nmeaTxBootSelected,
+        nmeaAttitudeTxRestartRequired =
+            state.nmeaAttitudeTxEnabled != null &&
+                state.nmeaAttitudeTxEnabled != bootAttitudeSelected
+    )
+}
 
 internal fun regattaLinkNmeaRestartRequired(
     state: RegattaLinkConfigurationState
