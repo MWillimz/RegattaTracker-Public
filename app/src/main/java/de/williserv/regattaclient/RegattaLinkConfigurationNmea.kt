@@ -318,6 +318,21 @@ internal fun regattaLinkNmeaRestartRequired(
 ): Boolean =
     state.nmeaTxRestartRequired || state.nmeaAttitudeTxRestartRequired
 
+internal fun regattaLinkNmeaAppliedStateUnknown(
+    state: RegattaLinkConfigurationState
+): Boolean {
+    if (!state.nmeaTxSupported && !state.nmeaAttitudeTxSupported) return false
+    if (!state.nmeaTxRuntimeStatusSupported) return true
+    if (state.nmeaTxSupported && state.nmeaTxBootSelected == null) return true
+    if (
+        state.nmeaAttitudeTxSupported &&
+        state.nmeaBootOutputMask == null
+    ) {
+        return true
+    }
+    return false
+}
+
 internal fun regattaLinkNmeaSelectionAfterWriteSuccess(
     state: RegattaLinkConfigurationState,
     attitudeSelector: Boolean,
