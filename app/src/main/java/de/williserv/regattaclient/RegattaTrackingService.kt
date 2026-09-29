@@ -16,6 +16,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -30,6 +31,7 @@ import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 import kotlin.math.abs
 
@@ -39,6 +41,35 @@ internal fun shouldFinishTrackingServiceStop(
     serviceRunning: Boolean
 ): Boolean {
     return handoffGeneration == currentGeneration && !serviceRunning
+}
+
+
+internal class TelemetryPendingCountRefreshGate(
+    private val minIntervalMs: Long
+) {
+    private val inFlight = AtomicBoolean(false)
+
+    @Volatile
+    private var lastStartedElapsedMs: Long? = null
+
+    fun tryStart(nowElapsedMs: Long, force: Boolean): Boolean {
+        val lastStarted = lastStartedElapsedMs
+        if (
+            !force &&
+            lastStarted != null &&
+            (nowElapsedMs - lastStarted).coerceAtLeast(0L) < minIntervalMs
+        ) {
+            return false
+        }
+        if (!inFlight.compareAndSet(false, true)) return false
+
+        lastStartedElapsedMs = nowElapsedMs
+        return true
+    }
+
+    fun finish() {
+        inFlight.set(false)
+    }
 }
 
 class RegattaTrackingService : Service() {
@@ -75,6 +106,7 @@ class RegattaTrackingService : Service() {
         private const val NOTIFICATION_ID = 1001
         private const val TRACKING_SERVICE_LOG_TAG = "RegattaTrackingService"
         private const val ACTIVE_TRACKING_SESSION_ID = "active_tracking_session_id"
+        internal const val NOTIFICATION_PENDING_REFRESH_INTERVAL_MS = 10_000L
 
         const val ACTION_SET_COURSE_PROGRESS = "de.williserv.regattaclient.SET_COURSE_PROGRESS"
 
@@ -150,6 +182,12 @@ class RegattaTrackingService : Service() {
 
     private var sequenceId = 0L
     private var lastLocation: Location? = null
+
+    private var notificationPendingCount = 0L
+    private val pendingCountRefreshGate =
+        TelemetryPendingCountRefreshGate(
+            NOTIFICATION_PENDING_REFRESH_INTERVAL_MS
+        )
 
     private var autoStopAfterFinishScheduled = false
     private var stopHandoffInProgress = false
@@ -1303,6 +1341,9 @@ class RegattaTrackingService : Service() {
             return
         }
 
+        if (notificationPendingCount < Long.MAX_VALUE) {
+            notificationPendingCount += 1L
+        }
         TelemetryUploadScheduler.enqueueWakeup(this)
         updateNotification()
     }
@@ -1920,7 +1961,8 @@ class RegattaTrackingService : Service() {
     }
 
     private fun updateNotification() {
-        val pending = db.countPendingSamples()
+        requestNotificationPendingCountRefresh()
+        val pending = notificationPendingCount
 
         val message = if (manualRecording) {
             getString(
@@ -1951,6 +1993,46 @@ class RegattaTrackingService : Service() {
             NOTIFICATION_ID,
             buildNotification(message)
         )
+    }
+
+    private fun requestNotificationPendingCountRefresh(
+        force: Boolean = false
+    ) {
+        if (
+            !pendingCountRefreshGate.tryStart(
+                nowElapsedMs = SystemClock.elapsedRealtime(),
+                force = force
+            )
+        ) {
+            return
+        }
+
+        thread(name = "regatta-pending-count-refresh") {
+            val pending = runCatching {
+                val helper = TrackingDbHelper(applicationContext)
+                try {
+                    helper.countPendingSamples()
+                } finally {
+                    helper.close()
+                }
+            }.onFailure { error ->
+                Log.w(
+                    TRACKING_SERVICE_LOG_TAG,
+                    "Could not refresh pending telemetry count",
+                    error
+                )
+            }.getOrNull()
+
+            handler.post {
+                pendingCountRefreshGate.finish()
+                if (!serviceRunning || pending == null) {
+                    return@post
+                }
+
+                notificationPendingCount = pending
+                updateNotification()
+            }
+        }
     }
 
     override fun onDestroy() {
