@@ -124,7 +124,7 @@ jobs:
           set -euo pipefail
 
           PAYLOAD="$(jq -n \
-            --arg ref "dev" \
+            --arg ref "master" \
             --arg source_sha "$SOURCE_SHA" \
             '{ref: $ref, inputs: {source_sha: $source_sha, force_rebuild: false}}')"
 
