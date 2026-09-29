@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -36,6 +37,7 @@ import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
@@ -72,6 +74,55 @@ private enum class PendingTrackingAction {
 private enum class PendingRegattaLinkPermissionAction {
     DISCOVER_NEW,
     RECONNECT_CONFIGURED
+}
+
+
+internal const val STORAGE_COUNTS_REFRESH_INTERVAL_MS = 10_000L
+
+internal class StorageCountRefreshGate(
+    private val minIntervalMs: Long
+) {
+    private val inFlight = AtomicBoolean(false)
+    private val forceAfterCurrent = AtomicBoolean(false)
+
+    @Volatile
+    private var lastStartedElapsedMs: Long? = null
+
+    fun tryStart(nowElapsedMs: Long, force: Boolean): Boolean {
+        while (true) {
+            if (inFlight.get()) {
+                if (force) {
+                    forceAfterCurrent.set(true)
+                    if (
+                        !inFlight.get() &&
+                        forceAfterCurrent.compareAndSet(true, false)
+                    ) {
+                        continue
+                    }
+                }
+                return false
+            }
+
+            val lastStarted = lastStartedElapsedMs
+            if (
+                !force &&
+                lastStarted != null &&
+                (nowElapsedMs - lastStarted).coerceAtLeast(0L) < minIntervalMs
+            ) {
+                return false
+            }
+
+            if (inFlight.compareAndSet(false, true)) {
+                lastStartedElapsedMs = nowElapsedMs
+                return true
+            }
+        }
+    }
+
+    fun finishAndTakeForcedFollowUp(): Boolean {
+        inFlight.set(false)
+        return forceAfterCurrent.getAndSet(false)
+    }
 }
 
 class MainActivity : ComponentActivity() {
@@ -280,6 +331,8 @@ class MainActivity : ComponentActivity() {
 
     private val handler = Handler(Looper.getMainLooper())
     private val asyncLifetime = ActivityAsyncLifetime()
+    private val storageCountRefreshGate =
+        StorageCountRefreshGate(STORAGE_COUNTS_REFRESH_INTERVAL_MS)
 
 
     private val uiRefreshRunnable = object : Runnable {
@@ -287,7 +340,7 @@ class MainActivity : ComponentActivity() {
             if (!asyncLifetime.isActive()) return
             raceEntryNowEpochMillis.value = System.currentTimeMillis()
             reconcileTrackingState()
-            updateStorageText()
+            requestStorageCountsRefresh()
             updateLocalRaceStatus()
             refreshRetirementReportedState()
             updateConnectionUiState()
@@ -486,7 +539,7 @@ class MainActivity : ComponentActivity() {
         loadAppState()
         refreshRetirementReportedState()
 
-        updateStorageText()
+        requestStorageCountsRefresh(force = true)
         updateLocalRaceStatus()
 
         enableEdgeToEdge()
@@ -3697,7 +3750,7 @@ class MainActivity : ComponentActivity() {
                     selectedReplayFieldIds.value = emptySet()
                 }
                 if (deleted) {
-                    updateStorageText()
+                    requestStorageCountsRefresh(force = true)
                 }
                 loadSessionHistory()
             }
@@ -3715,7 +3768,7 @@ class MainActivity : ComponentActivity() {
         selectedSessionId.value = null
         sessionDetail.value = null
         selectedReplayFieldIds.value = emptySet()
-        updateStorageText()
+        requestStorageCountsRefresh(force = true)
         lastCsvLine.value = getString(R.string.no_csv_line_yet)
         statusText.value = getString(R.string.old_data_deleted)
     }
@@ -3836,17 +3889,54 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun updateStorageText() {
-        val total = db.countSamples()
-        val pending = db.countPendingSamples()
+    private fun requestStorageCountsRefresh(
+        force: Boolean = false
+    ) {
+        if (!asyncLifetime.isActive()) return
+        if (
+            !storageCountRefreshGate.tryStart(
+                nowElapsedMs = SystemClock.elapsedRealtime(),
+                force = force
+            )
+        ) {
+            return
+        }
 
-        rowCountText.value = getString(R.string.rows_stored, total)
-        pendingUploadCount.value = pending
+        thread(name = "regatta-storage-count-refresh") {
+            val counts = runCatching {
+                val helper = TrackingDbHelper(applicationContext)
+                try {
+                    helper.getStorageCounts()
+                } finally {
+                    helper.close()
+                }
+            }.getOrNull()
 
-        uploadStatusText.value = if (pending == 0L) {
+            runOnUiThread {
+                val forceFollowUp =
+                    storageCountRefreshGate.finishAndTakeForcedFollowUp()
+
+                if (asyncLifetime.isActive() && counts != null) {
+                    applyStorageCounts(counts)
+                }
+
+                if (asyncLifetime.isActive() && forceFollowUp) {
+                    requestStorageCountsRefresh(force = true)
+                }
+            }
+        }
+    }
+
+    private fun applyStorageCounts(counts: TrackingStorageCounts) {
+        if (!asyncLifetime.isActive()) return
+
+        rowCountText.value = getString(R.string.rows_stored, counts.total)
+        pendingUploadCount.value = counts.pending
+
+        uploadStatusText.value = if (counts.pending == 0L) {
             getString(R.string.upload_all_sent)
         } else {
-            getString(R.string.upload_pending, pending)
+            getString(R.string.upload_pending, counts.pending)
         }
     }
 
