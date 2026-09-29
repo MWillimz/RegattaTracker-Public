@@ -4,7 +4,7 @@ This document is the public, client-facing wire contract between RegattaTracker 
 
 It is intended to be sufficient to implement a compatible BLE client without access to the private RegattaLink repository. Any RegattaLink BLE schema or behavioral change that affects clients must update this document together with the corresponding RegattaTracker implementation/tests.
 
-Contract snapshot: 2026-09-28.
+Contract snapshot: 2026-09-29.
 
 ## 1. Scope and current implementation status
 
@@ -15,15 +15,17 @@ The current BLE contract contains four RegattaLink service families. Firmware co
 | configuration/device information | 0001 | implemented with 0002-0006, Motion Damping 0009, and Load Precision 000A in schema 12 | 0002-0006, 0009 and optional 000A discovered and consumed |
 | OTA | 0010 | implemented | implemented |
 | telemetry | 0020 | implemented with legacy IMU 0021-0023, normalized NMEA Boat State 0024, Motion 1 Hz 0025 and normalized Load Telemetry 0026 | normal IMU flow consumes only 0025; 0024 remains Boat State; 0026 is independently subscribed when discovered |
-| post-core extensions | 0030 | implemented; 0007 diagnostic log and 0008 Device Control live here | 0007 bounded user-triggered drain plus complete 0008 Set Upright, trim and Factory Reset lifecycle/UI |
+| post-core extensions | 0030 | implemented; 0007 Diagnostic Log, 0008 Device Control, schema-13 NMEA TX master 000B and schema-14 Heel/Trim TX selector 000C live here | 0007 bounded drain; 0008 Set Upright, trim, Factory Reset and Restart lifecycle; 000B/000C discovered, read and written when present |
 
-The firmware contract currently defines four NMEA2000-facing BLE surfaces/behaviors relevant to clients:
+The firmware contract currently defines six NMEA2000-facing BLE surfaces relevant to clients:
 
 - 0004 exposes a compact inventory of PGNs observed on the live NMEA2000 bus;
 - 0005 exposes an optional raw received-CAN FIFO for diagnostics;
+- 000B is the persistent, fail-closed master permission for RegattaLink NMEA2000 transmission;
+- 000C independently selects local RegattaLink IMU Heel/Trim output as PGN 127257;
 - 0024 exposes normalized NMEA2000 Boat State v1 as read + notify telemetry;
 - 0026 exposes normalized multi-sensor load telemetry as catalog + compact 1 Hz snapshots;
-- RegattaLink, not Android, owns NMEA source selection/freshness for 0024 and load freshness for 0026.
+- RegattaLink, not Android, owns NMEA source selection/freshness for 0024, load freshness for 0026, and all persistent TX configuration state.
 
 RegattaTracker must discover optional characteristics by UUID and must not infer their presence from unrelated capability bits. A documented firmware surface may exist before RegattaTracker has UI or consumption logic for it; that distinction is intentional and must remain explicit.
 
@@ -44,9 +46,11 @@ Base UUID:
 | NMEA2000 raw CAN FIFO | 0005 | encrypted/bonded read | implemented | implemented as explicit bounded diagnostic read |
 | Global LED brightness | 0006 | encrypted/bonded read + write | additive contract in RegattaLink #135 / PR #136; optional by discovery | implemented when discovered |
 | Diagnostic log FIFO | 0007 | encrypted/bonded read in service 0030 | implemented; optional by discovery | implemented as explicit bounded 20-read drain with UI presentation |
-| Device Control | 0008 | encrypted/bonded read + write with response in service 0030 | implemented | request/status engine, Set Upright, direction-labelled trims and Factory Reset lifecycle/UI implemented |
+| Device Control | 0008 | encrypted/bonded read + write with response in service 0030 | implemented | request/status engine, Set Upright, direction-labelled trims, Factory Reset and Restart lifecycle/UI implemented |
 | Motion damping | 0009 | encrypted/bonded read + write in service 0001 | implemented in RegattaLink #164, 1 byte 1..10 s | implemented |
 | Load telemetry precision | 000A | encrypted/bonded read + write in service 0001 | schema 12; 0 = 1 kg/count, 1 = 0.1 kg/count | implemented when discovered |
+| NMEA2000 TX master | 000B | encrypted/bonded read + write in service 0030 | schema 13; 0 = receive-only, 1 = TX explicitly permitted | implemented when discovered |
+| NMEA2000 Heel / Trim TX | 000C | encrypted/bonded read + write in service 0030 | schema 14; 0 = disabled, 1 = local IMU PGN 127257 selected | implemented when discovered |
 | OTA service | 0010 | service | implemented | implemented |
 | OTA control | 0011 | encrypted/bonded write with response | implemented | implemented |
 | OTA DATA | 0012 | encrypted/bonded write; no-response preferred, response supported | implemented | implemented |
@@ -58,7 +62,7 @@ Base UUID:
 | Normalized NMEA Boat State v1 | 0024 | encrypted/bonded read + notify | implemented | implemented; UUID-discovered independently of IMU capability |
 | Motion 1 Hz | 0025 | encrypted/bonded read + notify | implemented by RegattaLink #165 / PR #166, fixed 20-byte v1 | required normal IMU/motion subscription |
 | Compact normalized load telemetry | 0026 | encrypted/bonded notify | schema 12; catalog + compact 1 Hz snapshot | implemented when discovered |
-| Extension service | 0030 | service | implemented | discovery anchor for 0007/0008 |
+| Extension service | 0030 | service | implemented | discovery anchor for 0007/0008/000B/000C |
 
 All multibyte integers in custom RegattaLink records are little-endian unless stated otherwise.
 
@@ -108,12 +112,13 @@ fresh pre-transfer OTA reconnect to reuse the corrected Android ATT cache withou
 persisting an unverifiable legacy generation. The old fixed 500 ms OTA reconnect
 quiet-time heuristic is not part of the reconciliation path.
 
-Schema 12 is the current target generation after schema 10 added configuration
-characteristic 0009, schema 11 appended Motion 1 Hz 0025, and schema 12 appended
-Load Precision 000A plus Load Telemetry 0026. Clients must continue to treat the
-advertised generation as authoritative and reconcile any change before using
-downstream handles. RegattaTracker discovers every characteristic by UUID
-rather than hard-coded ATT handle.
+Schema 14 is the current target generation after schema 10 added configuration
+characteristic 0009, schema 11 appended Motion 1 Hz 0025, schema 12 appended
+Load Precision 000A plus Load Telemetry 0026, schema 13 appended the NMEA2000 TX
+master 000B, and schema 14 appended the local Heel/Trim PGN 127257 selector 000C.
+Clients must continue to treat the advertised generation as authoritative and
+reconcile any change before using downstream handles. RegattaTracker discovers every
+characteristic by UUID rather than hard-coded ATT handle.
 
 ## 4. Configuration and extension services
 
@@ -387,10 +392,18 @@ Opcodes:
 | 3 | ADJUST_HEEL | signed delta; positive = Port |
 | 4 | ADJUST_PITCH | signed delta; positive = Front |
 | 5 | FACTORY_RESET | must be 0 |
+| 6 | RESTART | must be 0 |
 
 The firmware accepts the write only as an asynchronous request. ATT write success is
-not calibration success. RegattaTracker must poll 0008 and only complete an operation
+not operation success. RegattaTracker must poll 0008 and only complete an operation
 from a status record carrying its own request_id.
+
+RESTART is an explicit authenticated control action. Firmware publishes matching
+terminal SUCCESS / OK first, waits a short BLE grace period, and only then calls the
+platform restart primitive. Tracker may classify the following disconnect as the
+expected restart lifecycle only after it has observed that terminal SUCCESS / OK.
+An arbitrary disconnect, a write callback alone, or a nonterminal status is never
+proof that restart succeeded.
 
 #### Status v1
 
@@ -472,15 +485,20 @@ Normal SET_UPRIGHT preserves a valid existing Gyro Bias and applies that bias be
 the stationary gyro gates. FACTORY_RESET deliberately invalidates the old Gyro Bias
 first and does not reuse it.
 
-#### Device Control / OTA mutual exclusion
+#### Device Control / OTA interaction
 
-OTA START and Device Control share an atomic firmware operation owner:
+Calibration/Factory Reset Device Control and OTA retain the existing mutual-exclusion
+rules:
 
-- active Device Control makes a new OTA START return BUSY before OTA protocol/session mutation;
-- OTA START assembly or an active OTA backend makes Device Control return BUSY before calibration mutation;
-- OTA DATA/FINISH/verification retain their existing OTA-owned flow;
-- Device Control never aborts an OTA transaction;
-- Device Control UI and diagnostic-log reads must be disabled locally while RegattaTracker OTA is active.
+- active calibration/Factory Reset makes a new OTA START return BUSY before OTA protocol/session mutation;
+- OTA ownership makes calibration/Factory Reset return BUSY before calibration mutation;
+- OTA DATA/FINISH/verification retain their existing OTA-owned flow.
+
+RESTART is deliberately different at firmware level: it is not rejected solely
+because an OTA session is active. An explicit restart can therefore interrupt an
+incomplete OTA and normal boot/rollback rules remain authoritative. RegattaTracker
+does not expose Restart while its own OTA flow is active and keeps all Device Control
+UI and diagnostic-log reads disabled locally during OTA.
 
 #### Factory Reset lifecycle
 
@@ -563,6 +581,68 @@ Valid range: 1..10 seconds. Current firmware default: 3 seconds.
 The value is persistent in RegattaLink. A successful write changes the firmware-side
 Heel/Pitch presentation damping. Android must not duplicate this filter. Configuration
 writes share the existing serialized mutation/OTA exclusion policy.
+
+### 4.9 NMEA2000 TX master 000B (extension service 0030)
+
+Full UUID:
+
+7f2c4b10-6f63-4a8d-9a3e-2e5d6b71000b
+
+Properties:
+
+- read;
+- write with response;
+- encrypted/bonded access required;
+- optional by UUID discovery;
+- exactly one byte: 0 = TX disabled, 1 = explicitly opted in.
+
+The value is persisted by RegattaLink. Fresh/default, missing, malformed or
+out-of-range firmware configuration resolves fail-closed to 0. Factory Reset also
+returns the setting to 0.
+
+000B is the master permission for RegattaLink to transmit on NMEA2000. It does not
+mean that every application data source is enabled. When the boot-applied value is 1
+and node initialization succeeds, RegattaLink may emit normal NMEA2000 node-management
+traffic such as ISO Address Claim. When it is 0, the CAN controller remains in the
+firmware's receive-only/listen-only mode.
+
+A successful BLE write changes the persistent selected value but does not reconfigure
+the live CAN/NMEA transport in place. The selected value becomes boot-applied on the
+next RegattaLink reboot. Tracker therefore remembers only a connection-local
+boot-applied baseline, never a persistent Android source of truth. If the confirmed
+000B value differs from that baseline, the UI offers the explicit Device Control
+RESTART flow. An unrelated disconnect/reconnect must not falsely clear that pending
+state; after a confirmed RESTART disconnect, Tracker reconnects, rediscovers and
+re-reads 000B to establish the new authoritative baseline.
+
+### 4.10 NMEA2000 Heel / Trim TX selector 000C (extension service 0030)
+
+Full UUID:
+
+7f2c4b10-6f63-4a8d-9a3e-2e5d6b71000c
+
+Properties:
+
+- read;
+- write with response;
+- encrypted/bonded access required;
+- optional by UUID discovery;
+- exactly one byte: 0 = disabled, 1 = local IMU PGN 127257 selected.
+
+The value is persisted by RegattaLink and is independent of 000B. Fresh/default,
+missing, malformed or out-of-range configuration resolves to 0; Factory Reset returns
+it to 0. Enabling 000B never enables 000C and Tracker must never infer one value from
+the other.
+
+PGN 127257 is emitted only when both the boot-applied 000B master and boot-applied
+000C selector are active and the RegattaLink node/IMU state is valid. The source is
+the local fused RegattaLink IMU, not received NMEA attitude and not phone orientation.
+The initial rate is 5 Hz. Pitch/Roll use the established RegattaLink boat-frame
+semantics and Yaw is NMEA NA because no valid absolute yaw reference exists.
+
+Like 000B, a successful 000C write changes persistent selection immediately but the
+application-output set is applied at boot. Tracker uses the same explicit RESTART,
+expected-disconnect, reconnect and re-read flow to apply it.
 
 
 ## 5. Telemetry service 0020
@@ -1298,6 +1378,8 @@ Optional/current compatibility behavior:
 - 0007 Diagnostic Log may be absent on older firmware;
 - 0008 Device Control may be absent on older firmware; its absence must not break ordinary connection/OTA;
 - 000A Load Precision may be absent on pre-schema-12 firmware;
+- 000B NMEA2000 TX master may be absent on pre-schema-13 firmware and then no TX control is shown;
+- 000C Heel/Trim TX may be absent on pre-schema-14 firmware and degrades independently of 000B;
 - 0024 normalized Boat State may be absent on older firmware and is not implied by the IMU telemetry capability bit;
 - 0026 Load Telemetry may be absent on pre-schema-12 firmware and degrades independently of Boat State and Motion 1 Hz;
 - the telemetry service or individual optional telemetry characteristics may be absent/unavailable without breaking Device Info or OTA;
@@ -1314,10 +1396,10 @@ Optional/current compatibility behavior:
 Current RegattaTracker consumption remains capability/UUID-driven:
 
 - Device Info, OTA and IMU telemetry 0021-0023 are consumed;
-- 0002, 0006 and 000A are consumed as optional configuration surfaces;
+- 0002, 0006, 000A, 000B and 000C are consumed as optional configuration surfaces;
 - 0004 is read explicitly for PGN inventory diagnostics;
 - 0005 is drained only after explicit user action and with a strict finite bound;
-- 0007 is consumed only by explicit bounded drain; 0008 has request-id-matched polling for Set Upright, direction-labelled trims and Factory Reset, including terminal-grace polling, expected-disconnect ownership and stale-Android-bond recovery guidance;
+- 0007 is consumed only by explicit bounded drain; 0008 has request-id-matched polling for Set Upright, direction-labelled trims, Factory Reset and Restart; only terminal Restart SUCCESS/OK grants expected-disconnect ownership, followed by normal configured-device reconnect;
 - 0024 is discovered independently of IMU capability bit 3 and consumed as read + notify Boat State telemetry;
 - 0026 is independently UUID-discovered, notification-subscribed and persisted through the existing dynamic session measurement path.
 
@@ -1337,7 +1419,6 @@ The following must not be implemented by guessing wire layouts:
 
 - any NMEA2000 field not represented by the documented 0024 v1 schema;
 - any raw-CAN control/write/notification protocol beyond the documented read-only 0005 FIFO;
-- NMEA2000 transmit control;
 - direct Cyclops BLE decoding in Android or any proprietary load layout outside the explicitly defined normalized 0026 contract;
 - undocumented LED/debug configuration values beyond the one-byte 0006 brightness percentage.
 
@@ -1353,7 +1434,7 @@ A RegattaTracker change affecting RegattaLink BLE should verify, as applicable:
 - service discovery works from a cold GATT cache;
 - Service Changed followed by rediscovery works;
 - Device Info parses exactly and rejects incompatible major/product/profile;
-- optional 0004/0005/0006/000A/0024/0026 absence is tolerated;
+- optional 0004/0005/0006/000A/000B/000C/0024/0026 absence is tolerated;
 - 0004 supports empty, single-record and >ATT-MTU long-read values when consumed;
 - malformed 0004 length is rejected;
 - unknown PGNs survive 0004 parsing;
@@ -1361,6 +1442,9 @@ A RegattaTracker change affecting RegattaLink BLE should verify, as applicable:
 - 0006 is exactly one byte in range 0..100 and BUSY during OTA is handled as a feature-local write failure when consumed;
 - optional 0007 is a bounded 20-record/22-byte read-to-drain FIFO and is never background-polled;
 - optional 0008 requires exact 8-byte request / 20-byte status parsing, matching request_id completion and explicit TIMEOUT handling;
+- RESTART uses opcode 6 with value 0; only matching terminal SUCCESS/OK marks its subsequent disconnect as expected, after which Tracker reconnects and re-reads authoritative configuration;
+- arbitrary BLE disconnect never proves Restart success or clears a pending boot-applied NMEA setting change;
+- 000B/000C parse exactly one byte 0/1, remain firmware-authoritative, never auto-enable each other, and a confirmed write differing from the boot baseline requires the explicit Restart flow;
 - Factory Reset terminal status is read during the pre-bond-delete grace and its intentional disconnect is not treated as outage/OTA reconnect;
 - Factory Reset does not clear the configured-device association on transient rediscovery states and waits for the firmware-driven disconnect before clearing it;
 - late BOND_RESET_ERROR remains observable and preserves the configured-device association;
