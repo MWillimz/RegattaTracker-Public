@@ -162,6 +162,8 @@ fun RegattaLinkScreen(
     onSetLedBrightness: (Int) -> Unit,
     onSetMotionDamping: (Int) -> Unit,
     onSetLoadPrecisionX10: (Boolean) -> Unit = {},
+    onSetNmeaTxEnabled: (Boolean) -> Unit = {},
+    onSetNmeaAttitudeTxEnabled: (Boolean) -> Unit = {},
     onSetLoadSensorAlias: (String, String) -> Unit = { _, _ -> },
     onDrainDiagnosticLog: () -> Unit,
     onDeviceControl: (RegattaLinkDeviceControlOpcode, Int) -> Unit,
@@ -314,6 +316,11 @@ fun RegattaLinkScreen(
                 otaActive = otaState.isActive,
                 rawCaptureActive = rawCaptureState.isActive,
                 onSetLoadPrecisionX10 = onSetLoadPrecisionX10,
+                onSetNmeaTxEnabled = onSetNmeaTxEnabled,
+                onSetNmeaAttitudeTxEnabled = onSetNmeaAttitudeTxEnabled,
+                onRestart = {
+                    onDeviceControl(RegattaLinkDeviceControlOpcode.RESTART, 0)
+                },
                 onSetLoadSensorAlias = onSetLoadSensorAlias,
                 onRefreshPgnInventory = onRefreshPgnInventory,
                 onDismiss = { activeSetupDestination = null }
@@ -773,6 +780,9 @@ private fun RegattaLinkNmeaSetupSheet(
     otaActive: Boolean,
     rawCaptureActive: Boolean,
     onSetLoadPrecisionX10: (Boolean) -> Unit,
+    onSetNmeaTxEnabled: (Boolean) -> Unit,
+    onSetNmeaAttitudeTxEnabled: (Boolean) -> Unit,
+    onRestart: () -> Unit,
     onSetLoadSensorAlias: (String, String) -> Unit,
     onRefreshPgnInventory: () -> Unit,
     onDismiss: () -> Unit
@@ -782,7 +792,9 @@ private fun RegattaLinkNmeaSetupSheet(
             (
                 nmeaState.boatStateSupported ||
                     nmeaState.pgnInventorySupported ||
-                    nmeaState.loadSupported
+                    nmeaState.loadSupported ||
+                    configurationState.nmeaTxSupported ||
+                    configurationState.nmeaAttitudeTxSupported
                 )
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -815,6 +827,131 @@ private fun RegattaLinkNmeaSetupSheet(
                     modifier = Modifier.padding(top = 8.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+
+            if (connected && configurationState.nmeaTxSupported) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 18.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(
+                                R.string.regattalink_nmea_tx_title
+                            ),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = when (configurationState.nmeaTxEnabled) {
+                                true -> stringResource(
+                                    R.string.regattalink_nmea_tx_enabled
+                                )
+                                false -> stringResource(
+                                    R.string.regattalink_nmea_tx_receive_only
+                                )
+                                null -> stringResource(
+                                    R.string.regattalink_nmea_tx_state_unavailable
+                                )
+                            },
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = configurationState.nmeaTxEnabled == true,
+                        onCheckedChange = onSetNmeaTxEnabled,
+                        enabled =
+                            configEnabled &&
+                                configurationState.nmeaTxEnabled != null
+                    )
+                }
+            }
+
+            if (connected && configurationState.nmeaAttitudeTxSupported) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(
+                                R.string.regattalink_nmea_attitude_tx
+                            ),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = when {
+                                configurationState.nmeaAttitudeTxEnabled == null ->
+                                    stringResource(
+                                        R.string.regattalink_nmea_tx_state_unavailable
+                                    )
+                                configurationState.nmeaAttitudeTxEnabled != true ->
+                                    stringResource(
+                                        R.string.regattalink_nmea_attitude_tx_disabled
+                                    )
+                                configurationState.nmeaTxEnabled == true ->
+                                    stringResource(
+                                        R.string.regattalink_nmea_attitude_tx_enabled
+                                    )
+                                else ->
+                                    stringResource(
+                                        R.string.regattalink_nmea_attitude_tx_master_off
+                                    )
+                            },
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = configurationState.nmeaAttitudeTxEnabled == true,
+                        onCheckedChange = onSetNmeaAttitudeTxEnabled,
+                        enabled =
+                            configEnabled &&
+                                configurationState.nmeaAttitudeTxEnabled != null
+                    )
+                }
+            }
+
+            if (
+                connected &&
+                (
+                    regattaLinkNmeaRestartRequired(configurationState) ||
+                        configurationState.restartAwaitingDisconnect
+                    )
+            ) {
+                Text(
+                    text =
+                        if (configurationState.restartAwaitingDisconnect) {
+                            stringResource(R.string.regattalink_restarting)
+                        } else {
+                            stringResource(R.string.regattalink_nmea_restart_required)
+                        },
+                    modifier = Modifier.padding(top = 14.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Button(
+                    onClick = onRestart,
+                    enabled =
+                        configEnabled &&
+                            configurationState.deviceControlSupported &&
+                            regattaLinkNmeaRestartRequired(configurationState) &&
+                            !configurationState.restartAwaitingDisconnect,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                ) {
+                    Text(
+                        if (configurationState.restartAwaitingDisconnect) {
+                            stringResource(R.string.regattalink_restarting)
+                        } else {
+                            stringResource(R.string.regattalink_restart)
+                        }
+                    )
+                }
             }
 
             if (
