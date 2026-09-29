@@ -244,6 +244,9 @@
     <string name="next_finish_line">Next: finish line</string>
     <string name="next_mark">Next: mark</string>
     <string name="next_mark_value">Next: %1$d %2$s</string>
+    <string name="next_gate">Next: gate</string>
+    <string name="next_gate_value">Next: %1$d %2$s</string>
+    <string name="progress_positions_value">Progress: %1$d/%2$d course positions · %3$.0f%%</string>
     <string name="progress_value">Progress: %1$d/%2$d marks · %3$.0f%%</string>
     <string name="boat_status_value">Boat: %1$s</string>
     <string name="boat_status_finished">finished</string>

@@ -220,6 +220,9 @@
     <string name="next_finish_line">Prossimo: linea di arrivo</string>
     <string name="next_mark">Prossimo: boa</string>
     <string name="next_mark_value">Prossimo: %1$d %2$s</string>
+    <string name="next_gate">Prossimo: cancello</string>
+    <string name="next_gate_value">Prossimo: %1$d %2$s</string>
+    <string name="progress_positions_value">Avanzamento: %1$d/%2$d posizioni del percorso · %3$.0f%%</string>
     <string name="progress_value">Avanzamento: %1$d/%2$d boe · %3$.0f%%</string>
     <string name="boat_status_value">Barca: %1$s</string>
     <string name="boat_status_finished">arrivata</string>
