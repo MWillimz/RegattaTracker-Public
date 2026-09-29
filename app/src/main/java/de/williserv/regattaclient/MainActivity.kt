@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -36,6 +37,7 @@ import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
@@ -72,6 +74,55 @@ private enum class PendingTrackingAction {
 private enum class PendingRegattaLinkPermissionAction {
     DISCOVER_NEW,
     RECONNECT_CONFIGURED
+}
+
+
+internal const val STORAGE_COUNTS_REFRESH_INTERVAL_MS = 10_000L
+
+internal class StorageCountRefreshGate(
+    private val minIntervalMs: Long
+) {
+    private val inFlight = AtomicBoolean(false)
+    private val forceAfterCurrent = AtomicBoolean(false)
+
+    @Volatile
+    private var lastStartedElapsedMs: Long? = null
+
+    fun tryStart(nowElapsedMs: Long, force: Boolean): Boolean {
+        while (true) {
+            if (inFlight.get()) {
+                if (force) {
+                    forceAfterCurrent.set(true)
+                    if (
+                        !inFlight.get() &&
+                        forceAfterCurrent.compareAndSet(true, false)
+                    ) {
+                        continue
+                    }
+                }
+                return false
+            }
+
+            val lastStarted = lastStartedElapsedMs
+            if (
+                !force &&
+                lastStarted != null &&
+                (nowElapsedMs - lastStarted).coerceAtLeast(0L) < minIntervalMs
+            ) {
+                return false
+            }
+
+            if (inFlight.compareAndSet(false, true)) {
+                lastStartedElapsedMs = nowElapsedMs
+                return true
+            }
+        }
+    }
+
+    fun finishAndTakeForcedFollowUp(): Boolean {
+        inFlight.set(false)
+        return forceAfterCurrent.getAndSet(false)
+    }
 }
 
 class MainActivity : ComponentActivity() {
@@ -280,6 +331,8 @@ class MainActivity : ComponentActivity() {
 
     private val handler = Handler(Looper.getMainLooper())
     private val asyncLifetime = ActivityAsyncLifetime()
+    private val storageCountRefreshGate =
+        StorageCountRefreshGate(STORAGE_COUNTS_REFRESH_INTERVAL_MS)
 
 
     private val uiRefreshRunnable = object : Runnable {
@@ -287,7 +340,7 @@ class MainActivity : ComponentActivity() {
             if (!asyncLifetime.isActive()) return
             raceEntryNowEpochMillis.value = System.currentTimeMillis()
             reconcileTrackingState()
-            updateStorageText()
+            requestStorageCountsRefresh()
             updateLocalRaceStatus()
             refreshRetirementReportedState()
             updateConnectionUiState()
@@ -486,7 +539,7 @@ class MainActivity : ComponentActivity() {
         loadAppState()
         refreshRetirementReportedState()
 
-        updateStorageText()
+        requestStorageCountsRefresh(force = true)
         updateLocalRaceStatus()
 
         enableEdgeToEdge()
@@ -778,6 +831,12 @@ class MainActivity : ComponentActivity() {
                             },
                             onSetLoadPrecisionX10 = { enabled ->
                                 regattaLinkManager.setLoadPrecisionX10(enabled)
+                            },
+                            onSetNmeaTxEnabled = { enabled ->
+                                regattaLinkManager.setNmeaTxEnabled(enabled)
+                            },
+                            onSetNmeaAttitudeTxEnabled = { enabled ->
+                                regattaLinkManager.setNmeaAttitudeTxEnabled(enabled)
                             },
                             onSetLoadSensorAlias = { identityKey, alias ->
                                 regattaLinkManager.setLoadSensorAlias(
@@ -1204,7 +1263,8 @@ class MainActivity : ComponentActivity() {
                 CourseMapMark(
                     order = mark.order,
                     label = mark.label,
-                    skipped = mark.skipped
+                    skipped = mark.skipped,
+                    kind = CoursePositionKind.MARK
                 )
             }
             renderMigratedLegacyRaceSetup(migratedLegacyState)
@@ -2512,14 +2572,18 @@ class MainActivity : ComponentActivity() {
             localIsOcs -> getString(R.string.next_return_start)
             !raceStarted -> getString(R.string.next_start_line)
             else -> {
-                val mark = activeCourseMarks.getOrNull(passedMarks)
-                if (mark != null) {
-                    val order = mark.order ?: (passedMarks + 1)
-                    val markName = mark.label
+                val position = activeCourseMarks.getOrNull(passedMarks)
+                if (position != null) {
+                    val order = position.order ?: (passedMarks + 1)
+                    val positionName = position.label
                         .removePrefix("$order ")
                         .trim()
-                        .ifBlank { mark.label }
-                    getString(R.string.next_mark_value, order, markName)
+                        .ifBlank { position.label }
+                    if (position.kind == CoursePositionKind.GATE) {
+                        getString(R.string.next_gate_value, order, positionName)
+                    } else {
+                        getString(R.string.next_mark_value, order, positionName)
+                    }
                 } else {
                     getString(R.string.next_finish_line)
                 }
@@ -2532,7 +2596,11 @@ class MainActivity : ComponentActivity() {
             raceStarted = raceStarted,
             raceFinished = localRaceFinished,
             markedFormatter = { passed, total, percent ->
-                getString(R.string.progress_value, passed, total, percent)
+                if (activeCourseMarks.any { it.kind == CoursePositionKind.GATE }) {
+                    getString(R.string.progress_positions_value, passed, total, percent)
+                } else {
+                    getString(R.string.progress_value, passed, total, percent)
+                }
             },
             directFormatter = { percent ->
                 getString(R.string.progress_direct_value, percent)
@@ -3572,30 +3640,14 @@ class MainActivity : ComponentActivity() {
         courseObj: JSONObject?,
         courseShortened: Boolean
     ): List<CourseMapMark> {
-        val marks = courseObj?.optJSONArray("marks") ?: return emptyList()
-        val result = mutableListOf<CourseMapMark>()
-
-        for (i in 0 until marks.length()) {
-            val mark = marks.optJSONObject(i) ?: continue
-            val order = if (mark.has("order") && !mark.isNull("order")) {
-                mark.optInt("order").takeIf { it > 0 }
-            } else {
-                null
-            }
-            val displayOrder = order ?: (i + 1)
-            val name = mark.optString("name", "Mark")
-            val skipped = courseShortened && mark.optBoolean("omit_when_shortened", false)
-
-            result.add(
-                CourseMapMark(
-                    order = order,
-                    label = "$displayOrder $name",
-                    skipped = skipped
-                )
+        return parseCoursePositions(courseObj).map { position ->
+            CourseMapMark(
+                order = position.order.takeIf { it > 0 },
+                label = "${position.order} ${position.name}".trim(),
+                skipped = courseShortened && position.omitWhenShortened,
+                kind = position.kind
             )
         }
-
-        return result
     }
 
     private fun buildCourseSummary(
@@ -3613,54 +3665,50 @@ class MainActivity : ComponentActivity() {
 
         val startLine = courseObj.optJSONObject("start_line")
         val finishLine = courseObj.optJSONObject("finish_line")
-        val marks = courseObj.optJSONArray("marks")
+        val positions = parseCoursePositions(courseObj)
+        val hasGate = positions.any { it.kind == CoursePositionKind.GATE }
 
         val startRefLabel = startLine
             ?.optJSONObject("ref")
             ?.optString("label", "Ref") ?: "Ref"
-
         val startMarkLabel = startLine
             ?.optJSONObject("mark")
             ?.optString("label", "Mark") ?: "Mark"
-
         val finishRefLabel = finishLine
             ?.optJSONObject("ref")
             ?.optString("label", "Ref") ?: "Ref"
-
         val finishMarkLabel = finishLine
             ?.optJSONObject("mark")
             ?.optString("label", "Mark") ?: "Mark"
 
-        val markNames = mutableListOf<String>()
-
-        if (marks != null) {
-            for (i in 0 until marks.length()) {
-                val mark = marks.optJSONObject(i) ?: continue
-
-                val order = mark.optInt("order", i + 1)
-                val name = mark.optString("name", "Mark")
-                val omitWhenShortened = mark.optBoolean("omit_when_shortened", false)
-
-                val label = if (courseShortened && omitWhenShortened) {
-                    getString(R.string.mark_skipped_compact, order, name)
-                } else {
-                    "$order $name"
-                }
-
-                markNames.add(label)
+        val positionNames = positions.map { position ->
+            val baseLabel = "${position.order} ${position.name}".trim()
+            val typedLabel = if (position.kind == CoursePositionKind.GATE) {
+                getString(R.string.gate_name_value, baseLabel)
+            } else {
+                baseLabel
+            }
+            if (courseShortened && position.omitWhenShortened) {
+                getString(R.string.position_skipped_compact, typedLabel)
+            } else {
+                typedLabel
             }
         }
 
-        val markCount = marks?.length() ?: 0
-
         return CourseSummary(
-            courseText = getString(R.string.course_mark_count, markCount),
+            courseText = if (hasGate) {
+                getString(R.string.course_position_count, positions.size)
+            } else {
+                getString(R.string.course_mark_count, positions.size)
+            },
             startLineText = getString(R.string.start_line_value, startRefLabel, startMarkLabel),
             finishLineText = getString(R.string.finish_line_value, finishRefLabel, finishMarkLabel),
-            marksText = if (markNames.isEmpty()) {
+            marksText = if (positionNames.isEmpty()) {
                 getString(R.string.marks_unknown)
+            } else if (hasGate) {
+                getString(R.string.course_positions_value, positionNames.joinToString(", "))
             } else {
-                getString(R.string.marks_value, markNames.joinToString(", "))
+                getString(R.string.marks_value, positionNames.joinToString(", "))
             }
         )
     }
@@ -3702,7 +3750,7 @@ class MainActivity : ComponentActivity() {
                     selectedReplayFieldIds.value = emptySet()
                 }
                 if (deleted) {
-                    updateStorageText()
+                    requestStorageCountsRefresh(force = true)
                 }
                 loadSessionHistory()
             }
@@ -3720,7 +3768,7 @@ class MainActivity : ComponentActivity() {
         selectedSessionId.value = null
         sessionDetail.value = null
         selectedReplayFieldIds.value = emptySet()
-        updateStorageText()
+        requestStorageCountsRefresh(force = true)
         lastCsvLine.value = getString(R.string.no_csv_line_yet)
         statusText.value = getString(R.string.old_data_deleted)
     }
@@ -3841,17 +3889,54 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun updateStorageText() {
-        val total = db.countSamples()
-        val pending = db.countPendingSamples()
+    private fun requestStorageCountsRefresh(
+        force: Boolean = false
+    ) {
+        if (!asyncLifetime.isActive()) return
+        if (
+            !storageCountRefreshGate.tryStart(
+                nowElapsedMs = SystemClock.elapsedRealtime(),
+                force = force
+            )
+        ) {
+            return
+        }
 
-        rowCountText.value = getString(R.string.rows_stored, total)
-        pendingUploadCount.value = pending
+        thread(name = "regatta-storage-count-refresh") {
+            val counts = runCatching {
+                val helper = TrackingDbHelper(applicationContext)
+                try {
+                    helper.getStorageCounts()
+                } finally {
+                    helper.close()
+                }
+            }.getOrNull()
 
-        uploadStatusText.value = if (pending == 0L) {
+            runOnUiThread {
+                val forceFollowUp =
+                    storageCountRefreshGate.finishAndTakeForcedFollowUp()
+
+                if (asyncLifetime.isActive() && counts != null) {
+                    applyStorageCounts(counts)
+                }
+
+                if (asyncLifetime.isActive() && forceFollowUp) {
+                    requestStorageCountsRefresh(force = true)
+                }
+            }
+        }
+    }
+
+    private fun applyStorageCounts(counts: TrackingStorageCounts) {
+        if (!asyncLifetime.isActive()) return
+
+        rowCountText.value = getString(R.string.rows_stored, counts.total)
+        pendingUploadCount.value = counts.pending
+
+        uploadStatusText.value = if (counts.pending == 0L) {
             getString(R.string.upload_all_sent)
         } else {
-            getString(R.string.upload_pending, pending)
+            getString(R.string.upload_pending, counts.pending)
         }
     }
 

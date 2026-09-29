@@ -11,7 +11,8 @@ sealed class CourseMapView {
 data class CourseMapMark(
     val order: Int?,
     val label: String,
-    val skipped: Boolean
+    val skipped: Boolean,
+    val kind: CoursePositionKind = CoursePositionKind.MARK
 ) {
     val clickable: Boolean
         get() = order != null && !skipped

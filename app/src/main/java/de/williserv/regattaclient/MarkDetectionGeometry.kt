@@ -3,18 +3,12 @@ package de.williserv.regattaclient
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.acos
-import kotlin.math.cos
 import kotlin.math.hypot
 
-private const val MARK_DETECTION_EARTH_RADIUS_M = 6_371_000.0
 private const val MARK_INTERSECTION_DISABLED_FROM_TURN_DEG = 160.0
-private const val MARK_CROSSING_EPSILON_M = 1e-6
 private const val MARK_GATE_RAY_TOLERANCE_M = 0.25
 
-internal data class MarkDetectionDirection(
-    val x: Double,
-    val y: Double
-)
+internal typealias MarkDetectionDirection = CourseDirection
 
 internal data class MarkDetectionGate(
     val center: GeoPoint,
@@ -66,11 +60,11 @@ internal fun buildMarkDetectionGeometry(
     nextAnchor: GeoPoint,
     radiusM: Double
 ): MarkDetectionGeometry? {
-    val previous = projectToMarkLocal(previousAnchor, mark)
-    val next = projectToMarkLocal(nextAnchor, mark)
+    val previous = projectToCourseLocal(previousAnchor, mark)
+    val next = projectToCourseLocal(nextAnchor, mark)
 
-    val incoming = normalizeDirection(-previous.x, -previous.y) ?: return null
-    val outgoing = normalizeDirection(next.x, next.y) ?: return null
+    val incoming = normalizeCourseDirection(-previous.x, -previous.y) ?: return null
+    val outgoing = normalizeCourseDirection(next.x, next.y) ?: return null
 
     val dot = (incoming.x * outgoing.x + incoming.y * outgoing.y)
         .coerceIn(-1.0, 1.0)
@@ -107,16 +101,16 @@ internal fun buildMarkDetectionGeometry(
     }
 
     val intersection = intersectionLocal?.let {
-        localToGeoPoint(it, mark)
+        localToCourseGeoPoint(it, mark)
     }
 
     return MarkDetectionGeometry(
         entry = MarkDetectionGate(
-            center = localToGeoPoint(entryCenterLocal, mark),
+            center = localToCourseGeoPoint(entryCenterLocal, mark),
             intersection = intersection
         ),
         exit = MarkDetectionGate(
-            center = localToGeoPoint(exitCenterLocal, mark),
+            center = localToCourseGeoPoint(exitCenterLocal, mark),
             intersection = intersection
         ),
         incoming = incoming,
@@ -157,10 +151,10 @@ internal fun markDetectionGateCrossed(
     gate: MarkDetectionGate,
     travelDirection: MarkDetectionDirection
 ): Boolean {
-    val fraction = directedGateCrossingFraction(
+    val fraction = directedInfiniteLineCrossingFraction(
         previousPosition = previousPosition,
         currentPosition = currentPosition,
-        gateCenter = gate.center,
+        lineCenter = gate.center,
         travelDirection = travelDirection
     ) ?: return false
 
@@ -174,62 +168,21 @@ internal fun markDetectionGateCrossed(
     return crossingIsOnActiveGateRay(crossing, gate)
 }
 
-private fun directedGateCrossingFraction(
-    previousPosition: GeoPoint,
-    currentPosition: GeoPoint,
-    gateCenter: GeoPoint,
-    travelDirection: MarkDetectionDirection
-): Double? {
-    val previous = projectToMarkLocal(previousPosition, gateCenter)
-    val current = projectToMarkLocal(currentPosition, gateCenter)
-
-    val previousProgress =
-        previous.x * travelDirection.x + previous.y * travelDirection.y
-    val currentProgress =
-        current.x * travelDirection.x + current.y * travelDirection.y
-
-    if (previousProgress > MARK_CROSSING_EPSILON_M) return null
-    if (currentProgress < -MARK_CROSSING_EPSILON_M) return null
-
-    val delta = currentProgress - previousProgress
-    if (delta <= MARK_CROSSING_EPSILON_M) return null
-
-    val fraction = -previousProgress / delta
-    if (
-        fraction < -MARK_CROSSING_EPSILON_M ||
-        fraction > 1.0 + MARK_CROSSING_EPSILON_M
-    ) {
-        return null
-    }
-
-    return fraction.coerceIn(0.0, 1.0)
-}
-
 private fun crossingIsOnActiveGateRay(
     crossing: GeoPoint,
     gate: MarkDetectionGate
 ): Boolean {
     val intersection = gate.intersection ?: return true
-    val center = projectToMarkLocal(gate.center, intersection)
-    val point = projectToMarkLocal(crossing, intersection)
+    val center = projectToCourseLocal(gate.center, intersection)
+    val point = projectToCourseLocal(crossing, intersection)
 
     val centerDistance = hypot(center.x, center.y)
-    if (centerDistance < MARK_CROSSING_EPSILON_M) return true
+    if (centerDistance < COURSE_CROSSING_EPSILON_M) return true
 
     val distanceAlongActiveRay =
         (point.x * center.x + point.y * center.y) / centerDistance
 
     return distanceAlongActiveRay >= -MARK_GATE_RAY_TOLERANCE_M
-}
-
-private fun normalizeDirection(x: Double, y: Double): MarkDetectionDirection? {
-    val length = hypot(x, y)
-    if (length < 1e-9) return null
-
-    return MarkDetectionDirection(
-        x = x / length,
-        y = y / length
-    )
 }
 
 private fun infiniteLinesIntersection(
@@ -262,34 +215,3 @@ private fun cross(
     a: LocalPoint,
     b: MarkDetectionDirection
 ): Double = a.x * b.y - a.y * b.x
-
-private fun projectToMarkLocal(
-    point: GeoPoint,
-    origin: GeoPoint
-): LocalPoint {
-    val latRad = origin.lat * PI / 180.0
-    val x = (point.lon - origin.lon) * PI / 180.0 *
-        MARK_DETECTION_EARTH_RADIUS_M * cos(latRad)
-    val y = (point.lat - origin.lat) * PI / 180.0 *
-        MARK_DETECTION_EARTH_RADIUS_M
-
-    return LocalPoint(x = x, y = y)
-}
-
-private fun localToGeoPoint(
-    point: LocalPoint,
-    origin: GeoPoint
-): GeoPoint {
-    val lat = origin.lat +
-        (point.y / MARK_DETECTION_EARTH_RADIUS_M) * 180.0 / PI
-
-    val cosLat = cos(origin.lat * PI / 180.0)
-    val lon = if (abs(cosLat) < 1e-12) {
-        origin.lon
-    } else {
-        origin.lon +
-            (point.x / (MARK_DETECTION_EARTH_RADIUS_M * cosLat)) * 180.0 / PI
-    }
-
-    return GeoPoint(lat = lat, lon = lon)
-}

@@ -63,7 +63,7 @@
 
     <!-- Course -->
     <string name="override_course_title">Override course?</string>
-    <string name="override_course_message">This manually changes course progress for this boat. Use it only if automatic mark detection is wrong.</string>
+    <string name="override_course_message">This manually changes course progress for this boat. Use it only if automatic course-position detection is wrong.</string>
     <string name="confirm_override">Confirm Override</string>
     <string name="next">Next</string>
     <string name="set_next_target">Set next target</string>
@@ -71,6 +71,8 @@
     <string name="start_line">Start line</string>
     <string name="finish_line">Finish line</string>
     <string name="marks">Marks</string>
+    <string name="course_positions">Course positions</string>
+    <string name="gate_name_value">Gate · %1$s</string>
     <string name="race_info">Race Info</string>
     <string name="mark_skipped">%1$s — skipped</string>
 
@@ -203,9 +205,12 @@
     <string name="stop_value">Stop: %1$s</string>
     <string name="info_value">Info: %1$s</string>
     <string name="course_mark_count">Course: %1$d marks</string>
+    <string name="course_position_count">Course: %1$d positions</string>
     <string name="start_line_value">Start line: %1$s → %2$s</string>
     <string name="finish_line_value">Finish line: %1$s → %2$s</string>
     <string name="marks_value">Marks: %1$s</string>
+    <string name="course_positions_value">Course positions: %1$s</string>
+    <string name="position_skipped_compact">%1$s [skipped]</string>
     <string name="mark_skipped_compact">%1$d %2$s [skipped]</string>
     <string name="stop_tracking_before_delete">Stop Race/Manual Tracking before deleting data</string>
     <string name="no_csv_line_yet">No CSV line yet</string>
@@ -244,6 +249,9 @@
     <string name="next_finish_line">Next: finish line</string>
     <string name="next_mark">Next: mark</string>
     <string name="next_mark_value">Next: %1$d %2$s</string>
+    <string name="next_gate">Next: gate</string>
+    <string name="next_gate_value">Next gate: %1$d %2$s</string>
+    <string name="progress_positions_value">Progress: %1$d/%2$d course positions · %3$.0f%%</string>
     <string name="progress_value">Progress: %1$d/%2$d marks · %3$.0f%%</string>
     <string name="boat_status_value">Boat: %1$s</string>
     <string name="boat_status_finished">finished</string>
@@ -696,4 +704,44 @@
     <string name="regattalink_load_not_subscribed">Load sensor notifications are unavailable.</string>
     <string name="regattalink_load_alias">Optional name</string>
     <string name="regattalink_load_identity_temporary">Temporary NMEA identity; naming is available once the stable NMEA2000 NAME is known.</string>
+    <string name="regattalink_nmea_tx_title">NMEA2000 transmission</string>
+    <string name="regattalink_nmea_tx_receive_only">Receive only. RegattaLink does not transmit on NMEA2000.</string>
+    <string name="regattalink_nmea_tx_enabled">Transmission permitted. Standard NMEA2000 management traffic may be sent.</string>
+    <string name="regattalink_nmea_tx_state_unavailable">State could not be read from RegattaLink.</string>
+    <string name="regattalink_nmea_attitude_tx">Heel / Trim</string>
+    <string name="regattalink_nmea_attitude_tx_enabled">Local RegattaLink IMU Pitch/Roll · PGN 127257 · 5 Hz</string>
+    <string name="regattalink_nmea_attitude_tx_disabled">PGN 127257 output disabled.</string>
+    <string name="regattalink_nmea_attitude_tx_master_off">Selected, but no application transmission is active while NMEA2000 transmission is off.</string>
+    <string name="regattalink_nmea_restart_required">Restart RegattaLink to apply the NMEA2000 transmission changes.</string>
+    <string name="regattalink_restart">Restart RegattaLink</string>
+    <string name="regattalink_restarting">Restarting RegattaLink…</string>
+    <string name="regattalink_restart_timeout">RegattaLink restart timed out. Try again.</string>
+    <string name="regattalink_nmea_tx_selected_on_runtime_unknown">Selected on. Applied state is unavailable on this RegattaLink firmware.</string>
+    <string name="regattalink_nmea_tx_selected_off_runtime_unknown">Selected off. Applied state is unavailable on this RegattaLink firmware.</string>
+    <string name="regattalink_nmea_tx_enable_pending">Enabled setting saved. Restart RegattaLink to apply it.</string>
+    <string name="regattalink_nmea_tx_disable_pending">Disabled setting saved. RegattaLink may still transmit until it restarts.</string>
+    <string name="regattalink_nmea_tx_selected_but_inactive">Selected for this boot, but transmission is inactive (fail-closed).</string>
+    <string name="regattalink_nmea_attitude_selected_on_runtime_unknown">Heel / Trim selected. Applied state is unavailable on this RegattaLink firmware.</string>
+    <string name="regattalink_nmea_attitude_selected_off_runtime_unknown">Heel / Trim not selected. Applied state is unavailable on this RegattaLink firmware.</string>
+    <string name="regattalink_nmea_attitude_enable_pending">Heel / Trim setting saved. Restart RegattaLink to enable PGN 127257.</string>
+    <string name="regattalink_nmea_attitude_disable_pending">Heel / Trim disabled setting saved. PGN 127257 may remain enabled until restart.</string>
+    <string name="regattalink_nmea_attitude_tx_inactive">Selected for this boot, but PGN 127257 output is not runtime-enabled.</string>
+    <string name="regattalink_nmea_runtime_unknown_restart">Applied NMEA2000 TX state is unavailable on this firmware. Restart RegattaLink to synchronize the selected settings.</string>
+
+    <string name="session_metric_cog">COG</string>
+    <string name="session_metric_sog">SOG</string>
+    <string name="session_metric_mag">MAG</string>
+    <string name="session_metric_awa">AWA</string>
+    <string name="session_metric_twa">TWA</string>
+    <string name="session_metric_stw">STW</string>
+    <string name="session_metric_aws">AWS</string>
+    <string name="session_metric_tws">TWS</string>
+    <string name="session_metric_vmg">VMG</string>
+    <string name="session_metric_heel">Heel</string>
+    <string name="session_metric_pitch">Pitch</string>
+    <string name="session_metric_depth">Depth</string>
+    <string name="session_metric_water_temperature">Water temperature</string>
+    <string name="session_metric_acceleration_5s">Acceleration (5 s)</string>
+    <string name="session_metric_magnetic_heading">Magnetic heading</string>
+    <string name="session_metric_true_heading">True heading</string>
 </resources>

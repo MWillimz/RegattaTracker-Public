@@ -35,6 +35,7 @@ class RegattaTrackingServiceLifecycleTest {
         clearLocalStatusPrefs()
         clearStickyRestartPrefs()
         TrackingServiceRuntimeState.markStopped()
+        TelemetryUploadScheduler.resetLiveWakeupCoalescing()
         shadowOf(Looper.getMainLooper()).idle()
     }
 
@@ -46,6 +47,76 @@ class RegattaTrackingServiceLifecycleTest {
         clearLocalStatusPrefs()
         clearStickyRestartPrefs()
         TrackingServiceRuntimeState.markStopped()
+    }
+
+    @Test
+    fun `pending notification recount is throttled and coalesced while in flight`() {
+        val gate = TelemetryPendingCountRefreshGate(
+            RegattaTrackingService.NOTIFICATION_PENDING_REFRESH_INTERVAL_MS
+        )
+
+        assertTrue(gate.tryStart(nowElapsedMs = 0L, force = false))
+        assertFalse(gate.tryStart(nowElapsedMs = 1_000L, force = false))
+        assertFalse(gate.tryStart(nowElapsedMs = 1_000L, force = true))
+
+        gate.finish()
+
+        assertFalse(gate.tryStart(nowElapsedMs = 9_999L, force = false))
+        assertTrue(gate.tryStart(nowElapsedMs = 10_000L, force = false))
+        gate.finish()
+    }
+
+    @Test
+    fun `forced pending notification recount bypasses throttle after current read finishes`() {
+        val gate = TelemetryPendingCountRefreshGate(
+            RegattaTrackingService.NOTIFICATION_PENDING_REFRESH_INTERVAL_MS
+        )
+
+        assertTrue(gate.tryStart(nowElapsedMs = 0L, force = false))
+        gate.finish()
+
+        assertTrue(gate.tryStart(nowElapsedMs = 1L, force = true))
+        gate.finish()
+    }
+
+    @Test
+    fun `pending notification reconciliation preserves insert after db snapshot`() {
+        val snapshot = requireNotNull(
+            telemetryPendingCountSnapshot(
+                pending = 12L,
+                mutationGenerationBefore = 8L,
+                mutationGenerationAfter = 8L,
+                raceInsertCount = 20L
+            )
+        )
+
+        assertEquals(
+            13L,
+            reconcileTelemetryPendingCount(
+                snapshot = snapshot,
+                currentRaceInsertCount = 21L
+            )
+        )
+    }
+
+    @Test
+    fun `pending notification recount discards snapshot overlapping sample mutation`() {
+        assertNull(
+            telemetryPendingCountSnapshot(
+                pending = 12L,
+                mutationGenerationBefore = 8L,
+                mutationGenerationAfter = 10L,
+                raceInsertCount = 21L
+            )
+        )
+        assertNull(
+            telemetryPendingCountSnapshot(
+                pending = 12L,
+                mutationGenerationBefore = 9L,
+                mutationGenerationAfter = 9L,
+                raceInsertCount = 21L
+            )
+        )
     }
 
     @Test

@@ -111,6 +111,8 @@ internal interface RegattaLinkConnectionClient {
     fun setLedBrightness(percent: Int): Boolean
     fun setMotionDamping(seconds: Int): Boolean
     fun setLoadPrecisionX10(enabled: Boolean): Boolean = false
+    fun setNmeaTxEnabled(enabled: Boolean): Boolean = false
+    fun setNmeaAttitudeTxEnabled(enabled: Boolean): Boolean = false
     fun drainDiagnosticLog(): Boolean = false
     fun executeDeviceControl(
         opcode: RegattaLinkDeviceControlOpcode,
@@ -328,6 +330,7 @@ internal class RegattaLinkConnectionManager(
         if (
             factoryResetPending ||
             configurationState.factoryResetAwaitingDisconnect ||
+            configurationState.restartAwaitingDisconnect ||
             configurationState.deviceControlBusy ||
             configurationState.diagnosticLogLoading ||
             configurationState.busy
@@ -405,6 +408,34 @@ internal class RegattaLinkConnectionManager(
             return false
         }
         return client.setLoadPrecisionX10(enabled)
+    }
+
+    fun setNmeaTxEnabled(enabled: Boolean): Boolean {
+        if (
+            otaState.isActive ||
+            rawCaptureState.isActive ||
+            regattaLinkConfigurationMutationBlocked(
+                state = configurationState,
+                factoryResetOwned = factoryResetPending
+            )
+        ) {
+            return false
+        }
+        return client.setNmeaTxEnabled(enabled)
+    }
+
+    fun setNmeaAttitudeTxEnabled(enabled: Boolean): Boolean {
+        if (
+            otaState.isActive ||
+            rawCaptureState.isActive ||
+            regattaLinkConfigurationMutationBlocked(
+                state = configurationState,
+                factoryResetOwned = factoryResetPending
+            )
+        ) {
+            return false
+        }
+        return client.setNmeaAttitudeTxEnabled(enabled)
     }
 
     fun setLoadSensorAlias(identityKey: String, alias: String): Boolean {

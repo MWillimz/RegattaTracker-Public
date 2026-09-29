@@ -178,6 +178,59 @@ class RaceEventSnapshotStoreTest {
     }
 
     @Test
+    fun `gate course json survives parse save and load`() {
+        val body = """
+            {
+              "event_name": "Gate Race",
+              "race_status": "planned",
+              "start_time": "2026-09-20T14:00:00Z",
+              "stop_time": "2026-09-20T15:00:00Z",
+              "course": {
+                "marks": [{
+                  "order": 2,
+                  "type": "gate",
+                  "name": "Leegate",
+                  "ref": {"lat": 54.1, "lon": 10.1},
+                  "mark": {"lat": 54.1, "lon": 10.2},
+                  "direction": "negative",
+                  "offset_m": 25.5,
+                  "omit_when_shortened": true
+                }]
+              }
+            }
+        """.trimIndent()
+
+        val parsed = parseRaceEventSnapshot(body)
+        RaceEventSnapshotStore.save(
+            context = context,
+            server = "https://raceoffice.example.org",
+            event = "Gate Race",
+            secret = "secret",
+            snapshot = parsed
+        )
+
+        val restored = requireNotNull(
+            RaceEventSnapshotStore.loadMatching(
+                context = context,
+                server = "https://raceoffice.example.org",
+                event = "Gate Race",
+                secret = "secret"
+            )
+        )
+        val gate = org.json.JSONObject(restored.courseJson)
+            .getJSONArray("marks")
+            .getJSONObject(0)
+
+        assertEquals("gate", gate.getString("type"))
+        assertEquals("Leegate", gate.getString("name"))
+        assertEquals("negative", gate.getString("direction"))
+        assertEquals(25.5, gate.getDouble("offset_m"), 0.000001)
+        assertEquals(54.1, gate.getJSONObject("ref").getDouble("lat"), 0.000001)
+        assertEquals(10.2, gate.getJSONObject("mark").getDouble("lon"), 0.000001)
+        assertEquals(true, gate.getBoolean("omit_when_shortened"))
+    }
+
+    @Test
     fun `malformed or unsupported viewport stays optional`() {
         val snapshot = parseRaceEventSnapshot(
             """

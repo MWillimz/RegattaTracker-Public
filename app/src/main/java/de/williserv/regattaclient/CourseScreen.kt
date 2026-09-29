@@ -259,7 +259,8 @@ data class CourseProgressOption(
 data class CourseProgressMarkState(
     val label: String,
     val passedMarks: Int,
-    val skipped: Boolean
+    val skipped: Boolean,
+    val kind: CoursePositionKind = CoursePositionKind.MARK
 )
 
 internal fun buildCourseProgressMarkStates(
@@ -275,13 +276,15 @@ internal fun buildCourseProgressMarkStates(
             CourseProgressMarkState(
                 label = label,
                 passedMarks = 0,
-                skipped = true
+                skipped = true,
+                kind = mark.kind
             )
         } else {
             CourseProgressMarkState(
                 label = label,
                 passedMarks = activeMarksBefore++,
-                skipped = false
+                skipped = false,
+                kind = mark.kind
             )
         }
     }
@@ -305,14 +308,19 @@ fun courseProgressOptions(
         )
 
         marks.forEach { mark ->
+            val displayLabel = if (mark.kind == CoursePositionKind.GATE) {
+                stringResource(R.string.gate_name_value, mark.label)
+            } else {
+                mark.label
+            }
             add(
                 CourseProgressOption(
                     label = if (mark.skipped) {
-                        stringResource(R.string.mark_skipped, mark.label)
+                        stringResource(R.string.mark_skipped, displayLabel)
                     } else {
-                        mark.label
+                        displayLabel
                     },
-                    confirmLabel = mark.label,
+                    confirmLabel = displayLabel,
                     passedMarks = mark.passedMarks,
                     raceStarted = true,
                     enabled = !mark.skipped
@@ -447,7 +455,13 @@ fun CourseRouteCard(
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = stringResource(R.string.marks),
+                text = stringResource(
+                    if (courseMapMarks.any { it.kind == CoursePositionKind.GATE }) {
+                        R.string.course_positions
+                    } else {
+                        R.string.marks
+                    }
+                ),
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -457,6 +471,11 @@ fun CourseRouteCard(
             ) {
                 if (courseMapMarks.isNotEmpty()) {
                     courseMapMarks.forEach { mark ->
+                        val displayLabel = if (mark.kind == CoursePositionKind.GATE) {
+                            stringResource(R.string.gate_name_value, mark.label)
+                        } else {
+                            mark.label
+                        }
                         val markModifier = if (mark.clickable) {
                             Modifier
                                 .fillMaxWidth()
@@ -471,7 +490,7 @@ fun CourseRouteCard(
                         }
 
                         Text(
-                            text = mark.label,
+                            text = displayLabel,
                             fontSize = 18.sp,
                             color = when {
                                 mark.skipped -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)

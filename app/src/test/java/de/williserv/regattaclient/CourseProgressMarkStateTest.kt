@@ -33,6 +33,46 @@ class CourseProgressMarkStateTest {
     }
 
     @Test
+    fun gateCountsAsExactlyOneManualProgressPosition() {
+        val states = buildCourseProgressMarkStates(
+            listOf(
+                CourseMapMark(order = 1, label = "1 A", skipped = false),
+                CourseMapMark(
+                    order = 2,
+                    label = "2 Leegate",
+                    skipped = false,
+                    kind = CoursePositionKind.GATE
+                ),
+                CourseMapMark(order = 3, label = "3 B", skipped = false)
+            )
+        )
+
+        assertEquals(3, states.size)
+        assertEquals(0, states[0].passedMarks)
+        assertEquals(1, states[1].passedMarks)
+        assertEquals(2, states[2].passedMarks)
+        assertEquals(CoursePositionKind.GATE, states[1].kind)
+    }
+
+    @Test
+    fun skippedGateDoesNotAdvanceManualProgress() {
+        val states = buildCourseProgressMarkStates(
+            listOf(
+                CourseMapMark(
+                    order = 1,
+                    label = "1 Gate",
+                    skipped = true,
+                    kind = CoursePositionKind.GATE
+                ),
+                CourseMapMark(order = 2, label = "2 Mark", skipped = false)
+            )
+        )
+
+        assertTrue(states[0].skipped)
+        assertEquals(0, states[1].passedMarks)
+    }
+
+    @Test
     fun displayLabelsDoNotControlSkippedState() {
         val states = buildCourseProgressMarkStates(
             listOf(
