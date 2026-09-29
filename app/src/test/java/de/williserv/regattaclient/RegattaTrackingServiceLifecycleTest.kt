@@ -80,6 +80,46 @@ class RegattaTrackingServiceLifecycleTest {
     }
 
     @Test
+    fun `pending notification reconciliation preserves insert after db snapshot`() {
+        val snapshot = requireNotNull(
+            telemetryPendingCountSnapshot(
+                pending = 12L,
+                mutationGenerationBefore = 8L,
+                mutationGenerationAfter = 8L,
+                raceInsertCount = 20L
+            )
+        )
+
+        assertEquals(
+            13L,
+            reconcileTelemetryPendingCount(
+                snapshot = snapshot,
+                currentRaceInsertCount = 21L
+            )
+        )
+    }
+
+    @Test
+    fun `pending notification recount discards snapshot overlapping sample mutation`() {
+        assertNull(
+            telemetryPendingCountSnapshot(
+                pending = 12L,
+                mutationGenerationBefore = 8L,
+                mutationGenerationAfter = 10L,
+                raceInsertCount = 21L
+            )
+        )
+        assertNull(
+            telemetryPendingCountSnapshot(
+                pending = 12L,
+                mutationGenerationBefore = 9L,
+                mutationGenerationAfter = 9L,
+                raceInsertCount = 21L
+            )
+        )
+    }
+
+    @Test
     fun `start while service is already running starts a fresh metadata session`() {
         TrackingProfileConfig.write(context, TrackingProfile.NORMAL)
         val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
