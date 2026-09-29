@@ -173,7 +173,7 @@ jobs:
           set -euo pipefail
 
           PAYLOAD="$(jq -n \
-            --arg ref "dev" \
+            --arg ref "master" \
             --arg source_sha "$SOURCE_SHA" \
             '{ref: $ref, inputs: {source_sha: $source_sha}}')"
 
@@ -186,4 +186,3 @@ jobs:
             -d "$PAYLOAD"
 
           echo "Dispatched private Play Store release for public source $SOURCE_SHA"
-
