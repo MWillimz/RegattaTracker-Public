@@ -311,6 +311,43 @@ internal class RegattaLinkFactoryResetDisconnectTracker<T : Any>(
     }
 }
 
+internal class RegattaLinkRestartDisconnectTracker<T : Any>(
+    private val nowElapsedMs: () -> Long,
+    private val expectedDisconnectTimeoutMs: Long
+) {
+    private data class Expected<T : Any>(
+        val session: T,
+        val deadlineElapsedMs: Long
+    )
+
+    private val expected = AtomicReference<Expected<T>?>(null)
+
+    fun markExpected(session: T) {
+        expected.set(
+            Expected(
+                session = session,
+                deadlineElapsedMs = nowElapsedMs() + expectedDisconnectTimeoutMs
+            )
+        )
+    }
+
+    fun clearAll() {
+        expected.set(null)
+    }
+
+    fun consumeDisconnect(session: T): Boolean {
+        while (true) {
+            val current = expected.get() ?: return false
+            if (current.session !== session) return false
+            if (nowElapsedMs() > current.deadlineElapsedMs) {
+                if (expected.compareAndSet(current, null)) return false
+                continue
+            }
+            if (expected.compareAndSet(current, null)) return true
+        }
+    }
+}
+
 internal fun regattaLinkDeviceControlStatusConfirmsAcceptance(
     status: RegattaLinkDeviceControlStatus,
     requestId: UInt
