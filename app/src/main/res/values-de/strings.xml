@@ -672,6 +672,7 @@
     <string name="regattalink_nmea_restart_required">RegattaLink neu starten, um die NMEA2000-Änderungen anzuwenden.</string>
     <string name="regattalink_restart">RegattaLink neu starten</string>
     <string name="regattalink_restarting">RegattaLink wird neu gestartet…</string>
+    <string name="regattalink_restart_timeout">Zeitüberschreitung beim Neustart von RegattaLink. Erneut versuchen.</string>
     <string name="regattalink_nmea_tx_selected_on_runtime_unknown">Aktiviert ausgewählt. Der angewendete Zustand ist mit dieser RegattaLink-Firmware nicht verfügbar.</string>
     <string name="regattalink_nmea_tx_selected_off_runtime_unknown">Deaktiviert ausgewählt. Der angewendete Zustand ist mit dieser RegattaLink-Firmware nicht verfügbar.</string>
     <string name="regattalink_nmea_tx_enable_pending">Aktivierung gespeichert. RegattaLink neu starten, um sie anzuwenden.</string>

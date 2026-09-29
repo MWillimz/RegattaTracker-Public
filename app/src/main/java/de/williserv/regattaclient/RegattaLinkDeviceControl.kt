@@ -346,7 +346,31 @@ internal class RegattaLinkRestartDisconnectTracker<T : Any>(
             if (expected.compareAndSet(current, null)) return true
         }
     }
+
+    fun consumeTimeout(session: T): Boolean {
+        while (true) {
+            val current = expected.get() ?: return false
+            if (current.session !== session) return false
+            if (nowElapsedMs() < current.deadlineElapsedMs) return false
+            if (expected.compareAndSet(current, null)) return true
+        }
+    }
 }
+
+internal const val REGATTALINK_RESTART_DISCONNECT_TIMEOUT_ERROR =
+    "RegattaLink restart timed out waiting for disconnect"
+
+internal fun regattaLinkRestartDisconnectTimedOutState(
+    state: RegattaLinkConfigurationState
+): RegattaLinkConfigurationState =
+    if (!state.restartAwaitingDisconnect) {
+        state
+    } else {
+        state.copy(
+            restartAwaitingDisconnect = false,
+            deviceControlError = REGATTALINK_RESTART_DISCONNECT_TIMEOUT_ERROR
+        )
+    }
 
 internal fun regattaLinkDeviceControlStatusConfirmsAcceptance(
     status: RegattaLinkDeviceControlStatus,
