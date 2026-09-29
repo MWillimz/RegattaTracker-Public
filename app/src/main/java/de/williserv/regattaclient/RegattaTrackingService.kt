@@ -2075,10 +2075,10 @@ class RegattaTrackingService : Service() {
                     error
                 )
             }.getOrNull()
-            val mutationGenerationAfter =
-                notificationPendingMutationGeneration.get()
             val raceInsertCountAfter =
                 notificationPendingRaceInsertCount.get()
+            val mutationGenerationAfter =
+                notificationPendingMutationGeneration.get()
             val snapshot = pending?.let { pendingCount ->
                 telemetryPendingCountSnapshot(
                     pending = pendingCount,
