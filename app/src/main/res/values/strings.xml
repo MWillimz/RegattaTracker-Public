@@ -717,4 +717,5 @@
     <string name="regattalink_nmea_attitude_enable_pending">Heel / Trim setting saved. Restart RegattaLink to enable PGN 127257.</string>
     <string name="regattalink_nmea_attitude_disable_pending">Heel / Trim disabled setting saved. PGN 127257 may remain enabled until restart.</string>
     <string name="regattalink_nmea_attitude_tx_inactive">Selected for this boot, but PGN 127257 output is not runtime-enabled.</string>
+    <string name="regattalink_nmea_runtime_unknown_restart">Applied NMEA2000 TX state is unavailable on this firmware. Restart RegattaLink to synchronize the selected settings.</string>
 </resources>
