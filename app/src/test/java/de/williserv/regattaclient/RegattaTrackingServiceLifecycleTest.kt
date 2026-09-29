@@ -35,6 +35,7 @@ class RegattaTrackingServiceLifecycleTest {
         clearLocalStatusPrefs()
         clearStickyRestartPrefs()
         TrackingServiceRuntimeState.markStopped()
+        TelemetryUploadScheduler.resetLiveWakeupCoalescing()
         shadowOf(Looper.getMainLooper()).idle()
     }
 
@@ -46,6 +47,36 @@ class RegattaTrackingServiceLifecycleTest {
         clearLocalStatusPrefs()
         clearStickyRestartPrefs()
         TrackingServiceRuntimeState.markStopped()
+    }
+
+    @Test
+    fun `pending notification recount is throttled and coalesced while in flight`() {
+        val gate = TelemetryPendingCountRefreshGate(
+            RegattaTrackingService.NOTIFICATION_PENDING_REFRESH_INTERVAL_MS
+        )
+
+        assertTrue(gate.tryStart(nowElapsedMs = 0L, force = false))
+        assertFalse(gate.tryStart(nowElapsedMs = 1_000L, force = false))
+        assertFalse(gate.tryStart(nowElapsedMs = 1_000L, force = true))
+
+        gate.finish()
+
+        assertFalse(gate.tryStart(nowElapsedMs = 9_999L, force = false))
+        assertTrue(gate.tryStart(nowElapsedMs = 10_000L, force = false))
+        gate.finish()
+    }
+
+    @Test
+    fun `forced pending notification recount bypasses throttle after current read finishes`() {
+        val gate = TelemetryPendingCountRefreshGate(
+            RegattaTrackingService.NOTIFICATION_PENDING_REFRESH_INTERVAL_MS
+        )
+
+        assertTrue(gate.tryStart(nowElapsedMs = 0L, force = false))
+        gate.finish()
+
+        assertTrue(gate.tryStart(nowElapsedMs = 1L, force = true))
+        gate.finish()
     }
 
     @Test
