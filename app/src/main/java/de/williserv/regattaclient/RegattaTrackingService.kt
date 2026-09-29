@@ -73,6 +73,42 @@ internal class TelemetryPendingCountRefreshGate(
     }
 }
 
+internal data class TelemetryPendingCountSnapshot(
+    val pending: Long,
+    val raceInsertCount: Long
+)
+
+internal fun telemetryPendingCountSnapshot(
+    pending: Long,
+    mutationGenerationBefore: Long,
+    mutationGenerationAfter: Long,
+    raceInsertCount: Long
+): TelemetryPendingCountSnapshot? {
+    if (
+        mutationGenerationBefore != mutationGenerationAfter ||
+        mutationGenerationAfter and 1L != 0L
+    ) {
+        return null
+    }
+    return TelemetryPendingCountSnapshot(
+        pending = pending,
+        raceInsertCount = raceInsertCount
+    )
+}
+
+internal fun reconcileTelemetryPendingCount(
+    snapshot: TelemetryPendingCountSnapshot,
+    currentRaceInsertCount: Long
+): Long {
+    val insertsAfterSnapshot =
+        (currentRaceInsertCount - snapshot.raceInsertCount).coerceAtLeast(0L)
+    return if (snapshot.pending > Long.MAX_VALUE - insertsAfterSnapshot) {
+        Long.MAX_VALUE
+    } else {
+        snapshot.pending + insertsAfterSnapshot
+    }
+}
+
 class RegattaTrackingService : Service() {
 
     companion object {
@@ -185,6 +221,8 @@ class RegattaTrackingService : Service() {
     private var lastLocation: Location? = null
 
     private val notificationPendingCount = AtomicLong(0L)
+    private val notificationPendingMutationGeneration = AtomicLong(0L)
+    private val notificationPendingRaceInsertCount = AtomicLong(0L)
     private val pendingCountRefreshGate =
         TelemetryPendingCountRefreshGate(
             NOTIFICATION_PENDING_REFRESH_INTERVAL_MS
@@ -1308,7 +1346,10 @@ class RegattaTrackingService : Service() {
             return
         }
 
-        val insertedId = db.insertSample(
+        var insertedId = -1L
+        notificationPendingMutationGeneration.incrementAndGet()
+        try {
+            insertedId = db.insertSample(
             sequenceId = sequenceId,
             timestamp = timestamp,
             boatName = boatName,
@@ -1333,18 +1374,27 @@ class RegattaTrackingService : Service() {
                 RegattaLinkLoadSnapshotStore.measurementsJson()
             )
         )
+            if (insertedId != -1L) {
+                if (manualRecording) {
+                    db.markUploaded(insertedId)
+                } else {
+                    notificationPendingCount.updateAndGet { current ->
+                        if (current == Long.MAX_VALUE) current else current + 1L
+                    }
+                    notificationPendingRaceInsertCount.incrementAndGet()
+                }
+            }
+        } finally {
+            notificationPendingMutationGeneration.incrementAndGet()
+        }
 
         if (insertedId == -1L) return
 
         if (manualRecording) {
-            db.markUploaded(insertedId)
             updateNotification()
             return
         }
 
-        notificationPendingCount.updateAndGet { current ->
-            if (current == Long.MAX_VALUE) current else current + 1L
-        }
         TelemetryUploadScheduler.enqueueWakeup(this)
         updateNotification()
     }
@@ -2009,6 +2059,8 @@ class RegattaTrackingService : Service() {
         }
 
         thread(name = "regatta-pending-count-refresh") {
+            val mutationGenerationBefore =
+                notificationPendingMutationGeneration.get()
             val pending = runCatching {
                 val helper = TrackingDbHelper(applicationContext)
                 try {
@@ -2023,14 +2075,32 @@ class RegattaTrackingService : Service() {
                     error
                 )
             }.getOrNull()
+            val mutationGenerationAfter =
+                notificationPendingMutationGeneration.get()
+            val raceInsertCountAfter =
+                notificationPendingRaceInsertCount.get()
+            val snapshot = pending?.let { pendingCount ->
+                telemetryPendingCountSnapshot(
+                    pending = pendingCount,
+                    mutationGenerationBefore = mutationGenerationBefore,
+                    mutationGenerationAfter = mutationGenerationAfter,
+                    raceInsertCount = raceInsertCountAfter
+                )
+            }
 
             handler.post {
                 pendingCountRefreshGate.finish()
-                if (!serviceRunning || pending == null) {
+                if (!serviceRunning || snapshot == null) {
                     return@post
                 }
 
-                notificationPendingCount.set(pending)
+                notificationPendingCount.set(
+                    reconcileTelemetryPendingCount(
+                        snapshot = snapshot,
+                        currentRaceInsertCount =
+                            notificationPendingRaceInsertCount.get()
+                    )
+                )
                 updateNotification()
             }
         }
