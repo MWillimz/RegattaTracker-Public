@@ -32,6 +32,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.concurrent.thread
 import kotlin.math.abs
 
@@ -183,7 +184,7 @@ class RegattaTrackingService : Service() {
     private var sequenceId = 0L
     private var lastLocation: Location? = null
 
-    private var notificationPendingCount = 0L
+    private val notificationPendingCount = AtomicLong(0L)
     private val pendingCountRefreshGate =
         TelemetryPendingCountRefreshGate(
             NOTIFICATION_PENDING_REFRESH_INTERVAL_MS
@@ -1341,8 +1342,8 @@ class RegattaTrackingService : Service() {
             return
         }
 
-        if (notificationPendingCount < Long.MAX_VALUE) {
-            notificationPendingCount += 1L
+        notificationPendingCount.updateAndGet { current ->
+            if (current == Long.MAX_VALUE) current else current + 1L
         }
         TelemetryUploadScheduler.enqueueWakeup(this)
         updateNotification()
@@ -1962,7 +1963,7 @@ class RegattaTrackingService : Service() {
 
     private fun updateNotification() {
         requestNotificationPendingCountRefresh()
-        val pending = notificationPendingCount
+        val pending = notificationPendingCount.get()
 
         val message = if (manualRecording) {
             getString(
@@ -2029,7 +2030,7 @@ class RegattaTrackingService : Service() {
                     return@post
                 }
 
-                notificationPendingCount = pending
+                notificationPendingCount.set(pending)
                 updateNotification()
             }
         }
