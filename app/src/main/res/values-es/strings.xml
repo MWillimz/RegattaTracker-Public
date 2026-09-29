@@ -672,6 +672,7 @@
     <string name="regattalink_nmea_restart_required">Reinicia RegattaLink para aplicar los cambios de transmisión NMEA2000.</string>
     <string name="regattalink_restart">Reiniciar RegattaLink</string>
     <string name="regattalink_restarting">Reiniciando RegattaLink…</string>
+    <string name="regattalink_restart_timeout">Se agotó el tiempo de espera al reiniciar RegattaLink. Vuelve a intentarlo.</string>
     <string name="regattalink_nmea_tx_selected_on_runtime_unknown">Activado seleccionado. El estado aplicado no está disponible con este firmware de RegattaLink.</string>
     <string name="regattalink_nmea_tx_selected_off_runtime_unknown">Desactivado seleccionado. El estado aplicado no está disponible con este firmware de RegattaLink.</string>
     <string name="regattalink_nmea_tx_enable_pending">Activación guardada. Reinicia RegattaLink para aplicarla.</string>

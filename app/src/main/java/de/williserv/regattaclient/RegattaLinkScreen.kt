@@ -1027,6 +1027,25 @@ private fun RegattaLinkNmeaSetupSheet(
 
             if (
                 connected &&
+                configurationState.deviceControlStatus?.opcode ==
+                    RegattaLinkDeviceControlOpcode.RESTART &&
+                configurationState.deviceControlError.isNotBlank()
+            ) {
+                Text(
+                    text = stringResource(
+                        R.string.regattalink_restart_timeout
+                    ),
+                    modifier = Modifier.padding(top = 10.dp),
+                    color = MaterialTheme.colorScheme.error
+                )
+                RegattaLinkTechnicalDetail(
+                    detail = configurationState.deviceControlError,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+
+            if (
+                connected &&
                 configurationState.loadPrecisionSupported
             ) {
                 Row(

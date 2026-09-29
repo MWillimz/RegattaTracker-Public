@@ -944,6 +944,49 @@ class RegattaLinkDeviceControlTest {
     }
 
     @Test
+    fun restartSuccessWithoutDisconnectTimesOutAndUnblocksConfiguration() {
+        var now = 1_000L
+        val tracker = RegattaLinkRestartDisconnectTracker<Any>(
+            nowElapsedMs = { now },
+            expectedDisconnectTimeoutMs = 5_000L
+        )
+        val session = Any()
+        val success = RegattaLinkDeviceControlStatus(
+            opcode = RegattaLinkDeviceControlOpcode.RESTART,
+            phase = RegattaLinkDeviceControlPhase.SUCCESS,
+            result = RegattaLinkDeviceControlResult.OK,
+            requestId = 51u,
+            forwardTrimDeg = 0,
+            heelTrimDeg = 0,
+            pitchTrimDeg = 0,
+            boatFrameValid = true,
+            gyroBiasValid = true,
+            mountingEpoch = 7u
+        )
+        val awaiting = RegattaLinkConfigurationState(
+            deviceControlSupported = true,
+            restartAwaitingDisconnect = true,
+            deviceControlStatus = success
+        )
+
+        tracker.markExpected(session)
+        now += 4_999L
+        assertFalse(tracker.consumeTimeout(session))
+
+        now += 1L
+        assertTrue(tracker.consumeTimeout(session))
+        assertFalse(tracker.consumeDisconnect(session))
+
+        val timedOut = regattaLinkRestartDisconnectTimedOutState(awaiting)
+        assertFalse(timedOut.restartAwaitingDisconnect)
+        assertEquals(success, timedOut.deviceControlStatus)
+        assertEquals(
+            REGATTALINK_RESTART_DISCONNECT_TIMEOUT_ERROR,
+            timedOut.deviceControlError
+        )
+    }
+
+    @Test
     fun nonTerminalMatchingStatusContinuesPolling() {
         val status = RegattaLinkDeviceControlStatus(
             opcode = RegattaLinkDeviceControlOpcode.SET_UPRIGHT,

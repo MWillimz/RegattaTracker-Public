@@ -895,6 +895,26 @@ internal class RegattaLinkBleClient(
         emit(RegattaLinkClientState())
     }
 
+    private fun scheduleRestartDisconnectTimeout(activeGatt: BluetoothGatt) {
+        handler.postDelayed(
+            {
+                if (!restartDisconnectTracker.consumeTimeout(activeGatt)) {
+                    return@postDelayed
+                }
+                if (gatt !== activeGatt || !connected) {
+                    return@postDelayed
+                }
+
+                Log.w(
+                    LOG_TAG,
+                    REGATTALINK_RESTART_DISCONNECT_TIMEOUT_ERROR
+                )
+                updateConfiguration(::regattaLinkRestartDisconnectTimedOutState)
+            },
+            RESTART_EXPECTED_DISCONNECT_TIMEOUT_MS
+        )
+    }
+
     private fun completeRestartDisconnect(activeGatt: BluetoothGatt) {
         val previousState = lastState
         connected = false
@@ -3768,6 +3788,7 @@ internal class RegattaLinkBleClient(
                             finalStatus = status
                             if (opcode == RegattaLinkDeviceControlOpcode.RESTART) {
                                 restartDisconnectTracker.markExpected(activeGatt)
+                                scheduleRestartDisconnectTimeout(activeGatt)
                                 updateConfiguration {
                                     it.copy(
                                         deviceControlSupported = true,
