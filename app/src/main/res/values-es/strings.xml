@@ -53,7 +53,7 @@
     <string name="course_shortened_banner">RECORRIDO ACORTADO</string>
     <string name="next_target">Siguiente objetivo</string>
     <string name="override_course_title">¿Sobrescribir el progreso del recorrido?</string>
-    <string name="override_course_message">Esto cambia manualmente el progreso del recorrido para este barco. Úsalo solo si la detección automática de balizas es incorrecta.</string>
+    <string name="override_course_message">Esto cambia manualmente el progreso del recorrido para este barco. Úsalo solo si la detección automática de posiciones del recorrido es incorrecta.</string>
     <string name="confirm_override">Confirmar sobrescritura</string>
     <string name="next">Siguiente</string>
     <string name="set_next_target">Establecer siguiente objetivo</string>

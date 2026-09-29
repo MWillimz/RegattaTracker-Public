@@ -53,7 +53,7 @@
     <string name="course_shortened_banner">PERCORSO RIDOTTO</string>
     <string name="next_target">Prossimo obiettivo</string>
     <string name="override_course_title">Sovrascrivere l’avanzamento del percorso?</string>
-    <string name="override_course_message">Modifica manualmente l’avanzamento del percorso per questa barca. Usare solo se il rilevamento automatico delle boe è errato.</string>
+    <string name="override_course_message">Modifica manualmente l’avanzamento del percorso per questa barca. Usalo solo se il rilevamento automatico delle posizioni del percorso è errato.</string>
     <string name="confirm_override">Conferma sovrascrittura</string>
     <string name="next">Prossimo</string>
     <string name="set_next_target">Imposta prossimo obiettivo</string>
