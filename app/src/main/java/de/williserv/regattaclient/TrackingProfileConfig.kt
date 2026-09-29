@@ -4,7 +4,8 @@ import android.content.Context
 
 enum class TrackingProfile(val persistedValue: String) {
     NORMAL("normal"),
-    BATTERY_SAVER("battery_saver");
+    BATTERY_SAVER("battery_saver"),
+    FIXED_1S("fixed_1s");
 
     companion object {
         fun fromPersistedValue(value: String?): TrackingProfile {

@@ -9,10 +9,6 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -52,7 +48,7 @@ internal fun shouldFinishTrackingServiceStop(
     return handoffGeneration == currentGeneration && !serviceRunning
 }
 
-class RegattaTrackingService : Service(), SensorEventListener {
+class RegattaTrackingService : Service() {
 
     companion object {
         const val ACTION_START = "de.williserv.regattaclient.START_TRACKING_SERVICE"
@@ -85,6 +81,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
         private const val NOTIFICATION_CHANNEL_ID = "regatta_tracking_channel"
         private const val NOTIFICATION_ID = 1001
         private const val TRACKING_SERVICE_LOG_TAG = "RegattaTrackingService"
+        private const val ACTIVE_TRACKING_SESSION_ID = "active_tracking_session_id"
 
         const val ACTION_SET_COURSE_PROGRESS = "de.williserv.regattaclient.SET_COURSE_PROGRESS"
 
@@ -95,7 +92,6 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
     private lateinit var db: TrackingDbHelper
     private lateinit var locationManager: LocationManager
-    private lateinit var sensorManager: SensorManager
 
     private val handler = Handler(Looper.getMainLooper())
     private val localStatusPrefsName = "regatta_local_status"
@@ -103,6 +99,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
     private val raceStatePrefsName = "regatta_race_state"
     private val localTimestampFormatter =
         DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")
+    private val sessionDisplayNameFormatter =
+        DateTimeFormatter.ofPattern("'Session' dd.MM.yy HH:mm", Locale.ROOT)
 
     private var serviceRunning = false
     private var manualRecording = false
@@ -112,6 +110,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
     private var sharedSecret = ""
     private var resolvedEventName: String? = null
     private var accessContextId: Long? = null
+    private var activeSessionId: Long? = null
+    private var activeRaceContextId: Long? = null
 
     private var boatName = "Boat name"
     private var captainName = "Max Mustermann"
@@ -158,14 +158,6 @@ class RegattaTrackingService : Service(), SensorEventListener {
     private var sequenceId = 0L
     private var lastLocation: Location? = null
 
-    private var accelX = 0f
-    private var accelY = 0f
-    private var accelZ = 0f
-
-    private var gyroX = 0f
-    private var gyroY = 0f
-    private var gyroZ = 0f
-
     private var autoStopAfterFinishScheduled = false
     private var stopHandoffInProgress = false
     private var stopHandoffGeneration = 0L
@@ -194,7 +186,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
                 publishLocalRaceStatus()
             }
 
-            handler.postDelayed(this, currentSamplingIntervalMs())
+            scheduleNextSample(currentSamplingIntervalMs())
         }
     }
 
@@ -222,7 +214,6 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
         db = TrackingDbHelper(this)
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
 
         createNotificationChannel()
     }
@@ -247,12 +238,17 @@ class RegattaTrackingService : Service(), SensorEventListener {
                 val persistedInRace = getSharedPreferences("app_state", Context.MODE_PRIVATE)
                     .getBoolean("in_race", false)
 
+                if (!serviceRunning) {
+                    TrackingServiceRuntimeState.markStarting()
+                }
+
                 if (requestedManual && persistedInRace) {
                     getSharedPreferences("app_state", Context.MODE_PRIVATE)
                         .edit()
                         .putBoolean("manual_tracking", false)
                         .apply()
                     if (!serviceRunning) {
+                        TrackingServiceRuntimeState.markStopped()
                         stopSelf()
                         return START_NOT_STICKY
                     }
@@ -273,10 +269,9 @@ class RegattaTrackingService : Service(), SensorEventListener {
                     .putBoolean("in_race", !manualRecording)
                     .putBoolean("manual_tracking", manualRecording)
                     .apply()
-                onTelemetryTrackingBecameActive(this)
-                startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.tracking_active)))
-                startTrackingService()
-                updateNotification()
+                if (!startConfirmedTrackingService(allowPersistedSessionRestore = false)) {
+                    return START_NOT_STICKY
+                }
                 return START_STICKY
             }
 
@@ -432,22 +427,53 @@ class RegattaTrackingService : Service(), SensorEventListener {
     }
 
     private fun handleStickyRestart(): Int {
+        TrackingServiceRuntimeState.markStarting()
+
         synchronized(eventPollLifecycleLock) {
             eventPollGeneration += 1
         }
 
         if (!restoreStickyStartContext()) {
+            finishActiveTrackingSession()
             persistTrackingStoppedState()
             stopSelf()
             return START_NOT_STICKY
         }
 
-        onTelemetryTrackingBecameActive(this)
-
-        startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.tracking_active)))
-        startTrackingService()
-        updateNotification()
+        if (!startConfirmedTrackingService(allowPersistedSessionRestore = true)) {
+            return START_NOT_STICKY
+        }
         return START_STICKY
+    }
+
+    private fun startConfirmedTrackingService(
+        allowPersistedSessionRestore: Boolean
+    ): Boolean {
+        try {
+            startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.tracking_active)))
+
+            if (!ensureActiveTrackingSession(allowPersistedSessionRestore)) {
+                finishActiveTrackingSession()
+                TrackingServiceRuntimeState.markStopped()
+                persistTrackingStoppedState()
+                stopForegroundCompat()
+                stopSelf()
+                return false
+            }
+
+            startTrackingService()
+            TrackingServiceRuntimeState.markActive()
+            onTelemetryTrackingBecameActive(this)
+            (application as? RegattaApplication)
+                ?.regattaLinkConnectionManager
+                ?.ensureConnectedIfPermitted()
+            updateNotification()
+            return true
+        } catch (e: RuntimeException) {
+            finishActiveTrackingSession()
+            TrackingServiceRuntimeState.markStopped()
+            throw e
+        }
     }
 
     private fun restoreStickyStartContext(): Boolean {
@@ -548,6 +574,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
         sharedSecret = ""
         resolvedEventName = null
         accessContextId = null
+        activeRaceContextId = null
     }
 
     private fun refreshAccessContextId() {
@@ -559,6 +586,136 @@ class RegattaTrackingService : Service(), SensorEventListener {
                 accessIdentifier = eventName,
                 accessSecret = sharedSecret
             )
+        }
+    }
+
+    private fun ensureActiveTrackingSession(
+        allowPersistedSessionRestore: Boolean
+    ): Boolean {
+        val expectedMode = if (manualRecording) "manual" else "race"
+        val expectedAccessContextId = if (manualRecording) null else accessContextId
+        if (!manualRecording && expectedAccessContextId == null) return false
+
+        activeSessionId?.let { currentId ->
+            val current = db.getTrackingSession(currentId)
+            if (
+                current != null &&
+                isCompatibleOpenSession(
+                    session = current,
+                    expectedMode = expectedMode,
+                    expectedAccessContextId = expectedAccessContextId
+                )
+            ) {
+                persistActiveSessionId(currentId)
+                return true
+            }
+            if (current?.endedAt == null) {
+                db.finishTrackingSession(currentId, System.currentTimeMillis())
+            }
+            activeSessionId = null
+        }
+
+        val appPrefs = getSharedPreferences("app_state", Context.MODE_PRIVATE)
+        val persistedId = if (appPrefs.contains(ACTIVE_TRACKING_SESSION_ID)) {
+            appPrefs.getLong(ACTIVE_TRACKING_SESSION_ID, -1L).takeIf { it > 0L }
+        } else {
+            null
+        }
+
+        if (persistedId != null) {
+            val persisted = db.getTrackingSession(persistedId)
+            if (
+                allowPersistedSessionRestore &&
+                persisted != null &&
+                isCompatibleOpenSession(
+                    session = persisted,
+                    expectedMode = expectedMode,
+                    expectedAccessContextId = expectedAccessContextId
+                )
+            ) {
+                activeSessionId = persistedId
+                return true
+            }
+            if (persisted?.endedAt == null) {
+                db.finishTrackingSession(persistedId, System.currentTimeMillis())
+            }
+            appPrefs.edit().remove(ACTIVE_TRACKING_SESSION_ID).commit()
+        }
+
+        val raceSnapshot = if (manualRecording) {
+            null
+        } else {
+            RaceEventSnapshotStore.loadMatching(
+                context = this,
+                server = serverUrl,
+                event = eventName,
+                secret = sharedSecret,
+                expectedResolvedEventName = resolvedEventName
+            )
+        }
+
+        val startedAt = System.currentTimeMillis()
+        val displayName = Instant.ofEpochMilli(startedAt)
+            .atZone(ZoneId.systemDefault())
+            .format(sessionDisplayNameFormatter)
+        val newSessionId = db.createTrackingSession(
+            startedAt = startedAt,
+            mode = expectedMode,
+            accessContextId = expectedAccessContextId,
+            displayName = displayName,
+            resolvedEventName = raceSnapshot?.resolvedEventName ?: resolvedEventName,
+            courseJson = raceSnapshot?.courseJson,
+            courseMapViewportJson = raceSnapshot
+                ?.courseMapViewport
+                ?.let(::serializeCourseMapViewport)
+        ) ?: return false
+
+        activeSessionId = newSessionId
+        persistActiveSessionId(newSessionId)
+        return true
+    }
+
+    private fun isCompatibleOpenSession(
+        session: TrackingSession,
+        expectedMode: String,
+        expectedAccessContextId: Long?
+    ): Boolean {
+        return session.endedAt == null &&
+            session.mode == expectedMode &&
+            session.accessContextId == expectedAccessContextId
+    }
+
+    private fun persistActiveSessionId(sessionId: Long) {
+        getSharedPreferences("app_state", Context.MODE_PRIVATE)
+            .edit()
+            .putLong(ACTIVE_TRACKING_SESSION_ID, sessionId)
+            .commit()
+    }
+
+    private fun finishActiveTrackingSession() {
+        val appPrefs = getSharedPreferences("app_state", Context.MODE_PRIVATE)
+        val persistedId = if (appPrefs.contains(ACTIVE_TRACKING_SESSION_ID)) {
+            appPrefs.getLong(ACTIVE_TRACKING_SESSION_ID, -1L).takeIf { it > 0L }
+        } else {
+            null
+        }
+        val sessionId = activeSessionId ?: persistedId
+
+        if (sessionId != null) {
+            db.finishTrackingSession(sessionId, System.currentTimeMillis())
+        }
+
+        activeSessionId = null
+        activeRaceContextId = null
+        appPrefs.edit().remove(ACTIVE_TRACKING_SESSION_ID).commit()
+    }
+
+    private fun stopForegroundCompat() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
         }
     }
 
@@ -579,13 +736,12 @@ class RegattaTrackingService : Service(), SensorEventListener {
         serviceRunning = true
 
         startLocationUpdates()
-        startImuUpdates()
 
         if (!manualRecording) {
             pollEvent()
         }
 
-        handler.postDelayed(sampleRunnable, currentSamplingIntervalMs())
+        scheduleNextSample(currentSamplingIntervalMs())
         if (!manualRecording) {
             handler.postDelayed(eventPollRunnable, 10_000L)
             publishLocalRaceStatus()
@@ -595,14 +751,18 @@ class RegattaTrackingService : Service(), SensorEventListener {
     }
 
     private fun reconfigureSamplingSchedule() {
-        handler.removeCallbacks(sampleRunnable)
-
         val intervalMs = currentSamplingIntervalMs()
         requestLocationUpdatesForInterval(intervalMs)
+        scheduleNextSample(intervalMs)
+    }
+
+    private fun scheduleNextSample(intervalMs: Long) {
+        handler.removeCallbacks(sampleRunnable)
         handler.postDelayed(sampleRunnable, intervalMs)
     }
 
     private fun persistTrackingStoppedState() {
+        TrackingServiceRuntimeState.markStopped()
         getSharedPreferences("app_state", Context.MODE_PRIVATE)
             .edit()
             .putBoolean("in_race", false)
@@ -616,6 +776,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
         stopHandoffInProgress = true
         val handoffGeneration = ++stopHandoffGeneration
 
+        finishActiveTrackingSession()
         persistTrackingStoppedState()
 
         synchronized(eventPollLifecycleLock) {
@@ -642,11 +803,6 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
         try {
             locationManager.removeUpdates(locationListener)
-        } catch (_: Exception) {
-        }
-
-        try {
-            sensorManager.unregisterListener(this)
         } catch (_: Exception) {
         }
 
@@ -708,12 +864,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
         stopHandoffInProgress = false
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-        } else {
-            @Suppress("DEPRECATION")
-            stopForeground(true)
-        }
+        stopForegroundCompat()
 
         val notificationManager =
             getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -783,9 +934,8 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
         val nextIntervalMs = currentSamplingIntervalMs()
         if (nextIntervalMs != activeLocationIntervalMs) {
-            handler.removeCallbacks(sampleRunnable)
             requestLocationUpdatesForInterval(nextIntervalMs)
-            handler.postDelayed(sampleRunnable, nextIntervalMs)
+            scheduleNextSample(nextIntervalMs)
         }
     }
 
@@ -823,27 +973,6 @@ class RegattaTrackingService : Service(), SensorEventListener {
                 autoStopAfterFinishScheduled = false
                 handler.removeCallbacks(autoStopAfterFinishRunnable)
             }
-        }
-    }
-
-    private fun startImuUpdates() {
-        val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        val gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
-
-        if (accelerometer != null) {
-            sensorManager.registerListener(
-                this,
-                accelerometer,
-                SensorManager.SENSOR_DELAY_GAME
-            )
-        }
-
-        if (gyroscope != null) {
-            sensorManager.registerListener(
-                this,
-                gyroscope,
-                SensorManager.SENSOR_DELAY_GAME
-            )
         }
     }
 
@@ -942,8 +1071,19 @@ class RegattaTrackingService : Service(), SensorEventListener {
         )
     }
 
+    private fun persistActiveRaceContext(snapshot: RaceEventSnapshot) {
+        val contextId = accessContextId ?: return
+        activeRaceContextId = db.getOrCreateRaceContext(
+            accessContextId = contextId,
+            resolvedEventName = snapshot.resolvedEventName,
+            courseJson = snapshot.courseJson,
+            courseMapViewportJson = snapshot.courseMapViewport?.let(::serializeCourseMapViewport)
+        )
+    }
+
     private fun applyRaceEventSnapshot(snapshot: RaceEventSnapshot) {
         adoptResolvedEventName(snapshot.resolvedEventName)
+        persistActiveRaceContext(snapshot)
 
         raceStatus = snapshot.status.ifBlank { "unknown" }
         courseShortened = snapshot.courseShortened
@@ -1118,6 +1258,7 @@ class RegattaTrackingService : Service(), SensorEventListener {
         val lon = location?.longitude ?: 0.0
         val accuracy = location?.accuracy ?: 9999f
         val cog = location?.bearing ?: 0f
+        val cogValid = location?.hasBearing() == true
         val sog = location?.speed ?: 0f
 
         if (!manualRecording) {
@@ -1138,7 +1279,28 @@ class RegattaTrackingService : Service(), SensorEventListener {
             ).also { accessContextId = it }
         }
 
-        if (!manualRecording && sampleAccessContextId == null) {
+        val sampleRaceContextId = if (manualRecording) {
+            null
+        } else {
+            activeRaceContextId ?: sampleAccessContextId?.let { contextId ->
+                resolvedEventName
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { resolvedName ->
+                        db.getOrCreateRaceContext(
+                            accessContextId = contextId,
+                            resolvedEventName = resolvedName,
+                            courseJson = null,
+                            courseMapViewportJson = null
+                        )
+                    }
+                    ?.also { activeRaceContextId = it }
+            }
+        }
+
+        if (
+            !manualRecording &&
+            (sampleAccessContextId == null || sampleRaceContextId == null)
+        ) {
             publishDebugError(getString(R.string.storage_error_access_context))
             return
         }
@@ -1157,14 +1319,15 @@ class RegattaTrackingService : Service(), SensorEventListener {
             accuracy = accuracy,
             cog = cog,
             sog = sog,
-            accelX = accelX,
-            accelY = accelY,
-            accelZ = accelZ,
-            gyroX = gyroX,
-            gyroY = gyroY,
-            gyroZ = gyroZ,
+            cogValid = cogValid,
             accessContextId = sampleAccessContextId,
-            utcOffsetMinutes = sampleTime.utcOffsetMinutes
+            sessionId = activeSessionId,
+            raceContextId = sampleRaceContextId,
+            utcOffsetMinutes = sampleTime.utcOffsetMinutes,
+            measurementsJson = mergeMeasurementsJson(
+                RegattaLinkTelemetrySnapshotStore.measurementsJson(),
+                RegattaLinkNmeaSnapshotStore.measurementsJson()
+            )
         )
 
         if (insertedId == -1L) return
@@ -1776,27 +1939,9 @@ class RegattaTrackingService : Service(), SensorEventListener {
         )
     }
 
-    override fun onSensorChanged(event: SensorEvent) {
-        when (event.sensor.type) {
-            Sensor.TYPE_ACCELEROMETER -> {
-                accelX = event.values[0]
-                accelY = event.values[1]
-                accelZ = event.values[2]
-            }
-
-            Sensor.TYPE_GYROSCOPE -> {
-                gyroX = event.values[0]
-                gyroY = event.values[1]
-                gyroZ = event.values[2]
-            }
-        }
-    }
-
-    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-        // Not relevant for this demo.
-    }
-
     override fun onDestroy() {
+        TrackingServiceRuntimeState.markStopped()
+
         synchronized(eventPollLifecycleLock) {
             eventPollGeneration += 1
             serviceRunning = false
@@ -1809,11 +1954,6 @@ class RegattaTrackingService : Service(), SensorEventListener {
 
         try {
             locationManager.removeUpdates(locationListener)
-        } catch (_: Exception) {
-        }
-
-        try {
-            sensorManager.unregisterListener(this)
         } catch (_: Exception) {
         }
 

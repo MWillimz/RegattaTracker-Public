@@ -221,17 +221,13 @@ internal fun getTelemetryUploadPage(
             samples.lon,
             samples.accuracy,
             samples.cog,
+            samples.cog_valid,
             samples.sog,
-            samples.accel_x,
-            samples.accel_y,
-            samples.accel_z,
-            samples.gyro_x,
-            samples.gyro_y,
-            samples.gyro_z,
             samples.battery_percent,
             samples.battery_charging,
             samples.tracking_profile,
             samples.utc_offset_minutes,
+            samples.measurements_json,
             contexts.id,
             contexts.server_url,
             contexts.access_identifier,
@@ -250,12 +246,12 @@ internal fun getTelemetryUploadPage(
     ).use { cursor ->
         while (cursor.moveToNext()) {
             val accessContext = AccessContext(
-                id = cursor.getLong(24),
-                serverUrl = cursor.getString(25),
-                accessIdentifier = cursor.getString(26),
-                accessSecret = cursor.getString(27),
-                createdAt = cursor.getLong(28),
-                lastUsedAt = cursor.getLong(29)
+                id = cursor.getLong(20),
+                serverUrl = cursor.getString(21),
+                accessIdentifier = cursor.getString(22),
+                accessSecret = cursor.getString(23),
+                createdAt = cursor.getLong(24),
+                lastUsedAt = cursor.getLong(25)
             )
 
             result += PendingTrackingSample(
@@ -273,17 +269,13 @@ internal fun getTelemetryUploadPage(
                 lon = cursor.getDouble(10),
                 accuracy = cursor.getFloat(11),
                 cog = cursor.getFloat(12),
-                sog = cursor.getFloat(13),
-                accelX = cursor.getFloat(14),
-                accelY = cursor.getFloat(15),
-                accelZ = cursor.getFloat(16),
-                gyroX = cursor.getFloat(17),
-                gyroY = cursor.getFloat(18),
-                gyroZ = cursor.getFloat(19),
-                batteryPercent = if (cursor.isNull(20)) null else cursor.getInt(20),
-                batteryCharging = if (cursor.isNull(21)) null else cursor.getInt(21) != 0,
-                trackingProfile = if (cursor.isNull(22)) null else cursor.getString(22),
-                utcOffsetMinutes = if (cursor.isNull(23)) null else cursor.getInt(23)
+                cogValid = if (cursor.isNull(13)) null else cursor.getInt(13) != 0,
+                sog = cursor.getFloat(14),
+                batteryPercent = if (cursor.isNull(15)) null else cursor.getInt(15),
+                batteryCharging = if (cursor.isNull(16)) null else cursor.getInt(16) != 0,
+                trackingProfile = if (cursor.isNull(17)) null else cursor.getString(17),
+                utcOffsetMinutes = if (cursor.isNull(18)) null else cursor.getInt(18),
+                measurementsJson = if (cursor.isNull(19)) null else cursor.getString(19)
             )
         }
     }
@@ -309,17 +301,17 @@ internal fun buildTelemetryUploadPayload(
     put("lat", sample.lat)
     put("lon", sample.lon)
     put("accuracy", sample.accuracy)
-    put("cog", sample.cog)
+    put(
+        "cog",
+        if (sample.cogValid == false) JSONObject.NULL else sample.cog
+    )
     put("sog", sample.sog)
-    put("accel_x", sample.accelX)
-    put("accel_y", sample.accelY)
-    put("accel_z", sample.accelZ)
-    put("gyro_x", sample.gyroX)
-    put("gyro_y", sample.gyroY)
-    put("gyro_z", sample.gyroZ)
     sample.batteryPercent?.let { put("battery_percent", it) }
     sample.batteryCharging?.let { put("battery_charging", it) }
     sample.trackingProfile?.let { put("tracking_profile", it) }
+    sample.measurementsJson?.let { persisted ->
+        put("measurements", JSONObject(persisted))
+    }
 }
 
 internal object TelemetryUploadStatusStore {
@@ -492,9 +484,6 @@ object TelemetryUploadScheduler {
 private const val TELEMETRY_RECOVERY_NOTIFICATION_CHANNEL_ID =
     "regatta_telemetry_upload_channel"
 private const val TELEMETRY_RECOVERY_NOTIFICATION_ID = 1002
-private const val TELEMETRY_APP_STATE_PREFS_NAME = "app_state"
-private const val TELEMETRY_APP_STATE_IN_RACE_KEY = "in_race"
-private const val TELEMETRY_APP_STATE_MANUAL_TRACKING_KEY = "manual_tracking"
 private const val TELEMETRY_UPLOAD_LOG_TAG = "TelemetryUploadWorker"
 private val TELEMETRY_RECOVERY_NOTIFICATION_EXECUTOR =
     Executor { command -> command.run() }
@@ -515,14 +504,9 @@ internal fun handleTelemetryRecoveryPersistenceResult(
     showTelemetryRecoveryNotificationIfPending(context)
 }
 
-internal fun isTelemetryTrackingActive(context: Context): Boolean {
-    val prefs = context.applicationContext.getSharedPreferences(
-        TELEMETRY_APP_STATE_PREFS_NAME,
-        Context.MODE_PRIVATE
-    )
-    return prefs.getBoolean(TELEMETRY_APP_STATE_IN_RACE_KEY, false) ||
-        prefs.getBoolean(TELEMETRY_APP_STATE_MANUAL_TRACKING_KEY, false)
-}
+internal fun isTelemetryTrackingActive(
+    @Suppress("UNUSED_PARAMETER") context: Context
+): Boolean = TrackingServiceRuntimeState.isActive()
 
 internal fun onTelemetryTrackingBecameActive(context: Context) {
     cancelTelemetryRecoveryNotification(context)

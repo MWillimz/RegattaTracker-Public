@@ -41,6 +41,7 @@ internal object SamplingPolicy {
                 intervalMs = when (trackingProfile) {
                     TrackingProfile.NORMAL -> 30_000L
                     TrackingProfile.BATTERY_SAVER -> 60_000L
+                    TrackingProfile.FIXED_1S -> 1_000L
                 },
                 band = null,
                 nearestDistanceM = null
@@ -156,6 +157,8 @@ internal object SamplingPolicy {
                 SamplingDistanceBand.FAR -> 30_000L
                 SamplingDistanceBand.VERY_FAR -> 60_000L
             }
+
+            TrackingProfile.FIXED_1S -> 1_000L
         }
     }
 

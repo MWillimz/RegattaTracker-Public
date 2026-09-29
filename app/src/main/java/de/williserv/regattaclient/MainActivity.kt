@@ -4,10 +4,6 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -54,13 +50,18 @@ import de.williserv.regattaclient.ui.theme.RegattaRed
 enum class Screen {
     HOME,
     BOAT_DATA,
+    REGATTALINK,
     RACE,
     RACE_LEGAL,
     COURSE,
     MAP,
     QR_SCANNER,
     LEGAL,
-    RESULTS
+    RESULTS,
+    SESSION_HISTORY,
+    SESSION_DETAIL,
+    SESSION_REPLAY,
+    SESSION_ANALYSIS
 }
 
 private enum class PendingTrackingAction {
@@ -68,18 +69,25 @@ private enum class PendingTrackingAction {
     START_MANUAL_TRACKING
 }
 
-class MainActivity : ComponentActivity(), SensorEventListener {
+private enum class PendingRegattaLinkPermissionAction {
+    DISCOVER_NEW,
+    RECONNECT_CONFIGURED
+}
+
+class MainActivity : ComponentActivity() {
 
     private val showTrackingConsentDialog = mutableStateOf(false)
     private var pendingTrackingAction: PendingTrackingAction? = null
 
     private val showBoatConfirmDialog = mutableStateOf(false)
+    private val showRegistrationReminderDialog = mutableStateOf(false)
 
     private val raceLegalHash = mutableStateOf("")
     private val raceLegalVersion = mutableStateOf("")
     private val raceLegalAcceptStatusText = mutableStateOf("")
     private val eventLegalFlowState = EventLegalFlowState()
     private var pendingEnterRaceAfterLegal = false
+    private var pendingManualRaceLegalOpen = false
     private val enterRaceServerCheckInProgress = mutableStateOf(false)
     private val enterRaceServerCheckState = EnterRaceServerCheckState()
     private var activeLegalFetchContext: EventCompatibilityContext? = null
@@ -87,8 +95,68 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private val showClearRaceSetupDialog = mutableStateOf(false)
     private lateinit var db: TrackingDbHelper
+    private lateinit var raceLegalAcceptanceStore: RaceLegalAcceptanceStore
     private lateinit var locationManager: LocationManager
-    private lateinit var sensorManager: SensorManager
+    private lateinit var regattaLinkManager: RegattaLinkConnectionManager
+    private val regattaLinkState = mutableStateOf(RegattaLinkClientState())
+    private val regattaLinkFirmwareClient = RegattaLinkFirmwareClient()
+    private val regattaLinkFirmwareState = mutableStateOf(RegattaLinkFirmwareUiState())
+    private var regattaLinkFirmwareArtifact: RegattaLinkFirmwareArtifact? = null
+    private val regattaLinkOtaState = mutableStateOf(RegattaLinkOtaUiState())
+    private val regattaLinkTelemetryState = mutableStateOf(RegattaLinkTelemetryState())
+    private val regattaLinkConfigurationState =
+        mutableStateOf(RegattaLinkConfigurationState())
+    private val regattaLinkNmeaState = mutableStateOf(RegattaLinkNmeaState())
+    private val regattaLinkRawCaptureState =
+        mutableStateOf(RegattaLinkRawCaptureState())
+    private var pendingRegattaLinkPermissionAction: PendingRegattaLinkPermissionAction? = null
+    private var regattaLinkReturnScreen: Screen = Screen.BOAT_DATA
+
+    private val regattaLinkListener = object : RegattaLinkConnectionListener {
+        override fun onConnectionStateChanged(state: RegattaLinkClientState) {
+            if (asyncLifetime.isActive()) {
+                regattaLinkState.value = state
+            }
+        }
+
+        override fun onOtaStateChanged(state: RegattaLinkOtaUiState) {
+            if (asyncLifetime.isActive()) {
+                regattaLinkOtaState.value = state
+                if (state.phase == RegattaLinkOtaPhase.SUCCESS) {
+                    regattaLinkFirmwareState.value =
+                        regattaLinkFirmwareState.value.copy(
+                            direction = RegattaLinkFirmwareDirection.REINSTALL
+                        )
+                }
+            }
+        }
+
+        override fun onTelemetryStateChanged(state: RegattaLinkTelemetryState) {
+            if (asyncLifetime.isActive()) {
+                regattaLinkTelemetryState.value = state
+            }
+        }
+
+        override fun onConfigurationStateChanged(state: RegattaLinkConfigurationState) {
+            if (asyncLifetime.isActive()) {
+                regattaLinkConfigurationState.value = state
+            }
+        }
+
+        override fun onNmeaStateChanged(state: RegattaLinkNmeaState) {
+            if (asyncLifetime.isActive()) {
+                regattaLinkNmeaState.value = state
+            }
+        }
+
+        override fun onRawCaptureStateChanged(
+            state: RegattaLinkRawCaptureState
+        ) {
+            if (asyncLifetime.isActive()) {
+                regattaLinkRawCaptureState.value = state
+            }
+        }
+    }
 
     private val currentScreen = mutableStateOf(Screen.HOME)
 
@@ -187,12 +255,19 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private val showClearConfirmDialog = mutableStateOf(false)
     private val showOcsDecisionDialog = mutableStateOf(false)
-    private val showLeaveRaceOptionsDialog = mutableStateOf(false)
     private val showRetireConfirmDialog = mutableStateOf(false)
     private val retirementReported = mutableStateOf(false)
     private val retirementStatusText = mutableStateOf("")
     private val retirementRequestInFlight = mutableStateOf(false)
     private val showAdvanced = mutableStateOf(false)
+
+    private val sessionSummaries = mutableStateOf<List<TrackingSessionSummary>>(emptyList())
+    private val sessionHistoryLoading = mutableStateOf(false)
+    private val selectedSessionId = mutableStateOf<Long?>(null)
+    private val sessionDetail = mutableStateOf<SessionDetailData?>(null)
+    private val sessionDetailLoading = mutableStateOf(false)
+    private val selectedReplayFieldIds = mutableStateOf<Set<String>>(emptySet())
+    private var sessionLoadGeneration = 0L
 
     private val cogText = mutableStateOf("")
     private val sogText = mutableStateOf("")
@@ -202,14 +277,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private val appStatePrefsName = "app_state"
 
     private val lastCsvLine = mutableStateOf("")
-
-    private var accelX = 0f
-    private var accelY = 0f
-    private var accelZ = 0f
-
-    private var gyroX = 0f
-    private var gyroY = 0f
-    private var gyroZ = 0f
 
     private val handler = Handler(Looper.getMainLooper())
     private val asyncLifetime = ActivityAsyncLifetime()
@@ -251,11 +318,38 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private fun navigateBack() {
         currentScreen.value = when (currentScreen.value) {
             Screen.HOME -> Screen.HOME
+            Screen.REGATTALINK -> {
+                if (regattaLinkOtaState.value.isActive) {
+                    Screen.REGATTALINK
+                } else {
+                    if (
+                        regattaLinkRawCaptureState.value.isActive &&
+                        ::regattaLinkManager.isInitialized
+                    ) {
+                        regattaLinkManager.stopRawCanCapture(
+                            interrupted = true
+                        )
+                    }
+                    regattaLinkFirmwareArtifact = null
+                    regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState()
+                    if (::regattaLinkManager.isInitialized) {
+                        regattaLinkManager.resetOtaState()
+                    }
+                    regattaLinkReturnScreen
+                }
+            }
             Screen.BOAT_DATA,
             Screen.RACE,
             Screen.COURSE,
             Screen.LEGAL,
-            Screen.RESULTS -> Screen.HOME
+            Screen.RESULTS,
+            Screen.SESSION_HISTORY -> Screen.HOME
+            Screen.SESSION_DETAIL -> {
+                loadSessionHistory()
+                Screen.SESSION_HISTORY
+            }
+            Screen.SESSION_REPLAY,
+            Screen.SESSION_ANALYSIS -> Screen.SESSION_DETAIL
             Screen.RACE_LEGAL,
             Screen.QR_SCANNER -> Screen.RACE
             Screen.MAP -> if (selectedCourseMapView.value == null) {
@@ -290,10 +384,48 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             }
         }
 
+    private val regattaLinkPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+            val action = pendingRegattaLinkPermissionAction
+            pendingRegattaLinkPermissionAction = null
+            val granted = RegattaLinkBleClient.requiredPermissions().all { permission ->
+                ContextCompat.checkSelfPermission(
+                    this,
+                    permission
+                ) == PackageManager.PERMISSION_GRANTED
+            }
+
+            if (granted && ::regattaLinkManager.isInitialized) {
+                when (action) {
+                    PendingRegattaLinkPermissionAction.DISCOVER_NEW ->
+                        regattaLinkManager.startDiscovery()
+
+                    PendingRegattaLinkPermissionAction.RECONNECT_CONFIGURED ->
+                        regattaLinkManager.reconnectConfigured()
+
+                    null -> Unit
+                }
+            } else {
+                regattaLinkState.value = RegattaLinkClientState(
+                    status = RegattaLinkConnectionStatus.ERROR,
+                    userMessage = RegattaLinkUiMessage.BLUETOOTH_PERMISSION_DENIED
+                )
+            }
+        }
+
     private val exportCsvLauncher =
         registerForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri: Uri? ->
             if (uri != null) {
                 exportCsvToUri(uri)
+            }
+        }
+
+    private val regattaLinkRawCaptureExportLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.CreateDocument("text/csv")
+        ) { uri: Uri? ->
+            if (uri != null && ::regattaLinkManager.isInitialized) {
+                regattaLinkManager.exportRawCanCapture(uri)
             }
         }
 
@@ -343,8 +475,12 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         initializeLocalizedUiText()
 
         db = TrackingDbHelper(this)
+        raceLegalAcceptanceStore = RaceLegalAcceptanceStore(this)
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        regattaLinkManager =
+            (application as RegattaApplication).regattaLinkConnectionManager
+        regattaLinkManager.addListener(regattaLinkListener)
+        regattaLinkManager.requestForegroundStartupReconnectIfPermitted()
         loadBoatSetup()
         loadRaceSetup()
         loadAppState()
@@ -358,6 +494,12 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         setContent {
             RegattaClientTheme {
                 BackHandler(enabled = currentScreen.value != Screen.HOME) {
+                    if (
+                        currentScreen.value == Screen.REGATTALINK &&
+                        regattaLinkOtaState.value.isActive
+                    ) {
+                        return@BackHandler
+                    }
                     if (currentScreen.value == Screen.RACE_LEGAL) {
                         pendingEnterRaceAfterLegal = false
                     }
@@ -396,6 +538,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             retirementReported = retirementReported.value,
                             retirementStatusText = retirementStatusText.value,
                             raceDataReady = raceDataReady.value,
+                            raceRegistered = raceRegistered.value,
                             dtlText = dtlText.value,
                             ttlText = ttlText.value,
                             ocsText = ocsText.value,
@@ -412,6 +555,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             sogText = sogText.value,
                             gpsAccuracyText = gpsAccuracyText.value,
                             gpsColor = gpsColor.value,
+                            regattaLinkConnected =
+                                regattaLinkState.value.status ==
+                                    RegattaLinkConnectionStatus.CONNECTED,
                             showClearConfirmDialog = showClearConfirmDialog.value,
                             showAdvanced = showAdvanced.value,
                             modifier = Modifier.padding(innerPadding),
@@ -442,6 +588,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                     fetchEventResults()
                                 }
                             },
+                            onRegattaLinkReconnect = ::startRegattaLinkReconnect,
+                            onRegattaLinkOpen = {
+                                regattaLinkReturnScreen = Screen.HOME
+                                currentScreen.value = Screen.REGATTALINK
+                            },
                             onLegal = {
                                 currentScreen.value = Screen.LEGAL
                             },
@@ -451,6 +602,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                 } else {
                                     requestTrackingConsent(PendingTrackingAction.START_MANUAL_TRACKING)
                                 }
+                            },
+                            onSessionHistory = {
+                                currentScreen.value = Screen.SESSION_HISTORY
+                                loadSessionHistory()
                             },
                             onExport = {
                                 exportCsvLauncher.launch("regatta_tracking_export.csv")
@@ -468,6 +623,50 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             onToggleAdvanced = {
                                 showAdvanced.value = !showAdvanced.value
                             }
+                        )
+
+                        Screen.SESSION_HISTORY -> SessionHistoryScreen(
+                            sessions = sessionSummaries.value,
+                            loading = sessionHistoryLoading.value,
+                            modifier = Modifier.padding(innerPadding),
+                            onSessionClick = { sessionId ->
+                                selectedSessionId.value = sessionId
+                                sessionDetail.value = null
+                                selectedReplayFieldIds.value = emptySet()
+                                currentScreen.value = Screen.SESSION_DETAIL
+                                loadSessionDetail(sessionId)
+                            },
+                            onSessionDelete = ::deleteSession,
+                            onBack = ::navigateBack
+                        )
+
+                        Screen.SESSION_DETAIL -> SessionDetailScreen(
+                            detail = sessionDetail.value,
+                            loading = sessionDetailLoading.value,
+                            modifier = Modifier.padding(innerPadding),
+                            onReplay = {
+                                currentScreen.value = Screen.SESSION_REPLAY
+                            },
+                            onAnalysis = {
+                                currentScreen.value = Screen.SESSION_ANALYSIS
+                            },
+                            onBack = ::navigateBack
+                        )
+
+                        Screen.SESSION_REPLAY -> SessionReplayScreen(
+                            detail = sessionDetail.value,
+                            modifier = Modifier.padding(innerPadding),
+                            extraFieldIds = selectedReplayFieldIds.value,
+                            onExtraFieldIdsChange = {
+                                selectedReplayFieldIds.value = it
+                            },
+                            onBack = ::navigateBack
+                        )
+
+                        Screen.SESSION_ANALYSIS -> SessionAnalysisScreen(
+                            detail = sessionDetail.value,
+                            modifier = Modifier.padding(innerPadding),
+                            onBack = ::navigateBack
                         )
 
                         Screen.RACE_LEGAL -> RaceLegalScreen(
@@ -535,7 +734,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                     }
 
                                     if (invalidateRegistration) {
-                                        raceRegistered.value = false
+                                        setRaceRegistered(false)
                                         registerRaceStatusText.value = ""
                                     }
                                     if (invalidateLegal) {
@@ -544,6 +743,77 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                                     currentScreen.value = Screen.HOME
                                 }
+                            },
+                            onRegattaLink = {
+                                regattaLinkReturnScreen = Screen.BOAT_DATA
+                                currentScreen.value = Screen.REGATTALINK
+                            },
+                            onBack = ::navigateBack
+                        )
+
+                        Screen.REGATTALINK -> RegattaLinkScreen(
+                            state = regattaLinkState.value,
+                            firmwareState = regattaLinkFirmwareState.value,
+                            otaState = regattaLinkOtaState.value,
+                            telemetryState = regattaLinkTelemetryState.value,
+                            configurationState = regattaLinkConfigurationState.value,
+                            nmeaState = regattaLinkNmeaState.value,
+                            rawCaptureState = regattaLinkRawCaptureState.value,
+                            firmwareSourceAvailable = raceServer.value.isNotBlank(),
+                            installAvailable =
+                                regattaLinkFirmwareArtifact != null &&
+                                    regattaLinkFirmwareState.value.status ==
+                                    RegattaLinkFirmwareStatus.READY,
+                            modifier = Modifier.padding(innerPadding),
+                            onSearch = ::startRegattaLinkConnection,
+                            onCheckFirmware = ::loadRegattaLinkFirmware,
+                            onInstallFirmware = ::installRegattaLinkFirmware,
+                            onCancelOta = {
+                                regattaLinkManager.cancelOta()
+                            },
+                            onChangeName = { name ->
+                                regattaLinkManager.setDeviceName(name)
+                            },
+                            onSetLedBrightness = { percent ->
+                                regattaLinkManager.setLedBrightness(percent)
+                            },
+                            onSetMotionDamping = { seconds ->
+                                regattaLinkManager.setMotionDamping(seconds)
+                            },
+                            onDrainDiagnosticLog = {
+                                regattaLinkManager.drainDiagnosticLog()
+                            },
+                            onDeviceControl = { opcode, value ->
+                                regattaLinkManager.executeDeviceControl(opcode, value)
+                            },
+                            onRefreshPgnInventory = {
+                                regattaLinkManager.refreshPgnInventory()
+                            },
+                            onReadRawFrames = {
+                                regattaLinkManager.readRawCanFrames()
+                            },
+                            onStartRawCapture = {
+                                regattaLinkManager.startRawCanCapture()
+                            },
+                            onStopRawCapture = {
+                                regattaLinkManager.stopRawCanCapture()
+                            },
+                            onExportRawCapture = {
+                                regattaLinkRawCaptureState.value.fileName
+                                    .takeIf { it.isNotBlank() }
+                                    ?.let { fileName ->
+                                        regattaLinkRawCaptureExportLauncher
+                                            .launch(fileName)
+                                    }
+                            },
+                            onDiscardRawCapture = {
+                                regattaLinkManager.discardRawCanCapture()
+                            },
+                            onDisconnect = {
+                                regattaLinkManager.disconnect()
+                                regattaLinkFirmwareArtifact = null
+                                regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState()
+                                regattaLinkManager.resetOtaState()
                             },
                             onBack = ::navigateBack
                         )
@@ -573,24 +843,29 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             canRegisterRace = setupConfirmed.value &&
                                     raceDataReady.value &&
                                     raceLegalAccepted.value &&
-                                    !inRace.value,
+                                    !inRace.value &&
+                                    !raceRegistered.value,
                             registerRaceStatusText = registerRaceStatusText.value,
                             raceShortenedText = raceShortenedText.value,
                             raceShortened = rawRaceCourseShortened,
                             seriesDisplayMetadata = raceSeriesDisplayMetadata.value,
                             modifier = Modifier.padding(innerPadding),
+                            retireEnabled = !retirementRequestInFlight.value,
                             onClearRaceSetupClick = {
                                 showClearRaceSetupDialog.value = true
                             },
                             onShowRaceLegal = {
-                                if (raceLegalText.value.isBlank()) {
-                                    fetchRaceLegalText()
-                                } else {
+                                if (
+                                    shouldOpenRaceLegalBeforeFetch(
+                                        legalTextLoaded =
+                                            raceLegalText.value.isNotBlank()
+                                    )
+                                ) {
                                     currentScreen.value = Screen.RACE_LEGAL
+                                } else {
+                                    pendingManualRaceLegalOpen = true
+                                    fetchRaceLegalText()
                                 }
-                            },
-                            onRefreshRaceData = {
-                                fetchRaceDataForDisplay()
                             },
                             onScanQr = {
                                 currentScreen.value = Screen.QR_SCANNER
@@ -598,11 +873,18 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             onEnterRace = {
                                 requestEnterRaceAfterLocalChecks()
                             },
-                            onLeaveRace = {
-                                showLeaveRaceOptionsDialog.value = true
+                            onRetire = {
+                                showRetireConfirmDialog.value = true
+                            },
+                            onExitRace = {
+                                leaveRace()
                             },
                             onRegisterRace = {
-                                registerForRace()
+                                registerForRace(
+                                    onSuccess = {
+                                        showRegistrationReminderDialog.value = true
+                                    }
+                                )
                             },
                             onBack = ::navigateBack
                         )
@@ -691,23 +973,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     )
                 }
 
-                if (showLeaveRaceOptionsDialog.value) {
-                    LeaveRaceOptionsDialog(
-                        retireEnabled = !retirementRequestInFlight.value,
-                        onRetire = {
-                            showLeaveRaceOptionsDialog.value = false
-                            showRetireConfirmDialog.value = true
-                        },
-                        onLeaveRace = {
-                            showLeaveRaceOptionsDialog.value = false
-                            leaveRace()
-                        },
-                        onCancel = {
-                            showLeaveRaceOptionsDialog.value = false
-                        }
-                    )
-                }
-
                 if (showRetireConfirmDialog.value) {
                     RetireConfirmDialog(
                         onConfirm = {
@@ -737,6 +1002,14 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         }
                     )
                 }
+                if (showRegistrationReminderDialog.value) {
+                    RegistrationReminderDialog(
+                        onOk = {
+                            showRegistrationReminderDialog.value = false
+                        }
+                    )
+                }
+
                 if (showFinishDetectedDialog.value) {
                     FinishDetectedDialog(
                         onStopTracking = {
@@ -768,7 +1041,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         onCancel = {
                             cancelEnterRaceServerCheck()
                             pendingEnterRaceAfterLegal = false
+                            pendingManualRaceLegalOpen = false
                             showEventUpdateRecommendedDialog.value = false
+                            if (currentScreen.value == Screen.RACE_LEGAL) {
+                                currentScreen.value = Screen.RACE
+                            }
                         }
                     )
                 }
@@ -778,7 +1055,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         onDismiss = {
                             cancelEnterRaceServerCheck()
                             pendingEnterRaceAfterLegal = false
+                            pendingManualRaceLegalOpen = false
                             showEventUpdateRequiredDialog.value = false
+                            if (currentScreen.value == Screen.RACE_LEGAL) {
+                                currentScreen.value = Screen.RACE
+                            }
                         }
                     )
                 }
@@ -796,7 +1077,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
         updateConnectionUiState()
         requestPermissionsForApp()
-        startImuUpdates()
         handler.postDelayed(uiRefreshRunnable, 1000L)
     }
 
@@ -867,6 +1147,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             occurrenceNo = prefs.getInt("series_occurrence_no", 0).takeIf { it > 0 },
             plannedRaceCount = prefs.getInt("series_planned_race_count", 0).takeIf { it > 0 }
         )
+        raceRegistered.value = prefs.getBoolean("race_registered", false)
 
         raceDataReady.value = prefs.getBoolean("race_data_ready", false)
         if (resolvedEventName.value.isBlank()) {
@@ -1054,6 +1335,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
 
     private fun resetRaceLegalState() {
+        pendingManualRaceLegalOpen = false
         raceLegalAccepted.value = false
         raceLegalText.value = ""
         raceLegalHash.value = ""
@@ -1097,7 +1379,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         rawRaceCourseShortened = false
         currentRaceStatus = ""
         raceStartEpochMillis = null
-        raceRegistered.value = false
+        setRaceRegistered(false)
         registerRaceStatusText.value = ""
         resultsStatusText.value = ""
         resultsPublished.value = false
@@ -1118,6 +1400,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private fun resetEventCompatibilityState() {
         cancelEnterRaceServerCheck()
         pendingEnterRaceAfterLegal = false
+        pendingManualRaceLegalOpen = false
         eventCompatibilityGeneration += 1L
         eventCompatibilityAllowedAccess = null
         eventCompatibilityWarningAccess = null
@@ -1183,7 +1466,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         retirementReported.value = false
         retirementStatusText.value = ""
         raceLegalResolvedEventName = ""
-        raceRegistered.value = false
+        setRaceRegistered(false)
         registerRaceStatusText.value = ""
 
         raceStatusText.value = getString(R.string.race_not_loaded)
@@ -1235,6 +1518,14 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         updateStartPanelStatus()
     }
 
+    private fun setRaceRegistered(registered: Boolean) {
+        raceRegistered.value = registered
+        getSharedPreferences(racePrefsName, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("race_registered", registered)
+            .apply()
+    }
+
     private fun saveRaceSetup() {
         getSharedPreferences(racePrefsName, Context.MODE_PRIVATE)
             .edit()
@@ -1245,6 +1536,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             .putString("series_run_name", raceSeriesDisplayMetadata.value.runName)
             .putInt("series_occurrence_no", raceSeriesDisplayMetadata.value.occurrenceNo ?: 0)
             .putInt("series_planned_race_count", raceSeriesDisplayMetadata.value.plannedRaceCount ?: 0)
+            .putBoolean("race_registered", raceRegistered.value)
             .putInt("race_raw_state_version", RACE_RAW_STATE_VERSION)
             .putString("race_status_raw", rawRaceStatus)
             .putString("race_start_raw", rawRaceStart)
@@ -1359,27 +1651,20 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private fun loadAppState() {
         val prefs = getSharedPreferences(appStatePrefsName, Context.MODE_PRIVATE)
+        val persistedInRace = prefs.getBoolean("in_race", false)
+        var persistedManual = prefs.getBoolean("manual_tracking", false)
 
-        inRace.value = prefs.getBoolean("in_race", false)
-        manualTracking.value = prefs.getBoolean("manual_tracking", false)
-        if (inRace.value && manualTracking.value) {
-            manualTracking.value = false
+        if (persistedInRace && persistedManual) {
+            persistedManual = false
             prefs.edit()
                 .putBoolean("manual_tracking", false)
                 .apply()
         }
 
-        serviceStatusText.value = when {
-            inRace.value -> getString(R.string.service_race_running)
-            manualTracking.value -> getString(R.string.service_manual_running)
-            else -> getString(R.string.service_stopped)
-        }
-
-        statusText.value = when {
-            inRace.value -> getString(R.string.in_race)
-            manualTracking.value -> getString(R.string.manual_tracking_running)
-            else -> getString(R.string.tracking_stopped)
-        }
+        applyTrackingRuntimeState(
+            persistedInRace = persistedInRace,
+            persistedManual = persistedManual
+        )
     }
 
     private fun reconcileTrackingState() {
@@ -1394,24 +1679,38 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 .apply()
         }
 
-        if (
-            inRace.value == persistedInRace &&
-            manualTracking.value == persistedManual
-        ) {
-            return
-        }
+        applyTrackingRuntimeState(
+            persistedInRace = persistedInRace,
+            persistedManual = persistedManual
+        )
+    }
 
-        inRace.value = persistedInRace
-        manualTracking.value = persistedManual
+    private fun applyTrackingRuntimeState(
+        persistedInRace: Boolean,
+        persistedManual: Boolean
+    ) {
+        val runtimeStatus = TrackingServiceRuntimeState.currentStatus()
+        val effective = effectiveTrackingRuntimeState(
+            persistedInRace = persistedInRace,
+            persistedManual = persistedManual,
+            runtimeStatus = runtimeStatus
+        )
+
+        inRace.value = effective.inRace
+        manualTracking.value = effective.manualTracking
 
         serviceStatusText.value = when {
-            persistedInRace -> getString(R.string.service_race_running)
-            persistedManual -> getString(R.string.service_manual_running)
+            runtimeStatus == TrackingServiceRuntimeStatus.STARTING &&
+                (effective.inRace || effective.manualTracking) -> getString(R.string.service_starting)
+            effective.inRace -> getString(R.string.service_race_running)
+            effective.manualTracking -> getString(R.string.service_manual_running)
             else -> getString(R.string.service_stopped)
         }
 
-        if (!persistedInRace && !persistedManual) {
-            statusText.value = getString(R.string.tracking_stopped)
+        statusText.value = when {
+            effective.inRace -> getString(R.string.in_race)
+            effective.manualTracking -> getString(R.string.manual_tracking_running)
+            else -> getString(R.string.tracking_stopped)
         }
     }
 
@@ -1442,7 +1741,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             raceSecret.value = secret
             clearResolvedEventContextForAccessChange()
 
-            raceRegistered.value = false
+            setRaceRegistered(false)
             registerRaceStatusText.value = ""
 
             raceStatusText.value = getString(R.string.qr_code_loaded)
@@ -1545,6 +1844,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private fun blockPendingEnterRaceWithLegalError() {
         cancelEnterRaceServerCheck()
+        pendingManualRaceLegalOpen = false
         if (!pendingEnterRaceAfterLegal) {
             currentScreen.value = Screen.RACE
             return
@@ -1842,6 +2142,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         ) {
                             blockPendingEnterRaceWithLegalError()
                         } else {
+                            pendingManualRaceLegalOpen = false
                             currentScreen.value = Screen.RACE
                         }
                     }
@@ -1908,7 +2209,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                     currentLegalHash = previousLegalHash,
                                     nextLegalEventIdentity = legalResolvedEventName,
                                     nextLegalHash = legalHash
-                                )
+                                ) ||
+                                    raceLegalAcceptanceStore.matches(
+                                        resolvedEventName = legalResolvedEventName,
+                                        legalTextHash = legalHash
+                                    )
 
                             raceLegalResolvedEventName = legalResolvedEventName
                             raceLegalText.value = legalText
@@ -1929,29 +2234,41 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                                 )
                             )
 
-                            when (
+                            val legalDecision =
                                 enterRaceLegalFetchDecision(
                                     serverResponded = true,
                                     responseSuccessful = true,
                                     documentValid = true,
                                     acceptancePreserved = preserveAcceptance
                                 )
-                            ) {
+                            val showManualLegal =
+                                shouldShowRaceLegalAfterFetch(
+                                    decision = legalDecision,
+                                    pendingEnterRaceAfterLegal =
+                                        pendingEnterRaceAfterLegal,
+                                    manualOpenRequested =
+                                        pendingManualRaceLegalOpen
+                                )
+                            when (legalDecision) {
                                 EnterRaceLegalGateDecision.CONTINUE -> {
                                     if (pendingEnterRaceAfterLegal) {
+                                        pendingManualRaceLegalOpen = false
                                         continuePendingEnterRaceAfterLegal()
-                                    } else {
+                                    } else if (showManualLegal) {
+                                        pendingManualRaceLegalOpen = false
                                         currentScreen.value = Screen.RACE_LEGAL
                                     }
                                 }
 
                                 EnterRaceLegalGateDecision.SHOW_LEGAL -> {
+                                    pendingManualRaceLegalOpen = false
                                     currentScreen.value = Screen.RACE_LEGAL
                                 }
 
                                 EnterRaceLegalGateDecision.FETCH_LEGAL,
                                 EnterRaceLegalGateDecision.BLOCK -> {
                                     pendingEnterRaceAfterLegal = false
+                                    pendingManualRaceLegalOpen = false
                                     currentScreen.value = Screen.RACE
                                 }
                             }
@@ -1997,10 +2314,12 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         pendingEnterRaceAfterLegal &&
                         decision == EnterRaceLegalGateDecision.CONTINUE
                     ) {
+                        pendingManualRaceLegalOpen = false
                         continuePendingEnterRaceAfterLegal()
                     } else if (pendingEnterRaceAfterLegal) {
                         blockPendingEnterRaceWithLegalError()
                     } else {
+                        pendingManualRaceLegalOpen = false
                         currentScreen.value = Screen.RACE
                     }
                 }
@@ -2103,6 +2422,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                             currentScreen.value = Screen.RACE
                             fetchRaceLegalText()
                         } else {
+                            raceLegalAcceptanceStore.save(
+                                resolvedEventName = expectedResolvedEventName,
+                                legalTextHash = acceptedLegalHash
+                            )
                             raceLegalAccepted.value = true
                             raceLegalAcceptStatusText.value = getString(R.string.race_notice_accepted)
                             fetchRaceDataForDisplay()
@@ -2325,13 +2648,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     put("accuracy", 9999.0)
                     put("cog", 0.0)
                     put("sog", 0.0)
-
-                    put("accel_x", 0.0)
-                    put("accel_y", 0.0)
-                    put("accel_z", 0.0)
-                    put("gyro_x", 0.0)
-                    put("gyro_y", 0.0)
-                    put("gyro_z", 0.0)
                 }
 
                 val connection = URL(url).openConnection() as HttpURLConnection
@@ -2370,7 +2686,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     }
 
                     if (responseCode in 200..299) {
-                        raceRegistered.value = true
+                        setRaceRegistered(true)
                         registerRaceStatusText.value = getString(R.string.registered_for_race)
                         onSuccess?.invoke()
                     } else {
@@ -2565,6 +2881,128 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         handler.removeCallbacks(raceDataRefreshRunnable)
     }
 
+    private fun installRegattaLinkFirmware() {
+        val artifact = regattaLinkFirmwareArtifact
+        if (artifact == null) {
+            regattaLinkOtaState.value = RegattaLinkOtaUiState(
+                phase = RegattaLinkOtaPhase.ERROR,
+                error = getString(R.string.regattalink_firmware_check_first)
+            )
+            return
+        }
+        regattaLinkManager.startOta(artifact)
+    }
+
+    private fun loadRegattaLinkFirmware() {
+        if (regattaLinkOtaState.value.isActive) return
+        regattaLinkManager.resetOtaState()
+        regattaLinkOtaState.value = RegattaLinkOtaUiState()
+        val deviceInfo = regattaLinkState.value.deviceInfo
+        if (deviceInfo == null) {
+            regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState(
+                status = RegattaLinkFirmwareStatus.ERROR,
+                userMessage = RegattaLinkUiMessage.FIRMWARE_CONNECT_FIRST
+            )
+            return
+        }
+
+        val firmwareServer = raceServer.value.trim()
+        if (firmwareServer.isBlank()) {
+            regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState(
+                status = RegattaLinkFirmwareStatus.ERROR,
+                userMessage = RegattaLinkUiMessage.FIRMWARE_SERVER_REQUIRED
+            )
+            return
+        }
+
+        regattaLinkFirmwareArtifact = null
+        regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState(
+            status = RegattaLinkFirmwareStatus.LOADING
+        )
+
+        thread {
+            try {
+                val artifact = regattaLinkFirmwareClient.load(
+                    serverUrl = firmwareServer,
+                    deviceInfo = deviceInfo
+                )
+                val direction = validateRegattaLinkFirmwareForDevice(
+                    artifact.manifest,
+                    deviceInfo
+                )
+
+                runOnUiThread {
+                    if (!asyncLifetime.isActive()) return@runOnUiThread
+                    if (regattaLinkState.value.deviceInfo?.stableId != deviceInfo.stableId) {
+                        return@runOnUiThread
+                    }
+                    regattaLinkFirmwareArtifact = artifact
+                    regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState(
+                        status = RegattaLinkFirmwareStatus.READY,
+                        availableBuild = artifact.manifest.buildNumber.toString(),
+                        direction = direction,
+                        signed = artifact.manifest.signed
+                    )
+                }
+            } catch (error: Exception) {
+                runOnUiThread {
+                    if (!asyncLifetime.isActive()) return@runOnUiThread
+                    if (regattaLinkState.value.deviceInfo?.stableId != deviceInfo.stableId) {
+                        return@runOnUiThread
+                    }
+                    regattaLinkFirmwareArtifact = null
+                    regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState(
+                        status = RegattaLinkFirmwareStatus.ERROR,
+                        userMessage = RegattaLinkUiMessage.FIRMWARE_CHECK_FAILED,
+                        error = error.message ?: "Firmware check failed"
+                    )
+                }
+            }
+        }
+    }
+
+    private fun startRegattaLinkConnection() {
+        if (regattaLinkOtaState.value.isActive) return
+        regattaLinkFirmwareArtifact = null
+        regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState()
+        regattaLinkManager.resetOtaState()
+        runRegattaLinkActionWithPermissions(
+            PendingRegattaLinkPermissionAction.DISCOVER_NEW
+        )
+    }
+
+    private fun startRegattaLinkReconnect() {
+        if (regattaLinkOtaState.value.isActive) return
+        runRegattaLinkActionWithPermissions(
+            PendingRegattaLinkPermissionAction.RECONNECT_CONFIGURED
+        )
+    }
+
+    private fun runRegattaLinkActionWithPermissions(
+        action: PendingRegattaLinkPermissionAction
+    ) {
+        val permissions = RegattaLinkBleClient.requiredPermissions()
+        val missing = permissions.filter { permission ->
+            ContextCompat.checkSelfPermission(
+                this,
+                permission
+            ) != PackageManager.PERMISSION_GRANTED
+        }
+
+        if (missing.isEmpty()) {
+            when (action) {
+                PendingRegattaLinkPermissionAction.DISCOVER_NEW ->
+                    regattaLinkManager.startDiscovery()
+
+                PendingRegattaLinkPermissionAction.RECONNECT_CONFIGURED ->
+                    regattaLinkManager.reconnectConfigured()
+            }
+        } else {
+            pendingRegattaLinkPermissionAction = action
+            regattaLinkPermissionLauncher.launch(missing.toTypedArray())
+        }
+    }
+
     private fun requestPermissionsForApp() {
         val permissions = mutableListOf(
             Manifest.permission.ACCESS_FINE_LOCATION
@@ -2603,6 +3041,16 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             return false
         }
 
+        val raceContextId = db.getOrCreateRaceContext(
+            accessContextId = accessContextId,
+            resolvedEventName = resolvedEventName.value,
+            courseJson = rawRaceCourseJson,
+            courseMapViewportJson = null
+        ) ?: run {
+            statusText.value = getString(R.string.race_entry_store_failed)
+            return false
+        }
+
         val insertedId = db.insertSample(
             sequenceId = entry.sequenceId,
             timestamp = entry.timestamp,
@@ -2617,13 +3065,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             accuracy = entry.accuracy,
             cog = entry.cog,
             sog = entry.sog,
-            accelX = entry.accelX,
-            accelY = entry.accelY,
-            accelZ = entry.accelZ,
-            gyroX = entry.gyroX,
-            gyroY = entry.gyroY,
-            gyroZ = entry.gyroZ,
-            accessContextId = accessContextId
+            accessContextId = accessContextId,
+            raceContextId = raceContextId
         )
 
         if (insertedId == -1L) {
@@ -2848,12 +3291,13 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             putExtra(RegattaTrackingService.EXTRA_MANUAL_RECORDING, manualMode)
         }
 
-        ContextCompat.startForegroundService(this, intent)
-
-        serviceStatusText.value = if (manualMode) {
-            getString(R.string.service_manual_running)
-        } else {
-            getString(R.string.service_race_running)
+        TrackingServiceRuntimeState.markStarting()
+        try {
+            ContextCompat.startForegroundService(this, intent)
+            serviceStatusText.value = getString(R.string.service_starting)
+        } catch (e: RuntimeException) {
+            TrackingServiceRuntimeState.markStopped()
+            throw e
         }
     }
 
@@ -3229,6 +3673,37 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         return null
     }
 
+    private fun deleteSession(sessionId: Long) {
+        val summary = sessionSummaries.value.firstOrNull { it.id == sessionId } ?: return
+        if (summary.endedAt == null) {
+            return
+        }
+
+        sessionSummaries.value = sessionSummaries.value.filterNot { it.id == sessionId }
+
+        thread(name = "regatta-session-delete") {
+            val deleted = runCatching {
+                db.deleteTrackingSession(sessionId)
+            }.getOrDefault(false)
+
+            if (!asyncLifetime.isActive()) return@thread
+            runOnUiThread {
+                if (!asyncLifetime.isActive()) return@runOnUiThread
+
+                if (deleted && selectedSessionId.value == sessionId) {
+                    selectedSessionId.value = null
+                    sessionDetail.value = null
+                    sessionDetailLoading.value = false
+                    selectedReplayFieldIds.value = emptySet()
+                }
+                if (deleted) {
+                    updateStorageText()
+                }
+                loadSessionHistory()
+            }
+        }
+    }
+
     private fun clearOldData() {
         if (inRace.value || manualTracking.value) {
             statusText.value = getString(R.string.stop_tracking_before_delete)
@@ -3236,9 +3711,91 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
 
         db.deleteAllSamples()
+        sessionSummaries.value = emptyList()
+        selectedSessionId.value = null
+        sessionDetail.value = null
+        selectedReplayFieldIds.value = emptySet()
         updateStorageText()
         lastCsvLine.value = getString(R.string.no_csv_line_yet)
         statusText.value = getString(R.string.old_data_deleted)
+    }
+
+    private fun loadSessionHistory() {
+        val generation = ++sessionLoadGeneration
+        sessionHistoryLoading.value = true
+
+        thread(name = "regatta-session-history") {
+            val summaries = runCatching {
+                db.getTrackingSessionSummaries()
+            }.getOrDefault(emptyList())
+
+            if (!asyncLifetime.isActive()) return@thread
+            runOnUiThread {
+                if (!asyncLifetime.isActive() || generation != sessionLoadGeneration) {
+                    return@runOnUiThread
+                }
+                sessionSummaries.value = summaries
+                sessionHistoryLoading.value = false
+            }
+        }
+    }
+
+    private fun loadSessionDetail(sessionId: Long) {
+        val generation = ++sessionLoadGeneration
+        sessionDetailLoading.value = true
+
+        thread(name = "regatta-session-detail") {
+            val detail = runCatching {
+                val session = db.getTrackingSession(sessionId) ?: return@runCatching null
+                val samples = db.getTrackingSamplesForSession(sessionId)
+                val resolvedEventNames = samples
+                    .mapNotNull { sample ->
+                        sample.resolvedEventName?.takeIf { it.isNotBlank() }
+                    }
+                    .distinct()
+                val accessIdentifier = session.accessContextId
+                    ?.let(db::getAccessContext)
+                    ?.accessIdentifier
+                val eventIdentifier = when (resolvedEventNames.size) {
+                    1 -> resolvedEventNames.single()
+                    else -> session.resolvedEventName
+                        ?.takeIf { it.isNotBlank() && resolvedEventNames.isEmpty() }
+                        ?: accessIdentifier
+                }
+                val summary = TrackingSessionSummary(
+                    id = session.id,
+                    startedAt = session.startedAt,
+                    endedAt = session.endedAt,
+                    mode = session.mode,
+                    accessContextId = session.accessContextId,
+                    displayName = session.displayName,
+                    eventIdentifier = eventIdentifier,
+                    sampleCount = samples.size.toLong()
+                )
+                SessionDetailData(
+                    session = summary,
+                    statistics = calculateSessionStatistics(
+                        session = session,
+                        samples = samples
+                    ),
+                    samples = samples,
+                    replayFields = discoverReplayExtraFields(samples)
+                )
+            }.getOrNull()
+
+            if (!asyncLifetime.isActive()) return@thread
+            runOnUiThread {
+                if (
+                    !asyncLifetime.isActive() ||
+                    generation != sessionLoadGeneration ||
+                    selectedSessionId.value != sessionId
+                ) {
+                    return@runOnUiThread
+                }
+                sessionDetail.value = detail
+                sessionDetailLoading.value = false
+            }
+        }
     }
 
     private fun startGpsDisplayUpdates() {
@@ -3279,27 +3836,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
     }
 
-    private fun startImuUpdates() {
-        val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        val gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
-
-        if (accelerometer != null) {
-            sensorManager.registerListener(
-                this,
-                accelerometer,
-                SensorManager.SENSOR_DELAY_GAME
-            )
-        }
-
-        if (gyroscope != null) {
-            sensorManager.registerListener(
-                this,
-                gyroscope,
-                SensorManager.SENSOR_DELAY_GAME
-            )
-        }
-    }
-
     private fun updateStorageText() {
         val total = db.countSamples()
         val pending = db.countPendingSamples()
@@ -3326,29 +3862,22 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
     }
 
-    override fun onSensorChanged(event: SensorEvent) {
-        when (event.sensor.type) {
-            Sensor.TYPE_ACCELEROMETER -> {
-                accelX = event.values[0]
-                accelY = event.values[1]
-                accelZ = event.values[2]
-            }
-
-            Sensor.TYPE_GYROSCOPE -> {
-                gyroX = event.values[0]
-                gyroY = event.values[1]
-                gyroZ = event.values[2]
-            }
+    override fun onStop() {
+        if (
+            ::regattaLinkManager.isInitialized &&
+            regattaLinkRawCaptureState.value.isActive
+        ) {
+            regattaLinkManager.stopRawCanCapture(interrupted = true)
         }
-    }
-
-    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-        // Display only in this MainActivity.
+        super.onStop()
     }
 
     override fun onDestroy() {
         asyncLifetime.invalidate()
         cancelEnterRaceServerCheck()
+        if (::regattaLinkManager.isInitialized) {
+            regattaLinkManager.removeListener(regattaLinkListener)
+        }
         super.onDestroy()
 
         handler.removeCallbacks(uiRefreshRunnable)
@@ -3358,8 +3887,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             locationManager.removeUpdates(locationListener)
         } catch (_: Exception) {
         }
-
-        sensorManager.unregisterListener(this)
     }
 }
 
@@ -3448,29 +3975,20 @@ fun TrackingConsentDialog(
 }
 
 @Composable
-fun LeaveRaceOptionsDialog(
-    retireEnabled: Boolean,
-    onRetire: () -> Unit,
-    onLeaveRace: () -> Unit,
-    onCancel: () -> Unit
+fun RegistrationReminderDialog(
+    onOk: () -> Unit
 ) {
     AlertDialog(
-        onDismissRequest = onCancel,
-        title = { Text(stringResource(R.string.leave_race)) },
-        text = { Text(stringResource(R.string.leave_race_choice_message)) },
-        confirmButton = {
-            TextButton(onClick = onRetire, enabled = retireEnabled) {
-                Text(stringResource(R.string.retire))
-            }
+        onDismissRequest = onOk,
+        title = {
+            Text(stringResource(R.string.registration_reminder_title))
         },
-        dismissButton = {
-            Row {
-                TextButton(onClick = onLeaveRace) {
-                    Text(stringResource(R.string.leave_race))
-                }
-                TextButton(onClick = onCancel) {
-                    Text(stringResource(R.string.cancel))
-                }
+        text = {
+            Text(stringResource(R.string.registration_reminder_message))
+        },
+        confirmButton = {
+            TextButton(onClick = onOk) {
+                Text(stringResource(R.string.ok))
             }
         }
     )

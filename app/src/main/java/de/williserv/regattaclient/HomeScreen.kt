@@ -1,9 +1,12 @@
 package de.williserv.regattaclient
 
 import android.content.Context
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -26,7 +30,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Arrangement
@@ -50,6 +58,7 @@ private val HomeGapSmall = 14.dp
 private val HomeGapMedium = 14.dp
 private val HomeGapLarge = 14.dp
 private val HomeBottomGap = 60.dp
+private val CompactButtonContentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
 
 @Composable
 fun primaryButtonColors() = ButtonDefaults.buttonColors(
@@ -58,6 +67,30 @@ fun primaryButtonColors() = ButtonDefaults.buttonColors(
     disabledContainerColor = MaterialTheme.colorScheme.outlineVariant,
     disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
 )
+
+@Composable
+private fun AutoSizedSingleLineText(
+    text: String,
+    minFontSize: TextUnit,
+    maxFontSize: TextUnit,
+    modifier: Modifier = Modifier,
+    fontWeight: FontWeight? = null,
+    color: Color = Color.Unspecified
+) {
+    Text(
+        text = text,
+        modifier = modifier,
+        color = color,
+        fontWeight = fontWeight,
+        maxLines = 1,
+        softWrap = false,
+        autoSize = TextAutoSize.StepBased(
+            minFontSize = minFontSize,
+            maxFontSize = maxFontSize,
+            stepSize = 0.5.sp
+        )
+    )
+}
 @Composable
 fun HomeScreen(
     inRace: Boolean,
@@ -85,6 +118,7 @@ fun HomeScreen(
     retirementReported: Boolean,
     retirementStatusText: String,
     raceDataReady: Boolean,
+    raceRegistered: Boolean,
     dtlText: String,
     ttlText: String,
     ocsText: String,
@@ -101,6 +135,7 @@ fun HomeScreen(
     sogText: String,
     gpsAccuracyText: String,
     gpsColor: Color,
+    regattaLinkConnected: Boolean,
     showClearConfirmDialog: Boolean,
     showAdvanced: Boolean,
     modifier: Modifier = Modifier,
@@ -109,9 +144,12 @@ fun HomeScreen(
     onCourse: () -> Unit,
     onMap: () -> Unit,
     onResults: () -> Unit,
+    onRegattaLinkReconnect: () -> Unit,
+    onRegattaLinkOpen: () -> Unit,
     onLegal: () -> Unit,
     onOcsPanelClick: () -> Unit,
     onToggleManualTracking: () -> Unit,
+    onSessionHistory: () -> Unit,
     onExport: () -> Unit,
     onClearOldDataClick: () -> Unit,
     onConfirmClearOldData: () -> Unit,
@@ -157,7 +195,23 @@ fun HomeScreen(
                 !raceStatusCode.equals("finished", ignoreCase = true) &&
                 !raceStatusCode.equals("cancelled", ignoreCase = true)
 
-    val raceColor = raceStatusColor(raceStatusCode, inRace, raceDataReady)
+    val raceHomeStatus = resolveRaceHomeStatus(
+        raceStatusCode = raceStatusCode,
+        raceStatusDisplayText = raceStatusDisplayText,
+        raceDataReady = raceDataReady,
+        raceConfigured = raceEvent.isNotBlank(),
+        inRace = inRace,
+        raceRegistered = raceRegistered,
+        millisToStart = millisToStart
+    )
+    val raceColor = when (raceHomeStatus) {
+        RaceHomeStatus.CHECKING,
+        RaceHomeStatus.REGISTERED_NOT_ENTERED -> MaterialTheme.colorScheme.outline
+        RaceHomeStatus.NOT_ENTERED -> RegattaRed
+        RaceHomeStatus.READY,
+        RaceHomeStatus.RACING -> RegattaGreen
+        RaceHomeStatus.SERVER_STATUS -> raceStatusColor(raceStatusCode, inRace, raceDataReady)
+    }
     val startPrefix = stringResource(R.string.start_prefix)
     val infoPrefix = stringResource(R.string.info_prefix)
     val distancePrefix = stringResource(R.string.distance_prefix)
@@ -239,24 +293,32 @@ fun HomeScreen(
         StatusOverviewCard(
             gpsStatus = gpsStatus,
             gpsColor = gpsColor,
-            raceStatusText = shortRaceStatusText(
-                raceStatusCode = raceStatusCode,
-                raceStatusDisplayText = raceStatusDisplayText,
-                raceDataReady = raceDataReady,
-                raceStartText = raceStartText,
-                inRace = inRace,
-                racePrefix = stringResource(R.string.race_prefix),
-                startPrefix = startPrefix,
-                activeText = stringResource(R.string.status_active),
-                notActiveText = stringResource(R.string.status_not_active),
-                loadedText = stringResource(R.string.status_loaded),
-                plannedText = stringResource(R.string.status_planned),
-                racingText = stringResource(R.string.status_racing),
-                startedText = stringResource(R.string.status_started),
-                finishedText = stringResource(R.string.status_finished),
-                postponedText = stringResource(R.string.status_postponed),
-                cancelledText = stringResource(R.string.status_cancelled)
-            ),
+            raceStatusText = when (raceHomeStatus) {
+                RaceHomeStatus.CHECKING -> stringResource(R.string.status_checking)
+                RaceHomeStatus.NOT_ENTERED -> stringResource(R.string.status_not_entered)
+                RaceHomeStatus.REGISTERED_NOT_ENTERED ->
+                    stringResource(R.string.status_registered_not_entered)
+                RaceHomeStatus.READY -> stringResource(R.string.status_ready)
+                RaceHomeStatus.RACING -> stringResource(R.string.status_racing)
+                RaceHomeStatus.SERVER_STATUS -> shortRaceStatusText(
+                    raceStatusCode = raceStatusCode,
+                    raceStatusDisplayText = raceStatusDisplayText,
+                    raceDataReady = raceDataReady,
+                    raceStartText = raceStartText,
+                    inRace = inRace,
+                    racePrefix = stringResource(R.string.race_prefix),
+                    startPrefix = startPrefix,
+                    activeText = stringResource(R.string.status_active),
+                    notActiveText = stringResource(R.string.status_not_active),
+                    loadedText = stringResource(R.string.status_loaded),
+                    plannedText = stringResource(R.string.status_planned),
+                    racingText = stringResource(R.string.status_racing),
+                    startedText = stringResource(R.string.status_started),
+                    finishedText = stringResource(R.string.status_finished),
+                    postponedText = stringResource(R.string.status_postponed),
+                    cancelledText = stringResource(R.string.status_cancelled)
+                )
+            },
             raceColor = raceColor,
             uploadStatusText = shortUploadStatus(
                 pendingUploadCount = pendingUploadCount,
@@ -266,7 +328,10 @@ fun HomeScreen(
                 okText = stringResource(R.string.ok),
                 noConnectionText = stringResource(R.string.status_no_connection)
             ),
-            uploadColor = uploadColor
+            uploadColor = uploadColor,
+            regattaLinkConnected = regattaLinkConnected,
+            onRegattaLinkReconnect = onRegattaLinkReconnect,
+            onRegattaLinkOpen = onRegattaLinkOpen
         )
 
 
@@ -332,6 +397,7 @@ fun HomeScreen(
                 sogText = sogText,
                 gpsAccuracyText = gpsAccuracyText,
                 onToggleManualTracking = onToggleManualTracking,
+                onSessionHistory = onSessionHistory,
                 onExport = onExport,
                 onClearOldDataClick = onClearOldDataClick
             )
@@ -347,21 +413,31 @@ fun HomeScreen(
             Button(
                 onClick = onToggleAdvanced,
                 colors = primaryButtonColors(),
+                contentPadding = CompactButtonContentPadding,
                 modifier = Modifier.weight(0.35f)
             ){
-                if (showAdvanced) {
-                    Text(stringResource(R.string.hide))
-                } else {
-                    Text(stringResource(R.string.advanced))
-                }
+                AutoSizedSingleLineText(
+                    text = if (showAdvanced) {
+                        stringResource(R.string.hide)
+                    } else {
+                        stringResource(R.string.advanced)
+                    },
+                    minFontSize = 10.sp,
+                    maxFontSize = 14.sp
+                )
             }
 
             Button(
                 onClick = onLegal,
                 colors = primaryButtonColors(),
+                contentPadding = CompactButtonContentPadding,
                 modifier = Modifier.weight(0.65f)
             ) {
-                Text(stringResource(R.string.legal_about))
+                AutoSizedSingleLineText(
+                    text = stringResource(R.string.legal_about),
+                    minFontSize = 10.sp,
+                    maxFontSize = 14.sp
+                )
             }
         }
     }
@@ -418,26 +494,21 @@ fun TopEventName(
     )
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(28.dp),
-            contentAlignment = Alignment.CenterStart
-        ) {
-            Text(
-                text = headerLines.firstOrNull().orEmpty(),
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
+        Text(
+            text = headerLines.firstOrNull().orEmpty(),
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth()
+        )
 
         headerLines.drop(1).forEach { line ->
             Text(
                 text = line,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth()
             )
         }
     }
@@ -491,11 +562,12 @@ fun HeaderPanel(
                 .padding(vertical = 30.dp, horizontal = 18.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text(
+            AutoSizedSingleLineText(
                 text = text,
-                color = contentColor,
-                fontSize = 34.sp,
-                fontWeight = FontWeight.Bold
+                minFontSize = 20.sp,
+                maxFontSize = 34.sp,
+                fontWeight = FontWeight.Bold,
+                color = contentColor
             )
         }
     }
@@ -516,11 +588,12 @@ fun CourseShortenedPanel() {
                 .padding(vertical = 18.dp, horizontal = 16.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text(
+            AutoSizedSingleLineText(
                 text = stringResource(R.string.course_shortened_banner),
-                color = MaterialTheme.colorScheme.onTertiary,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold
+                minFontSize = 16.sp,
+                maxFontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onTertiary
             )
         }
     }
@@ -554,7 +627,7 @@ fun TargetCard(
 
             Spacer(modifier = Modifier.height(HomeGapMedium))
 
-            Text(
+            AutoSizedSingleLineText(
                 text = displayDistanceText(
                     distanceText = distanceText,
                     distancePrefix = distancePrefix,
@@ -562,8 +635,10 @@ fun TargetCard(
                     unknownText = stringResource(R.string.distance_display_unknown),
                     valueText = { value -> resources.getString(R.string.distance_display_value, value) }
                 ),
-                fontSize = 38.sp,
-                fontWeight = FontWeight.Bold
+                minFontSize = 22.sp,
+                maxFontSize = 38.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.fillMaxWidth()
             )
 
             Text(
@@ -623,7 +698,10 @@ fun StatusOverviewCard(
     raceStatusText: String,
     raceColor: Color,
     uploadStatusText: String,
-    uploadColor: Color
+    uploadColor: Color,
+    regattaLinkConnected: Boolean,
+    onRegattaLinkReconnect: () -> Unit,
+    onRegattaLinkOpen: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -635,11 +713,25 @@ fun StatusOverviewCard(
         Column(
             modifier = Modifier.padding(18.dp)
         ) {
-            StatusRow(
-                label = stringResource(R.string.gps),
-                value = gpsStatus,
-                color = gpsColor
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CompactStatusIndicator(
+                    label = stringResource(R.string.gps),
+                    value = gpsStatus,
+                    color = gpsColor,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Spacer(modifier = Modifier.weight(1f))
+                RegattaLinkStatusIndicator(
+                    connected = regattaLinkConnected,
+                    onReconnect = onRegattaLinkReconnect,
+                    onOpen = onRegattaLinkOpen,
+                    modifier = Modifier.weight(1f)
+                )
+            }
 
             Spacer(modifier = Modifier.height(HomeGapMedium))
 
@@ -661,12 +753,85 @@ fun StatusOverviewCard(
 }
 
 @Composable
+private fun CompactStatusIndicator(
+    label: String,
+    value: String,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(16.dp)
+                .background(color, CircleShape)
+        )
+        AutoSizedSingleLineText(
+            text = if (value.isBlank()) label else "$label  $value",
+            minFontSize = 9.sp,
+            maxFontSize = 16.sp,
+            modifier = Modifier.padding(start = 8.dp)
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun RegattaLinkStatusIndicator(
+    connected: Boolean,
+    onReconnect: () -> Unit,
+    onOpen: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.combinedClickable(
+            onClick = {
+                if (!connected) {
+                    onReconnect()
+                }
+            },
+            onLongClick = onOpen
+        ),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AutoSizedSingleLineText(
+            text = stringResource(R.string.regattalink_short_label),
+            minFontSize = 9.sp,
+            maxFontSize = 16.sp
+        )
+        Box(
+            modifier = Modifier
+                .padding(start = 8.dp)
+                .size(16.dp)
+                .background(
+                    if (connected) RegattaGreen else RegattaRed,
+                    CircleShape
+                )
+        )
+    }
+}
+
+@Composable
 fun StatusRow(
     label: String,
     value: String,
     color: Color
 ) {
+    val statusText = buildAnnotatedString {
+        withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) {
+            append(label)
+        }
+        if (value.isNotBlank()) {
+            append("  ")
+            append(value)
+        }
+    }
+
     Row(
+        modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
@@ -676,16 +841,17 @@ fun StatusRow(
         )
 
         Text(
-            text = label,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(start = 12.dp)
-        )
-
-        Text(
-            text = value,
-            fontSize = 18.sp,
-            modifier = Modifier.padding(start = 10.dp)
+            text = statusText,
+            modifier = Modifier
+                .padding(start = 12.dp)
+                .weight(1f),
+            maxLines = 1,
+            softWrap = false,
+            autoSize = TextAutoSize.StepBased(
+                minFontSize = 10.sp,
+                maxFontSize = 18.sp,
+                stepSize = 0.5.sp
+            )
         )
     }
 }
@@ -810,18 +976,28 @@ fun RacecourseRow(
             onClick = onCourse,
             enabled = raceDataReady,
             colors = primaryButtonColors(),
+            contentPadding = CompactButtonContentPadding,
             modifier = Modifier.weight(0.5f)
         ) {
-            Text(stringResource(R.string.course))
+            AutoSizedSingleLineText(
+                text = stringResource(R.string.course),
+                minFontSize = 10.sp,
+                maxFontSize = 14.sp
+            )
         }
 
         Button(
             onClick = onMap,
             enabled = raceDataReady,
             colors = primaryButtonColors(),
+            contentPadding = CompactButtonContentPadding,
             modifier = Modifier.weight(0.5f)
         ) {
-            Text(stringResource(R.string.map))
+            AutoSizedSingleLineText(
+                text = stringResource(R.string.map),
+                minFontSize = 10.sp,
+                maxFontSize = 14.sp
+            )
         }
     }
 }
@@ -844,6 +1020,7 @@ fun SmallActionButton(
         onClick = onClick,
         modifier = modifier,
         enabled = enabled,
+        contentPadding = CompactButtonContentPadding,
         colors = ButtonDefaults.buttonColors(
             containerColor = color,
             contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -851,7 +1028,11 @@ fun SmallActionButton(
             disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
         )
     ) {
-        Text(text)
+        AutoSizedSingleLineText(
+            text = text,
+            minFontSize = 10.sp,
+            maxFontSize = 14.sp
+        )
     }
 }
 
@@ -866,6 +1047,7 @@ fun AdvancedDebugBlock(
     sogText: String,
     gpsAccuracyText: String,
     onToggleManualTracking: () -> Unit,
+    onSessionHistory: () -> Unit,
     onExport: () -> Unit,
     onClearOldDataClick: () -> Unit
 ) {
@@ -899,6 +1081,15 @@ fun AdvancedDebugBlock(
                 } else {
                     Text(stringResource(R.string.start_manual_tracking))
                 }
+            }
+
+            Spacer(modifier = Modifier.height(HomeGapMedium))
+
+            Button(
+                onClick = onSessionHistory,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.session_history_button))
             }
 
             Spacer(modifier = Modifier.height(HomeGapLarge))

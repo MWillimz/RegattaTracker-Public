@@ -4,6 +4,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteStatement
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -70,6 +71,58 @@ class TelemetryLargeBacklogTest {
         }
     }
 
+    @Test
+    fun uploadPage_preservesCogValidityAndFollowingColumnAlignment() {
+        val helper = TrackingDbHelper(context)
+        try {
+            val accessContextId = requireNotNull(
+                helper.getOrCreateAccessContext(
+                    serverUrl = "https://raceoffice.example.org",
+                    accessIdentifier = "COG Event",
+                    accessSecret = "cog-secret"
+                )
+            )
+            helper.insertSample(
+                sequenceId = 7L,
+                timestamp = "2026-09-28T15:00:00",
+                boatName = "COG Boat",
+                captainName = "Skipper",
+                hullColor = "white",
+                sailNumber = "GER 7",
+                yardstick = 100.0,
+                boatType = "Test",
+                lat = 53.5,
+                lon = 10.0,
+                accuracy = 4f,
+                cog = 0f,
+                sog = 3.5f,
+                cogValid = false,
+                batteryPercent = 73,
+                batteryCharging = true,
+                trackingProfile = "fixed_1s",
+                accessContextId = accessContextId,
+                utcOffsetMinutes = 120
+            )
+
+            val sample = getTelemetryUploadPage(
+                db = helper,
+                afterLocalId = 0L,
+                limit = 10
+            ).single()
+
+            assertFalse(requireNotNull(sample.cogValid))
+            assertEquals(3.5f, sample.sog, 0.001f)
+            assertEquals(73, sample.batteryPercent)
+            assertEquals(true, sample.batteryCharging)
+            assertEquals("fixed_1s", sample.trackingProfile)
+            assertEquals(120, sample.utcOffsetMinutes)
+            assertEquals("COG Event", sample.accessContext.accessIdentifier)
+            assertEquals("cog-secret", sample.accessContext.accessSecret)
+        } finally {
+            helper.close()
+        }
+    }
+
     private fun insertPendingSamples(
         helper: TrackingDbHelper,
         accessContextId: Long,
@@ -92,16 +145,10 @@ class TelemetryLargeBacklogTest {
                 accuracy,
                 cog,
                 sog,
-                accel_x,
-                accel_y,
-                accel_z,
-                gyro_x,
-                gyro_y,
-                gyro_z,
                 uploaded,
                 access_context_id,
                 utc_offset_minutes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
             """.trimIndent()
         )
 
@@ -141,14 +188,8 @@ class TelemetryLargeBacklogTest {
         statement.bindDouble(11, 4.0)
         statement.bindDouble(12, 180.0)
         statement.bindDouble(13, 3.5)
-        statement.bindDouble(14, 0.1)
-        statement.bindDouble(15, 0.2)
-        statement.bindDouble(16, 0.3)
-        statement.bindDouble(17, 0.4)
-        statement.bindDouble(18, 0.5)
-        statement.bindDouble(19, 0.6)
-        statement.bindLong(20, accessContextId)
-        statement.bindLong(21, 120)
+        statement.bindLong(14, accessContextId)
+        statement.bindLong(15, 120)
     }
 
     private companion object {

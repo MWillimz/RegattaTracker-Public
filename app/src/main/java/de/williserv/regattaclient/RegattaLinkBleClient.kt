@@ -1,0 +1,4676 @@
+package de.williserv.regattaclient
+
+import android.Manifest
+import android.annotation.SuppressLint
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothGatt
+import android.bluetooth.BluetoothGattCallback
+import android.bluetooth.BluetoothGattCharacteristic
+import android.bluetooth.BluetoothGattDescriptor
+import android.bluetooth.BluetoothGattService
+import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
+import android.bluetooth.BluetoothStatusCodes
+import android.bluetooth.le.BluetoothLeScanner
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanFilter
+import android.bluetooth.le.ScanResult
+import android.bluetooth.le.ScanSettings
+import android.content.Context
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.ParcelUuid
+import android.os.SystemClock
+import android.util.Log
+import java.util.UUID
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
+
+enum class RegattaLinkConnectionStatus {
+    IDLE,
+    SCANNING,
+    BONDING,
+    CONNECTING,
+    DISCOVERING,
+    READING_DEVICE_INFO,
+    CONNECTED,
+    ERROR
+}
+
+data class RegattaLinkClientState(
+    val status: RegattaLinkConnectionStatus = RegattaLinkConnectionStatus.IDLE,
+    val deviceName: String = "",
+    val deviceAddress: String = "",
+    val deviceInfo: RegattaLinkDeviceInfo? = null,
+    val error: String = "",
+    val userMessage: RegattaLinkUiMessage? = null
+)
+
+@SuppressLint(
+    "MissingPermission",
+    "DiscouragedPrivateApi",
+    "SoonBlockedPrivateApi"
+)
+internal class RegattaLinkBleClient(
+    context: Context,
+    private val onStateChanged: (RegattaLinkClientState) -> Unit,
+    private val onOtaStateChanged: (RegattaLinkOtaUiState) -> Unit = {},
+    private val onTelemetryStateChanged: (RegattaLinkTelemetryState) -> Unit = {},
+    private val onConfigurationStateChanged: (RegattaLinkConfigurationState) -> Unit = {},
+    private val onNmeaStateChanged: (RegattaLinkNmeaState) -> Unit = {},
+    private val onFactoryResetRecoveryStateChanged: (Boolean) -> Unit = {},
+    private val onUnexpectedDisconnect: () -> Unit = {}
+) : RegattaLinkOtaTransport, RegattaLinkConnectionClient {
+    companion object {
+        val CONFIG_SERVICE_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710001")
+        val EXTENSION_SERVICE_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710030")
+        val DEVICE_NAME_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710002")
+        val DEVICE_INFO_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710003")
+        val NMEA_PGN_INVENTORY_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710004")
+        val NMEA_RAW_CAN_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710005")
+        val LED_BRIGHTNESS_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710006")
+        val DIAGNOSTIC_LOG_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710007")
+        val DEVICE_CONTROL_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710008")
+        val MOTION_DAMPING_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710009")
+        val TELEMETRY_SERVICE_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710020")
+        val TELEMETRY_FAST_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710021")
+        val TELEMETRY_SUMMARY_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710022")
+        val TELEMETRY_CALIBRATION_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710023")
+        val TELEMETRY_BOAT_STATE_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710024")
+        val TELEMETRY_MOTION_ONE_HZ_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710025")
+
+        internal val NORMAL_TELEMETRY_UUIDS: Set<UUID> =
+            setOf(TELEMETRY_MOTION_ONE_HZ_UUID)
+
+        private val CCCD_UUID: UUID =
+            UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+
+        private const val SCAN_TIMEOUT_MS = 12_000L
+        private const val BOND_TIMEOUT_MS = 30_000L
+        private const val GATT_TIMEOUT_MS = 20_000L
+        private const val BOND_POLL_MS = 250L
+        private const val GATT_OPERATION_TIMEOUT_MS = 10_000L
+        private const val FACTORY_RESET_LOCAL_DISCONNECT_FALLBACK_MS = 5_000L
+        private const val KNOWN_RECONNECT_SCAN_SLICE_MS = 6_000L
+        private const val KNOWN_RECONNECT_PAUSE_MS = 4_000L
+        private const val REQUESTED_OTA_MTU = 247
+        private const val OTA_PHY_REQUEST_GRACE_MS = 300L
+        private const val LOG_TAG = "RegattaLinkBLE"
+
+        fun requiredPermissions(): Array<String> =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                arrayOf(
+                    Manifest.permission.BLUETOOTH_SCAN,
+                    Manifest.permission.BLUETOOTH_CONNECT
+                )
+            } else {
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+            }
+    }
+
+    private enum class ScanPurpose {
+        NORMAL,
+        KNOWN_DEVICE_RECONNECT,
+        OTA_RECONNECT
+    }
+
+    private sealed class PendingGattOperation {
+        data class CharacteristicWrite(
+            val uuid: UUID,
+            val future: CompletableFuture<Unit>
+        ) : PendingGattOperation()
+
+        data class CharacteristicRead(
+            val uuid: UUID,
+            val future: CompletableFuture<ByteArray>
+        ) : PendingGattOperation()
+
+        data class DescriptorWrite(
+            val uuid: UUID,
+            val future: CompletableFuture<Unit>
+        ) : PendingGattOperation()
+
+        data class Mtu(
+            val future: CompletableFuture<Int>
+        ) : PendingGattOperation()
+    }
+
+    private val appContext = context.applicationContext
+    private val bluetoothManager =
+        appContext.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+    private val handler = Handler(Looper.getMainLooper())
+    private val otaExecutor = Executors.newSingleThreadExecutor()
+    /*
+     * OTA itself can block in reconnectCandidate(). GATT schema reconciliation
+     * therefore needs a separate worker so its Device Info write can complete
+     * while the OTA executor is waiting for the reconnect future.
+     */
+    private val gattSchemaExecutor = Executors.newSingleThreadExecutor()
+    private val gattSchemaStore = RegattaLinkGattSchemaStore(appContext)
+    /*
+     * Schema 0 is legacy/unspecified and therefore cannot be trusted across an
+     * app restart. Keep its acceptance process-local only. This is still enough
+     * for OTA: once the initial connection observed Service Changed and
+     * rediscovered, the mandatory fresh pre-transfer reconnect may reuse that
+     * now-correct Android ATT cache within the same process.
+     */
+    private val legacyGattSchemaAcceptedThisProcess =
+        ConcurrentHashMap.newKeySet<String>()
+    /*
+     * A persisted generation is only a hint. Every app process proves that the
+     * actually cached Android handles work before trusting it. This catches the
+     * exact failure where Service Changed/rediscovery completes but a CCCD write
+     * still lands on a stale, non-writable ATT handle.
+     */
+    private val verifiedGattSchemaThisProcess =
+        ConcurrentHashMap.newKeySet<String>()
+    private val gattCacheRefreshAttemptsThisProcess =
+        ConcurrentHashMap.newKeySet<String>()
+    private val gattCacheRefreshPendingValidation =
+        ConcurrentHashMap.newKeySet<String>()
+    private val gattServiceChangedReconnectPendingValidation =
+        ConcurrentHashMap.newKeySet<String>()
+
+    private var scanner: BluetoothLeScanner? = null
+    @Volatile private var scanActive = false
+    @Volatile private var gatt: BluetoothGatt? = null
+    @Volatile private var connected = false
+    private var currentDevice: BluetoothDevice? = null
+    private var bondDeadline = 0L
+    private var scanPurpose = ScanPurpose.NORMAL
+
+    @Volatile
+    override var mtu: Int = 23
+        private set
+
+    private val pendingGattLock = Any()
+    private var pendingGattOperation: PendingGattOperation? = null
+
+    private val otaRunning = AtomicBoolean(false)
+    private val otaCancelled = AtomicBoolean(false)
+    private val rawCaptureRunning = AtomicBoolean(false)
+    private val diagnosticLogRunning = AtomicBoolean(false)
+    private val configurationMutationRunning = AtomicBoolean(false)
+    private val deviceControlExecutionGuard =
+        RegattaLinkDeviceControlExecutionGuard<BluetoothGatt>()
+    private var nextDeviceControlRequestId = 1u
+    private val rawCaptureStopReason =
+        AtomicReference<RegattaLinkRawCaptureStopReason?>(null)
+    private val otaProgressQueue = LinkedBlockingQueue<RegattaLinkOtaProgress>()
+    private val otaDataTransportError = AtomicReference<String?>(null)
+    @Volatile private var lastState = RegattaLinkClientState()
+    @Volatile private var lastOtaState = RegattaLinkOtaUiState()
+    private val deferredTerminalOtaState =
+        AtomicReference<RegattaLinkOtaUiState?>(null)
+    @Volatile private var lastTelemetryState = RegattaLinkTelemetryState()
+    @Volatile private var lastConfigurationState = RegattaLinkConfigurationState()
+    @Volatile private var lastNmeaState = RegattaLinkNmeaState()
+    private val telemetryLock = Any()
+    private val configurationLock = Any()
+    private val nmeaLock = Any()
+    private val serviceRediscoveryPending = AtomicBoolean(false)
+    private val serviceRediscoveryRequested = AtomicBoolean(false)
+    private val serviceRediscoveryDeferredForOta = AtomicBoolean(false)
+    private val gattSchemaRefreshRequestRunning = AtomicBoolean(false)
+    private val gattSchemaValidationRunning = AtomicBoolean(false)
+    @Volatile private var currentConnectionStartedBonded = false
+    @Volatile private var serviceChangedObservedThisConnection = false
+    @Volatile private var serviceChangedRediscoveryCompletedThisConnection = false
+    @Volatile private var gattSchemaReconciliationPending = false
+    @Volatile private var pendingGattSchemaVersion = 0
+    @Volatile private var pendingGattSchemaInfo: RegattaLinkDeviceInfo? = null
+    @Volatile private var serviceDiscoveryInProgress = false
+    @Volatile private var deviceInfoReadInProgress = false
+    @Volatile private var connectionSetupComplete = false
+    @Volatile private var establishedConnection = false
+    private val factoryResetDisconnectTracker =
+        RegattaLinkFactoryResetDisconnectTracker<BluetoothGatt>(
+            nowElapsedMs = { SystemClock.elapsedRealtime() },
+            expectedDisconnectTimeoutMs =
+                REGATTALINK_DEVICE_CONTROL_CLIENT_TIMEOUT_MS +
+                    REGATTALINK_FACTORY_RESET_FINALIZATION_TIMEOUT_MS +
+                    REGATTALINK_FACTORY_RESET_DISCONNECT_MARGIN_MS
+        )
+    private var serviceRediscoveryGatt: BluetoothGatt? = null
+    @Volatile private var gattSchemaReconnectGatt: BluetoothGatt? = null
+    @Volatile private var gattSchemaReconnectDevice: BluetoothDevice? = null
+    private var reconnectFuture: CompletableFuture<RegattaLinkDeviceInfo?>? = null
+    private var selectedDeviceAddress: String? = null
+    private val attemptedDiscoveryAddresses = mutableSetOf<String>()
+    private var discoveryInProgress = false
+    private var discoveryCandidateInProgress = false
+    private var discoveryCandidateBondingObserved = false
+    private var discoveryCandidateStartedBonded = false
+    private var discoveryStaleBondFailureObserved = false
+    private var discoveryDeadlineMs = 0L
+    private var knownReconnectAddress: String? = null
+    private var knownReconnectExpectedStableId: String? = null
+    private var knownReconnectDeadlineMs = 0L
+    private var knownReconnectLastError = ""
+
+    private val knownReconnectRetry = Runnable {
+        beginKnownDeviceReconnectScan()
+    }
+
+    private val scanTimeout = Runnable {
+        stopScan()
+        if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
+            reconnectFuture?.complete(null)
+        } else if (scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT) {
+            retryKnownDeviceReconnect("Configured RegattaLink was not found")
+        } else {
+            finishManualDiscovery(
+                regattaLinkManualDiscoveryExhaustedMessage(
+                    discoveryStaleBondFailureObserved
+                )
+            )
+        }
+    }
+
+    private val gattTimeout = Runnable {
+        val device = currentDevice
+        val wasEstablishedConnection = establishedConnection
+        closeGatt()
+        if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
+            reconnectFuture?.complete(null)
+        } else if (scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT) {
+            retryKnownDeviceReconnect("Configured RegattaLink connection timed out")
+        } else if (device != null) {
+            if (discoveryInProgress) {
+                retryDiscoveryAfterCandidateFailure()
+            } else {
+                emitError(
+                    device,
+                    "RegattaLink connection timed out",
+                    RegattaLinkUiMessage.CONNECTION_TIMEOUT
+                )
+                if (
+                    shouldStartRegattaLinkOutageReconnect(
+                        connectionWasReady = wasEstablishedConnection,
+                        otaOwnsConnection = otaRunning.get(),
+                        knownReconnectAlreadyActive = false
+                    )
+                ) {
+                    handler.post { onUnexpectedDisconnect() }
+                }
+            }
+        }
+    }
+
+    private val gattSchemaReconcileTimeout = Runnable {
+        val activeGatt = gatt ?: return@Runnable
+        if (!connected || !gattSchemaReconciliationPending) return@Runnable
+        val info = pendingGattSchemaInfo
+        if (info != null) {
+            recoverAndroidGattCacheOrFail(
+                activeGatt,
+                info,
+                if (pendingGattSchemaVersion > 0) {
+                    "Service Changed/rediscovery did not complete for GATT schema " +
+                        pendingGattSchemaVersion
+                } else {
+                    "Legacy Service Changed was not delivered"
+                }
+            )
+            return@Runnable
+        }
+        closeGattWithError(
+            activeGatt,
+            "Timed out reconciling RegattaLink GATT services"
+        )
+    }
+
+    private val gattSchemaReconnectFallback = Runnable {
+        val activeGatt = gattSchemaReconnectGatt ?: return@Runnable
+        val device = gattSchemaReconnectDevice ?: activeGatt.device
+        Log.w(
+            LOG_TAG,
+            "Timed out waiting for planned GATT schema disconnect; forcing close"
+        )
+        completePlannedGattSchemaDisconnect(activeGatt, device)
+    }
+
+    private val serviceRediscovery = object : Runnable {
+        override fun run() {
+            val activeGatt = serviceRediscoveryGatt
+            if (
+                activeGatt == null ||
+                gatt !== activeGatt ||
+                !connected
+            ) {
+                serviceRediscoveryGatt = null
+                serviceRediscoveryPending.set(false)
+                serviceRediscoveryRequested.set(false)
+                return
+            }
+
+            if (
+                otaRunning.get() &&
+                connectionSetupComplete
+            ) {
+                serviceRediscoveryDeferredForOta.set(true)
+                serviceRediscoveryPending.set(false)
+                return
+            }
+
+            val localGattBusy = synchronized(pendingGattLock) {
+                pendingGattOperation != null
+            }
+            if (
+                localGattBusy ||
+                serviceDiscoveryInProgress ||
+                deviceInfoReadInProgress
+            ) {
+                handler.postDelayed(this, 100L)
+                return
+            }
+
+            serviceRediscoveryRequested.set(false)
+            if (beginServiceDiscovery(activeGatt, "GATT Service Changed")) {
+                serviceRediscoveryGatt = null
+                serviceRediscoveryPending.set(false)
+                return
+            }
+
+            serviceRediscoveryRequested.set(true)
+            handler.postDelayed(this, 250L)
+        }
+    }
+
+    private fun beginServiceDiscovery(
+        activeGatt: BluetoothGatt,
+        reason: String
+    ): Boolean {
+        if (
+            gatt !== activeGatt ||
+            !connected ||
+            serviceDiscoveryInProgress ||
+            deviceInfoReadInProgress
+        ) {
+            return false
+        }
+
+        val localGattBusy = synchronized(pendingGattLock) {
+            pendingGattOperation != null
+        }
+        if (localGattBusy) return false
+
+        connectionSetupComplete = false
+        emitForDevice(
+            activeGatt.device,
+            RegattaLinkConnectionStatus.DISCOVERING
+        )
+        if (!activeGatt.discoverServices()) {
+            return false
+        }
+
+        serviceDiscoveryInProgress = true
+        handler.removeCallbacks(gattTimeout)
+        handler.postDelayed(gattTimeout, currentGattTimeoutMs())
+        Log.i(LOG_TAG, "RegattaLink service discovery started: $reason")
+        return true
+    }
+
+    private fun scheduleServiceRediscovery(
+        activeGatt: BluetoothGatt,
+        reason: String
+    ) {
+        if (gatt !== activeGatt || !connected) return
+        serviceRediscoveryRequested.set(true)
+        Log.i(LOG_TAG, "$reason; queued service rediscovery")
+        serviceRediscoveryGatt = activeGatt
+        if (serviceRediscoveryPending.compareAndSet(false, true)) {
+            handler.post(serviceRediscovery)
+        }
+    }
+
+    private val bondPoll = object : Runnable {
+        override fun run() {
+            val device = currentDevice ?: return
+            val bondState = device.bondState
+
+            if (
+                scanPurpose == ScanPurpose.NORMAL &&
+                discoveryInProgress &&
+                bondState == BluetoothDevice.BOND_BONDING
+            ) {
+                discoveryCandidateBondingObserved = true
+            }
+
+            when {
+                bondState == BluetoothDevice.BOND_BONDED -> connectGatt(device)
+                scanPurpose == ScanPurpose.NORMAL &&
+                    discoveryInProgress &&
+                    shouldSkipRejectedRegattaLinkDiscoveryCandidate(
+                        bondingObserved = discoveryCandidateBondingObserved,
+                        currentlyUnbonded = bondState == BluetoothDevice.BOND_NONE
+                    ) -> {
+                    retryDiscoveryAfterCandidateFailure()
+                }
+                SystemClock.elapsedRealtime() >= bondDeadline -> {
+                    if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
+                        reconnectFuture?.complete(null)
+                    } else if (discoveryInProgress) {
+                        retryDiscoveryAfterCandidateFailure()
+                    } else {
+                        emitError(device, "RegattaLink pairing timed out")
+                    }
+                }
+                else -> handler.postDelayed(this, BOND_POLL_MS)
+            }
+        }
+    }
+
+    private val scanCallback = object : ScanCallback() {
+        override fun onScanResult(callbackType: Int, result: ScanResult) {
+            if (!scanActive) return
+            val device = result.device
+            if (scanPurpose == ScanPurpose.NORMAL && discoveryInProgress) {
+                if (discoveryCandidateInProgress) return
+                if (!attemptedDiscoveryAddresses.add(device.address)) return
+                discoveryCandidateInProgress = true
+            }
+            if (
+                scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT &&
+                device.address != knownReconnectAddress
+            ) {
+                return
+            }
+            stopScan()
+            prepareDevice(device)
+        }
+
+        override fun onScanFailed(errorCode: Int) {
+            if (!scanActive) return
+            scanActive = false
+            handler.removeCallbacks(scanTimeout)
+            if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
+                reconnectFuture?.complete(null)
+            } else if (scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT) {
+                retryKnownDeviceReconnect("Bluetooth scan failed ($errorCode)")
+            } else {
+                finishManualDiscovery("Bluetooth scan failed ($errorCode)")
+            }
+        }
+    }
+
+    private val gattCallback = object : BluetoothGattCallback() {
+        override fun onConnectionStateChange(
+            callbackGatt: BluetoothGatt,
+            status: Int,
+            newState: Int
+        ) {
+            if (gatt !== callbackGatt) {
+                if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                    callbackGatt.close()
+                }
+                return
+            }
+
+            if (
+                status == BluetoothGatt.GATT_SUCCESS &&
+                newState == BluetoothProfile.STATE_CONNECTED
+            ) {
+                connected = true
+                connectionSetupComplete = false
+                serviceDiscoveryInProgress = false
+                deviceInfoReadInProgress = false
+                serviceRediscoveryRequested.set(false)
+                serviceRediscoveryDeferredForOta.set(false)
+                if (!beginServiceDiscovery(callbackGatt, "initial connection")) {
+                    closeGattWithError(
+                        callbackGatt,
+                        "Could not discover RegattaLink services"
+                    )
+                }
+                return
+            }
+
+            if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                if (gattSchemaReconnectGatt === callbackGatt) {
+                    completePlannedGattSchemaDisconnect(
+                        callbackGatt,
+                        gattSchemaReconnectDevice ?: callbackGatt.device
+                    )
+                    return
+                }
+                if (factoryResetDisconnectTracker.consumeDisconnect(callbackGatt)) {
+                    completeFactoryResetDisconnect(callbackGatt)
+                    return
+                }
+                val wasReadyConnection = establishedConnection
+                connected = false
+                establishedConnection = false
+                resetServiceDiscoveryState()
+                failPendingGattOperation(
+                    RegattaLinkOtaTransportException(
+                        "RegattaLink disconnected during GATT operation"
+                    )
+                )
+                callbackGatt.close()
+                if (gatt === callbackGatt) {
+                    gatt = null
+                }
+
+                if (otaRunning.get()) {
+                    updateTelemetry {
+                        it.copy(
+                            subscribed = false,
+                            pausedForOta = true
+                        )
+                    }
+                    emitNmea(
+                        RegattaLinkNmeaState(
+                            pausedForOta = true
+                        )
+                    )
+                } else {
+                    clearTelemetry()
+                    clearNmea()
+                }
+
+                if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
+                    reconnectFuture?.complete(null)
+                } else if (scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT) {
+                    retryKnownDeviceReconnect("Configured RegattaLink disconnected ($status)")
+                } else if (!otaRunning.get()) {
+                    if (discoveryInProgress) {
+                        retryDiscoveryAfterCandidateFailure(
+                            staleBondSecurityFailure =
+                                isRegattaLinkStaleBondSecurityGattStatus(status)
+                        )
+                    } else {
+                        emitError(
+                            callbackGatt.device,
+                            "RegattaLink disconnected ($status)"
+                        )
+                        if (
+                            shouldStartRegattaLinkOutageReconnect(
+                                connectionWasReady = wasReadyConnection,
+                                otaOwnsConnection = otaRunning.get(),
+                                knownReconnectAlreadyActive = false
+                            )
+                        ) {
+                            handler.post { onUnexpectedDisconnect() }
+                        }
+                    }
+                }
+            }
+        }
+
+        override fun onServiceChanged(callbackGatt: BluetoothGatt) {
+            if (gatt !== callbackGatt) return
+
+            serviceChangedObservedThisConnection = true
+            serviceChangedRediscoveryCompletedThisConnection = false
+
+            val pendingSchemaInfo = pendingGattSchemaInfo
+            if (
+                gattSchemaReconciliationPending &&
+                pendingSchemaInfo != null
+            ) {
+                /*
+                 * Do not trust same-connection rediscovery for a schema
+                 * migration. Android can deliver Service Changed yet keep
+                 * downstream CCCD handles stale until the GATT connection is
+                 * rebuilt. Close this GATT instance, reconnect, discover from
+                 * scratch and prove the real OTA CCCD before accepting it.
+                 */
+                restartAfterGattServiceChanged(
+                    callbackGatt,
+                    pendingSchemaInfo
+                )
+                return
+            }
+
+            /*
+             * During an active OTA transfer the current table is already in use,
+             * so an unrelated Service Changed remains deferred. During setup,
+             * serialize normal rediscovery.
+             */
+            if (
+                otaRunning.get() &&
+                scanPurpose != ScanPurpose.OTA_RECONNECT &&
+                connectionSetupComplete
+            ) {
+                serviceRediscoveryRequested.set(true)
+                serviceRediscoveryDeferredForOta.set(true)
+                Log.i(
+                    LOG_TAG,
+                    "RegattaLink GATT Service Changed deferred until active OTA completes"
+                )
+                return
+            }
+
+            scheduleServiceRediscovery(
+                callbackGatt,
+                "RegattaLink GATT Service Changed received"
+            )
+        }
+
+        override fun onServicesDiscovered(
+            callbackGatt: BluetoothGatt,
+            status: Int
+        ) {
+            if (gatt !== callbackGatt) return
+            serviceDiscoveryInProgress = false
+
+            if (status != BluetoothGatt.GATT_SUCCESS) {
+                closeGattWithError(
+                    callbackGatt,
+                    "RegattaLink service discovery failed ($status)",
+                    gattStatus = status
+                )
+                return
+            }
+
+            if (serviceRediscoveryRequested.get()) {
+                scheduleServiceRediscovery(
+                    callbackGatt,
+                    "Service Changed arrived during discovery"
+                )
+                return
+            }
+
+            if (serviceChangedObservedThisConnection) {
+                serviceChangedRediscoveryCompletedThisConnection = true
+            }
+
+            val service: BluetoothGattService? =
+                callbackGatt.getService(CONFIG_SERVICE_UUID)
+            val characteristic: BluetoothGattCharacteristic? =
+                service?.getCharacteristic(DEVICE_INFO_UUID)
+
+            if (characteristic == null) {
+                closeGattWithError(
+                    callbackGatt,
+                    "RegattaLink Device Info is unavailable"
+                )
+                return
+            }
+
+            emitForDevice(
+                callbackGatt.device,
+                RegattaLinkConnectionStatus.READING_DEVICE_INFO
+            )
+            deviceInfoReadInProgress = true
+            if (!callbackGatt.readCharacteristic(characteristic)) {
+                deviceInfoReadInProgress = false
+                closeGattWithError(
+                    callbackGatt,
+                    "Could not read RegattaLink Device Info"
+                )
+            }
+        }
+
+        @Deprecated("Deprecated in Android 13")
+        override fun onCharacteristicRead(
+            callbackGatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            status: Int
+        ) {
+            if (gatt !== callbackGatt) return
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                handleCharacteristicRead(
+                    callbackGatt,
+                    characteristic.uuid,
+                    characteristic.value ?: byteArrayOf(),
+                    status
+                )
+            }
+        }
+
+        override fun onCharacteristicRead(
+            callbackGatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            value: ByteArray,
+            status: Int
+        ) {
+            if (gatt !== callbackGatt) return
+            handleCharacteristicRead(
+                callbackGatt,
+                characteristic.uuid,
+                value,
+                status
+            )
+        }
+
+        override fun onCharacteristicWrite(
+            callbackGatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            status: Int
+        ) {
+            if (gatt !== callbackGatt) return
+            val handled = completeCharacteristicWrite(
+                characteristic.uuid,
+                status
+            )
+            if (
+                !handled &&
+                characteristic.uuid == REGATTALINK_OTA_DATA_UUID &&
+                status != BluetoothGatt.GATT_SUCCESS
+            ) {
+                otaDataTransportError.compareAndSet(
+                    null,
+                    "OTA DATA write callback failed ($status)"
+                )
+            }
+        }
+
+        @Deprecated("Deprecated in Android 13")
+        override fun onCharacteristicChanged(
+            callbackGatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic
+        ) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                handleCharacteristicChanged(
+                    callbackGatt,
+                    characteristic.uuid,
+                    characteristic.value ?: byteArrayOf()
+                )
+            }
+        }
+
+        override fun onCharacteristicChanged(
+            callbackGatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            value: ByteArray
+        ) {
+            if (gatt !== callbackGatt) return
+            handleCharacteristicChanged(callbackGatt, characteristic.uuid, value)
+        }
+
+        override fun onDescriptorWrite(
+            callbackGatt: BluetoothGatt,
+            descriptor: BluetoothGattDescriptor,
+            status: Int
+        ) {
+            if (gatt !== callbackGatt) return
+            completeDescriptorWrite(descriptor.uuid, status)
+        }
+
+        override fun onMtuChanged(
+            callbackGatt: BluetoothGatt,
+            negotiatedMtu: Int,
+            status: Int
+        ) {
+            if (gatt !== callbackGatt) return
+            if (status == BluetoothGatt.GATT_SUCCESS && negotiatedMtu >= 23) {
+                mtu = negotiatedMtu
+            }
+            completeMtu(mtu)
+        }
+
+        override fun onPhyUpdate(
+            callbackGatt: BluetoothGatt,
+            txPhy: Int,
+            rxPhy: Int,
+            status: Int
+        ) {
+            if (gatt !== callbackGatt) return
+            Log.i(
+                LOG_TAG,
+                "PHY update status=${status} tx=${phyName(txPhy)} rx=${phyName(rxPhy)}"
+            )
+        }
+    }
+
+    private fun completeFactoryResetDisconnect(activeGatt: BluetoothGatt) {
+        connected = false
+        establishedConnection = false
+        resetServiceDiscoveryState()
+        failPendingGattOperation(
+            RegattaLinkOtaTransportException(
+                "Factory reset disconnected RegattaLink"
+            )
+        )
+        activeGatt.close()
+        if (gatt === activeGatt) gatt = null
+        clearTelemetry()
+        clearNmea()
+        clearConfiguration()
+        emit(RegattaLinkClientState())
+    }
+
+    private fun requestFactoryResetLocalDisconnect(activeGatt: BluetoothGatt) {
+        runCatching { activeGatt.disconnect() }
+        handler.postDelayed(
+            {
+                if (
+                    !consumeRegattaLinkFactoryResetFallback(
+                        session = activeGatt,
+                        sessionStillCurrent = gatt === activeGatt,
+                        tracker = factoryResetDisconnectTracker
+                    )
+                ) {
+                    return@postDelayed
+                }
+                completeFactoryResetDisconnect(activeGatt)
+            },
+            FACTORY_RESET_LOCAL_DISCONNECT_FALLBACK_MS
+        )
+    }
+
+    override fun startDiscovery(): Boolean {
+        if (otaRunning.get()) return false
+        factoryResetDisconnectTracker.clearAll()
+        cancelKnownDeviceReconnect()
+        clearTelemetry()
+        clearConfiguration()
+        clearNmea()
+        diagnosticLogRunning.set(false)
+        deviceControlExecutionGuard.clear()
+        selectedDeviceAddress = null
+        attemptedDiscoveryAddresses.clear()
+        discoveryInProgress = true
+        discoveryCandidateInProgress = false
+        discoveryCandidateBondingObserved = false
+        discoveryCandidateStartedBonded = false
+        discoveryStaleBondFailureObserved = false
+        discoveryDeadlineMs =
+            SystemClock.elapsedRealtime() + REGATTALINK_MANUAL_DISCOVERY_TIMEOUT_MS
+        stopScan()
+        handler.removeCallbacks(bondPoll)
+        closeGatt()
+        currentDevice = null
+        scanPurpose = ScanPurpose.NORMAL
+
+        val adapter = bluetoothManager.adapter
+        if (adapter == null || !adapter.isEnabled) {
+            finishManualDiscovery("Bluetooth is disabled")
+            return true
+        }
+
+        scanner = adapter.bluetoothLeScanner
+        val activeScanner = scanner
+        if (activeScanner == null) {
+            finishManualDiscovery(
+                "Bluetooth LE is unavailable",
+                RegattaLinkUiMessage.BLUETOOTH_UNAVAILABLE
+            )
+            return true
+        }
+
+        emit(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.SCANNING
+            )
+        )
+        startFilteredScan(
+            activeScanner = activeScanner,
+            timeoutMs = regattaLinkDiscoveryRemainingMs(
+                discoveryDeadlineMs,
+                SystemClock.elapsedRealtime()
+            ).coerceAtLeast(1L)
+        )
+        return true
+    }
+
+    override fun startOta(artifact: RegattaLinkFirmwareArtifact) {
+        val activeGatt = gatt
+        if (
+            activeGatt != null &&
+            factoryResetDisconnectTracker.ownsLifecycle(activeGatt)
+        ) {
+            emitOta(
+                RegattaLinkOtaUiState(
+                    phase = RegattaLinkOtaPhase.ERROR,
+                    userMessage = RegattaLinkUiMessage.OTA_WAIT_FACTORY_RESET,
+                    error = "Wait for Factory Reset to finish before OTA"
+                )
+            )
+            return
+        }
+        if (rawCaptureRunning.get()) {
+            stopRawCanCapture(RegattaLinkRawCaptureStopReason.INTERRUPTED)
+        }
+        if (
+            diagnosticLogRunning.get() ||
+            configurationMutationRunning.get() ||
+            deviceControlExecutionGuard.isActive()
+        ) {
+            emitOta(
+                RegattaLinkOtaUiState(
+                    phase = RegattaLinkOtaPhase.ERROR,
+                    userMessage = RegattaLinkUiMessage.OTA_WAIT_CONFIGURATION,
+                    error = "Wait for RegattaLink configuration work to finish before OTA"
+                )
+            )
+            return
+        }
+        if (!otaRunning.compareAndSet(false, true)) return
+
+        val info = lastState.deviceInfo
+        if (
+            lastState.status != RegattaLinkConnectionStatus.CONNECTED ||
+            info == null ||
+            !isConnected()
+        ) {
+            otaRunning.set(false)
+            emitOta(
+                RegattaLinkOtaUiState(
+                    phase = RegattaLinkOtaPhase.ERROR,
+                    userMessage = RegattaLinkUiMessage.OTA_CONNECT_FIRST,
+                    error = "Connect RegattaLink before installing firmware"
+                )
+            )
+            return
+        }
+
+        val validationFailure = runCatching {
+            validateRegattaLinkFirmwareArtifact(
+                artifact.manifest,
+                artifact.image,
+                info
+            )
+            validateRegattaLinkOtaDevice(info, artifact)
+        }.exceptionOrNull()
+
+        if (validationFailure != null) {
+            otaRunning.set(false)
+            emitOta(
+                RegattaLinkOtaUiState(
+                    phase = RegattaLinkOtaPhase.ERROR,
+                    installedBuild = info.runningBuild.toString(),
+                    targetBuild = artifact.manifest.buildNumber.toString(),
+                    userMessage = RegattaLinkUiMessage.OTA_FAILED,
+                    error = validationFailure.message
+                        ?: "Firmware is not compatible with this RegattaLink"
+                )
+            )
+            return
+        }
+
+        otaCancelled.set(false)
+        otaProgressQueue.clear()
+        otaDataTransportError.set(null)
+        deferredTerminalOtaState.set(null)
+
+        otaExecutor.execute {
+            try {
+                RegattaLinkOtaEngine(
+                    artifact = artifact,
+                    initialDeviceInfo = info,
+                    transport = this,
+                    cancelled = { otaCancelled.get() },
+                    emit = ::emitOta,
+                    onTerminalDisconnect = ::invalidateTerminalOtaConnection
+                ).run()
+            } finally {
+                otaRunning.set(false)
+                otaCancelled.set(false)
+                scanPurpose = ScanPurpose.NORMAL
+
+                if (serviceRediscoveryDeferredForOta.getAndSet(false)) {
+                    val activeGatt = gatt
+                    if (activeGatt != null && connected) {
+                        serviceRediscoveryRequested.set(true)
+                        handler.post {
+                            scheduleServiceRediscovery(
+                                activeGatt,
+                                "Deferred RegattaLink GATT Service Changed"
+                            )
+                        }
+                    }
+                }
+
+                flushDeferredTerminalOtaState()
+            }
+        }
+    }
+
+    override fun cancelOta() {
+        if (!otaRunning.get()) return
+        if (
+            lastOtaState.phase !in setOf(
+                RegattaLinkOtaPhase.PREPARING,
+                RegattaLinkOtaPhase.STARTING,
+                RegattaLinkOtaPhase.TRANSFERRING
+            )
+        ) {
+            return
+        }
+        otaCancelled.set(true)
+        emitOta(
+            lastOtaState.copy(
+                phase = RegattaLinkOtaPhase.CANCELLING,
+                detail = "Cancelling firmware update"
+            )
+        )
+    }
+
+    override fun resetOtaState() {
+        if (otaRunning.get()) return
+        emitOta(RegattaLinkOtaUiState())
+    }
+
+    override fun disconnect() {
+        val activeGatt = gatt
+        if (
+            activeGatt != null &&
+            factoryResetDisconnectTracker.ownsLifecycle(activeGatt)
+        ) {
+            return
+        }
+        factoryResetDisconnectTracker.clearAll()
+        stopRawCanCapture(RegattaLinkRawCaptureStopReason.INTERRUPTED)
+        if (otaRunning.get()) {
+            cancelOta()
+            return
+        }
+        cancelKnownDeviceReconnect()
+        stopScan()
+        handler.removeCallbacks(bondPoll)
+        handler.removeCallbacks(gattTimeout)
+        closeGatt()
+        clearTelemetry()
+        clearConfiguration()
+        clearNmea()
+        diagnosticLogRunning.set(false)
+        deviceControlExecutionGuard.clear()
+        currentDevice = null
+        discoveryInProgress = false
+        discoveryCandidateInProgress = false
+        discoveryCandidateBondingObserved = false
+        discoveryCandidateStartedBonded = false
+        discoveryStaleBondFailureObserved = false
+        discoveryDeadlineMs = 0L
+        attemptedDiscoveryAddresses.clear()
+        emit(RegattaLinkClientState())
+    }
+
+    fun close() {
+        factoryResetDisconnectTracker.clearAll()
+        stopRawCanCapture(RegattaLinkRawCaptureStopReason.INTERRUPTED)
+        otaCancelled.set(true)
+        cancelKnownDeviceReconnect()
+        stopScan()
+        handler.removeCallbacks(bondPoll)
+        handler.removeCallbacks(gattTimeout)
+        closeGatt()
+        clearTelemetry()
+        clearConfiguration()
+        clearNmea()
+        diagnosticLogRunning.set(false)
+        deviceControlExecutionGuard.clear()
+        currentDevice = null
+        discoveryInProgress = false
+        discoveryCandidateInProgress = false
+        discoveryCandidateBondingObserved = false
+        discoveryCandidateStartedBonded = false
+        discoveryStaleBondFailureObserved = false
+        discoveryDeadlineMs = 0L
+        attemptedDiscoveryAddresses.clear()
+        otaExecutor.shutdownNow()
+    }
+
+    override fun startKnownDeviceReconnect(
+        deviceAddress: String,
+        expectedStableId: String?,
+        timeoutMs: Long
+    ): Boolean {
+        if (
+            otaRunning.get() ||
+            deviceAddress.isBlank() ||
+            (expectedStableId != null && expectedStableId.isBlank()) ||
+            timeoutMs <= 0L
+        ) {
+            return false
+        }
+
+        if (
+            isConnected() &&
+            lastState.status == RegattaLinkConnectionStatus.CONNECTED &&
+            lastState.deviceInfo?.stableId == expectedStableId
+        ) {
+            return true
+        }
+
+        if (
+            scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT &&
+            knownReconnectAddress == deviceAddress &&
+            knownReconnectExpectedStableId == expectedStableId &&
+            SystemClock.elapsedRealtime() < knownReconnectDeadlineMs
+        ) {
+            return true
+        }
+
+        stopScan()
+        handler.removeCallbacks(knownReconnectRetry)
+        handler.removeCallbacks(bondPoll)
+        handler.removeCallbacks(gattTimeout)
+        closeGatt()
+        clearTelemetry()
+        clearConfiguration()
+        clearNmea()
+        currentDevice = null
+        discoveryInProgress = false
+        discoveryCandidateInProgress = false
+        discoveryCandidateBondingObserved = false
+        discoveryCandidateStartedBonded = false
+        discoveryStaleBondFailureObserved = false
+        discoveryDeadlineMs = 0L
+        attemptedDiscoveryAddresses.clear()
+        scanPurpose = ScanPurpose.KNOWN_DEVICE_RECONNECT
+        knownReconnectAddress = deviceAddress
+        knownReconnectExpectedStableId = expectedStableId
+        knownReconnectDeadlineMs = SystemClock.elapsedRealtime() + timeoutMs
+        knownReconnectLastError = "Configured RegattaLink was not found"
+
+        handler.post { beginKnownDeviceReconnectDirect() }
+        return true
+    }
+
+    private fun beginKnownDeviceReconnectDirect() {
+        if (
+            scanPurpose != ScanPurpose.KNOWN_DEVICE_RECONNECT ||
+            otaRunning.get()
+        ) {
+            return
+        }
+
+        val remaining = regattaLinkReconnectRemainingMs(
+            knownReconnectDeadlineMs,
+            SystemClock.elapsedRealtime()
+        )
+        if (remaining <= 0L) {
+            finishKnownDeviceReconnect(knownReconnectLastError)
+            return
+        }
+
+        val address = knownReconnectAddress
+        if (address.isNullOrBlank()) {
+            finishKnownDeviceReconnect("Configured RegattaLink address is unavailable")
+            return
+        }
+
+        val adapter = bluetoothManager.adapter
+        if (adapter == null || !adapter.isEnabled) {
+            retryKnownDeviceReconnect("Bluetooth is disabled")
+            return
+        }
+
+        val device = runCatching {
+            adapter.getRemoteDevice(address)
+        }.getOrNull()
+        if (device == null) {
+            finishKnownDeviceReconnect("Configured RegattaLink address is invalid")
+            return
+        }
+        if (device.bondState != BluetoothDevice.BOND_BONDED) {
+            finishKnownDeviceReconnect(
+                "Configured RegattaLink is no longer bonded; use Search in RegattaLink setup"
+            )
+            return
+        }
+
+        connectGatt(device)
+    }
+
+    private fun beginKnownDeviceReconnectScan() {
+        if (
+            scanPurpose != ScanPurpose.KNOWN_DEVICE_RECONNECT ||
+            otaRunning.get()
+        ) {
+            return
+        }
+
+        val now = SystemClock.elapsedRealtime()
+        val remaining = regattaLinkReconnectRemainingMs(
+            knownReconnectDeadlineMs,
+            now
+        )
+        if (remaining <= 0L) {
+            finishKnownDeviceReconnect(knownReconnectLastError)
+            return
+        }
+
+        val address = knownReconnectAddress
+        if (address.isNullOrBlank()) {
+            finishKnownDeviceReconnect("Configured RegattaLink address is unavailable")
+            return
+        }
+
+        val adapter = bluetoothManager.adapter
+        if (adapter == null || !adapter.isEnabled) {
+            retryKnownDeviceReconnect("Bluetooth is disabled")
+            return
+        }
+
+        val activeScanner = adapter.bluetoothLeScanner
+        if (activeScanner == null) {
+            retryKnownDeviceReconnect("Bluetooth LE is unavailable")
+            return
+        }
+
+        scanner = activeScanner
+        emit(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.SCANNING,
+                deviceAddress = address
+            )
+        )
+        try {
+            startFilteredScan(
+                activeScanner = activeScanner,
+                deviceAddress = address,
+                scanMode = ScanSettings.SCAN_MODE_LOW_POWER,
+                timeoutMs = minOf(KNOWN_RECONNECT_SCAN_SLICE_MS, remaining)
+            )
+        } catch (error: RuntimeException) {
+            retryKnownDeviceReconnect(
+                error.message ?: "Could not scan for configured RegattaLink"
+            )
+        }
+    }
+
+    private fun retryKnownDeviceReconnect(message: String) {
+        if (scanPurpose != ScanPurpose.KNOWN_DEVICE_RECONNECT) return
+
+        knownReconnectLastError = message
+        stopScan()
+        handler.removeCallbacks(bondPoll)
+        handler.removeCallbacks(gattTimeout)
+        closeGatt()
+        currentDevice = null
+
+        val remaining = regattaLinkReconnectRemainingMs(
+            knownReconnectDeadlineMs,
+            SystemClock.elapsedRealtime()
+        )
+        if (remaining <= 0L) {
+            finishKnownDeviceReconnect(message)
+            return
+        }
+
+        handler.removeCallbacks(knownReconnectRetry)
+        handler.postDelayed(
+            knownReconnectRetry,
+            minOf(KNOWN_RECONNECT_PAUSE_MS, remaining)
+        )
+    }
+
+    private fun finishKnownDeviceReconnect(message: String) {
+        val address = knownReconnectAddress.orEmpty()
+        stopScan()
+        handler.removeCallbacks(knownReconnectRetry)
+        handler.removeCallbacks(bondPoll)
+        handler.removeCallbacks(gattTimeout)
+        closeGatt()
+        currentDevice = null
+        clearKnownDeviceReconnectState()
+        emit(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.ERROR,
+                deviceAddress = address,
+                error = message
+            )
+        )
+    }
+
+    private fun completeKnownDeviceReconnect() {
+        handler.removeCallbacks(knownReconnectRetry)
+        clearKnownDeviceReconnectState()
+    }
+
+    private fun cancelKnownDeviceReconnect() {
+        if (scanPurpose != ScanPurpose.KNOWN_DEVICE_RECONNECT) return
+        stopScan()
+        handler.removeCallbacks(knownReconnectRetry)
+        clearKnownDeviceReconnectState()
+    }
+
+    private fun clearKnownDeviceReconnectState() {
+        knownReconnectAddress = null
+        knownReconnectExpectedStableId = null
+        knownReconnectDeadlineMs = 0L
+        knownReconnectLastError = ""
+        if (scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT) {
+            scanPurpose = ScanPurpose.NORMAL
+        }
+    }
+
+    private fun finishManualDiscovery(
+        message: String,
+        userMessage: RegattaLinkUiMessage = RegattaLinkUiMessage.CONNECTION_FAILED
+    ) {
+        stopScan()
+        handler.removeCallbacks(bondPoll)
+        handler.removeCallbacks(gattTimeout)
+        closeGatt()
+        currentDevice = null
+        discoveryInProgress = false
+        discoveryCandidateInProgress = false
+        discoveryCandidateBondingObserved = false
+        discoveryCandidateStartedBonded = false
+        discoveryStaleBondFailureObserved = false
+        discoveryDeadlineMs = 0L
+        attemptedDiscoveryAddresses.clear()
+        emit(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.ERROR,
+                userMessage = userMessage,
+                error = message
+            )
+        )
+    }
+
+    private fun retryDiscoveryAfterCandidateFailure(
+        staleBondSecurityFailure: Boolean = false
+    ) {
+        if (
+            scanPurpose != ScanPurpose.NORMAL ||
+            !discoveryInProgress ||
+            !discoveryCandidateInProgress
+        ) {
+            return
+        }
+
+        if (
+            discoveryCandidateStartedBonded &&
+            staleBondSecurityFailure
+        ) {
+            discoveryStaleBondFailureObserved = true
+        }
+        discoveryCandidateInProgress = false
+        discoveryCandidateBondingObserved = false
+        discoveryCandidateStartedBonded = false
+        handler.removeCallbacks(bondPoll)
+        handler.removeCallbacks(gattTimeout)
+        currentDevice = null
+
+        val remaining = regattaLinkDiscoveryRemainingMs(
+            discoveryDeadlineMs,
+            SystemClock.elapsedRealtime()
+        )
+        if (remaining <= 0L) {
+            finishManualDiscovery(
+                regattaLinkManualDiscoveryExhaustedMessage(
+                    discoveryStaleBondFailureObserved
+                )
+            )
+            return
+        }
+
+        handler.post {
+            if (
+                scanPurpose != ScanPurpose.NORMAL ||
+                !discoveryInProgress ||
+                discoveryCandidateInProgress
+            ) {
+                return@post
+            }
+
+            val retryRemaining = regattaLinkDiscoveryRemainingMs(
+                discoveryDeadlineMs,
+                SystemClock.elapsedRealtime()
+            )
+            if (retryRemaining <= 0L) {
+                finishManualDiscovery(
+                regattaLinkManualDiscoveryExhaustedMessage(
+                    discoveryStaleBondFailureObserved
+                )
+            )
+                return@post
+            }
+
+            val adapter = bluetoothManager.adapter
+            val activeScanner =
+                if (adapter != null && adapter.isEnabled) {
+                    adapter.bluetoothLeScanner
+                } else {
+                    null
+                }
+            if (activeScanner == null) {
+                finishManualDiscovery(
+                    "Bluetooth LE is unavailable",
+                    RegattaLinkUiMessage.BLUETOOTH_UNAVAILABLE
+                )
+                return@post
+            }
+
+            scanner = activeScanner
+            emit(
+                RegattaLinkClientState(
+                    status = RegattaLinkConnectionStatus.SCANNING
+                )
+            )
+            startFilteredScan(
+                activeScanner = activeScanner,
+                timeoutMs = retryRemaining
+            )
+        }
+    }
+
+    private fun startFilteredScan(
+        activeScanner: BluetoothLeScanner,
+        deviceAddress: String? = null,
+        scanMode: Int = ScanSettings.SCAN_MODE_LOW_LATENCY,
+        timeoutMs: Long = SCAN_TIMEOUT_MS
+    ) {
+        val filterBuilder = ScanFilter.Builder()
+            .setServiceUuid(ParcelUuid(CONFIG_SERVICE_UUID))
+        if (deviceAddress != null) {
+            filterBuilder.setDeviceAddress(deviceAddress)
+        }
+        val filters = listOf(filterBuilder.build())
+        val settings = ScanSettings.Builder()
+            .setScanMode(scanMode)
+            .build()
+
+        scanActive = true
+        try {
+            activeScanner.startScan(filters, settings, scanCallback)
+        } catch (error: RuntimeException) {
+            scanActive = false
+            throw error
+        }
+        handler.postDelayed(scanTimeout, timeoutMs)
+    }
+
+    private fun prepareDevice(device: BluetoothDevice) {
+        currentDevice = device
+        currentConnectionStartedBonded =
+            device.bondState == BluetoothDevice.BOND_BONDED
+        if (scanPurpose == ScanPurpose.NORMAL && discoveryInProgress) {
+            discoveryCandidateStartedBonded =
+                device.bondState == BluetoothDevice.BOND_BONDED
+        }
+        if (
+            scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT &&
+            device.bondState != BluetoothDevice.BOND_BONDED
+        ) {
+            finishKnownDeviceReconnect(
+                "Configured RegattaLink is no longer bonded; use Search in RegattaLink setup"
+            )
+            return
+        }
+        if (device.bondState == BluetoothDevice.BOND_BONDED) {
+            connectGatt(device)
+            return
+        }
+
+        emitForDevice(device, RegattaLinkConnectionStatus.BONDING)
+        val now = SystemClock.elapsedRealtime()
+        val bondTimeoutMs =
+            if (scanPurpose == ScanPurpose.NORMAL && discoveryInProgress) {
+                regattaLinkDiscoveryStageTimeoutMs(
+                    stageTimeoutMs = BOND_TIMEOUT_MS,
+                    deadlineElapsedMs = discoveryDeadlineMs,
+                    nowElapsedMs = now
+                )
+            } else {
+                BOND_TIMEOUT_MS
+            }
+        if (bondTimeoutMs <= 0L) {
+            retryDiscoveryAfterCandidateFailure()
+            return
+        }
+        bondDeadline = now + bondTimeoutMs
+        discoveryCandidateBondingObserved =
+            scanPurpose == ScanPurpose.NORMAL &&
+                discoveryInProgress &&
+                device.bondState == BluetoothDevice.BOND_BONDING
+        if (!device.createBond()) {
+            if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
+                reconnectFuture?.complete(null)
+            } else if (discoveryInProgress) {
+                retryDiscoveryAfterCandidateFailure()
+            } else {
+                emitError(
+                    device,
+                    "Could not start RegattaLink pairing",
+                    RegattaLinkUiMessage.PAIRING_START_FAILED
+                )
+            }
+            return
+        }
+        if (
+            scanPurpose == ScanPurpose.NORMAL &&
+            discoveryInProgress &&
+            device.bondState == BluetoothDevice.BOND_BONDING
+        ) {
+            discoveryCandidateBondingObserved = true
+        }
+        handler.post(bondPoll)
+    }
+
+    private fun connectGatt(device: BluetoothDevice) {
+        handler.removeCallbacks(bondPoll)
+        closeGatt()
+        resetGattSchemaReconciliationForNewConnection()
+        currentDevice = device
+        emitForDevice(device, RegattaLinkConnectionStatus.CONNECTING)
+        gatt = device.connectGatt(
+            appContext,
+            false,
+            gattCallback,
+            BluetoothDevice.TRANSPORT_LE
+        )
+        if (gatt == null) {
+            if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
+                reconnectFuture?.complete(null)
+            } else if (scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT) {
+                retryKnownDeviceReconnect("Could not open configured RegattaLink connection")
+            } else if (discoveryInProgress) {
+                retryDiscoveryAfterCandidateFailure()
+            } else {
+                emitError(
+                    device,
+                    "Could not open RegattaLink connection",
+                    RegattaLinkUiMessage.CONNECTION_OPEN_FAILED
+                )
+            }
+        } else {
+            handler.postDelayed(gattTimeout, currentGattTimeoutMs())
+        }
+    }
+
+    private fun currentGattTimeoutMs(): Long =
+        when {
+            scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT -> {
+                minOf(
+                    GATT_TIMEOUT_MS,
+                    regattaLinkReconnectRemainingMs(
+                        knownReconnectDeadlineMs,
+                        SystemClock.elapsedRealtime()
+                    ).coerceAtLeast(1L)
+                )
+            }
+            scanPurpose == ScanPurpose.NORMAL && discoveryInProgress -> {
+                regattaLinkDiscoveryStageTimeoutMs(
+                    stageTimeoutMs = GATT_TIMEOUT_MS,
+                    deadlineElapsedMs = discoveryDeadlineMs,
+                    nowElapsedMs = SystemClock.elapsedRealtime()
+                ).coerceAtLeast(1L)
+            }
+            else -> GATT_TIMEOUT_MS
+        }
+
+    private fun handleCharacteristicRead(
+        callbackGatt: BluetoothGatt,
+        characteristicUuid: UUID,
+        value: ByteArray,
+        status: Int
+    ) {
+        if (completeCharacteristicRead(characteristicUuid, value, status)) {
+            return
+        }
+
+        if (characteristicUuid != DEVICE_INFO_UUID) return
+        deviceInfoReadInProgress = false
+
+        if (serviceRediscoveryRequested.get()) {
+            scheduleServiceRediscovery(
+                callbackGatt,
+                "Service Changed arrived during Device Info read"
+            )
+            return
+        }
+
+        if (status != BluetoothGatt.GATT_SUCCESS) {
+            closeGattWithError(
+                callbackGatt,
+                "RegattaLink Device Info read failed ($status)",
+                gattStatus = status
+            )
+            return
+        }
+
+        val info = runCatching {
+            parseRegattaLinkDeviceInfo(value)
+        }.getOrElse { error ->
+            closeGattWithError(
+                callbackGatt,
+                error.message ?: "Invalid RegattaLink Device Info"
+            )
+            return
+        }
+
+        val validationError = validateRegattaLinkDeviceInfo(info)
+        if (validationError != null) {
+            closeGattWithError(callbackGatt, validationError)
+            return
+        }
+
+        handler.removeCallbacks(gattTimeout)
+
+        val schemaKey = gattSchemaKey(info)
+        val validatingAfterLocalCacheRefresh =
+            gattCacheRefreshPendingValidation.contains(schemaKey)
+        val validatingAfterServiceChangedReconnect =
+            gattServiceChangedReconnectPendingValidation.contains(schemaKey)
+        val validatingAfterForcedRediscovery =
+            validatingAfterLocalCacheRefresh ||
+                validatingAfterServiceChangedReconnect
+        val acceptedSchemaVersion =
+            when {
+                validatingAfterForcedRediscovery -> info.gattSchemaVersion
+                info.gattSchemaVersion == 0 &&
+                    legacyGattSchemaAcceptedThisProcess.contains(info.stableId) -> 0
+                else -> gattSchemaStore.acceptedVersion(info.stableId)
+            }
+        val schemaDecision = regattaLinkGattSchemaDecision(
+            reportedVersion = info.gattSchemaVersion,
+            acceptedVersion = acceptedSchemaVersion,
+            connectionStartedBonded = currentConnectionStartedBonded,
+            serviceChangedObserved = serviceChangedObservedThisConnection,
+            serviceChangedRediscoveryCompleted =
+                serviceChangedRediscoveryCompletedThisConnection
+        )
+        if (schemaDecision.waitForRediscovery) {
+            beginGattSchemaReconciliation(
+                callbackGatt,
+                info,
+                requestServiceChanged = schemaDecision.requestServiceChanged
+            )
+            return
+        }
+
+        /*
+         * A generation match or Service Changed callback is not proof that
+         * Android's cached ATT table is usable. Prove real critical
+         * characteristic/CCCD I/O once per app process before persisting or
+         * trusting the schema. OTA Status covers the historic stale-handle
+         * failure; schema 11+ additionally proves the required Motion 1 Hz
+         * surface because that append does not move the earlier OTA handles.
+         */
+        if (
+            shouldValidateRegattaLinkGattLayout(
+                schemaAlreadyVerifiedThisProcess =
+                    verifiedGattSchemaThisProcess.contains(schemaKey),
+                acceptReportedVersion =
+                    schemaDecision.acceptReportedVersion,
+                forcedRediscoveryPendingValidation =
+                    validatingAfterForcedRediscovery
+            )
+        ) {
+            validateGattSchemaThenComplete(callbackGatt, info)
+            return
+        }
+
+        finishGattSchemaReconciliation()
+        completeConnectionAfterDeviceInfo(callbackGatt, info)
+    }
+
+    private fun completeConnectionAfterDeviceInfo(
+        callbackGatt: BluetoothGatt,
+        info: RegattaLinkDeviceInfo
+    ) {
+        if (gatt !== callbackGatt || !connected) return
+        val device = callbackGatt.device
+
+        if (scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT) {
+            val expectedStableId = knownReconnectExpectedStableId
+            if (
+                expectedStableId != null &&
+                info.stableId != expectedStableId
+            ) {
+                finishKnownDeviceReconnect(
+                    "Configured RegattaLink identity did not match the bonded device"
+                )
+                return
+            }
+            connectionSetupComplete = true
+            establishedConnection = true
+            selectedDeviceAddress = device.address
+            completeKnownDeviceReconnect()
+        } else if (scanPurpose == ScanPurpose.NORMAL) {
+            connectionSetupComplete = true
+            establishedConnection = true
+            selectedDeviceAddress = device.address
+            discoveryInProgress = false
+            discoveryCandidateInProgress = false
+            discoveryCandidateBondingObserved = false
+            discoveryCandidateStartedBonded = false
+            discoveryStaleBondFailureObserved = false
+            discoveryDeadlineMs = 0L
+            attemptedDiscoveryAddresses.clear()
+        }
+
+        emit(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceName = deviceName(device),
+                deviceAddress = device.address,
+                deviceInfo = info
+            )
+        )
+
+        if (info.telemetryAvailable) {
+            emitTelemetry(
+                RegattaLinkTelemetryState(
+                    supported = true,
+                    pausedForOta = otaRunning.get()
+                )
+            )
+        } else {
+            clearTelemetry()
+        }
+
+        otaExecutor.execute {
+            setupConnectedFeatures(callbackGatt, info)
+        }
+
+        if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
+            connectionSetupComplete = true
+            establishedConnection = true
+            reconnectFuture?.complete(info)
+        }
+    }
+
+    private fun beginGattSchemaReconciliation(
+        activeGatt: BluetoothGatt,
+        info: RegattaLinkDeviceInfo,
+        requestServiceChanged: Boolean
+    ) {
+        if (gatt !== activeGatt || !connected) return
+
+        connectionSetupComplete = false
+        gattSchemaReconciliationPending = true
+        pendingGattSchemaVersion = info.gattSchemaVersion
+        pendingGattSchemaInfo = info
+        emitForDevice(
+            activeGatt.device,
+            RegattaLinkConnectionStatus.DISCOVERING
+        )
+
+        handler.removeCallbacks(gattSchemaReconcileTimeout)
+        handler.postDelayed(
+            gattSchemaReconcileTimeout,
+            REGATTALINK_GATT_SCHEMA_RECONCILE_TIMEOUT_MS
+        )
+
+        if (
+            !requestServiceChanged ||
+            !gattSchemaRefreshRequestRunning.compareAndSet(false, true)
+        ) {
+            return
+        }
+
+        gattSchemaExecutor.execute {
+            var errorMessage: String? = null
+            try {
+                if (
+                    gatt !== activeGatt ||
+                    !connected ||
+                    !gattSchemaReconciliationPending
+                ) {
+                    return@execute
+                }
+                val characteristic = activeGatt
+                    .getService(CONFIG_SERVICE_UUID)
+                    ?.getCharacteristic(DEVICE_NAME_UUID)
+                    ?: throw RegattaLinkOtaTransportException(
+                        "RegattaLink stable configuration handle is unavailable for GATT refresh",
+                        ambiguous = false
+                    )
+                writeCharacteristicBlockingDirect(
+                    activeGatt,
+                    characteristic,
+                    byteArrayOf(
+                        0,
+                        info.gattSchemaVersion.toByte()
+                    )
+                )
+            } catch (error: Exception) {
+                errorMessage = error.message
+                    ?: "Could not request RegattaLink GATT schema refresh"
+            } finally {
+                gattSchemaRefreshRequestRunning.set(false)
+            }
+
+            if (errorMessage != null) {
+                handler.post {
+                    if (
+                        gatt === activeGatt &&
+                        connected &&
+                        gattSchemaReconciliationPending
+                    ) {
+                        recoverAndroidGattCacheOrFail(
+                            activeGatt,
+                            info,
+                            errorMessage!!
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private fun gattSchemaKey(info: RegattaLinkDeviceInfo): String =
+        info.stableId.lowercase() + ":" + info.gattSchemaVersion
+
+    private fun restartAfterGattServiceChanged(
+        activeGatt: BluetoothGatt,
+        info: RegattaLinkDeviceInfo
+    ) {
+        if (gatt !== activeGatt || !connected) return
+        if (gattSchemaReconnectGatt != null) return
+
+        val key = gattSchemaKey(info)
+        gattServiceChangedReconnectPendingValidation += key
+        handler.removeCallbacks(gattSchemaReconcileTimeout)
+        gattSchemaReconnectGatt = activeGatt
+        gattSchemaReconnectDevice = activeGatt.device
+        connectionSetupComplete = false
+        Log.i(
+            LOG_TAG,
+            "Disconnecting after Service Changed before accepting GATT schema " +
+                info.gattSchemaVersion
+        )
+        activeGatt.disconnect()
+        handler.removeCallbacks(gattSchemaReconnectFallback)
+        handler.postDelayed(gattSchemaReconnectFallback, 2_000L)
+    }
+
+    private fun completePlannedGattSchemaDisconnect(
+        activeGatt: BluetoothGatt,
+        device: BluetoothDevice
+    ) {
+        if (gattSchemaReconnectGatt !== activeGatt) return
+
+        handler.removeCallbacks(gattSchemaReconnectFallback)
+        gattSchemaReconnectGatt = null
+        gattSchemaReconnectDevice = null
+        connected = false
+        establishedConnection = false
+        resetServiceDiscoveryState()
+        failPendingGattOperation(
+            RegattaLinkOtaTransportException(
+                "GATT connection intentionally rebuilt after Service Changed",
+                ambiguous = false
+            )
+        )
+        runCatching { activeGatt.disconnect() }
+        activeGatt.close()
+        if (gatt === activeGatt) {
+            gatt = null
+        }
+        mtu = 23
+
+        handler.post {
+            if (gatt == null) {
+                prepareDevice(device)
+            }
+        }
+    }
+
+    private fun validateGattSchemaThenComplete(
+        activeGatt: BluetoothGatt,
+        info: RegattaLinkDeviceInfo
+    ) {
+        if (gatt !== activeGatt || !connected) return
+        if (!gattSchemaValidationRunning.compareAndSet(false, true)) {
+            handler.postDelayed(
+                {
+                    if (gatt === activeGatt && connected) {
+                        validateGattSchemaThenComplete(activeGatt, info)
+                    }
+                },
+                50L
+            )
+            return
+        }
+
+        connectionSetupComplete = false
+        gattSchemaReconciliationPending = true
+        pendingGattSchemaVersion = info.gattSchemaVersion
+        pendingGattSchemaInfo = info
+        handler.removeCallbacks(gattSchemaReconcileTimeout)
+        emitForDevice(
+            activeGatt.device,
+            RegattaLinkConnectionStatus.DISCOVERING
+        )
+
+        gattSchemaExecutor.execute {
+            var failure: String? = null
+            try {
+                if (gatt !== activeGatt || !connected) return@execute
+                probeCriticalGattLayout(activeGatt, info)
+            } catch (error: Exception) {
+                failure = error.message
+                    ?: "RegattaLink critical GATT layout validation failed"
+            } finally {
+                gattSchemaValidationRunning.set(false)
+            }
+
+            handler.post {
+                if (gatt !== activeGatt || !connected) return@post
+
+                if (failure != null) {
+                    recoverAndroidGattCacheOrFail(
+                        activeGatt,
+                        info,
+                        failure!!
+                    )
+                    return@post
+                }
+
+                val key = gattSchemaKey(info)
+                verifiedGattSchemaThisProcess += key
+                gattCacheRefreshPendingValidation.remove(key)
+                gattServiceChangedReconnectPendingValidation.remove(key)
+                if (info.gattSchemaVersion == 0) {
+                    legacyGattSchemaAcceptedThisProcess += info.stableId
+                } else {
+                    gattSchemaStore.accept(
+                        info.stableId,
+                        info.gattSchemaVersion
+                    )
+                }
+
+                finishGattSchemaReconciliation()
+                completeConnectionAfterDeviceInfo(activeGatt, info)
+            }
+        }
+    }
+
+    private fun probeCriticalGattLayout(
+        activeGatt: BluetoothGatt,
+        info: RegattaLinkDeviceInfo
+    ) {
+        var provedCriticalLayout = false
+
+        if (info.otaAvailable) {
+            val statusCharacteristic = requireOtaCharacteristic(
+                activeGatt,
+                REGATTALINK_OTA_STATUS_UUID
+            )
+            val descriptor = statusCharacteristic.getDescriptor(CCCD_UUID)
+                ?: throw RegattaLinkOtaTransportException(
+                    "RegattaLink OTA status CCCD is unavailable",
+                    ambiguous = false
+                )
+
+            if (
+                !activeGatt.setCharacteristicNotification(
+                    statusCharacteristic,
+                    true
+                )
+            ) {
+                throw RegattaLinkOtaTransportException(
+                    "Could not enable RegattaLink OTA status notification " +
+                        "for GATT validation",
+                    ambiguous = false
+                )
+            }
+
+            try {
+                writeDescriptorBlocking(
+                    activeGatt,
+                    descriptor,
+                    BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                )
+                parseRegattaLinkOtaStatus(
+                    readCharacteristicBlocking(
+                        activeGatt,
+                        statusCharacteristic
+                    )
+                )
+            } finally {
+                runCatching {
+                    writeDescriptorBlocking(
+                        activeGatt,
+                        descriptor,
+                        BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
+                    )
+                }
+                runCatching {
+                    activeGatt.setCharacteristicNotification(
+                        statusCharacteristic,
+                        false
+                    )
+                }
+                otaProgressQueue.clear()
+            }
+            provedCriticalLayout = true
+        }
+
+        /*
+         * Schema 11 appends 0025 after the previous telemetry prefix. OTA
+         * handles do not move in that migration, so proving only OTA Status
+         * could accept an Android cache that still exposes the old schema-10
+         * telemetry table. Prove the actual required normal-motion
+         * characteristic and its CCCD as well.
+         */
+        if (
+            regattaLinkGattProofRequiresMotionOneHz(
+                reportedVersion = info.gattSchemaVersion,
+                telemetryAvailable = info.telemetryAvailable
+            )
+        ) {
+            val motionCharacteristic = activeGatt
+                .getService(TELEMETRY_SERVICE_UUID)
+                ?.getCharacteristic(TELEMETRY_MOTION_ONE_HZ_UUID)
+                ?: throw RegattaLinkOtaTransportException(
+                    "RegattaLink Motion 1 Hz characteristic is missing " +
+                        "from schema ${info.gattSchemaVersion}",
+                    ambiguous = false
+                )
+            val descriptor = motionCharacteristic.getDescriptor(CCCD_UUID)
+                ?: throw RegattaLinkOtaTransportException(
+                    "RegattaLink Motion 1 Hz CCCD is unavailable",
+                    ambiguous = false
+                )
+
+            if (
+                !activeGatt.setCharacteristicNotification(
+                    motionCharacteristic,
+                    true
+                )
+            ) {
+                throw RegattaLinkOtaTransportException(
+                    "Could not enable RegattaLink Motion 1 Hz notification " +
+                        "for GATT validation",
+                    ambiguous = false
+                )
+            }
+
+            try {
+                writeDescriptorBlocking(
+                    activeGatt,
+                    descriptor,
+                    BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                )
+                parseRegattaLinkMotionOneHz(
+                    readCharacteristicBlocking(
+                        activeGatt,
+                        motionCharacteristic
+                    )
+                )
+            } finally {
+                runCatching {
+                    writeDescriptorBlocking(
+                        activeGatt,
+                        descriptor,
+                        BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
+                    )
+                }
+                runCatching {
+                    activeGatt.setCharacteristicNotification(
+                        motionCharacteristic,
+                        false
+                    )
+                }
+            }
+            provedCriticalLayout = true
+        }
+
+        if (!provedCriticalLayout) {
+            val nameCharacteristic = activeGatt
+                .getService(CONFIG_SERVICE_UUID)
+                ?.getCharacteristic(DEVICE_NAME_UUID)
+                ?: throw RegattaLinkOtaTransportException(
+                    "RegattaLink configuration service is incomplete",
+                    ambiguous = false
+                )
+            readCharacteristicBlocking(activeGatt, nameCharacteristic)
+        }
+    }
+
+    private fun refreshAndroidGattCache(activeGatt: BluetoothGatt): Boolean {
+        return runCatching {
+            val refresh = activeGatt.javaClass.getMethod("refresh")
+            (refresh.invoke(activeGatt) as? Boolean) == true
+        }.onFailure { error ->
+            Log.w(
+                LOG_TAG,
+                "Android BluetoothGatt.refresh() fallback unavailable",
+                error
+            )
+        }.getOrDefault(false)
+    }
+
+    private fun recoverAndroidGattCacheOrFail(
+        activeGatt: BluetoothGatt,
+        info: RegattaLinkDeviceInfo,
+        reason: String
+    ) {
+        if (gatt !== activeGatt || !connected) return
+
+        val key = gattSchemaKey(info)
+        handler.removeCallbacks(gattSchemaReconcileTimeout)
+        gattSchemaStore.clear(info.stableId)
+        legacyGattSchemaAcceptedThisProcess.remove(info.stableId)
+        verifiedGattSchemaThisProcess.remove(key)
+        gattServiceChangedReconnectPendingValidation.remove(key)
+
+        if (
+            gattCacheRefreshAttemptsThisProcess.add(key) &&
+            refreshAndroidGattCache(activeGatt)
+        ) {
+            /*
+             * refresh() is deliberately a one-shot recovery path, not normal
+             * connection setup. It clears Android's local ATT cache without
+             * deleting the bond. Reconnect and prove the real CCCD/read path
+             * before accepting this generation again.
+             */
+            gattCacheRefreshPendingValidation += key
+            val device = activeGatt.device
+            Log.w(
+                LOG_TAG,
+                "Refreshing stale Android GATT cache for RegattaLink " +
+                    info.stableId + " schema=" + info.gattSchemaVersion +
+                    "; reason=" + reason
+            )
+            closeGatt()
+            handler.postDelayed(
+                {
+                    if (gatt == null) {
+                        prepareDevice(device)
+                    }
+                },
+                250L
+            )
+            return
+        }
+
+        gattCacheRefreshPendingValidation.remove(key)
+        closeGattWithError(
+            activeGatt,
+            "RegattaLink GATT cache remained stale after one local refresh. " +
+                "Forget/pair the RegattaLink once. Root cause: $reason"
+        )
+    }
+
+    private fun finishGattSchemaReconciliation() {
+        handler.removeCallbacks(gattSchemaReconcileTimeout)
+        gattSchemaReconciliationPending = false
+        pendingGattSchemaVersion = 0
+        pendingGattSchemaInfo = null
+    }
+
+    private fun resetGattSchemaReconciliationForNewConnection() {
+        handler.removeCallbacks(gattSchemaReconcileTimeout)
+        gattSchemaReconciliationPending = false
+        pendingGattSchemaVersion = 0
+        pendingGattSchemaInfo = null
+        serviceChangedObservedThisConnection = false
+        serviceChangedRediscoveryCompletedThisConnection = false
+        gattSchemaRefreshRequestRunning.set(false)
+    }
+
+    private fun regattaLinkExtensionService(
+        activeGatt: BluetoothGatt
+    ): BluetoothGattService? =
+        activeGatt.getService(EXTENSION_SERVICE_UUID)
+            ?: activeGatt.getService(CONFIG_SERVICE_UUID)
+
+    private fun optionalFeatureWorkAllowed(activeGatt: BluetoothGatt): Boolean =
+        gatt === activeGatt &&
+            connected &&
+            connectionSetupComplete &&
+            !deviceInfoReadInProgress &&
+            !serviceRediscoveryRequested.get() &&
+            !serviceDiscoveryInProgress &&
+            !serviceRediscoveryPending.get() &&
+            !otaRunning.get()
+
+    private fun setupConnectedFeatures(
+        activeGatt: BluetoothGatt,
+        info: RegattaLinkDeviceInfo
+    ) {
+        if (!optionalFeatureWorkAllowed(activeGatt)) return
+
+        if (info.telemetryAvailable) {
+            setupTelemetry(activeGatt)
+        }
+        if (!optionalFeatureWorkAllowed(activeGatt)) return
+
+        setupConfiguration(activeGatt)
+        if (!optionalFeatureWorkAllowed(activeGatt)) return
+
+        setupNmea(activeGatt)
+    }
+
+    private fun setupConfiguration(activeGatt: BluetoothGatt) {
+        if (!optionalFeatureWorkAllowed(activeGatt)) return
+
+        val service = activeGatt.getService(CONFIG_SERVICE_UUID)
+        val extensionService = regattaLinkExtensionService(activeGatt)
+        val nameCharacteristic = service?.getCharacteristic(DEVICE_NAME_UUID)
+        val brightnessCharacteristic = service?.getCharacteristic(LED_BRIGHTNESS_UUID)
+        val dampingCharacteristic = service?.getCharacteristic(MOTION_DAMPING_UUID)
+        val diagnosticLogCharacteristic =
+            extensionService?.getCharacteristic(DIAGNOSTIC_LOG_UUID)
+        val deviceControlCharacteristic =
+            extensionService?.getCharacteristic(DEVICE_CONTROL_UUID)
+
+        var next = RegattaLinkConfigurationState(
+            deviceNameSupported = nameCharacteristic != null,
+            ledBrightnessSupported = brightnessCharacteristic != null,
+            motionDampingSupported = dampingCharacteristic != null,
+            diagnosticLogSupported = diagnosticLogCharacteristic != null,
+            deviceControlSupported = deviceControlCharacteristic != null
+        )
+        var errorMessage = ""
+
+        if (nameCharacteristic != null && optionalFeatureWorkAllowed(activeGatt)) {
+            runCatching {
+                parseRegattaLinkDeviceName(
+                    readCharacteristicBlocking(activeGatt, nameCharacteristic)
+                )
+            }.onSuccess { name ->
+                next = next.copy(deviceName = name)
+            }.onFailure { error ->
+                errorMessage = error.message ?: "Could not read RegattaLink name"
+            }
+        }
+
+        if (brightnessCharacteristic != null && optionalFeatureWorkAllowed(activeGatt)) {
+            runCatching {
+                parseRegattaLinkLedBrightness(
+                    readCharacteristicBlocking(activeGatt, brightnessCharacteristic)
+                )
+            }.onSuccess { brightness ->
+                next = next.copy(ledBrightnessPct = brightness)
+            }.onFailure { error ->
+                if (errorMessage.isBlank()) {
+                    errorMessage = error.message
+                        ?: "Could not read RegattaLink LED brightness"
+                }
+            }
+        }
+
+        if (dampingCharacteristic != null && optionalFeatureWorkAllowed(activeGatt)) {
+            runCatching {
+                parseRegattaLinkMotionDamping(
+                    readCharacteristicBlocking(activeGatt, dampingCharacteristic)
+                )
+            }.onSuccess { damping ->
+                next = next.copy(motionDampingSeconds = damping)
+            }.onFailure { error ->
+                if (errorMessage.isBlank()) {
+                    errorMessage = error.message
+                        ?: "Could not read RegattaLink motion damping"
+                }
+            }
+        }
+
+        if (
+            deviceControlCharacteristic != null &&
+            optionalFeatureWorkAllowed(activeGatt)
+        ) {
+            runCatching {
+                parseRegattaLinkDeviceControlStatus(
+                    readCharacteristicBlocking(
+                        activeGatt,
+                        deviceControlCharacteristic
+                    )
+                )
+            }.onSuccess { status ->
+                next = next.copy(deviceControlStatus = status)
+            }.onFailure { error ->
+                if (errorMessage.isBlank()) {
+                    errorMessage = error.message
+                        ?: "Could not read RegattaLink Device Control status"
+                }
+            }
+        }
+
+        if (gatt === activeGatt && connected) {
+            emitConfiguration(
+                next.copy(
+                    userMessage =
+                        RegattaLinkUiMessage.CONFIGURATION_FAILED
+                            .takeIf { errorMessage.isNotBlank() },
+                    error = errorMessage
+                )
+            )
+        }
+    }
+
+    private fun setupNmea(activeGatt: BluetoothGatt) {
+        if (!optionalFeatureWorkAllowed(activeGatt)) return
+
+        val configService = activeGatt.getService(CONFIG_SERVICE_UUID)
+        val pgnSupported =
+            configService?.getCharacteristic(NMEA_PGN_INVENTORY_UUID) != null
+        val rawSupported =
+            configService?.getCharacteristic(NMEA_RAW_CAN_UUID) != null
+
+        val telemetryService = activeGatt.getService(TELEMETRY_SERVICE_UUID)
+        val boatStateCharacteristic =
+            telemetryService?.getCharacteristic(TELEMETRY_BOAT_STATE_UUID)
+
+        emitNmea(
+            RegattaLinkNmeaState(
+                pgnInventorySupported = pgnSupported,
+                rawCanSupported = rawSupported,
+                boatStateSupported = boatStateCharacteristic != null,
+                pausedForOta = otaRunning.get()
+            )
+        )
+
+        if (boatStateCharacteristic == null || !optionalFeatureWorkAllowed(activeGatt)) {
+            return
+        }
+
+        if (mtu < REGATTALINK_BOAT_STATE_NOTIFICATION_MTU) {
+            requestMtuBestEffort(activeGatt)
+        }
+        if (!optionalFeatureWorkAllowed(activeGatt)) return
+
+        var subscribed = false
+        var errorMessage = ""
+        if (activeGatt.setCharacteristicNotification(boatStateCharacteristic, true)) {
+            val descriptor = boatStateCharacteristic.getDescriptor(CCCD_UUID)
+            if (descriptor != null) {
+                runCatching {
+                    writeDescriptorBlocking(
+                        activeGatt,
+                        descriptor,
+                        BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                    )
+                }.onSuccess {
+                    subscribed = true
+                }.onFailure { error ->
+                    errorMessage = error.message
+                        ?: "Could not subscribe to RegattaLink Boat State"
+                }
+            } else {
+                errorMessage = "RegattaLink Boat State CCCD is unavailable"
+            }
+        } else {
+            errorMessage = "Could not enable RegattaLink Boat State notifications"
+        }
+
+        if (!optionalFeatureWorkAllowed(activeGatt)) return
+
+        var boatState: RegattaLinkBoatState? = null
+        var boatStateReceivedAtElapsedMs: Long? = null
+        runCatching {
+            parseRegattaLinkBoatState(
+                readCharacteristicBlocking(activeGatt, boatStateCharacteristic)
+            )
+        }.onSuccess {
+            boatState = it
+            boatStateReceivedAtElapsedMs = SystemClock.elapsedRealtime()
+        }.onFailure { error ->
+            if (errorMessage.isBlank()) {
+                errorMessage = error.message ?: "Could not read RegattaLink Boat State"
+            }
+        }
+
+        if (gatt === activeGatt && connected) {
+            updateNmea {
+                it.copy(
+                    boatStateSupported = true,
+                    boatStateSubscribed = subscribed,
+                    boatStateLiveNotifications =
+                        subscribed && mtu >= REGATTALINK_BOAT_STATE_NOTIFICATION_MTU,
+                    boatState = boatState ?: it.boatState,
+                    boatStateReceivedAtElapsedMs =
+                        if (boatState != null) {
+                            boatStateReceivedAtElapsedMs
+                        } else {
+                            it.boatStateReceivedAtElapsedMs
+                        },
+                    userMessage =
+                        if (errorMessage.isBlank()) {
+                            null
+                        } else if (!subscribed) {
+                            RegattaLinkUiMessage.NMEA_NOTIFICATIONS_FAILED
+                        } else {
+                            RegattaLinkUiMessage.NMEA_BOAT_STATE_READ_FAILED
+                        },
+                    error = errorMessage
+                )
+            }
+        }
+    }
+
+    private fun setupTelemetry(activeGatt: BluetoothGatt) {
+        if (gatt !== activeGatt || !connected) return
+        if (
+            !connectionSetupComplete ||
+            deviceInfoReadInProgress ||
+            serviceRediscoveryRequested.get() ||
+            serviceDiscoveryInProgress ||
+            serviceRediscoveryPending.get()
+        ) {
+            Log.i(
+                LOG_TAG,
+                "Skipping telemetry setup until fresh GATT discovery completes"
+            )
+            return
+        }
+
+        val service = activeGatt.getService(TELEMETRY_SERVICE_UUID)
+        val motionOneHz = service?.getCharacteristic(
+            NORMAL_TELEMETRY_UUIDS.single()
+        )
+
+        if (service == null || motionOneHz == null) {
+            updateTelemetry {
+                it.copy(
+                    supported = true,
+                    subscribed = false,
+                    userMessage = RegattaLinkUiMessage.TELEMETRY_UNAVAILABLE,
+                    error = "RegattaLink Motion 1 Hz telemetry is unavailable"
+                )
+            }
+            return
+        }
+
+        try {
+            if (!activeGatt.setCharacteristicNotification(motionOneHz, true)) {
+                throw RegattaLinkOtaTransportException(
+                    "Could not enable RegattaLink Motion 1 Hz notifications",
+                    ambiguous = false
+                )
+            }
+            val descriptor = motionOneHz.getDescriptor(CCCD_UUID)
+                ?: throw RegattaLinkOtaTransportException(
+                    "RegattaLink Motion 1 Hz CCCD is unavailable",
+                    ambiguous = false
+                )
+            writeDescriptorBlocking(
+                activeGatt,
+                descriptor,
+                BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+            )
+
+            updateTelemetry {
+                it.copy(
+                    supported = true,
+                    subscribed = true,
+                    userMessage = null,
+                    error = ""
+                )
+            }
+
+            if (gatt !== activeGatt || !connected) return
+            val raw = readCharacteristicBlocking(activeGatt, motionOneHz)
+            handleTelemetryRecord(
+                activeGatt,
+                motionOneHz.uuid,
+                raw,
+                initialOnly = true
+            )
+        } catch (error: Exception) {
+            if (gatt === activeGatt) {
+                updateTelemetry {
+                    it.copy(
+                        supported = true,
+                        subscribed = false,
+                        userMessage = RegattaLinkUiMessage.TELEMETRY_FAILED,
+                        error = error.message
+                            ?: "RegattaLink Motion 1 Hz subscription failed"
+                    )
+                }
+            }
+        }
+    }
+
+    private fun handleCharacteristicChanged(
+        callbackGatt: BluetoothGatt,
+        characteristicUuid: UUID,
+        value: ByteArray
+    ) {
+        if (gatt !== callbackGatt) return
+
+        if (characteristicUuid == REGATTALINK_OTA_STATUS_UUID) {
+            runCatching {
+                parseRegattaLinkOtaProgress(value)
+            }.onSuccess { progress ->
+                otaProgressQueue.offer(progress)
+            }.onFailure { error ->
+                otaDataTransportError.compareAndSet(
+                    null,
+                    error.message ?: "Invalid OTA status notification"
+                )
+            }
+            return
+        }
+
+        if (characteristicUuid == TELEMETRY_BOAT_STATE_UUID) {
+            if (otaRunning.get()) return
+            runCatching {
+                parseRegattaLinkBoatState(value)
+            }.onSuccess { boatState ->
+                val receivedAt = SystemClock.elapsedRealtime()
+                updateNmea {
+                    it.copy(
+                        boatStateSupported = true,
+                        boatStateSubscribed = true,
+                        boatStateLiveNotifications =
+                            mtu >= REGATTALINK_BOAT_STATE_NOTIFICATION_MTU,
+                        boatState = boatState,
+                        boatStateReceivedAtElapsedMs = receivedAt,
+                        userMessage = null,
+                        error = ""
+                    )
+                }
+            }.onFailure { error ->
+                updateNmea {
+                    it.copy(
+                        boatStateSupported = true,
+                        userMessage = RegattaLinkUiMessage.NMEA_BOAT_STATE_READ_FAILED,
+                        error = error.message ?: "Invalid RegattaLink Boat State record"
+                    )
+                }
+            }
+            return
+        }
+
+        handleTelemetryRecord(callbackGatt, characteristicUuid, value)
+    }
+
+    private fun handleTelemetryRecord(
+        callbackGatt: BluetoothGatt,
+        characteristicUuid: UUID,
+        value: ByteArray,
+        initialOnly: Boolean = false
+    ) {
+        if (gatt !== callbackGatt) return
+        val receivedAt = SystemClock.elapsedRealtime()
+
+        try {
+            when (characteristicUuid) {
+                TELEMETRY_MOTION_ONE_HZ_UUID -> {
+                    val parsed = parseRegattaLinkMotionOneHz(value)
+                    updateTelemetry {
+                        if (initialOnly && it.motionOneHz != null) {
+                            it
+                        } else {
+                            it.copy(
+                                supported = true,
+                                motionOneHz = parsed,
+                                motionOneHzReceivedAtElapsedMs = receivedAt,
+                                userMessage = null,
+                                error = ""
+                            )
+                        }
+                    }
+                }
+
+                TELEMETRY_FAST_UUID -> {
+                    val parsed = parseRegattaLinkFastMotion(value)
+                    updateTelemetry {
+                        if (initialOnly && it.fast != null) {
+                            it
+                        } else {
+                            it.copy(
+                                supported = true,
+                                fast = parsed,
+                                fastReceivedAtElapsedMs = receivedAt,
+                                userMessage = null,
+                                error = ""
+                            )
+                        }
+                    }
+                }
+
+                TELEMETRY_SUMMARY_UUID -> {
+                    val parsed = parseRegattaLinkMotionSummary(value)
+                    updateTelemetry {
+                        if (initialOnly && it.summary != null) {
+                            it
+                        } else {
+                            it.copy(
+                                supported = true,
+                                summary = parsed,
+                                summaryReceivedAtElapsedMs = receivedAt,
+                                userMessage = null,
+                                error = ""
+                            )
+                        }
+                    }
+                }
+
+                TELEMETRY_CALIBRATION_UUID -> {
+                    val parsed = parseRegattaLinkCalibrationDiagnostics(value)
+                    updateTelemetry {
+                        if (initialOnly && it.calibration != null) {
+                            it
+                        } else {
+                            it.copy(
+                                supported = true,
+                                calibration = parsed,
+                                calibrationReceivedAtElapsedMs = receivedAt,
+                                userMessage = null,
+                                error = ""
+                            )
+                        }
+                    }
+                }
+            }
+        } catch (error: IllegalArgumentException) {
+            updateTelemetry {
+                it.copy(
+                    supported = true,
+                    userMessage = RegattaLinkUiMessage.TELEMETRY_INVALID,
+                    error = error.message ?: "Invalid RegattaLink telemetry record"
+                )
+            }
+        }
+    }
+
+    private fun configurationMutationBlocked(
+        activeGatt: BluetoothGatt
+    ): Boolean =
+        regattaLinkConfigurationMutationBlocked(
+            state = lastConfigurationState,
+            factoryResetOwned =
+                factoryResetDisconnectTracker.ownsLifecycle(activeGatt),
+            deviceControlRunning = deviceControlExecutionGuard.isActive(),
+            diagnosticLogRunning = diagnosticLogRunning.get()
+        )
+
+    override fun setDeviceName(name: String): Boolean {
+        if (validateRegattaLinkDeviceName(name) != null) {
+            return false
+        }
+        if (otaRunning.get() || !isConnected()) return false
+
+        val activeGatt = gatt ?: return false
+        if (
+            configurationMutationBlocked(activeGatt) ||
+            !configurationMutationRunning.compareAndSet(false, true)
+        ) {
+            return false
+        }
+        otaExecutor.execute {
+            try {
+                if (
+                    !optionalFeatureWorkAllowed(activeGatt) ||
+                    configurationMutationBlocked(activeGatt)
+                ) {
+                    return@execute
+                }
+                updateConfiguration {
+                    it.copy(busy = true, userMessage = null, error = "")
+                }
+                try {
+                    val characteristic = activeGatt
+                        .getService(CONFIG_SERVICE_UUID)
+                        ?.getCharacteristic(DEVICE_NAME_UUID)
+                        ?: throw RegattaLinkOtaTransportException(
+                            "RegattaLink name setting is unavailable",
+                            ambiguous = false
+                        )
+                    writeCharacteristicBlockingDirect(
+                        activeGatt,
+                        characteristic,
+                        name.toByteArray(Charsets.UTF_8)
+                    )
+                    updateConfiguration {
+                        it.copy(
+                            deviceNameSupported = true,
+                            deviceName = name,
+                            busy = false,
+                            userMessage = null,
+                            error = ""
+                        )
+                    }
+                } catch (error: Exception) {
+                    updateConfiguration {
+                        it.copy(
+                            busy = false,
+                            userMessage = RegattaLinkUiMessage.NAME_CHANGE_FAILED,
+                            error = error.message ?: "Could not change RegattaLink name"
+                        )
+                    }
+                }
+            } finally {
+                configurationMutationRunning.set(false)
+            }
+        }
+        return true
+    }
+
+    override fun setLedBrightness(percent: Int): Boolean {
+        if (percent !in 0..100) {
+            updateConfiguration {
+                it.copy(
+                    userMessage = RegattaLinkUiMessage.LED_BRIGHTNESS_RANGE,
+                    error = "LED brightness must be between 0 and 100"
+                )
+            }
+            return false
+        }
+        if (otaRunning.get() || !isConnected()) return false
+
+        val activeGatt = gatt ?: return false
+        if (
+            configurationMutationBlocked(activeGatt) ||
+            !configurationMutationRunning.compareAndSet(false, true)
+        ) {
+            return false
+        }
+        otaExecutor.execute {
+            try {
+                if (
+                    !optionalFeatureWorkAllowed(activeGatt) ||
+                    configurationMutationBlocked(activeGatt)
+                ) {
+                    return@execute
+                }
+                updateConfiguration { it.copy(busy = true, userMessage = null, error = "") }
+                try {
+                    val characteristic = activeGatt
+                        .getService(CONFIG_SERVICE_UUID)
+                        ?.getCharacteristic(LED_BRIGHTNESS_UUID)
+                        ?: throw RegattaLinkOtaTransportException(
+                            "RegattaLink LED brightness is unavailable",
+                            ambiguous = false
+                        )
+                    writeCharacteristicBlockingDirect(
+                        activeGatt,
+                        characteristic,
+                        byteArrayOf(percent.toByte())
+                    )
+                    updateConfiguration {
+                        it.copy(
+                            ledBrightnessSupported = true,
+                            ledBrightnessPct = percent,
+                            busy = false,
+                            userMessage = null,
+                            error = ""
+                        )
+                    }
+                } catch (error: Exception) {
+                    val reread =
+                        if (optionalFeatureWorkAllowed(activeGatt)) {
+                            runCatching {
+                                val characteristic = activeGatt
+                                    .getService(CONFIG_SERVICE_UUID)
+                                    ?.getCharacteristic(LED_BRIGHTNESS_UUID)
+                                    ?: return@runCatching null
+                                parseRegattaLinkLedBrightness(
+                                    readCharacteristicBlocking(activeGatt, characteristic)
+                                )
+                            }.getOrNull()
+                        } else {
+                            null
+                        }
+                    updateConfiguration {
+                        it.copy(
+                            ledBrightnessPct = reread ?: it.ledBrightnessPct,
+                            busy = false,
+                            userMessage = RegattaLinkUiMessage.CONFIGURATION_FAILED,
+                            error = error.message
+                                ?: "Could not change RegattaLink LED brightness"
+                        )
+                    }
+                }
+            } finally {
+                configurationMutationRunning.set(false)
+            }
+        }
+        return true
+    }
+
+    override fun setMotionDamping(seconds: Int): Boolean {
+        if (seconds !in 1..10) {
+            updateConfiguration {
+                it.copy(
+                    userMessage = RegattaLinkUiMessage.MOTION_DAMPING_RANGE,
+                    error = "Motion damping must be between 1 and 10 seconds"
+                )
+            }
+            return false
+        }
+        if (otaRunning.get() || !isConnected()) return false
+
+        val activeGatt = gatt ?: return false
+        if (
+            configurationMutationBlocked(activeGatt) ||
+            !configurationMutationRunning.compareAndSet(false, true)
+        ) {
+            return false
+        }
+        otaExecutor.execute {
+            try {
+                if (
+                    !optionalFeatureWorkAllowed(activeGatt) ||
+                    configurationMutationBlocked(activeGatt)
+                ) {
+                    return@execute
+                }
+                updateConfiguration { it.copy(busy = true, userMessage = null, error = "") }
+                try {
+                    val characteristic = activeGatt
+                        .getService(CONFIG_SERVICE_UUID)
+                        ?.getCharacteristic(MOTION_DAMPING_UUID)
+                        ?: throw RegattaLinkOtaTransportException(
+                            "RegattaLink motion damping setting is unavailable",
+                            ambiguous = false
+                        )
+                    writeCharacteristicBlockingDirect(
+                        activeGatt,
+                        characteristic,
+                        byteArrayOf(seconds.toByte())
+                    )
+                    updateConfiguration {
+                        it.copy(
+                            motionDampingSupported = true,
+                            motionDampingSeconds = seconds,
+                            busy = false,
+                            userMessage = null,
+                            error = ""
+                        )
+                    }
+                } catch (error: Exception) {
+                    val reread =
+                        if (optionalFeatureWorkAllowed(activeGatt)) {
+                            runCatching {
+                                val characteristic = activeGatt
+                                    .getService(CONFIG_SERVICE_UUID)
+                                    ?.getCharacteristic(MOTION_DAMPING_UUID)
+                                    ?: return@runCatching null
+                                parseRegattaLinkMotionDamping(
+                                    readCharacteristicBlocking(activeGatt, characteristic)
+                                )
+                            }.getOrNull()
+                        } else {
+                            null
+                        }
+                    updateConfiguration {
+                        it.copy(
+                            motionDampingSeconds =
+                                reread ?: it.motionDampingSeconds,
+                            busy = false,
+                            userMessage = RegattaLinkUiMessage.CONFIGURATION_FAILED,
+                            error = error.message
+                                ?: "Could not change RegattaLink motion damping"
+                        )
+                    }
+                }
+            } finally {
+                configurationMutationRunning.set(false)
+            }
+        }
+        return true
+    }
+
+    override fun drainDiagnosticLog(): Boolean {
+        if (
+            !lastConfigurationState.diagnosticLogSupported ||
+            otaRunning.get() ||
+            rawCaptureRunning.get() ||
+            deviceControlExecutionGuard.isActive() ||
+            configurationMutationRunning.get() ||
+            !isConnected() ||
+            !diagnosticLogRunning.compareAndSet(false, true)
+        ) {
+            return false
+        }
+
+        val activeGatt = gatt ?: run {
+            diagnosticLogRunning.set(false)
+            return false
+        }
+
+        updateConfiguration {
+            it.copy(
+                diagnosticLogLoading = true,
+                diagnosticLogEntries = emptyList(),
+                diagnosticLogError = ""
+            )
+        }
+
+        otaExecutor.execute {
+            if (!optionalFeatureWorkAllowed(activeGatt)) {
+                diagnosticLogRunning.set(false)
+                if (gatt === activeGatt && connected) {
+                    updateConfiguration {
+                        it.copy(diagnosticLogLoading = false)
+                    }
+                }
+                return@execute
+            }
+
+            val entries = mutableListOf<RegattaLinkDiagnosticLogEntry>()
+            var errorMessage = ""
+            try {
+                val characteristic = regattaLinkExtensionService(activeGatt)
+                    ?.getCharacteristic(DIAGNOSTIC_LOG_UUID)
+                    ?: throw RegattaLinkOtaTransportException(
+                        "RegattaLink diagnostic log is unavailable",
+                        ambiguous = false
+                    )
+
+                for (readIndex in 0 until REGATTALINK_DIAGNOSTIC_LOG_MAX_READS) {
+                    if (!optionalFeatureWorkAllowed(activeGatt)) break
+                    val parsed = parseRegattaLinkDiagnosticLogEntry(
+                        readCharacteristicBlocking(activeGatt, characteristic)
+                    ) ?: break
+                    entries += parsed
+                }
+            } catch (error: Exception) {
+                errorMessage =
+                    error.message ?: "Could not read RegattaLink diagnostic log"
+            } finally {
+                diagnosticLogRunning.set(false)
+            }
+
+            if (gatt === activeGatt && connected) {
+                updateConfiguration {
+                    it.copy(
+                        diagnosticLogSupported = true,
+                        diagnosticLogLoading = false,
+                        diagnosticLogEntries = entries,
+                        diagnosticLogError = errorMessage
+                    )
+                }
+            }
+        }
+        return true
+    }
+
+    override fun executeDeviceControl(
+        opcode: RegattaLinkDeviceControlOpcode,
+        value: Int
+    ): Boolean {
+        if (
+            !lastConfigurationState.deviceControlSupported ||
+            otaRunning.get() ||
+            rawCaptureRunning.get() ||
+            diagnosticLogRunning.get() ||
+            configurationMutationRunning.get() ||
+            !isConnected()
+        ) {
+            return false
+        }
+
+        val activeGatt = gatt ?: return false
+        val execution =
+            deviceControlExecutionGuard.tryAcquire(activeGatt)
+                ?: return false
+
+        if (!isConnected() || gatt !== activeGatt) {
+            deviceControlExecutionGuard.release(execution)
+            return false
+        }
+
+        otaExecutor.execute {
+            if (!optionalFeatureWorkAllowed(activeGatt)) {
+                rejectDeviceControlBeforeStart(execution)
+                return@execute
+            }
+
+            try {
+                val requestId = nextDeviceControlRequestId()
+            updateConfiguration {
+                it.copy(
+                    deviceControlBusy = true,
+                    deviceControlAcceptedOpcode = null,
+                    deviceControlAcceptedRequestId = null,
+                    factoryResetWriteAcceptedRequestId = null,
+                    deviceControlError = ""
+                )
+            }
+
+            var finalStatus: RegattaLinkDeviceControlStatus? = null
+            var errorMessage = ""
+            var factoryResetFinalizationDeadline: Long? = null
+            var factoryResetWriteAccepted = false
+            try {
+                val characteristic = regattaLinkExtensionService(activeGatt)
+                    ?.getCharacteristic(DEVICE_CONTROL_UUID)
+                    ?: throw RegattaLinkOtaTransportException(
+                        "RegattaLink Device Control is unavailable",
+                        ambiguous = false
+                    )
+
+                val request = buildRegattaLinkDeviceControlRequest(
+                    opcode = opcode,
+                    requestId = requestId,
+                    value = value
+                )
+                writeCharacteristicBlockingDirect(
+                    activeGatt,
+                    characteristic,
+                    request,
+                    onSubmitted =
+                        if (opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET) {
+                            {
+                                /*
+                                 * Local submission is the last point at which
+                                 * we know the request was definitely not sent.
+                                 * After ACCEPTED, any missing/error callback is
+                                 * ambiguous and firmware may already continue
+                                 * the destructive reset after disconnect.
+                                 */
+                                factoryResetWriteAccepted = true
+                                factoryResetDisconnectTracker.markAccepted(
+                                    session = activeGatt,
+                                    requestId = requestId
+                                )
+                                onFactoryResetRecoveryStateChanged(true)
+                                updateConfiguration {
+                                    it.copy(
+                                        factoryResetWriteAcceptedRequestId = requestId
+                                    )
+                                }
+                            }
+                        } else {
+                            null
+                        }
+                )
+
+                var requestAcceptanceObserved = false
+                val commandDeadline =
+                    SystemClock.elapsedRealtime() +
+                        REGATTALINK_DEVICE_CONTROL_CLIENT_TIMEOUT_MS
+                while (true) {
+                    val now = SystemClock.elapsedRealtime()
+                    val activeDeadline =
+                        factoryResetFinalizationDeadline ?: commandDeadline
+                    if (now >= activeDeadline) break
+
+                    if (!optionalFeatureWorkAllowed(activeGatt)) {
+                        if (
+                            opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
+                            factoryResetFinalizationDeadline != null &&
+                            (gatt !== activeGatt || !connected)
+                        ) {
+                            break
+                        }
+                        throw RegattaLinkOtaTransportException(
+                            "RegattaLink Device Control was interrupted",
+                            ambiguous = true
+                        )
+                    }
+
+                    val status = parseRegattaLinkDeviceControlStatus(
+                        readCharacteristicBlocking(activeGatt, characteristic)
+                    )
+
+                    if (
+                        regattaLinkDeviceControlStatusConfirmsAcceptance(
+                            status,
+                            requestId
+                        ) &&
+                        !requestAcceptanceObserved
+                    ) {
+                        requestAcceptanceObserved = true
+                        updateConfiguration {
+                            it.copy(
+                                deviceControlAcceptedOpcode = opcode,
+                                deviceControlAcceptedRequestId = requestId
+                            )
+                        }
+                    }
+
+                    if (
+                        opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
+                        status.requestId == requestId &&
+                        status.applicationErrorCode != null
+                    ) {
+                        factoryResetDisconnectTracker.clear(
+                            session = activeGatt,
+                            requestId = requestId
+                        )
+                        onFactoryResetRecoveryStateChanged(false)
+                        updateConfiguration {
+                            it.copy(
+                                factoryResetWriteAcceptedRequestId = null
+                            )
+                        }
+                    }
+
+                    if (
+                        opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
+                        status.requestId == requestId &&
+                        status.factoryResetBondsCleared
+                    ) {
+                        finalStatus = status
+                        updateConfiguration {
+                            it.copy(
+                                deviceControlSupported = true,
+                                factoryResetAwaitingDisconnect = true,
+                                deviceControlStatus = status,
+                                deviceControlError =
+                                    regattaLinkDeviceControlFailureText(status)
+                            )
+                        }
+                        requestFactoryResetLocalDisconnect(activeGatt)
+                        break
+                    }
+
+                    val resetContinuesToBondReset =
+                        opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
+                            regattaLinkFactoryResetContinuesToBondReset(status)
+                    when (
+                        regattaLinkDeviceControlPollDecision(
+                            status,
+                            requestId
+                        )
+                    ) {
+                        RegattaLinkDeviceControlPollDecision.IGNORE_OTHER_REQUEST -> Unit
+
+                        RegattaLinkDeviceControlPollDecision.CONTINUE -> {
+                            finalStatus = status
+                            updateConfiguration {
+                                it.copy(
+                                    deviceControlSupported = true,
+                                    deviceControlStatus = status,
+                                    deviceControlError = ""
+                                )
+                            }
+                        }
+
+                        RegattaLinkDeviceControlPollDecision.SUCCESS -> {
+                            finalStatus = status
+                            if (resetContinuesToBondReset) {
+                                if (factoryResetFinalizationDeadline == null) {
+                                    factoryResetFinalizationDeadline =
+                                        now + REGATTALINK_FACTORY_RESET_FINALIZATION_TIMEOUT_MS
+                                }
+                                updateConfiguration {
+                                    it.copy(
+                                        deviceControlSupported = true,
+                                        factoryResetAwaitingDisconnect = true,
+                                        deviceControlStatus = status,
+                                        deviceControlError = ""
+                                    )
+                                }
+                            } else {
+                                updateConfiguration {
+                                    it.copy(
+                                        deviceControlSupported = true,
+                                        deviceControlStatus = status,
+                                        deviceControlError = ""
+                                    )
+                                }
+                                break
+                            }
+                        }
+
+                        RegattaLinkDeviceControlPollDecision.FAILURE -> {
+                            finalStatus = status
+                            if (resetContinuesToBondReset) {
+                                if (factoryResetFinalizationDeadline == null) {
+                                    factoryResetFinalizationDeadline =
+                                        now + REGATTALINK_FACTORY_RESET_FINALIZATION_TIMEOUT_MS
+                                }
+                                updateConfiguration {
+                                    it.copy(
+                                        deviceControlSupported = true,
+                                        factoryResetAwaitingDisconnect = true,
+                                        deviceControlStatus = status,
+                                        deviceControlError =
+                                            regattaLinkDeviceControlFailureText(status)
+                                    )
+                                }
+                            } else {
+                                updateConfiguration {
+                                    it.copy(
+                                        deviceControlSupported = true,
+                                        factoryResetAwaitingDisconnect = false,
+                                        deviceControlStatus = status,
+                                        deviceControlError = ""
+                                    )
+                                }
+                                throw RegattaLinkOtaTransportException(
+                                    regattaLinkDeviceControlFailureText(status)
+                                        .ifBlank {
+                                            "RegattaLink Device Control failed"
+                                        },
+                                    ambiguous = false
+                                )
+                            }
+                        }
+                    }
+
+                    Thread.sleep(REGATTALINK_DEVICE_CONTROL_POLL_MS)
+                }
+
+                if (
+                    factoryResetFinalizationDeadline != null &&
+                    finalStatus?.factoryResetBondsCleared != true &&
+                    gatt === activeGatt &&
+                    connected
+                ) {
+                    requestFactoryResetLocalDisconnect(activeGatt)
+                    throw RegattaLinkOtaTransportException(
+                        "Factory reset finalization timed out before bond-wipe completion was confirmed; disconnecting without assuming bond-wipe success",
+                        ambiguous = true
+                    )
+                }
+
+                if (finalStatus?.phase?.isTerminal != true) {
+                    throw RegattaLinkOtaTransportException(
+                        "RegattaLink Device Control response timed out",
+                        ambiguous = true
+                    )
+                }
+            } catch (error: Exception) {
+                if (
+                    opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
+                    factoryResetWriteAccepted &&
+                    finalStatus == null &&
+                    gatt === activeGatt &&
+                    connected
+                ) {
+                    requestFactoryResetLocalDisconnect(activeGatt)
+                }
+
+                val expectedFactoryResetDisconnect =
+                    opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
+                        finalStatus?.let(::regattaLinkFactoryResetContinuesToBondReset) == true &&
+                        (gatt !== activeGatt || !connected)
+                errorMessage =
+                    if (expectedFactoryResetDisconnect) {
+                        ""
+                    } else {
+                        error.message ?: "RegattaLink Device Control failed"
+                    }
+            }
+
+            if (
+                opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
+                finalStatus?.phase?.isTerminal == true &&
+                !regattaLinkFactoryResetContinuesToBondReset(finalStatus)
+            ) {
+                factoryResetDisconnectTracker.clear(
+                    session = activeGatt,
+                    requestId = requestId
+                )
+                if (factoryResetWriteAccepted) {
+                    onFactoryResetRecoveryStateChanged(false)
+                }
+            }
+
+            if (
+                deviceControlExecutionGuard.owns(execution) &&
+                gatt === activeGatt &&
+                connected
+            ) {
+                updateConfiguration { current ->
+                    if (!deviceControlExecutionGuard.owns(execution)) {
+                        current
+                    } else {
+                        current.copy(
+                        deviceControlSupported = true,
+                        deviceControlBusy = false,
+                        deviceControlAcceptedOpcode = null,
+                        deviceControlAcceptedRequestId = null,
+                        factoryResetWriteAcceptedRequestId =
+                            if (
+                                opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
+                                factoryResetWriteAccepted &&
+                                (
+                                    finalStatus == null ||
+                                        finalStatus?.let(
+                                            ::regattaLinkFactoryResetContinuesToBondReset
+                                        ) == true
+                                    )
+                            ) {
+                                requestId
+                            } else {
+                                null
+                            },
+                        factoryResetAwaitingDisconnect =
+                            opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET &&
+                                factoryResetWriteAccepted &&
+                                (
+                                    finalStatus == null ||
+                                        finalStatus?.let(
+                                            ::regattaLinkFactoryResetContinuesToBondReset
+                                        ) == true
+                                    ),
+                            deviceControlStatus = finalStatus,
+                            deviceControlError = errorMessage
+                        )
+                    }
+                }
+            }
+
+            } finally {
+                deviceControlExecutionGuard.release(execution)
+            }
+        }
+        return true
+    }
+
+    private fun rejectDeviceControlBeforeStart(
+        execution: RegattaLinkDeviceControlExecutionGuard.Lease<BluetoothGatt>
+    ) {
+        val activeGatt = execution.session
+        if (
+            deviceControlExecutionGuard.owns(execution) &&
+            gatt === activeGatt
+        ) {
+            updateConfiguration { current ->
+                if (!deviceControlExecutionGuard.owns(execution)) {
+                    current
+                } else {
+                    regattaLinkDeviceControlRejectedBeforeStartState(
+                        state = current,
+                        errorMessage =
+                            "RegattaLink Device Control could not start because the connection is no longer ready"
+                    )
+                }
+            }
+        }
+        deviceControlExecutionGuard.release(execution)
+    }
+
+    private fun nextDeviceControlRequestId(): UInt {
+        val value = nextDeviceControlRequestId
+        nextDeviceControlRequestId =
+            if (value == UInt.MAX_VALUE) 1u else value + 1u
+        return value
+    }
+
+    override fun refreshPgnInventory(): Boolean {
+        if (otaRunning.get() || !isConnected()) return false
+        val activeGatt = gatt ?: return false
+
+        otaExecutor.execute {
+            if (!optionalFeatureWorkAllowed(activeGatt)) return@execute
+            updateNmea {
+                it.copy(
+                    pgnInventoryLoading = true,
+                    userMessage = null,
+                    error = ""
+                )
+            }
+            try {
+                val characteristic = activeGatt
+                    .getService(CONFIG_SERVICE_UUID)
+                    ?.getCharacteristic(NMEA_PGN_INVENTORY_UUID)
+                    ?: throw RegattaLinkOtaTransportException(
+                        "RegattaLink PGN inventory is unavailable",
+                        ambiguous = false
+                    )
+                val inventory = parseRegattaLinkPgnInventory(
+                    readCharacteristicBlocking(activeGatt, characteristic)
+                )
+                updateNmea {
+                    it.copy(
+                        pgnInventorySupported = true,
+                        pgnInventoryLoading = false,
+                        pgnInventory = inventory,
+                        userMessage = null,
+                        error = ""
+                    )
+                }
+            } catch (error: Exception) {
+                updateNmea {
+                    it.copy(
+                        pgnInventoryLoading = false,
+                        userMessage = RegattaLinkUiMessage.NMEA_PGN_INVENTORY_READ_FAILED,
+                        error = error.message ?: "Could not read RegattaLink PGN inventory"
+                    )
+                }
+            }
+        }
+        return true
+    }
+
+    override fun readRawCanFrames(): Boolean {
+        if (otaRunning.get() || rawCaptureRunning.get() || !isConnected()) return false
+        val activeGatt = gatt ?: return false
+
+        otaExecutor.execute {
+            if (!optionalFeatureWorkAllowed(activeGatt)) return@execute
+            updateNmea {
+                it.copy(
+                    rawCanReading = true,
+                    rawFrames = emptyList(),
+                    userMessage = null,
+                    error = ""
+                )
+            }
+
+            val frames = mutableListOf<RegattaLinkRawCanFrame>()
+            var errorMessage = ""
+            try {
+                val characteristic = activeGatt
+                    .getService(CONFIG_SERVICE_UUID)
+                    ?.getCharacteristic(NMEA_RAW_CAN_UUID)
+                    ?: throw RegattaLinkOtaTransportException(
+                        "RegattaLink raw CAN diagnostics are unavailable",
+                        ambiguous = false
+                    )
+
+                for (readIndex in 0 until REGATTALINK_MAX_RAW_CAN_READS) {
+                    if (
+                        !optionalFeatureWorkAllowed(activeGatt) ||
+                        serviceRediscoveryRequested.get()
+                    ) {
+                        break
+                    }
+
+                    val result = parseRegattaLinkRawCanRead(
+                        readCharacteristicBlocking(activeGatt, characteristic)
+                    )
+                    result.frame?.let(frames::add)
+
+                    if (result.frame == null || result.remainingCount == 0) {
+                        break
+                    }
+                }
+            } catch (error: Exception) {
+                errorMessage = error.message ?: "Could not read RegattaLink raw CAN frames"
+            }
+
+            if (gatt === activeGatt && connected) {
+                updateNmea {
+                    it.copy(
+                        rawCanSupported = true,
+                        rawCanReading = false,
+                        rawFrames = frames,
+                        userMessage =
+                            RegattaLinkUiMessage.NMEA_RAW_CAN_READ_FAILED
+                                .takeIf { errorMessage.isNotBlank() },
+                        error = errorMessage
+                    )
+                }
+            }
+        }
+        return true
+    }
+
+    override fun startRawCanCapture(
+        onRecordingStarted: () -> Unit,
+        onFrame: (RegattaLinkRawCanFrame) -> Unit,
+        onFinished: (RegattaLinkRawCaptureEndReason, String) -> Unit
+    ): Boolean {
+        if (
+            otaRunning.get() ||
+            diagnosticLogRunning.get() ||
+            deviceControlExecutionGuard.isActive() ||
+            !isConnected() ||
+            !rawCaptureRunning.compareAndSet(false, true)
+        ) {
+            return false
+        }
+        val activeGatt = gatt
+        if (activeGatt == null) {
+            rawCaptureRunning.set(false)
+            return false
+        }
+        rawCaptureStopReason.set(null)
+
+        otaExecutor.execute {
+            var endReason = RegattaLinkRawCaptureEndReason.TIMEOUT
+            var errorMessage = ""
+            val deadline =
+                SystemClock.elapsedRealtime() + REGATTALINK_RAW_CAPTURE_DURATION_MS
+
+            try {
+                if (!optionalFeatureWorkAllowed(activeGatt)) {
+                    throw RegattaLinkOtaTransportException(
+                        "RegattaLink raw CAN diagnostics are unavailable",
+                        ambiguous = false
+                    )
+                }
+                val characteristic = activeGatt
+                    .getService(CONFIG_SERVICE_UUID)
+                    ?.getCharacteristic(NMEA_RAW_CAN_UUID)
+                    ?: throw RegattaLinkOtaTransportException(
+                        "RegattaLink raw CAN diagnostics are unavailable",
+                        ambiguous = false
+                    )
+
+                var flushReads = 0
+                while (
+                    rawCaptureRunning.get() &&
+                    gatt === activeGatt &&
+                    connected &&
+                    SystemClock.elapsedRealtime() < deadline &&
+                    flushReads < REGATTALINK_RAW_CAPTURE_FLUSH_READ_LIMIT
+                ) {
+                    if (serviceRediscoveryRequested.get()) {
+                        throw RegattaLinkOtaTransportException(
+                            "RegattaLink services changed during raw CAN capture",
+                            ambiguous = false
+                        )
+                    }
+                    val result = parseRegattaLinkRawCanRead(
+                        readCharacteristicBlocking(activeGatt, characteristic)
+                    )
+                    flushReads += 1
+                    if (!shouldContinueRawCaptureFlush(flushReads, result)) {
+                        break
+                    }
+                }
+
+                if (
+                    rawCaptureRunning.get() &&
+                    gatt === activeGatt &&
+                    connected &&
+                    SystemClock.elapsedRealtime() < deadline
+                ) {
+                    onRecordingStarted()
+
+                    while (
+                        rawCaptureRunning.get() &&
+                        gatt === activeGatt &&
+                        connected &&
+                        SystemClock.elapsedRealtime() < deadline
+                    ) {
+                        if (serviceRediscoveryRequested.get()) {
+                            throw RegattaLinkOtaTransportException(
+                                "RegattaLink services changed during raw CAN capture",
+                                ambiguous = false
+                            )
+                        }
+
+                        val result = parseRegattaLinkRawCanRead(
+                            readCharacteristicBlocking(activeGatt, characteristic)
+                        )
+                        result.frame?.let(onFrame)
+
+                        val delayMs = rawCapturePollDelayMs(result)
+                        if (delayMs > 0L) {
+                            val remaining =
+                                (deadline - SystemClock.elapsedRealtime())
+                                    .coerceAtLeast(0L)
+                            if (remaining > 0L) {
+                                Thread.sleep(minOf(delayMs, remaining))
+                            }
+                        }
+                    }
+                }
+
+                if (gatt !== activeGatt || !connected) {
+                    endReason = RegattaLinkRawCaptureEndReason.INTERRUPTED
+                }
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                endReason = RegattaLinkRawCaptureEndReason.INTERRUPTED
+            } catch (error: Exception) {
+                val requested = rawCaptureStopReason.get()
+                if (
+                    requested == RegattaLinkRawCaptureStopReason.INTERRUPTED ||
+                    gatt !== activeGatt ||
+                    !connected
+                ) {
+                    endReason = RegattaLinkRawCaptureEndReason.INTERRUPTED
+                } else {
+                    endReason = RegattaLinkRawCaptureEndReason.ERROR
+                    errorMessage =
+                        error.message ?: "Raw CAN capture failed"
+                }
+            } finally {
+                when (rawCaptureStopReason.getAndSet(null)) {
+                    RegattaLinkRawCaptureStopReason.USER ->
+                        endReason = RegattaLinkRawCaptureEndReason.USER_STOP
+                    RegattaLinkRawCaptureStopReason.INTERRUPTED ->
+                        endReason = RegattaLinkRawCaptureEndReason.INTERRUPTED
+                    null -> Unit
+                }
+                rawCaptureRunning.set(false)
+                runCatching { onFinished(endReason, errorMessage) }
+            }
+        }
+        return true
+    }
+
+    override fun stopRawCanCapture(reason: RegattaLinkRawCaptureStopReason) {
+        if (!rawCaptureRunning.get()) return
+        rawCaptureStopReason.compareAndSet(null, reason)
+        rawCaptureRunning.set(false)
+    }
+
+    override fun isConnected(): Boolean = connected && gatt != null
+
+    override fun tuneConnection(info: RegattaLinkDeviceInfo) {
+        val activeGatt = requireGatt()
+        requestMtuBestEffort(activeGatt)
+
+        val priorityAccepted = runCatching {
+            activeGatt.requestConnectionPriority(
+                BluetoothGatt.CONNECTION_PRIORITY_HIGH
+            )
+        }.onFailure { error ->
+            Log.w(LOG_TAG, "High-priority BLE request failed locally", error)
+        }.getOrDefault(false)
+        Log.i(
+            LOG_TAG,
+            "High-priority BLE request accepted=${priorityAccepted}"
+        )
+
+        if (info.otaPhy2m) {
+            try {
+                Thread.sleep(OTA_PHY_REQUEST_GRACE_MS)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return
+            }
+
+            runCatching {
+                activeGatt.setPreferredPhy(
+                    BluetoothDevice.PHY_LE_2M_MASK,
+                    BluetoothDevice.PHY_LE_2M_MASK,
+                    BluetoothDevice.PHY_OPTION_NO_PREFERRED
+                )
+                Log.i(LOG_TAG, "Requested BLE OTA 2M PHY preference")
+            }.onFailure { error ->
+                Log.w(LOG_TAG, "BLE OTA 2M PHY request failed locally", error)
+            }
+        }
+    }
+
+    override fun enableStatusNotifications() {
+        val activeGatt = requireGatt()
+        val statusCharacteristic = requireOtaCharacteristic(
+            activeGatt,
+            REGATTALINK_OTA_STATUS_UUID
+        )
+        val descriptor = statusCharacteristic.getDescriptor(CCCD_UUID)
+            ?: throw RegattaLinkOtaTransportException(
+                "RegattaLink OTA status CCCD is unavailable",
+                ambiguous = false
+            )
+
+        otaProgressQueue.clear()
+        if (!activeGatt.setCharacteristicNotification(statusCharacteristic, true)) {
+            throw RegattaLinkOtaTransportException(
+                "Could not enable RegattaLink OTA status notifications",
+                ambiguous = false
+            )
+        }
+
+        writeDescriptorBlocking(
+            activeGatt,
+            descriptor,
+            BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+        )
+    }
+
+    override fun snapshot(): RegattaLinkOtaStatus {
+        writeControl(encodeRegattaLinkOtaSnapshot())
+        val raw = readCharacteristicBlocking(
+            requireGatt(),
+            REGATTALINK_OTA_STATUS_UUID
+        )
+        return parseRegattaLinkOtaStatus(raw)
+    }
+
+    override fun writeControl(value: ByteArray) {
+        writeCharacteristicBlocking(
+            requireGatt(),
+            REGATTALINK_OTA_CONTROL_UUID,
+            value,
+            BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+        )
+    }
+
+    override fun canWriteDataWithoutResponse(valueSize: Int): Boolean {
+        val activeGatt = gatt ?: return false
+        val characteristic = runCatching {
+            requireOtaCharacteristic(activeGatt, REGATTALINK_OTA_DATA_UUID)
+        }.getOrNull() ?: return false
+        val hasProperty =
+            characteristic.properties and
+                BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE != 0
+        return hasProperty && valueSize <= (mtu - 3).coerceAtLeast(20)
+    }
+
+    override fun canWriteDataWithResponse(valueSize: Int): Boolean {
+        val activeGatt = gatt ?: return false
+        val characteristic = runCatching {
+            requireOtaCharacteristic(activeGatt, REGATTALINK_OTA_DATA_UUID)
+        }.getOrNull() ?: return false
+        val hasProperty =
+            characteristic.properties and
+                BluetoothGattCharacteristic.PROPERTY_WRITE != 0
+        return hasProperty && valueSize <= (mtu - 3).coerceAtLeast(20)
+    }
+
+    override fun submitDataWithoutResponse(
+        value: ByteArray
+    ): RegattaLinkOtaSubmitResult {
+        val activeGatt = requireGatt()
+        val characteristic = requireOtaCharacteristic(
+            activeGatt,
+            REGATTALINK_OTA_DATA_UUID
+        )
+
+        var attempts = 0
+        while (attempts < 4) {
+            attempts += 1
+
+            // Android exposes one local GATT write operation at a time on many
+            // stacks, even for WRITE_TYPE_NO_RESPONSE. This local serialization
+            // is independent of the RegattaLink receiver's DATA in-flight window.
+            // Wait for Android's write-completion callback before admitting the
+            // next command, while keeping already submitted blocks logically
+            // in-flight until the device advances authoritative accepted_offset.
+            val future = CompletableFuture<Unit>()
+            val pending = PendingGattOperation.CharacteristicWrite(
+                REGATTALINK_OTA_DATA_UUID,
+                future
+            )
+            if (!setPendingGattOperation(pending)) {
+                if (attempts < 4) {
+                    Thread.sleep(5)
+                    continue
+                }
+                return RegattaLinkOtaSubmitResult.LOCAL_QUEUE_BUSY
+            }
+
+            val submitResult = submitCharacteristicWrite(
+                activeGatt,
+                characteristic,
+                value,
+                BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+            )
+            if (submitResult != RegattaLinkOtaSubmitResult.ACCEPTED) {
+                clearPendingGattOperation(pending)
+                if (
+                    submitResult == RegattaLinkOtaSubmitResult.LOCAL_QUEUE_BUSY &&
+                    attempts < 4
+                ) {
+                    Thread.sleep(5)
+                    continue
+                }
+                return submitResult
+            }
+
+            return try {
+                awaitUnitFuture(
+                    future,
+                    "OTA DATA write command"
+                )
+                RegattaLinkOtaSubmitResult.ACCEPTED
+            } catch (error: RegattaLinkOtaTransportException) {
+                // The command was accepted by Android before the callback became
+                // ambiguous. Let the OTA engine reconcile against accepted_offset
+                // instead of retransmitting blindly.
+                otaDataTransportError.compareAndSet(
+                    null,
+                    error.message ?: "OTA DATA write command became ambiguous"
+                )
+                RegattaLinkOtaSubmitResult.ACCEPTED
+            }
+        }
+
+        return RegattaLinkOtaSubmitResult.LOCAL_QUEUE_BUSY
+    }
+
+    override fun writeDataWithResponse(value: ByteArray) {
+        writeCharacteristicBlocking(
+            requireGatt(),
+            REGATTALINK_OTA_DATA_UUID,
+            value,
+            BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+        )
+    }
+
+    override fun pollProgress(
+        timeoutMs: Long
+    ): RegattaLinkOtaProgress? =
+        if (timeoutMs <= 0L) {
+            otaProgressQueue.poll()
+        } else {
+            otaProgressQueue.poll(timeoutMs, TimeUnit.MILLISECONDS)
+        }
+
+    override fun consumeDataTransportError(): String? =
+        otaDataTransportError.getAndSet(null)
+
+    override fun closeCurrentConnection() {
+        closeGatt()
+    }
+
+    override fun reconnectCandidate(
+        expectedStableId: String,
+        timeoutMs: Long
+    ): RegattaLinkDeviceInfo? {
+        if (timeoutMs <= 0L) return null
+        closeGatt()
+        stopScan()
+        handler.removeCallbacks(bondPoll)
+
+        val adapter = bluetoothManager.adapter ?: return null
+        if (!adapter.isEnabled) return null
+        val activeScanner = adapter.bluetoothLeScanner ?: return null
+        val targetAddress = selectedDeviceAddress ?: return null
+        scanner = activeScanner
+
+        val future = CompletableFuture<RegattaLinkDeviceInfo?>()
+        reconnectFuture = future
+        scanPurpose = ScanPurpose.OTA_RECONNECT
+
+        handler.post {
+            emit(
+                RegattaLinkClientState(
+                    status = RegattaLinkConnectionStatus.SCANNING
+                )
+            )
+            startFilteredScan(activeScanner, targetAddress)
+        }
+
+        return try {
+            val info = future.get(timeoutMs, TimeUnit.MILLISECONDS)
+            if (info != null && info.stableId != expectedStableId) {
+                closeGatt()
+                null
+            } else {
+                info
+            }
+        } catch (_: TimeoutException) {
+            stopScan()
+            closeGatt()
+            null
+        } catch (_: Exception) {
+            closeGatt()
+            null
+        } finally {
+            reconnectFuture = null
+            handler.removeCallbacks(scanTimeout)
+            scanPurpose = ScanPurpose.NORMAL
+        }
+    }
+
+    private fun requestMtuBestEffort(activeGatt: BluetoothGatt) {
+        if (mtu >= REQUESTED_OTA_MTU) return
+        val future = CompletableFuture<Int>()
+        val pending = PendingGattOperation.Mtu(future)
+        if (!setPendingGattOperation(pending)) return
+
+        val initiated = runCatching {
+            activeGatt.requestMtu(REQUESTED_OTA_MTU)
+        }.getOrDefault(false)
+
+        if (!initiated) {
+            clearPendingGattOperation(pending)
+            return
+        }
+
+        try {
+            future.get(GATT_OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        } catch (_: Exception) {
+            clearPendingGattOperation(pending)
+        }
+    }
+
+    private fun writeCharacteristicBlockingDirect(
+        activeGatt: BluetoothGatt,
+        characteristic: BluetoothGattCharacteristic,
+        value: ByteArray,
+        onSubmitted: (() -> Unit)? = null
+    ) {
+        var attempts = 0
+        while (true) {
+            attempts += 1
+            val future = CompletableFuture<Unit>()
+            val pending =
+                PendingGattOperation.CharacteristicWrite(characteristic.uuid, future)
+            if (!setPendingGattOperation(pending)) {
+                throw RegattaLinkOtaTransportException(
+                    "Another GATT operation is active",
+                    ambiguous = false
+                )
+            }
+
+            val submitResult = submitCharacteristicWrite(
+                activeGatt,
+                characteristic,
+                value,
+                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+            )
+
+            if (submitResult != RegattaLinkOtaSubmitResult.ACCEPTED) {
+                clearPendingGattOperation(pending)
+                if (
+                    submitResult == RegattaLinkOtaSubmitResult.LOCAL_QUEUE_BUSY &&
+                    attempts < 4
+                ) {
+                    Thread.sleep(10)
+                    continue
+                }
+                throw RegattaLinkOtaTransportException(
+                    "Android rejected GATT write before transmission",
+                    ambiguous = false
+                )
+            }
+
+            /*
+             * From this point on, a missing/error callback is ambiguous: the
+             * peripheral may already have processed the ATT Write Request.
+             * Destructive commands such as Factory Reset must claim recovery
+             * ownership before waiting for the callback.
+             */
+            afterRegattaLinkGattSubmissionAccepted(
+                onSubmitted = onSubmitted
+            ) {
+                awaitUnitFuture(
+                    future,
+                    "GATT write " + characteristic.uuid
+                )
+            }
+            return
+        }
+    }
+
+    private fun writeCharacteristicBlocking(
+        activeGatt: BluetoothGatt,
+        uuid: UUID,
+        value: ByteArray,
+        writeType: Int
+    ) {
+        var attempts = 0
+        while (true) {
+            attempts += 1
+            val characteristic = requireOtaCharacteristic(activeGatt, uuid)
+            val future = CompletableFuture<Unit>()
+            val pending =
+                PendingGattOperation.CharacteristicWrite(uuid, future)
+            if (!setPendingGattOperation(pending)) {
+                throw RegattaLinkOtaTransportException(
+                    "Another GATT operation is active",
+                    ambiguous = false
+                )
+            }
+
+            val submitResult = submitCharacteristicWrite(
+                activeGatt,
+                characteristic,
+                value,
+                writeType
+            )
+
+            if (submitResult != RegattaLinkOtaSubmitResult.ACCEPTED) {
+                clearPendingGattOperation(pending)
+                if (
+                    submitResult == RegattaLinkOtaSubmitResult.LOCAL_QUEUE_BUSY &&
+                    attempts < 4
+                ) {
+                    Thread.sleep(10)
+                    continue
+                }
+                throw RegattaLinkOtaTransportException(
+                    "Android rejected GATT write before transmission",
+                    ambiguous = false
+                )
+            }
+
+            awaitUnitFuture(
+                future,
+                "GATT write " + uuid
+            )
+            return
+        }
+    }
+
+    private fun readCharacteristicBlocking(
+        activeGatt: BluetoothGatt,
+        uuid: UUID
+    ): ByteArray =
+        readCharacteristicBlocking(
+            activeGatt,
+            requireOtaCharacteristic(activeGatt, uuid)
+        )
+
+    private fun readCharacteristicBlocking(
+        activeGatt: BluetoothGatt,
+        characteristic: BluetoothGattCharacteristic
+    ): ByteArray {
+        var attempts = 0
+        while (true) {
+            attempts += 1
+            val future = CompletableFuture<ByteArray>()
+            val pending =
+                PendingGattOperation.CharacteristicRead(characteristic.uuid, future)
+            if (!setPendingGattOperation(pending)) {
+                throw RegattaLinkOtaTransportException(
+                    "Another GATT operation is active",
+                    ambiguous = false
+                )
+            }
+
+            if (!activeGatt.readCharacteristic(characteristic)) {
+                clearPendingGattOperation(pending)
+                if (attempts < 4) {
+                    Thread.sleep(10)
+                    continue
+                }
+                throw RegattaLinkOtaTransportException(
+                    "Android rejected GATT read before transmission",
+                    ambiguous = false
+                )
+            }
+
+            return awaitByteArrayFuture(
+                future,
+                "GATT read " + characteristic.uuid
+            )
+        }
+    }
+
+    private fun writeDescriptorBlocking(
+        activeGatt: BluetoothGatt,
+        descriptor: BluetoothGattDescriptor,
+        value: ByteArray
+    ) {
+        var attempts = 0
+        while (true) {
+            attempts += 1
+            val future = CompletableFuture<Unit>()
+            val pending =
+                PendingGattOperation.DescriptorWrite(
+                    descriptor.uuid,
+                    future
+                )
+            if (!setPendingGattOperation(pending)) {
+                throw RegattaLinkOtaTransportException(
+                    "Another GATT operation is active",
+                    ambiguous = false
+                )
+            }
+
+            val accepted =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    activeGatt.writeDescriptor(
+                        descriptor,
+                        value
+                    ) == BluetoothStatusCodes.SUCCESS
+                } else {
+                    descriptor.value = value
+                    activeGatt.writeDescriptor(descriptor)
+                }
+
+            if (!accepted) {
+                clearPendingGattOperation(pending)
+                if (attempts < 4) {
+                    Thread.sleep(10)
+                    continue
+                }
+                throw RegattaLinkOtaTransportException(
+                    "Android rejected GATT descriptor write",
+                    ambiguous = false
+                )
+            }
+
+            awaitUnitFuture(
+                future,
+                "GATT descriptor write"
+            )
+            return
+        }
+    }
+
+    private fun submitCharacteristicWrite(
+        activeGatt: BluetoothGatt,
+        characteristic: BluetoothGattCharacteristic,
+        value: ByteArray,
+        writeType: Int
+    ): RegattaLinkOtaSubmitResult {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            when (
+                activeGatt.writeCharacteristic(
+                    characteristic,
+                    value,
+                    writeType
+                )
+            ) {
+                BluetoothStatusCodes.SUCCESS ->
+                    RegattaLinkOtaSubmitResult.ACCEPTED
+                BluetoothStatusCodes.ERROR_GATT_WRITE_REQUEST_BUSY ->
+                    RegattaLinkOtaSubmitResult.LOCAL_QUEUE_BUSY
+                else ->
+                    RegattaLinkOtaSubmitResult.REJECTED
+            }
+        } else {
+            characteristic.writeType = writeType
+            characteristic.value = value
+            if (activeGatt.writeCharacteristic(characteristic)) {
+                RegattaLinkOtaSubmitResult.ACCEPTED
+            } else {
+                RegattaLinkOtaSubmitResult.LOCAL_QUEUE_BUSY
+            }
+        }
+    }
+
+    private fun requireGatt(): BluetoothGatt =
+        gatt?.takeIf { connected }
+            ?: throw RegattaLinkOtaTransportException(
+                "RegattaLink is not connected"
+            )
+
+    private fun requireOtaCharacteristic(
+        activeGatt: BluetoothGatt,
+        uuid: UUID
+    ): BluetoothGattCharacteristic {
+        val service = activeGatt.getService(REGATTALINK_OTA_SERVICE_UUID)
+            ?: throw RegattaLinkOtaTransportException(
+                "RegattaLink OTA service is unavailable",
+                ambiguous = false
+            )
+        return service.getCharacteristic(uuid)
+            ?: throw RegattaLinkOtaTransportException(
+                "RegattaLink OTA characteristic $uuid is unavailable",
+                ambiguous = false
+            )
+    }
+
+    private fun setPendingGattOperation(
+        operation: PendingGattOperation
+    ): Boolean =
+        synchronized(pendingGattLock) {
+            if (pendingGattOperation != null) {
+                false
+            } else {
+                pendingGattOperation = operation
+                true
+            }
+        }
+
+    private fun clearPendingGattOperation(
+        operation: PendingGattOperation
+    ) {
+        synchronized(pendingGattLock) {
+            if (pendingGattOperation === operation) {
+                pendingGattOperation = null
+            }
+        }
+    }
+
+    private fun completeCharacteristicWrite(
+        uuid: UUID,
+        status: Int
+    ): Boolean {
+        val pending = synchronized(pendingGattLock) {
+            val current = pendingGattOperation
+            if (
+                current is PendingGattOperation.CharacteristicWrite &&
+                current.uuid == uuid
+            ) {
+                pendingGattOperation = null
+                current
+            } else {
+                null
+            }
+        } ?: return false
+
+        if (status == BluetoothGatt.GATT_SUCCESS) {
+            pending.future.complete(Unit)
+        } else {
+            pending.future.completeExceptionally(
+                RegattaLinkOtaTransportException(
+                    message = "GATT write $uuid failed ($status)",
+                    ambiguous = true,
+                    gattStatus = status
+                )
+            )
+        }
+        return true
+    }
+
+    private fun completeCharacteristicRead(
+        uuid: UUID,
+        value: ByteArray,
+        status: Int
+    ): Boolean {
+        val pending = synchronized(pendingGattLock) {
+            val current = pendingGattOperation
+            if (
+                current is PendingGattOperation.CharacteristicRead &&
+                current.uuid == uuid
+            ) {
+                pendingGattOperation = null
+                current
+            } else {
+                null
+            }
+        } ?: return false
+
+        if (status == BluetoothGatt.GATT_SUCCESS) {
+            pending.future.complete(value.copyOf())
+        } else {
+            pending.future.completeExceptionally(
+                RegattaLinkOtaTransportException(
+                    "GATT read $uuid failed ($status)",
+                    ambiguous = true
+                )
+            )
+        }
+        return true
+    }
+
+    private fun completeDescriptorWrite(
+        uuid: UUID,
+        status: Int
+    ) {
+        val pending = synchronized(pendingGattLock) {
+            val current = pendingGattOperation
+            if (
+                current is PendingGattOperation.DescriptorWrite &&
+                current.uuid == uuid
+            ) {
+                pendingGattOperation = null
+                current
+            } else {
+                null
+            }
+        } ?: return
+
+        if (status == BluetoothGatt.GATT_SUCCESS) {
+            pending.future.complete(Unit)
+        } else {
+            pending.future.completeExceptionally(
+                RegattaLinkOtaTransportException(
+                    "GATT descriptor write failed ($status)",
+                    ambiguous = true
+                )
+            )
+        }
+    }
+
+    private fun completeMtu(value: Int) {
+        val pending = synchronized(pendingGattLock) {
+            val current = pendingGattOperation
+            if (current is PendingGattOperation.Mtu) {
+                pendingGattOperation = null
+                current
+            } else {
+                null
+            }
+        } ?: return
+        pending.future.complete(value)
+    }
+
+    private fun failPendingGattOperation(error: Exception) {
+        val pending = synchronized(pendingGattLock) {
+            val current = pendingGattOperation
+            pendingGattOperation = null
+            current
+        } ?: return
+
+        when (pending) {
+            is PendingGattOperation.CharacteristicWrite ->
+                pending.future.completeExceptionally(error)
+            is PendingGattOperation.CharacteristicRead ->
+                pending.future.completeExceptionally(error)
+            is PendingGattOperation.DescriptorWrite ->
+                pending.future.completeExceptionally(error)
+            is PendingGattOperation.Mtu ->
+                pending.future.completeExceptionally(error)
+        }
+    }
+
+    private fun awaitUnitFuture(
+        future: CompletableFuture<Unit>,
+        description: String
+    ) {
+        try {
+            future.get(
+                GATT_OPERATION_TIMEOUT_MS,
+                TimeUnit.MILLISECONDS
+            )
+        } catch (error: TimeoutException) {
+            clearPendingFuture(future)
+            throw RegattaLinkOtaTransportException(
+                "$description timed out",
+                ambiguous = true,
+                cause = error
+            )
+        } catch (error: ExecutionException) {
+            throw unwrapTransportException(error, description)
+        }
+    }
+
+    private fun awaitByteArrayFuture(
+        future: CompletableFuture<ByteArray>,
+        description: String
+    ): ByteArray =
+        try {
+            future.get(
+                GATT_OPERATION_TIMEOUT_MS,
+                TimeUnit.MILLISECONDS
+            )
+        } catch (error: TimeoutException) {
+            clearPendingFuture(future)
+            throw RegattaLinkOtaTransportException(
+                "$description timed out",
+                ambiguous = true,
+                cause = error
+            )
+        } catch (error: ExecutionException) {
+            throw unwrapTransportException(error, description)
+        }
+
+    private fun clearPendingFuture(future: CompletableFuture<*>) {
+        synchronized(pendingGattLock) {
+            val current = pendingGattOperation
+            val matches = when (current) {
+                is PendingGattOperation.CharacteristicWrite ->
+                    current.future === future
+                is PendingGattOperation.CharacteristicRead ->
+                    current.future === future
+                is PendingGattOperation.DescriptorWrite ->
+                    current.future === future
+                is PendingGattOperation.Mtu ->
+                    current.future === future
+                null -> false
+            }
+            if (matches) pendingGattOperation = null
+        }
+    }
+
+    private fun unwrapTransportException(
+        error: ExecutionException,
+        description: String
+    ): RegattaLinkOtaTransportException {
+        val cause = error.cause
+        return if (cause is RegattaLinkOtaTransportException) {
+            cause
+        } else {
+            RegattaLinkOtaTransportException(
+                "$description failed",
+                ambiguous = true,
+                cause = cause ?: error
+            )
+        }
+    }
+
+    private fun stopScan() {
+        handler.removeCallbacks(scanTimeout)
+        scanActive = false
+        runCatching { scanner?.stopScan(scanCallback) }
+    }
+
+    private fun resetServiceDiscoveryState() {
+        handler.removeCallbacks(serviceRediscovery)
+        serviceRediscoveryGatt = null
+        serviceRediscoveryPending.set(false)
+        serviceRediscoveryRequested.set(false)
+        serviceRediscoveryDeferredForOta.set(false)
+        serviceDiscoveryInProgress = false
+        deviceInfoReadInProgress = false
+        connectionSetupComplete = false
+    }
+
+    private fun closeGatt() {
+        handler.removeCallbacks(gattTimeout)
+        handler.removeCallbacks(gattSchemaReconcileTimeout)
+        handler.removeCallbacks(gattSchemaReconnectFallback)
+        gattSchemaReconnectGatt = null
+        gattSchemaReconnectDevice = null
+        gattSchemaReconciliationPending = false
+        pendingGattSchemaVersion = 0
+        pendingGattSchemaInfo = null
+        resetServiceDiscoveryState()
+        connected = false
+        establishedConnection = false
+        val existing = gatt
+        gatt = null
+        failPendingGattOperation(
+            RegattaLinkOtaTransportException(
+                "GATT connection closed"
+            )
+        )
+        if (existing != null) {
+            runCatching { existing.disconnect() }
+            existing.close()
+        }
+        mtu = 23
+    }
+
+    private fun closeGattWithError(
+        callbackGatt: BluetoothGatt,
+        message: String,
+        gattStatus: Int? = null
+    ) {
+        val wasReadyConnection = establishedConnection
+        handler.removeCallbacks(gattTimeout)
+        resetServiceDiscoveryState()
+        connected = false
+        establishedConnection = false
+        callbackGatt.disconnect()
+        callbackGatt.close()
+        if (gatt === callbackGatt) {
+            gatt = null
+        }
+        failPendingGattOperation(
+            RegattaLinkOtaTransportException(message)
+        )
+        if (!otaRunning.get()) {
+            clearTelemetry()
+            clearConfiguration()
+            clearNmea()
+        }
+
+        if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
+            reconnectFuture?.complete(null)
+        } else if (scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT) {
+            retryKnownDeviceReconnect(message)
+        } else if (!otaRunning.get()) {
+            if (discoveryInProgress) {
+                retryDiscoveryAfterCandidateFailure(
+                    staleBondSecurityFailure =
+                        gattStatus?.let(
+                            ::isRegattaLinkStaleBondSecurityGattStatus
+                        ) == true
+                )
+            } else {
+                emitError(callbackGatt.device, message)
+                if (
+                    shouldStartRegattaLinkOutageReconnect(
+                        connectionWasReady = wasReadyConnection,
+                        otaOwnsConnection = otaRunning.get(),
+                        knownReconnectAlreadyActive = false
+                    )
+                ) {
+                    handler.post { onUnexpectedDisconnect() }
+                }
+            }
+        }
+    }
+
+    private fun emitForDevice(
+        device: BluetoothDevice,
+        status: RegattaLinkConnectionStatus
+    ) {
+        emit(
+            RegattaLinkClientState(
+                status = status,
+                deviceName = deviceName(device),
+                deviceAddress = device.address
+            )
+        )
+    }
+
+    private fun emitError(
+        device: BluetoothDevice,
+        message: String,
+        userMessage: RegattaLinkUiMessage = RegattaLinkUiMessage.CONNECTION_FAILED
+    ) {
+        emit(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.ERROR,
+                deviceName = deviceName(device),
+                deviceAddress = device.address,
+                userMessage = userMessage,
+                error = message
+            )
+        )
+    }
+
+    private fun deviceName(device: BluetoothDevice): String =
+        runCatching { device.name }.getOrNull().orEmpty()
+
+    private fun emit(state: RegattaLinkClientState) {
+        lastState = state
+        handler.post {
+            onStateChanged(state)
+        }
+    }
+
+    private fun phyName(phy: Int): String = when (phy) {
+        BluetoothDevice.PHY_LE_1M -> "1M"
+        BluetoothDevice.PHY_LE_2M -> "2M"
+        BluetoothDevice.PHY_LE_CODED -> "coded"
+        else -> phy.toString()
+    }
+
+    private fun updateConfiguration(
+        transform: (RegattaLinkConfigurationState) -> RegattaLinkConfigurationState
+    ) {
+        val next = synchronized(configurationLock) {
+            transform(lastConfigurationState).also {
+                lastConfigurationState = it
+            }
+        }
+        handler.post {
+            onConfigurationStateChanged(next)
+        }
+    }
+
+    private fun emitConfiguration(state: RegattaLinkConfigurationState) {
+        synchronized(configurationLock) {
+            lastConfigurationState = state
+        }
+        handler.post {
+            onConfigurationStateChanged(state)
+        }
+    }
+
+    private fun clearConfiguration() {
+        emitConfiguration(RegattaLinkConfigurationState())
+    }
+
+    private fun updateNmea(
+        transform: (RegattaLinkNmeaState) -> RegattaLinkNmeaState
+    ) {
+        val next = synchronized(nmeaLock) {
+            transform(lastNmeaState).also {
+                lastNmeaState = it
+                RegattaLinkNmeaSnapshotStore.update(it)
+            }
+        }
+        handler.post {
+            onNmeaStateChanged(next)
+        }
+    }
+
+    private fun emitNmea(state: RegattaLinkNmeaState) {
+        synchronized(nmeaLock) {
+            lastNmeaState = state
+            RegattaLinkNmeaSnapshotStore.update(state)
+        }
+        handler.post {
+            onNmeaStateChanged(state)
+        }
+    }
+
+    private fun clearNmea() {
+        emitNmea(RegattaLinkNmeaState())
+    }
+
+    private fun updateTelemetry(
+        transform: (RegattaLinkTelemetryState) -> RegattaLinkTelemetryState
+    ) {
+        val next = synchronized(telemetryLock) {
+            transform(lastTelemetryState).also {
+                lastTelemetryState = it
+                RegattaLinkTelemetrySnapshotStore.update(it)
+            }
+        }
+        handler.post {
+            onTelemetryStateChanged(next)
+        }
+    }
+
+    private fun emitTelemetry(state: RegattaLinkTelemetryState) {
+        synchronized(telemetryLock) {
+            lastTelemetryState = state
+            RegattaLinkTelemetrySnapshotStore.update(state)
+        }
+        handler.post {
+            onTelemetryStateChanged(state)
+        }
+    }
+
+    private fun clearTelemetry() {
+        emitTelemetry(RegattaLinkTelemetryState())
+    }
+
+    private fun invalidateTerminalOtaConnection() {
+        val previousState = lastState
+
+        // The OTA engine has already closed the GATT connection here. Keep
+        // telemetry paused while replacing the snapshot so the terminal
+        // CANCELLED/ERROR state can never expose pre-OTA measurements again.
+        emitTelemetry(
+            RegattaLinkTelemetryState(
+                pausedForOta = true
+            )
+        )
+        clearConfiguration()
+        clearNmea()
+        emit(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.IDLE,
+                deviceName = previousState.deviceName,
+                deviceAddress = previousState.deviceAddress
+            )
+        )
+    }
+
+    private fun emitOta(state: RegattaLinkOtaUiState) {
+        lastOtaState = state
+        if (
+            shouldDeferRegattaLinkTerminalOtaState(
+                otaOwnsConnection = otaRunning.get(),
+                phase = state.phase
+            )
+        ) {
+            deferredTerminalOtaState.set(state)
+            return
+        }
+        publishOtaState(state)
+    }
+
+    private fun flushDeferredTerminalOtaState() {
+        deferredTerminalOtaState.getAndSet(null)?.let(::publishOtaState)
+    }
+
+    private fun publishOtaState(state: RegattaLinkOtaUiState) {
+        val paused = state.isActive
+        if (lastTelemetryState.pausedForOta != paused) {
+            updateTelemetry { it.copy(pausedForOta = paused) }
+        }
+        if (lastNmeaState.pausedForOta != paused) {
+            updateNmea {
+                if (paused) {
+                    it.copy(
+                        boatState = null,
+                        boatStateReceivedAtElapsedMs = null,
+                        pausedForOta = true
+                    )
+                } else {
+                    it.copy(pausedForOta = false)
+                }
+            }
+        }
+        handler.post {
+            onOtaStateChanged(state)
+        }
+    }
+}

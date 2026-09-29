@@ -49,6 +49,7 @@ fun BoatDataScreen(
     setupConfirmed: Boolean,
     modifier: Modifier = Modifier,
     onConfirmSetup: (BoatSetupValues) -> Unit,
+    onRegattaLink: () -> Unit,
     onBack: () -> Unit
 ) {
     val confirmedValues = BoatSetupValues(
@@ -59,6 +60,9 @@ fun BoatDataScreen(
         yardstick = yardstick,
         boatType = boatType
     )
+    // By design: unconfirmed boat-data edits are screen-local and are discarded when
+    // navigating away (including RegattaLink). Only Confirm Setup persists them.
+    // See DOCUMENTATION.md ("Boat data draft semantics") and issue #221.
     var draft by remember(
         boatName,
         skipperName,
@@ -140,6 +144,16 @@ fun BoatDataScreen(
         )
 
         Button(
+            onClick = onRegattaLink,
+            colors = primaryButtonColors(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp)
+        ) {
+            Text(stringResource(R.string.regattalink_title))
+        }
+
+        Button(
             onClick = {
                 if (isBoatSetupValid(draft)) {
                     onConfirmSetup(draft)
@@ -214,11 +228,12 @@ fun RaceScreen(
     raceShortenedText: String,
     raceShortened: Boolean,
     modifier: Modifier = Modifier,
-    onRefreshRaceData: () -> Unit,
+    retireEnabled: Boolean,
     onScanQr: () -> Unit,
     onRegisterRace: () -> Unit,
     onEnterRace: () -> Unit,
-    onLeaveRace: () -> Unit,
+    onRetire: () -> Unit,
+    onExitRace: () -> Unit,
     onShowRaceLegal: () -> Unit,
     onClearRaceSetupClick: () -> Unit,
     onBack: () -> Unit,
@@ -311,16 +326,37 @@ fun RaceScreen(
                     )
                 }
 
-                Button(
-                    onClick = onLeaveRace,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = dangerRed
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(58.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Text(stringResource(R.string.leave_race))
+                    Button(
+                        onClick = onRetire,
+                        enabled = retireEnabled,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = warningYellow,
+                            contentColor = MaterialTheme.colorScheme.onTertiary,
+                            disabledContainerColor = MaterialTheme.colorScheme.outlineVariant,
+                            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(58.dp)
+                    ) {
+                        Text(stringResource(R.string.retire))
+                    }
+
+                    Button(
+                        onClick = onExitRace,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = dangerRed
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(58.dp)
+                    ) {
+                        Text(stringResource(R.string.exit_race))
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -385,10 +421,23 @@ fun RaceScreen(
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Button(
-                        onClick = onRefreshRaceData,
-                        modifier = Modifier.weight(0.5f)
+                        onClick = onRegisterRace,
+                        enabled = canRegisterRace,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = primaryBlue,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                            disabledContainerColor = MaterialTheme.colorScheme.outlineVariant,
+                            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        ),
+                        modifier = Modifier.weight(1f)
                     ) {
-                        Text(stringResource(R.string.refresh))
+                        Text(
+                            if (raceRegistered) {
+                                stringResource(R.string.registered)
+                            } else {
+                                stringResource(R.string.register_for_race)
+                            }
+                        )
                     }
 
                     Button(
@@ -396,10 +445,19 @@ fun RaceScreen(
                         colors = ButtonDefaults.buttonColors(
                             containerColor = dangerRed
                         ),
-                        modifier = Modifier.weight(0.5f)
+                        modifier = Modifier.weight(1f)
                     ) {
                         Text(stringResource(R.string.clear_race))
                     }
+                }
+
+                if (!raceRegistered && registerRaceStatusText.isNotBlank()) {
+                    Text(
+                        text = registerRaceStatusText,
+                        fontSize = 14.sp,
+                        color = Color(0xFF555A66),
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
@@ -420,43 +478,6 @@ fun RaceScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(18.dp))
-
-                Button(
-                    onClick = onRegisterRace,
-                    enabled = canRegisterRace,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = primaryBlue,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                        disabledContainerColor = MaterialTheme.colorScheme.outlineVariant,
-                        disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        if (raceRegistered) {
-                            stringResource(R.string.registered_with_race_committee)
-                        } else {
-                            stringResource(R.string.register_with_race_committee)
-                        }
-                    )
-                }
-
-                if (raceRegistered) {
-                    Text(
-                        text = stringResource(R.string.remember_enter_race),
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 6.dp)
-                    )
-                } else if (registerRaceStatusText.isNotBlank()) {
-                    Text(
-                        text = registerRaceStatusText,
-                        fontSize = 14.sp,
-                        color = Color(0xFF555A66),
-                        modifier = Modifier.padding(top = 6.dp)
-                    )
-                }
             }
         }
 

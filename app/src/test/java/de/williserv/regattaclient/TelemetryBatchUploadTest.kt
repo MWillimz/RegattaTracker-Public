@@ -58,6 +58,38 @@ class TelemetryBatchUploadTest {
             samples.getJSONObject(0).getString("client_build_id")
         )
         assertEquals(102L, samples.getJSONObject(1).getLong("sequence_id"))
+        listOf(
+            "accel_x",
+            "accel_y",
+            "accel_z",
+            "gyro_x",
+            "gyro_y",
+            "gyro_z"
+        ).forEach { key ->
+            assertFalse(samples.getJSONObject(0).has(key))
+            assertFalse(samples.getJSONObject(1).has(key))
+        }
+    }
+
+    @Test
+    fun batchPayload_usesSamePersistedMeasurementsAsSingleUpload() {
+        val measurements =
+            """{"regattalink.summary.motion_intensity":{"value":74,"group":"regattalink"}}"""
+        val sample = sample(
+            localId = 13L,
+            sequenceId = 103L,
+            measurementsJson = measurements
+        )
+
+        val single = buildTelemetryUploadPayload(sample, client)
+        val batch = buildTelemetryBatchUploadPayload(listOf(sample), client)
+            .getJSONArray("samples")
+            .getJSONObject(0)
+
+        assertEquals(
+            single.getJSONObject("measurements").toString(),
+            batch.getJSONObject("measurements").toString()
+        )
     }
 
     @Test
@@ -284,7 +316,8 @@ class TelemetryBatchUploadTest {
         localId: Long,
         sequenceId: Long,
         timestamp: String = "2026-09-20T10:00:00",
-        utcOffsetMinutes: Int? = null
+        utcOffsetMinutes: Int? = null,
+        measurementsJson: String? = null
     ): PendingTrackingSample {
         return PendingTrackingSample(
             localId = localId,
@@ -309,16 +342,11 @@ class TelemetryBatchUploadTest {
             accuracy = 4.0f,
             cog = 180.0f,
             sog = 3.5f,
-            accelX = 0.1f,
-            accelY = 0.2f,
-            accelZ = 0.3f,
-            gyroX = 0.4f,
-            gyroY = 0.5f,
-            gyroZ = 0.6f,
             batteryPercent = 87,
             batteryCharging = false,
             trackingProfile = "normal",
-            utcOffsetMinutes = utcOffsetMinutes
+            utcOffsetMinutes = utcOffsetMinutes,
+            measurementsJson = measurementsJson
         )
     }
 }

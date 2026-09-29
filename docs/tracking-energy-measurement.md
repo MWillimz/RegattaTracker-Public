@@ -162,9 +162,9 @@ All automated course-detection/tracking tests must remain green in CI.
 
 These are measurement targets only in #68 Task 4. Material changes belong in separate follow-up issues.
 
-### IMU
+### Phone IMU
 
-Accelerometer and gyroscope currently use `SENSOR_DELAY_GAME`. Measure Sensor Core/CPU impact and whether the application gains useful information from that rate, given that a telemetry point stores only the latest sensor values.
+Phone accelerometer and gyroscope sampling was removed under #264. The Android client no longer registers these sensors for tracking. Motion/attitude telemetry, when available, comes from RegattaLink through the generic measurements path and should be measured separately as BLE/RegattaLink workload.
 
 ### `/event` polling
 

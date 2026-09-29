@@ -34,6 +34,7 @@ class RegattaTrackingServiceLifecycleTest {
         clearTrackingPrefs()
         clearLocalStatusPrefs()
         clearStickyRestartPrefs()
+        TrackingServiceRuntimeState.markStopped()
         shadowOf(Looper.getMainLooper()).idle()
     }
 
@@ -44,6 +45,7 @@ class RegattaTrackingServiceLifecycleTest {
         clearTrackingPrefs()
         clearLocalStatusPrefs()
         clearStickyRestartPrefs()
+        TrackingServiceRuntimeState.markStopped()
     }
 
     @Test
@@ -124,12 +126,14 @@ class RegattaTrackingServiceLifecycleTest {
             putExtra(RegattaTrackingService.EXTRA_MANUAL_RECORDING, true)
         }
         assertEquals(Service.START_STICKY, service.onStartCommand(startIntent, 0, 1))
+        assertTrue(TrackingServiceRuntimeState.isActive())
 
         val stopIntent = Intent(context, RegattaTrackingService::class.java).apply {
             action = RegattaTrackingService.ACTION_STOP
         }
         assertEquals(Service.START_NOT_STICKY, service.onStartCommand(stopIntent, 0, 2))
         assertFalse(getField<Boolean>(service, "serviceRunning"))
+        assertFalse(TrackingServiceRuntimeState.isActive())
 
         controller.destroy()
     }
@@ -217,6 +221,7 @@ class RegattaTrackingServiceLifecycleTest {
 
         assertEquals(Service.START_STICKY, service.onStartCommand(null, 0, 1))
         assertTrue(getField<Boolean>(service, "serviceRunning"))
+        assertTrue(TrackingServiceRuntimeState.isActive())
         assertTrue(getField<Boolean>(service, "manualRecording"))
         assertEquals("Test Boat", getField<String>(service, "boatName"))
         assertEquals("Test Skipper", getField<String>(service, "captainName"))
@@ -417,6 +422,30 @@ class RegattaTrackingServiceLifecycleTest {
     }
 
     @Test
+    fun `rescheduling the same sample loop keeps only one pending callback`() {
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+        val helper = getField<TrackingDbHelper>(service, "db")
+        val looper = shadowOf(Looper.getMainLooper())
+
+        setField(service, "serviceRunning", true)
+        setField(service, "manualRecording", true)
+
+        invokeScheduleNextSample(service, 2_000L)
+        invokeScheduleNextSample(service, 2_000L)
+
+        looper.idleFor(1_999L, TimeUnit.MILLISECONDS)
+        assertEquals(0L, helper.countSamples())
+
+        looper.idleFor(1L, TimeUnit.MILLISECONDS)
+        assertEquals(1L, helper.countSamples())
+
+        setField(service, "serviceRunning", false)
+        controller.destroy()
+        helper.close()
+    }
+
+    @Test
     fun `repeated sticky restart does not duplicate manual sample loop`() {
         seedBoatSetup()
         seedAppState(inRace = false, manualTracking = true)
@@ -514,12 +543,6 @@ class RegattaTrackingServiceLifecycleTest {
             accuracy = 5f,
             cog = 0f,
             sog = 0f,
-            accelX = 0f,
-            accelY = 0f,
-            accelZ = 0f,
-            gyroX = 0f,
-            gyroY = 0f,
-            gyroZ = 0f,
             batteryPercent = 50,
             batteryCharging = false,
             trackingProfile = null,
@@ -532,6 +555,18 @@ class RegattaTrackingServiceLifecycleTest {
             isAccessible = true
             invoke(target)
         }
+    }
+
+    private fun invokeScheduleNextSample(
+        service: RegattaTrackingService,
+        intervalMs: Long
+    ) {
+        service.javaClass
+            .getDeclaredMethod("scheduleNextSample", Long::class.javaPrimitiveType)
+            .apply {
+                isAccessible = true
+                invoke(service, intervalMs)
+            }
     }
 
     private fun invokeRefreshLocationSampling(service: RegattaTrackingService) {

@@ -2,6 +2,10 @@
 <resources>
     <string name="register_with_race_committee">Registrati presso il comitato di regata</string>
     <string name="registered_with_race_committee">Registrato presso il comitato di regata</string>
-    <string name="remember_enter_race">Ricorda di toccare « Entra in regata » prima di lasciare il molo.</string>
     <string name="enter_race_available_24h">« Entra in regata » è disponibile 24 ore prima della partenza.</string>
+    <string name="status_checking">Verifica…</string>
+    <string name="status_not_entered">Non ancora in regata</string>
+    <string name="status_registered_not_entered">Registrato · Non ancora in regata</string>
+    <string name="registration_reminder_title">Registrazione completata</string>
+    <string name="registration_reminder_message">Sei registrato per questa regata, ma il tracciamento non è ancora iniziato. Tocca più tardi « Entra in regata », poco prima della partenza o al molo, per avviare il tracciamento.</string>
 </resources>

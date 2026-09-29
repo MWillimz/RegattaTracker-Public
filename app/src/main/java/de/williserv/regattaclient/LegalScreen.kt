@@ -22,10 +22,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
+
+private const val RELEASE_NOTES_URL = "https://mwillimz.github.io/RegattaTracker-Public/changelog/"
 
 @Composable
 fun LegalScreen(
@@ -33,6 +36,7 @@ fun LegalScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
     val showThirdPartyLicenses = remember { mutableStateOf(false) }
     val clientUpdateRequired = remember(context, BuildConfig.VERSION_CODE) {
         mutableStateOf(
@@ -150,6 +154,13 @@ fun LegalScreen(
             title = stringResource(R.string.app),
             body = appInfoText
         )
+
+        TextButton(
+            onClick = { uriHandler.openUri(RELEASE_NOTES_URL) },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(stringResource(R.string.release_notes))
+        }
 
         Spacer(modifier = Modifier.height(20.dp))
 

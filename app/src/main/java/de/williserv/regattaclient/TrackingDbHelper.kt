@@ -22,16 +22,12 @@ data class PendingTrackingSample(
     val accuracy: Float,
     val cog: Float,
     val sog: Float,
-    val accelX: Float,
-    val accelY: Float,
-    val accelZ: Float,
-    val gyroX: Float,
-    val gyroY: Float,
-    val gyroZ: Float,
+    val cogValid: Boolean? = null,
     val batteryPercent: Int? = null,
     val batteryCharging: Boolean? = null,
     val trackingProfile: String? = null,
-    val utcOffsetMinutes: Int? = null
+    val utcOffsetMinutes: Int? = null,
+    val measurementsJson: String? = null
 )
 
 data class AccessContext(
@@ -41,6 +37,46 @@ data class AccessContext(
     val accessSecret: String,
     val createdAt: Long,
     val lastUsedAt: Long
+)
+
+data class TrackingSession(
+    val id: Long,
+    val startedAt: Long,
+    val endedAt: Long?,
+    val mode: String,
+    val accessContextId: Long?,
+    val displayName: String,
+    val resolvedEventName: String? = null,
+    val courseJson: String? = null,
+    val courseMapViewportJson: String? = null
+)
+
+data class TrackingSessionSummary(
+    val id: Long,
+    val startedAt: Long,
+    val endedAt: Long?,
+    val mode: String,
+    val accessContextId: Long?,
+    val displayName: String,
+    val eventIdentifier: String?,
+    val sampleCount: Long
+)
+
+data class SessionTrackingSample(
+    val localId: Long,
+    val timestamp: String,
+    val utcOffsetMinutes: Int?,
+    val lat: Double,
+    val lon: Double,
+    val accuracy: Float,
+    val cog: Float,
+    val sog: Float,
+    val cogValid: Boolean? = null,
+    val measurementsJson: String? = null,
+    val raceContextId: Long? = null,
+    val resolvedEventName: String? = null,
+    val courseJson: String? = null,
+    val courseMapViewportJson: String? = null
 )
 
 internal data class AccessContextKey(
@@ -79,7 +115,7 @@ internal fun normalizeAccessContextKey(
 }
 
 class TrackingDbHelper(context: Context) :
-    SQLiteOpenHelper(context, "regatta_tracking.db", null, 7) {
+    SQLiteOpenHelper(context, "regatta_tracking.db", null, 13) {
 
     private val appContext = context.applicationContext
     private var lastBatteryReadAtMs: Long? = null
@@ -93,6 +129,8 @@ class TrackingDbHelper(context: Context) :
 
     override fun onCreate(db: SQLiteDatabase) {
         createAccessContextsTable(db)
+        createTrackingSessionsTable(db)
+        createRaceContextsTable(db)
         createTrackingSamplesTable(db)
         createTrackingSampleIndexes(db)
     }
@@ -109,6 +147,24 @@ class TrackingDbHelper(context: Context) :
         }
         if (oldVersion < 7 && newVersion >= 7) {
             migrateToVersion7(db)
+        }
+        if (oldVersion < 8 && newVersion >= 8) {
+            migrateToVersion8(db)
+        }
+        if (oldVersion < 9 && newVersion >= 9) {
+            migrateToVersion9(db)
+        }
+        if (oldVersion < 10 && newVersion >= 10) {
+            migrateToVersion10(db)
+        }
+        if (oldVersion < 11 && newVersion >= 11) {
+            migrateToVersion11(db)
+        }
+        if (oldVersion < 12 && newVersion >= 12) {
+            migrateToVersion12(db)
+        }
+        if (oldVersion < 13 && newVersion >= 13) {
+            migrateToVersion13(db)
         }
     }
 
@@ -205,6 +261,312 @@ class TrackingDbHelper(context: Context) :
         }
     }
 
+    fun getOrCreateRaceContext(
+        accessContextId: Long,
+        resolvedEventName: String,
+        courseJson: String?,
+        courseMapViewportJson: String?
+    ): Long? {
+        val normalizedName = resolvedEventName.trim()
+        if (normalizedName.isBlank()) return null
+
+        val db = writableDatabase
+        val insertValues = ContentValues().apply {
+            put("access_context_id", accessContextId)
+            put("resolved_event_name", normalizedName)
+            putNullableString("course_json", courseJson)
+            putNullableString("course_map_viewport_json", courseMapViewportJson)
+        }
+        db.insertWithOnConflict(
+            "race_contexts",
+            null,
+            insertValues,
+            SQLiteDatabase.CONFLICT_IGNORE
+        )
+
+        val raceContextId = findRaceContextId(
+            db = db,
+            accessContextId = accessContextId,
+            resolvedEventName = normalizedName
+        ) ?: return null
+
+        val updateValues = ContentValues().apply {
+            courseJson?.takeIf { it.isNotBlank() }?.let { put("course_json", it) }
+            courseMapViewportJson
+                ?.takeIf { it.isNotBlank() }
+                ?.let { put("course_map_viewport_json", it) }
+        }
+        if (updateValues.size() > 0) {
+            db.update(
+                "race_contexts",
+                updateValues,
+                "id = ?",
+                arrayOf(raceContextId.toString())
+            )
+        }
+
+        return raceContextId
+    }
+
+    fun createTrackingSession(
+        startedAt: Long,
+        mode: String,
+        accessContextId: Long?,
+        displayName: String,
+        resolvedEventName: String? = null,
+        courseJson: String? = null,
+        courseMapViewportJson: String? = null
+    ): Long? {
+        require(mode == "race" || mode == "manual")
+        if (mode == "race" && accessContextId == null) return null
+        if (mode == "manual" && accessContextId != null) return null
+
+        val values = ContentValues().apply {
+            put("started_at", startedAt)
+            putNull("ended_at")
+            put("mode", mode)
+            if (accessContextId != null) {
+                put("access_context_id", accessContextId)
+            } else {
+                putNull("access_context_id")
+            }
+            put("display_name", displayName)
+            putNullableString("resolved_event_name", resolvedEventName)
+            putNullableString("course_json", courseJson)
+            putNullableString("course_map_viewport_json", courseMapViewportJson)
+        }
+
+        val insertedId = writableDatabase.insert("tracking_sessions", null, values)
+        return insertedId.takeIf { it != -1L }
+    }
+
+    fun getTrackingSession(sessionId: Long): TrackingSession? {
+        readableDatabase.rawQuery(
+            """
+            SELECT
+                id,
+                started_at,
+                ended_at,
+                mode,
+                access_context_id,
+                display_name,
+                resolved_event_name,
+                course_json,
+                course_map_viewport_json
+            FROM tracking_sessions
+            WHERE id = ?
+            LIMIT 1
+            """.trimIndent(),
+            arrayOf(sessionId.toString())
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) return null
+            return TrackingSession(
+                id = cursor.getLong(0),
+                startedAt = cursor.getLong(1),
+                endedAt = if (cursor.isNull(2)) null else cursor.getLong(2),
+                mode = cursor.getString(3),
+                accessContextId = if (cursor.isNull(4)) null else cursor.getLong(4),
+                displayName = cursor.getString(5),
+                resolvedEventName = if (cursor.isNull(6)) null else cursor.getString(6),
+                courseJson = if (cursor.isNull(7)) null else cursor.getString(7),
+                courseMapViewportJson = if (cursor.isNull(8)) null else cursor.getString(8)
+            )
+        }
+    }
+
+    fun getTrackingSessionSummaries(): List<TrackingSessionSummary> {
+        val result = mutableListOf<TrackingSessionSummary>()
+        readableDatabase.rawQuery(
+            """
+            SELECT
+                sessions.id,
+                sessions.started_at,
+                sessions.ended_at,
+                sessions.mode,
+                sessions.access_context_id,
+                sessions.display_name,
+                CASE
+                    WHEN COUNT(DISTINCT race_contexts.resolved_event_name) = 1
+                        THEN MAX(race_contexts.resolved_event_name)
+                    WHEN COUNT(DISTINCT race_contexts.resolved_event_name) > 1
+                        THEN contexts.access_identifier
+                    ELSE COALESCE(sessions.resolved_event_name, contexts.access_identifier)
+                END,
+                COUNT(DISTINCT samples.id)
+            FROM tracking_sessions AS sessions
+            LEFT JOIN access_contexts AS contexts
+                ON contexts.id = sessions.access_context_id
+            LEFT JOIN tracking_samples AS samples
+                ON samples.session_id = sessions.id
+            LEFT JOIN race_contexts
+                ON race_contexts.id = samples.race_context_id
+            GROUP BY
+                sessions.id,
+                sessions.started_at,
+                sessions.ended_at,
+                sessions.mode,
+                sessions.access_context_id,
+                sessions.display_name,
+                sessions.resolved_event_name,
+                contexts.access_identifier
+            ORDER BY sessions.started_at DESC, sessions.id DESC
+            """.trimIndent(),
+            null
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                result.add(
+                    TrackingSessionSummary(
+                        id = cursor.getLong(0),
+                        startedAt = cursor.getLong(1),
+                        endedAt = if (cursor.isNull(2)) null else cursor.getLong(2),
+                        mode = cursor.getString(3),
+                        accessContextId = if (cursor.isNull(4)) null else cursor.getLong(4),
+                        displayName = cursor.getString(5),
+                        eventIdentifier = if (cursor.isNull(6)) null else cursor.getString(6),
+                        sampleCount = cursor.getLong(7)
+                    )
+                )
+            }
+        }
+        return result
+    }
+
+    fun deleteTrackingSession(sessionId: Long): Boolean {
+        val db = writableDatabase
+        val args = arrayOf(sessionId.toString())
+
+        db.beginTransaction()
+        try {
+            val isFinished = db.rawQuery(
+                """
+                SELECT ended_at
+                FROM tracking_sessions
+                WHERE id = ?
+                LIMIT 1
+                """.trimIndent(),
+                args
+            ).use { cursor ->
+                cursor.moveToFirst() && !cursor.isNull(0)
+            }
+            if (!isFinished) {
+                return false
+            }
+
+            db.delete(
+                "tracking_samples",
+                "session_id = ?",
+                args
+            )
+            val deletedSessions = db.delete(
+                "tracking_sessions",
+                "id = ? AND ended_at IS NOT NULL",
+                args
+            )
+            if (deletedSessions != 1) {
+                return false
+            }
+
+            deleteOrphanedRaceContexts(db)
+            deleteOrphanedAccessContexts(db)
+            db.setTransactionSuccessful()
+            return true
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun getTrackingSamplesForSession(sessionId: Long): List<SessionTrackingSample> {
+        val result = mutableListOf<SessionTrackingSample>()
+        readableDatabase.rawQuery(
+            """
+            SELECT
+                samples.id,
+                samples.timestamp,
+                samples.utc_offset_minutes,
+                samples.lat,
+                samples.lon,
+                samples.accuracy,
+                samples.cog,
+                samples.sog,
+                samples.measurements_json,
+                samples.race_context_id,
+                race_contexts.resolved_event_name,
+                race_contexts.course_json,
+                race_contexts.course_map_viewport_json,
+                samples.cog_valid
+            FROM tracking_samples AS samples
+            LEFT JOIN race_contexts
+                ON race_contexts.id = samples.race_context_id
+            WHERE samples.session_id = ?
+            ORDER BY samples.id ASC
+            """.trimIndent(),
+            arrayOf(sessionId.toString())
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                result.add(
+                    SessionTrackingSample(
+                        localId = cursor.getLong(0),
+                        timestamp = cursor.getString(1),
+                        utcOffsetMinutes = if (cursor.isNull(2)) null else cursor.getInt(2),
+                        lat = cursor.getDouble(3),
+                        lon = cursor.getDouble(4),
+                        accuracy = cursor.getFloat(5),
+                        cog = cursor.getFloat(6),
+                        sog = cursor.getFloat(7),
+                        measurementsJson = if (cursor.isNull(8)) null else cursor.getString(8),
+                        raceContextId = if (cursor.isNull(9)) null else cursor.getLong(9),
+                        resolvedEventName = if (cursor.isNull(10)) null else cursor.getString(10),
+                        courseJson = if (cursor.isNull(11)) null else cursor.getString(11),
+                        courseMapViewportJson = if (cursor.isNull(12)) null else cursor.getString(12),
+                        cogValid = if (cursor.isNull(13)) null else cursor.getInt(13) != 0
+                    )
+                )
+            }
+        }
+        return result
+    }
+
+    fun updateTrackingSessionRaceContext(
+        sessionId: Long,
+        resolvedEventName: String?,
+        courseJson: String?,
+        courseMapViewportJson: String?
+    ): Boolean {
+        val values = ContentValues().apply {
+            putNullableString("resolved_event_name", resolvedEventName)
+            putNullableString("course_json", courseJson)
+            putNullableString("course_map_viewport_json", courseMapViewportJson)
+        }
+        return writableDatabase.update(
+            "tracking_sessions",
+            values,
+            "id = ? AND mode = 'race'",
+            arrayOf(sessionId.toString())
+        ) > 0
+    }
+
+    fun finishTrackingSession(sessionId: Long, endedAt: Long): Boolean {
+        val values = ContentValues().apply {
+            put("ended_at", endedAt)
+        }
+        return writableDatabase.update(
+            "tracking_sessions",
+            values,
+            "id = ? AND ended_at IS NULL",
+            arrayOf(sessionId.toString())
+        ) > 0
+    }
+
+    fun countTrackingSessions(): Long {
+        readableDatabase.rawQuery(
+            "SELECT COUNT(*) FROM tracking_sessions",
+            null
+        ).use { cursor ->
+            cursor.moveToFirst()
+            return cursor.getLong(0)
+        }
+    }
+
     fun getPendingSamples(limit: Int): List<PendingTrackingSample> {
         val result = mutableListOf<PendingTrackingSample>()
 
@@ -224,17 +586,13 @@ class TrackingDbHelper(context: Context) :
                 samples.lon,
                 samples.accuracy,
                 samples.cog,
+                samples.cog_valid,
                 samples.sog,
-                samples.accel_x,
-                samples.accel_y,
-                samples.accel_z,
-                samples.gyro_x,
-                samples.gyro_y,
-                samples.gyro_z,
                 samples.battery_percent,
                 samples.battery_charging,
                 samples.tracking_profile,
                 samples.utc_offset_minutes,
+                samples.measurements_json,
                 contexts.id,
                 contexts.server_url,
                 contexts.access_identifier,
@@ -252,12 +610,12 @@ class TrackingDbHelper(context: Context) :
         ).use { cursor ->
             while (cursor.moveToNext()) {
                 val accessContext = AccessContext(
-                    id = cursor.getLong(24),
-                    serverUrl = cursor.getString(25),
-                    accessIdentifier = cursor.getString(26),
-                    accessSecret = cursor.getString(27),
-                    createdAt = cursor.getLong(28),
-                    lastUsedAt = cursor.getLong(29)
+                    id = cursor.getLong(20),
+                    serverUrl = cursor.getString(21),
+                    accessIdentifier = cursor.getString(22),
+                    accessSecret = cursor.getString(23),
+                    createdAt = cursor.getLong(24),
+                    lastUsedAt = cursor.getLong(25)
                 )
 
                 result.add(
@@ -276,17 +634,13 @@ class TrackingDbHelper(context: Context) :
                         lon = cursor.getDouble(10),
                         accuracy = cursor.getFloat(11),
                         cog = cursor.getFloat(12),
-                        sog = cursor.getFloat(13),
-                        accelX = cursor.getFloat(14),
-                        accelY = cursor.getFloat(15),
-                        accelZ = cursor.getFloat(16),
-                        gyroX = cursor.getFloat(17),
-                        gyroY = cursor.getFloat(18),
-                        gyroZ = cursor.getFloat(19),
-                        batteryPercent = if (cursor.isNull(20)) null else cursor.getInt(20),
-                        batteryCharging = if (cursor.isNull(21)) null else cursor.getInt(21) != 0,
-                        trackingProfile = if (cursor.isNull(22)) null else cursor.getString(22),
-                        utcOffsetMinutes = if (cursor.isNull(23)) null else cursor.getInt(23)
+                        cogValid = if (cursor.isNull(13)) null else cursor.getInt(13) != 0,
+                        sog = cursor.getFloat(14),
+                        batteryPercent = if (cursor.isNull(15)) null else cursor.getInt(15),
+                        batteryCharging = if (cursor.isNull(16)) null else cursor.getInt(16) != 0,
+                        trackingProfile = if (cursor.isNull(17)) null else cursor.getString(17),
+                        utcOffsetMinutes = if (cursor.isNull(18)) null else cursor.getInt(18),
+                        measurementsJson = if (cursor.isNull(19)) null else cursor.getString(19)
                     )
                 )
             }
@@ -309,17 +663,15 @@ class TrackingDbHelper(context: Context) :
         accuracy: Float,
         cog: Float,
         sog: Float,
-        accelX: Float,
-        accelY: Float,
-        accelZ: Float,
-        gyroX: Float,
-        gyroY: Float,
-        gyroZ: Float,
+        cogValid: Boolean? = null,
         batteryPercent: Int? = null,
         batteryCharging: Boolean? = null,
         trackingProfile: String? = null,
         accessContextId: Long? = null,
-        utcOffsetMinutes: Int? = null
+        sessionId: Long? = null,
+        raceContextId: Long? = null,
+        utcOffsetMinutes: Int? = null,
+        measurementsJson: String? = null
     ): Long {
         val nowMs = System.currentTimeMillis()
         val shouldReadBattery = batteryPercent == null &&
@@ -361,12 +713,11 @@ class TrackingDbHelper(context: Context) :
             put("accuracy", accuracy)
             put("cog", cog)
             put("sog", sog)
-            put("accel_x", accelX)
-            put("accel_y", accelY)
-            put("accel_z", accelZ)
-            put("gyro_x", gyroX)
-            put("gyro_y", gyroY)
-            put("gyro_z", gyroZ)
+            if (cogValid != null) {
+                put("cog_valid", if (cogValid) 1 else 0)
+            } else {
+                putNull("cog_valid")
+            }
 
             val effectiveBatteryPercent = batteryPercent ?: automaticBattery?.percent
             val effectiveBatteryCharging = batteryCharging ?: automaticBattery?.charging
@@ -374,11 +725,24 @@ class TrackingDbHelper(context: Context) :
             if (effectiveBatteryCharging != null) put("battery_charging", if (effectiveBatteryCharging) 1 else 0) else putNull("battery_charging")
             if (automaticProfile != null) put("tracking_profile", automaticProfile) else putNull("tracking_profile")
             if (utcOffsetMinutes != null) put("utc_offset_minutes", utcOffsetMinutes) else putNull("utc_offset_minutes")
+            putNullableString("measurements_json", measurementsJson)
 
             if (accessContextId != null) {
                 put("access_context_id", accessContextId)
             } else {
                 putNull("access_context_id")
+            }
+
+            if (sessionId != null) {
+                put("session_id", sessionId)
+            } else {
+                putNull("session_id")
+            }
+
+            if (raceContextId != null) {
+                put("race_context_id", raceContextId)
+            } else {
+                putNull("race_context_id")
             }
         }
 
@@ -412,6 +776,8 @@ class TrackingDbHelper(context: Context) :
         db.beginTransaction()
         try {
             db.delete("tracking_samples", null, null)
+            db.delete("tracking_sessions", null, null)
+            db.delete("race_contexts", null, null)
             deleteOrphanedAccessContexts(db)
             db.setTransactionSuccessful()
         } finally {
@@ -500,7 +866,7 @@ class TrackingDbHelper(context: Context) :
 
     fun exportAllAsCsv(): String {
         val header =
-            "sequence_id,timestamp,utc_offset_minutes,boat_name,captain_name,hull_color,sail_number,yardstick,boat_type,lat,lon,accuracy,cog,sog,accel_x,accel_y,accel_z,gyro_x,gyro_y,gyro_z\n"
+            "sequence_id,timestamp,utc_offset_minutes,boat_name,captain_name,hull_color,sail_number,yardstick,boat_type,lat,lon,accuracy,cog,sog\n"
 
         val builder = StringBuilder()
         builder.append(header)
@@ -521,15 +887,9 @@ class TrackingDbHelper(context: Context) :
                 lon,
                 accuracy,
                 cog,
-                sog,
-                accel_x,
-                accel_y,
-                accel_z,
-                gyro_x,
-                gyro_y,
-                gyro_z
+                sog
             FROM tracking_samples
-            ORDER BY sequence_id ASC
+            ORDER BY id ASC
             """.trimIndent(),
             null
         ).use { cursor ->
@@ -538,7 +898,7 @@ class TrackingDbHelper(context: Context) :
                 builder.append(
                     String.format(
                         Locale.US,
-                        "%d,%s,%s,%s,%s,%s,%s,%.2f,%s,%.7f,%.7f,%.2f,%.2f,%.2f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\n",
+                        "%d,%s,%s,%s,%s,%s,%s,%.2f,%s,%.7f,%.7f,%.2f,%.2f,%.2f\n",
                         cursor.getLong(0),
                         csvEscape(cursor.getString(1)),
                         utcOffset,
@@ -552,13 +912,7 @@ class TrackingDbHelper(context: Context) :
                         cursor.getDouble(10),
                         cursor.getDouble(11),
                         cursor.getDouble(12),
-                        cursor.getDouble(13),
-                        cursor.getDouble(14),
-                        cursor.getDouble(15),
-                        cursor.getDouble(16),
-                        cursor.getDouble(17),
-                        cursor.getDouble(18),
-                        cursor.getDouble(19)
+                        cursor.getDouble(13)
                     )
                 )
             }
@@ -619,6 +973,179 @@ class TrackingDbHelper(context: Context) :
         createTrackingSampleIndexes(db)
     }
 
+    private fun migrateToVersion8(db: SQLiteDatabase) {
+        createTrackingSessionsTable(db)
+
+        if (!tableExists(db, "tracking_samples")) {
+            createTrackingSamplesTable(db)
+        } else if (!columnExists(db, "tracking_samples", "session_id")) {
+            db.execSQL("ALTER TABLE tracking_samples ADD COLUMN session_id INTEGER")
+        }
+
+        createTrackingSampleIndexes(db)
+    }
+
+    private fun migrateToVersion9(db: SQLiteDatabase) {
+        createTrackingSessionsTable(db)
+        if (!columnExists(db, "tracking_sessions", "resolved_event_name")) {
+            db.execSQL("ALTER TABLE tracking_sessions ADD COLUMN resolved_event_name TEXT")
+        }
+        if (!columnExists(db, "tracking_sessions", "course_json")) {
+            db.execSQL("ALTER TABLE tracking_sessions ADD COLUMN course_json TEXT")
+        }
+        if (!columnExists(db, "tracking_sessions", "course_map_viewport_json")) {
+            db.execSQL(
+                "ALTER TABLE tracking_sessions ADD COLUMN course_map_viewport_json TEXT"
+            )
+        }
+    }
+
+    private fun migrateToVersion11(db: SQLiteDatabase) {
+        if (!tableExists(db, "tracking_samples")) {
+            createTrackingSamplesTable(db)
+            return
+        }
+        if (!columnExists(db, "tracking_samples", "measurements_json")) {
+            db.execSQL(
+                "ALTER TABLE tracking_samples ADD COLUMN measurements_json TEXT"
+            )
+        }
+    }
+
+    private fun migrateToVersion12(db: SQLiteDatabase) {
+        if (!tableExists(db, "tracking_samples")) {
+            createTrackingSamplesTable(db)
+            createTrackingSampleIndexes(db)
+            return
+        }
+
+        db.execSQL("DROP TABLE IF EXISTS tracking_samples_v12")
+        createTrackingSamplesTable(db, "tracking_samples_v12")
+
+        db.execSQL(
+            """
+            INSERT INTO tracking_samples_v12 (
+                id,
+                sequence_id,
+                timestamp,
+                boat_name,
+                captain_name,
+                hull_color,
+                sail_number,
+                yardstick,
+                boat_type,
+                lat,
+                lon,
+                accuracy,
+                cog,
+                sog,
+                uploaded,
+                access_context_id,
+                battery_percent,
+                battery_charging,
+                tracking_profile,
+                utc_offset_minutes,
+                measurements_json,
+                session_id,
+                race_context_id
+            )
+            SELECT
+                id,
+                sequence_id,
+                timestamp,
+                boat_name,
+                captain_name,
+                hull_color,
+                sail_number,
+                yardstick,
+                boat_type,
+                lat,
+                lon,
+                accuracy,
+                cog,
+                sog,
+                uploaded,
+                access_context_id,
+                battery_percent,
+                battery_charging,
+                tracking_profile,
+                utc_offset_minutes,
+                measurements_json,
+                session_id,
+                race_context_id
+            FROM tracking_samples
+            """.trimIndent()
+        )
+
+        db.execSQL("DROP TABLE tracking_samples")
+        db.execSQL("ALTER TABLE tracking_samples_v12 RENAME TO tracking_samples")
+        createTrackingSampleIndexes(db)
+    }
+
+    private fun migrateToVersion13(db: SQLiteDatabase) {
+        if (!tableExists(db, "tracking_samples")) {
+            createTrackingSamplesTable(db)
+            return
+        }
+        if (!columnExists(db, "tracking_samples", "cog_valid")) {
+            db.execSQL("ALTER TABLE tracking_samples ADD COLUMN cog_valid INTEGER")
+        }
+    }
+
+    private fun migrateToVersion10(db: SQLiteDatabase) {
+        createRaceContextsTable(db)
+
+        if (!tableExists(db, "tracking_samples")) {
+            createTrackingSamplesTable(db)
+        } else if (!columnExists(db, "tracking_samples", "race_context_id")) {
+            db.execSQL("ALTER TABLE tracking_samples ADD COLUMN race_context_id INTEGER")
+        }
+
+        if (
+            tableExists(db, "tracking_sessions") &&
+            columnExists(db, "tracking_sessions", "resolved_event_name")
+        ) {
+            db.execSQL(
+                """
+                INSERT OR IGNORE INTO race_contexts (
+                    access_context_id,
+                    resolved_event_name,
+                    course_json,
+                    course_map_viewport_json
+                )
+                SELECT
+                    access_context_id,
+                    resolved_event_name,
+                    course_json,
+                    course_map_viewport_json
+                FROM tracking_sessions
+                WHERE mode = 'race'
+                  AND access_context_id IS NOT NULL
+                  AND resolved_event_name IS NOT NULL
+                  AND TRIM(resolved_event_name) != ''
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                UPDATE tracking_samples
+                SET race_context_id = (
+                    SELECT race_contexts.id
+                    FROM tracking_sessions
+                    INNER JOIN race_contexts
+                        ON race_contexts.access_context_id = tracking_sessions.access_context_id
+                       AND race_contexts.resolved_event_name = tracking_sessions.resolved_event_name
+                    WHERE tracking_sessions.id = tracking_samples.session_id
+                    LIMIT 1
+                )
+                WHERE race_context_id IS NULL
+                  AND session_id IS NOT NULL
+                """.trimIndent()
+            )
+        }
+
+        createTrackingSampleIndexes(db)
+    }
+
     private fun createAccessContextsTable(db: SQLiteDatabase) {
         db.execSQL(
             """
@@ -635,10 +1162,48 @@ class TrackingDbHelper(context: Context) :
         )
     }
 
-    private fun createTrackingSamplesTable(db: SQLiteDatabase) {
+    private fun createTrackingSessionsTable(db: SQLiteDatabase) {
         db.execSQL(
             """
-            CREATE TABLE IF NOT EXISTS tracking_samples (
+            CREATE TABLE IF NOT EXISTS tracking_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                started_at INTEGER NOT NULL,
+                ended_at INTEGER,
+                mode TEXT NOT NULL,
+                access_context_id INTEGER,
+                display_name TEXT NOT NULL,
+                resolved_event_name TEXT,
+                course_json TEXT,
+                course_map_viewport_json TEXT
+            )
+            """.trimIndent()
+        )
+    }
+
+    private fun createRaceContextsTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS race_contexts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                access_context_id INTEGER NOT NULL,
+                resolved_event_name TEXT NOT NULL,
+                course_json TEXT,
+                course_map_viewport_json TEXT,
+                UNIQUE(access_context_id, resolved_event_name)
+            )
+            """.trimIndent()
+        )
+    }
+
+    private fun createTrackingSamplesTable(
+        db: SQLiteDatabase,
+        tableName: String = "tracking_samples"
+    ) {
+        require(tableName == "tracking_samples" || tableName == "tracking_samples_v12")
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS $tableName (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 sequence_id INTEGER NOT NULL,
                 timestamp TEXT NOT NULL,
@@ -653,21 +1218,28 @@ class TrackingDbHelper(context: Context) :
                 accuracy REAL NOT NULL,
                 cog REAL NOT NULL,
                 sog REAL NOT NULL,
-                accel_x REAL NOT NULL,
-                accel_y REAL NOT NULL,
-                accel_z REAL NOT NULL,
-                gyro_x REAL NOT NULL,
-                gyro_y REAL NOT NULL,
-                gyro_z REAL NOT NULL,
+                cog_valid INTEGER,
                 uploaded INTEGER NOT NULL DEFAULT 0,
                 access_context_id INTEGER,
                 battery_percent INTEGER,
                 battery_charging INTEGER,
                 tracking_profile TEXT,
-                utc_offset_minutes INTEGER
+                utc_offset_minutes INTEGER,
+                measurements_json TEXT,
+                session_id INTEGER,
+                race_context_id INTEGER
             )
             """.trimIndent()
         )
+    }
+
+    private fun ContentValues.putNullableString(key: String, value: String?) {
+        val normalized = value?.takeIf { it.isNotBlank() }
+        if (normalized != null) {
+            put(key, normalized)
+        } else {
+            putNull(key)
+        }
     }
 
     private fun createTrackingSampleIndexes(db: SQLiteDatabase) {
@@ -675,6 +1247,41 @@ class TrackingDbHelper(context: Context) :
             """
             CREATE INDEX IF NOT EXISTS idx_tracking_samples_pending_id
             ON tracking_samples(uploaded, id)
+            """.trimIndent()
+        )
+        if (columnExists(db, "tracking_samples", "session_id")) {
+            db.execSQL(
+                """
+                CREATE INDEX IF NOT EXISTS idx_tracking_samples_session_id
+                ON tracking_samples(session_id, id)
+                """.trimIndent()
+            )
+        }
+        if (columnExists(db, "tracking_samples", "race_context_id")) {
+            db.execSQL(
+                """
+                CREATE INDEX IF NOT EXISTS idx_tracking_samples_race_context_id
+                ON tracking_samples(race_context_id, id)
+                """.trimIndent()
+            )
+        }
+    }
+
+    private fun deleteOrphanedRaceContexts(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            DELETE FROM race_contexts
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM tracking_samples
+                WHERE tracking_samples.race_context_id = race_contexts.id
+            )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM tracking_sessions
+                WHERE tracking_sessions.access_context_id = race_contexts.access_context_id
+                  AND tracking_sessions.resolved_event_name = race_contexts.resolved_event_name
+            )
             """.trimIndent()
         )
     }
@@ -688,8 +1295,37 @@ class TrackingDbHelper(context: Context) :
                 FROM tracking_samples
                 WHERE tracking_samples.access_context_id = access_contexts.id
             )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM tracking_sessions
+                WHERE tracking_sessions.access_context_id = access_contexts.id
+            )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM race_contexts
+                WHERE race_contexts.access_context_id = access_contexts.id
+            )
             """.trimIndent()
         )
+    }
+
+    private fun findRaceContextId(
+        db: SQLiteDatabase,
+        accessContextId: Long,
+        resolvedEventName: String
+    ): Long? {
+        db.rawQuery(
+            """
+            SELECT id
+            FROM race_contexts
+            WHERE access_context_id = ?
+              AND resolved_event_name = ?
+            LIMIT 1
+            """.trimIndent(),
+            arrayOf(accessContextId.toString(), resolvedEventName)
+        ).use { cursor ->
+            return if (cursor.moveToFirst()) cursor.getLong(0) else null
+        }
     }
 
     private fun findAccessContextId(

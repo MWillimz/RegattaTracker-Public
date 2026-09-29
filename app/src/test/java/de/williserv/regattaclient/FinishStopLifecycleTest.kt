@@ -30,6 +30,7 @@ class FinishStopLifecycleTest {
         context = RuntimeEnvironment.getApplication()
         context.deleteDatabase(DB_NAME)
         clearPrefs()
+        TrackingServiceRuntimeState.markStopped()
     }
 
     @After
@@ -37,6 +38,7 @@ class FinishStopLifecycleTest {
         shadowOf(android.os.Looper.getMainLooper()).idle()
         context.deleteDatabase(DB_NAME)
         clearPrefs()
+        TrackingServiceRuntimeState.markStopped()
     }
 
     @Test
@@ -72,6 +74,7 @@ class FinishStopLifecycleTest {
         assertFalse(getField<Boolean>(service, "serviceRunning"))
         assertEquals(1L, db.countPendingSamples())
 
+        awaitStopHandoff(service)
         controller.destroy()
         db.close()
     }
@@ -93,6 +96,7 @@ class FinishStopLifecycleTest {
         assertFalse(getField<Boolean>(service, "serviceRunning"))
         assertFalse(getField<Boolean>(service, "manualRecording"))
 
+        awaitStopHandoff(service)
         controller.destroy()
     }
 
@@ -273,12 +277,14 @@ class FinishStopLifecycleTest {
                 .getBoolean("race_finished", false)
         )
 
+        awaitStopHandoff(service)
         controller.destroy()
     }
 
     @Test
     fun `open activity reconciles service side stop from app state`() {
         seedAppState(inRace = true, manualTracking = false)
+        TrackingServiceRuntimeState.markActive()
         val controller = Robolectric.buildActivity(MainActivity::class.java).create()
         val activity = controller.get()
 
@@ -286,6 +292,7 @@ class FinishStopLifecycleTest {
         assertFalse(getState<Boolean>(activity, "manualTracking").value)
 
         seedAppState(inRace = false, manualTracking = false)
+        TrackingServiceRuntimeState.markStopped()
         invokeNoArg(activity, "reconcileTrackingState")
 
         assertFalse(getState<Boolean>(activity, "inRace").value)
@@ -306,6 +313,23 @@ class FinishStopLifecycleTest {
         Intent(context, RegattaTrackingService::class.java).apply {
             action = RegattaTrackingService.ACTION_STOP
         }
+
+    private fun awaitStopHandoff(service: RegattaTrackingService) {
+        val deadlineNanos = System.nanoTime() + 5_000_000_000L
+        val mainLooper = shadowOf(android.os.Looper.getMainLooper())
+
+        while (getField<Boolean>(service, "stopHandoffInProgress")) {
+            mainLooper.idle()
+
+            if (System.nanoTime() >= deadlineNanos) {
+                throw AssertionError("Service shutdown handoff did not complete")
+            }
+
+            Thread.sleep(10L)
+        }
+
+        mainLooper.idle()
+    }
 
     private fun assertStoppedAppState() {
         val prefs = context.getSharedPreferences(APP_STATE_PREFS, Context.MODE_PRIVATE)
@@ -367,12 +391,6 @@ class FinishStopLifecycleTest {
             accuracy = 5f,
             cog = 0f,
             sog = 0f,
-            accelX = 0f,
-            accelY = 0f,
-            accelZ = 0f,
-            gyroX = 0f,
-            gyroY = 0f,
-            gyroZ = 0f,
             batteryPercent = 50,
             batteryCharging = false,
             trackingProfile = null,

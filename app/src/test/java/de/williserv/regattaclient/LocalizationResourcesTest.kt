@@ -18,6 +18,59 @@ import org.robolectric.annotation.Config
 class LocalizationResourcesTest {
 
     @Test
+    fun regattaLinkNameValidationMessages_areLocalizedInSupportedLocales() {
+        val app = RuntimeEnvironment.getApplication()
+        val expectedByLocale = linkedMapOf(
+            "en" to listOf(
+                "Name must not be empty",
+                "Name must be at most 24 UTF-8 bytes",
+                "Name contains unsupported control characters"
+            ),
+            "de" to listOf(
+                "Name darf nicht leer sein",
+                "Name darf höchstens 24 UTF-8-Bytes lang sein",
+                "Name enthält nicht unterstützte Steuerzeichen"
+            ),
+            "es" to listOf(
+                "El nombre no puede estar vacío",
+                "El nombre debe tener como máximo 24 bytes UTF-8",
+                "El nombre contiene caracteres de control no compatibles"
+            ),
+            "fr" to listOf(
+                "Le nom ne doit pas être vide",
+                "Le nom doit contenir au maximum 24 octets UTF-8",
+                "Le nom contient des caractères de contrôle non pris en charge"
+            ),
+            "it" to listOf(
+                "Il nome non può essere vuoto",
+                "Il nome deve contenere al massimo 24 byte UTF-8",
+                "Il nome contiene caratteri di controllo non supportati"
+            )
+        )
+
+        expectedByLocale.forEach { (languageTag, expected) ->
+            val configuration = Configuration(app.resources.configuration).apply {
+                setLocale(Locale.forLanguageTag(languageTag))
+            }
+            val resources = app.createConfigurationContext(configuration).resources
+            assertEquals(
+                expected,
+                listOf(
+                    resources.getString(
+                        R.string.regattalink_name_validation_empty
+                    ),
+                    resources.getString(
+                        R.string.regattalink_name_validation_too_long_utf8
+                    ),
+                    resources.getString(
+                        R.string.regattalink_name_validation_unsupported_control_character
+                    )
+                )
+            )
+        }
+    }
+
+    @Test
     @Config(qualifiers = "de")
     fun germanLocale_usesGermanResources() {
         val resources = RuntimeEnvironment.getApplication().resources
