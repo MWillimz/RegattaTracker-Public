@@ -3254,43 +3254,15 @@ internal class RegattaLinkBleClient(
                         byteArrayOf(if (enabled) 1 else 0)
                     )
                     updateConfiguration { current ->
-                        regattaLinkReconcileNmeaTxState(
-                            when (setting) {
-                                NmeaTxSetting.MASTER ->
-                                    current.copy(
-                                        nmeaTxSupported = true,
-                                        nmeaTxEnabled = enabled,
-                                        nmeaTxRestartRequired =
-                                            if (
-                                                current.nmeaTxRuntimeStatusSupported &&
-                                                current.nmeaTxBootSelected != null
-                                            ) {
-                                                current.nmeaTxRestartRequired
-                                            } else {
-                                                true
-                                            },
-                                        busy = false,
-                                        userMessage = null,
-                                        error = ""
-                                    )
-                                NmeaTxSetting.ATTITUDE ->
-                                    current.copy(
-                                        nmeaAttitudeTxSupported = true,
-                                        nmeaAttitudeTxEnabled = enabled,
-                                        nmeaAttitudeTxRestartRequired =
-                                            if (
-                                                current.nmeaTxRuntimeStatusSupported &&
-                                                current.nmeaBootOutputMask != null
-                                            ) {
-                                                current.nmeaAttitudeTxRestartRequired
-                                            } else {
-                                                true
-                                            },
-                                        busy = false,
-                                        userMessage = null,
-                                        error = ""
-                                    )
-                            }
+                        regattaLinkNmeaSelectionAfterWriteSuccess(
+                            state = current,
+                            attitudeSelector =
+                                setting == NmeaTxSetting.ATTITUDE,
+                            enabled = enabled
+                        ).copy(
+                            busy = false,
+                            userMessage = null,
+                            error = ""
                         )
                     }
                 } catch (error: Exception) {
@@ -3322,29 +3294,16 @@ internal class RegattaLinkBleClient(
                             null
                         }
                     updateConfiguration { current ->
-                        regattaLinkReconcileNmeaTxState(
-                            when (setting) {
-                                NmeaTxSetting.MASTER ->
-                                    current.copy(
-                                        nmeaTxEnabled =
-                                            reread ?: current.nmeaTxEnabled,
-                                        busy = false,
-                                        userMessage =
-                                            RegattaLinkUiMessage.CONFIGURATION_FAILED,
-                                        error = error.message
-                                            ?: setting.failureText
-                                    )
-                                NmeaTxSetting.ATTITUDE ->
-                                    current.copy(
-                                        nmeaAttitudeTxEnabled =
-                                            reread ?: current.nmeaAttitudeTxEnabled,
-                                        busy = false,
-                                        userMessage =
-                                            RegattaLinkUiMessage.CONFIGURATION_FAILED,
-                                        error = error.message
-                                            ?: setting.failureText
-                                    )
-                            }
+                        regattaLinkNmeaSelectionAfterWriteFailure(
+                            state = current,
+                            attitudeSelector =
+                                setting == NmeaTxSetting.ATTITUDE,
+                            rereadValue = reread
+                        ).copy(
+                            busy = false,
+                            userMessage =
+                                RegattaLinkUiMessage.CONFIGURATION_FAILED,
+                            error = error.message ?: setting.failureText
                         )
                     }
                 }
