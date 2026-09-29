@@ -115,6 +115,38 @@ class RegattaLinkConfigurationNmeaTest {
     }
 
     @Test
+    fun parsesNmeaTxSettingsStrictlyAndTracksRestartRequirement() {
+        assertFalse(parseRegattaLinkNmeaTxEnabled(byteArrayOf(0)))
+        assertTrue(parseRegattaLinkNmeaTxEnabled(byteArrayOf(1)))
+        assertFalse(parseRegattaLinkNmeaAttitudeTxEnabled(byteArrayOf(0)))
+        assertTrue(parseRegattaLinkNmeaAttitudeTxEnabled(byteArrayOf(1)))
+
+        assertFalse(regattaLinkNmeaRestartRequired(RegattaLinkConfigurationState()))
+        assertTrue(
+            regattaLinkNmeaRestartRequired(
+                RegattaLinkConfigurationState(nmeaTxRestartRequired = true)
+            )
+        )
+        assertTrue(
+            regattaLinkNmeaRestartRequired(
+                RegattaLinkConfigurationState(
+                    nmeaAttitudeTxRestartRequired = true
+                )
+            )
+        )
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsInvalidNmeaTxSetting() {
+        parseRegattaLinkNmeaTxEnabled(byteArrayOf(2))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsInvalidNmeaAttitudeTxSettingLength() {
+        parseRegattaLinkNmeaAttitudeTxEnabled(byteArrayOf(0, 1))
+    }
+
+    @Test
     fun parsesMotionDampingStrictly() {
         assertEquals(1, parseRegattaLinkMotionDamping(byteArrayOf(1)))
         assertEquals(3, parseRegattaLinkMotionDamping(byteArrayOf(3)))
@@ -159,6 +191,13 @@ class RegattaLinkConfigurationNmeaTest {
             regattaLinkConfigurationMutationBlocked(
                 RegattaLinkConfigurationState(
                     factoryResetWriteAcceptedRequestId = 9u
+                )
+            )
+        )
+        assertTrue(
+            regattaLinkConfigurationMutationBlocked(
+                RegattaLinkConfigurationState(
+                    restartAwaitingDisconnect = true
                 )
             )
         )
