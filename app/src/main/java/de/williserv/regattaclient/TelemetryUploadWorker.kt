@@ -389,8 +389,12 @@ object TelemetryUploadScheduler {
 
     private val offlineWakeupGate = TelemetryOfflineWakeupGate()
 
-    internal fun onWorkerStarted() {
+    internal fun resetLiveWakeupCoalescing() {
         offlineWakeupGate.clear()
+    }
+
+    internal fun onWorkerStarted() {
+        resetLiveWakeupCoalescing()
     }
 
     internal fun buildRequest(
