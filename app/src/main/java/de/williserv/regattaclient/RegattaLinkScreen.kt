@@ -829,6 +829,19 @@ private fun RegattaLinkNmeaSetupSheet(
                 )
             }
 
+            val nmeaRuntimeKnown =
+                configurationState.nmeaTxRuntimeStatusSupported &&
+                    configurationState.nmeaTxBootSelected != null &&
+                    configurationState.nmeaTxActive != null
+            val nmeaAttitudeBootSelected =
+                configurationState.nmeaBootOutputMask?.let {
+                    it and REGATTALINK_NMEA_TX_OUTPUT_ATTITUDE != 0
+                }
+            val nmeaAttitudeRuntimeActive =
+                configurationState.nmeaActiveOutputMask?.let {
+                    it and REGATTALINK_NMEA_TX_OUTPUT_ATTITUDE != 0
+                }
+
             if (connected && configurationState.nmeaTxSupported) {
                 Row(
                     modifier = Modifier
@@ -845,16 +858,39 @@ private fun RegattaLinkNmeaSetupSheet(
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            text = when (configurationState.nmeaTxEnabled) {
-                                true -> stringResource(
-                                    R.string.regattalink_nmea_tx_enabled
-                                )
-                                false -> stringResource(
-                                    R.string.regattalink_nmea_tx_receive_only
-                                )
-                                null -> stringResource(
-                                    R.string.regattalink_nmea_tx_state_unavailable
-                                )
+                            text = when {
+                                configurationState.nmeaTxEnabled == null ->
+                                    stringResource(
+                                        R.string.regattalink_nmea_tx_state_unavailable
+                                    )
+                                !nmeaRuntimeKnown ->
+                                    stringResource(
+                                        if (configurationState.nmeaTxEnabled) {
+                                            R.string.regattalink_nmea_tx_selected_on_runtime_unknown
+                                        } else {
+                                            R.string.regattalink_nmea_tx_selected_off_runtime_unknown
+                                        }
+                                    )
+                                configurationState.nmeaTxRestartRequired ->
+                                    stringResource(
+                                        if (configurationState.nmeaTxEnabled) {
+                                            R.string.regattalink_nmea_tx_enable_pending
+                                        } else {
+                                            R.string.regattalink_nmea_tx_disable_pending
+                                        }
+                                    )
+                                configurationState.nmeaTxActive == true ->
+                                    stringResource(
+                                        R.string.regattalink_nmea_tx_enabled
+                                    )
+                                configurationState.nmeaTxBootSelected == true ->
+                                    stringResource(
+                                        R.string.regattalink_nmea_tx_selected_but_inactive
+                                    )
+                                else ->
+                                    stringResource(
+                                        R.string.regattalink_nmea_tx_receive_only
+                                    )
                             },
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -890,17 +926,34 @@ private fun RegattaLinkNmeaSetupSheet(
                                     stringResource(
                                         R.string.regattalink_nmea_tx_state_unavailable
                                     )
-                                configurationState.nmeaAttitudeTxEnabled != true ->
+                                nmeaAttitudeBootSelected == null ||
+                                    nmeaAttitudeRuntimeActive == null ->
                                     stringResource(
-                                        R.string.regattalink_nmea_attitude_tx_disabled
+                                        if (configurationState.nmeaAttitudeTxEnabled) {
+                                            R.string.regattalink_nmea_attitude_selected_on_runtime_unknown
+                                        } else {
+                                            R.string.regattalink_nmea_attitude_selected_off_runtime_unknown
+                                        }
                                     )
-                                configurationState.nmeaTxEnabled == true ->
+                                configurationState.nmeaAttitudeTxRestartRequired ->
+                                    stringResource(
+                                        if (configurationState.nmeaAttitudeTxEnabled) {
+                                            R.string.regattalink_nmea_attitude_enable_pending
+                                        } else {
+                                            R.string.regattalink_nmea_attitude_disable_pending
+                                        }
+                                    )
+                                nmeaAttitudeRuntimeActive ->
                                     stringResource(
                                         R.string.regattalink_nmea_attitude_tx_enabled
                                     )
+                                nmeaAttitudeBootSelected ->
+                                    stringResource(
+                                        R.string.regattalink_nmea_attitude_tx_inactive
+                                    )
                                 else ->
                                     stringResource(
-                                        R.string.regattalink_nmea_attitude_tx_master_off
+                                        R.string.regattalink_nmea_attitude_tx_disabled
                                     )
                             },
                             color = MaterialTheme.colorScheme.onSurfaceVariant
