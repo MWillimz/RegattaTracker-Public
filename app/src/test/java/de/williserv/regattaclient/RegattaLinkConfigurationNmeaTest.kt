@@ -250,6 +250,91 @@ class RegattaLinkConfigurationNmeaTest {
         parseRegattaLinkNmeaTxRuntimeStatus(byteArrayOf(2, 0, 0, 0))
     }
 
+    @Test
+    fun successfulNmeaMasterWriteUpdatesConfirmedSelectionAndRequiresRestart() {
+        val initial = regattaLinkApplyNmeaTxRuntimeStatus(
+            RegattaLinkConfigurationState(
+                nmeaTxSupported = true,
+                nmeaTxEnabled = false
+            ),
+            RegattaLinkNmeaTxRuntimeStatus(
+                bootMasterSelected = false,
+                masterActive = false,
+                bootOutputMask = 0,
+                activeOutputMask = 0
+            )
+        )
+
+        val updated = regattaLinkNmeaSelectionAfterWriteSuccess(
+            state = initial,
+            attitudeSelector = false,
+            enabled = true
+        )
+
+        assertEquals(true, updated.nmeaTxEnabled)
+        assertTrue(updated.nmeaTxRestartRequired)
+        assertEquals(false, updated.nmeaTxBootSelected)
+    }
+
+    @Test
+    fun failedNmeaMasterWriteKeepsConfirmedSelectionWhenRereadUnavailable() {
+        val initial = regattaLinkApplyNmeaTxRuntimeStatus(
+            RegattaLinkConfigurationState(
+                nmeaTxSupported = true,
+                nmeaTxEnabled = false
+            ),
+            RegattaLinkNmeaTxRuntimeStatus(
+                bootMasterSelected = false,
+                masterActive = false,
+                bootOutputMask = 0,
+                activeOutputMask = 0
+            )
+        )
+
+        val afterFailure = regattaLinkNmeaSelectionAfterWriteFailure(
+            state = initial,
+            attitudeSelector = false,
+            rereadValue = null
+        )
+
+        assertEquals(false, afterFailure.nmeaTxEnabled)
+        assertFalse(afterFailure.nmeaTxRestartRequired)
+    }
+
+    @Test
+    fun failedNmeaWriteUsesAuthoritativeRereadInsteadOfRequestedValue() {
+        val initial = regattaLinkApplyNmeaTxRuntimeStatus(
+            RegattaLinkConfigurationState(
+                nmeaTxSupported = true,
+                nmeaTxEnabled = false,
+                nmeaAttitudeTxSupported = true,
+                nmeaAttitudeTxEnabled = false
+            ),
+            RegattaLinkNmeaTxRuntimeStatus(
+                bootMasterSelected = false,
+                masterActive = false,
+                bootOutputMask = 0,
+                activeOutputMask = 0
+            )
+        )
+
+        val master = regattaLinkNmeaSelectionAfterWriteFailure(
+            state = initial,
+            attitudeSelector = false,
+            rereadValue = true
+        )
+        val attitude = regattaLinkNmeaSelectionAfterWriteFailure(
+            state = initial,
+            attitudeSelector = true,
+            rereadValue = true
+        )
+
+        assertEquals(true, master.nmeaTxEnabled)
+        assertTrue(master.nmeaTxRestartRequired)
+        assertEquals(true, attitude.nmeaAttitudeTxEnabled)
+        assertTrue(attitude.nmeaAttitudeTxRestartRequired)
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun rejectsInvalidNmeaTxSetting() {
         parseRegattaLinkNmeaTxEnabled(byteArrayOf(2))
