@@ -114,12 +114,7 @@ internal fun prepareAnalysisSamples(
     val prepared = samples.mapIndexed { index, sample ->
         PreparedAnalysisSample(
             timestampMs = analysisSampleTimestampMs(sample),
-            cogDeg =
-                if (sample.cogValid == false) {
-                    Double.NaN
-                } else {
-                    sample.cog.toDouble()
-                },
+            cogDeg = analysisCogDegrees(samples, index),
             sogMps = sample.sog.toDouble(),
             measurements = sessionNumericMeasurementValues(sample),
             sourceIndex = index
@@ -131,6 +126,65 @@ internal fun prepareAnalysisSamples(
                 analysisAccelerationOverLookback(prepared, index)
         )
     }
+}
+
+private fun analysisCogDegrees(
+    samples: List<SessionTrackingSample>,
+    index: Int
+): Double {
+    val sample = samples[index]
+
+    /*
+     * 0° is a valid northbound COG. Only an explicitly unavailable Android
+     * bearing uses the adjacent GPS track as a fallback. Legacy samples with
+     * no validity bit keep their persisted COG.
+     */
+    if (sample.cogValid != false) {
+        return sample.cog.toDouble()
+    }
+
+    return analysisTrackBearingDegrees(samples, index) ?: Double.NaN
+}
+
+private fun analysisTrackBearingDegrees(
+    samples: List<SessionTrackingSample>,
+    index: Int
+): Double? {
+    val selected = samples.getOrNull(index)
+        ?.takeIf { it.hasUsableGpsPosition() }
+        ?: return null
+
+    fun bearing(
+        from: SessionTrackingSample,
+        to: SessionTrackingSample
+    ): Double? {
+        if (!from.hasUsableGpsPosition() || !to.hasUsableGpsPosition()) {
+            return null
+        }
+        if (!areSessionSamplesContiguous(from, to)) return null
+        if (from.lat == to.lat && from.lon == to.lon) return null
+
+        val lat1 = Math.toRadians(from.lat)
+        val lat2 = Math.toRadians(to.lat)
+        val deltaLon = Math.toRadians(to.lon - from.lon)
+        val y = sin(deltaLon) * cos(lat2)
+        val x = cos(lat1) * sin(lat2) -
+            sin(lat1) * cos(lat2) * cos(deltaLon)
+
+        if (abs(x) < 1e-12 && abs(y) < 1e-12) return null
+        return normalizeAnalysisAngle(
+            Math.toDegrees(atan2(y, x)),
+            AnalysisAngleKind.COMPASS
+        )
+    }
+
+    samples.getOrNull(index + 1)?.let { next ->
+        bearing(selected, next)?.let { return it }
+    }
+    samples.getOrNull(index - 1)?.let { previous ->
+        bearing(previous, selected)?.let { return it }
+    }
+    return null
 }
 
 private fun analysisSampleTimestampMs(sample: SessionTrackingSample): Long? {
