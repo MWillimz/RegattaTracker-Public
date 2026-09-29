@@ -61,6 +61,8 @@
     <string name="start_line">Línea de salida</string>
     <string name="finish_line">Línea de llegada</string>
     <string name="marks">Balizas</string>
+    <string name="course_positions">Posiciones del recorrido</string>
+    <string name="gate_name_value">Puerta · %1$s</string>
     <string name="race_info">Información de regata</string>
     <string name="mark_skipped">%1$s — omitida</string>
     <string name="course_map">Mapa del recorrido</string>
@@ -181,9 +183,12 @@
     <string name="stop_value">Fin: %1$s</string>
     <string name="info_value">Info: %1$s</string>
     <string name="course_mark_count">Recorrido: %1$d balizas</string>
+    <string name="course_position_count">Recorrido: %1$d posiciones</string>
     <string name="start_line_value">Línea de salida: %1$s → %2$s</string>
     <string name="finish_line_value">Línea de llegada: %1$s → %2$s</string>
     <string name="marks_value">Balizas: %1$s</string>
+    <string name="course_positions_value">Posiciones del recorrido: %1$s</string>
+    <string name="position_skipped_compact">%1$s [omitida]</string>
     <string name="mark_skipped_compact">%1$d %2$s [omitida]</string>
     <string name="stop_tracking_before_delete">Detén el seguimiento de regata/manual antes de eliminar datos</string>
     <string name="no_csv_line_yet">Aún no hay ninguna línea CSV</string>
@@ -221,7 +226,7 @@
     <string name="next_mark">Siguiente: baliza</string>
     <string name="next_mark_value">Siguiente: %1$d %2$s</string>
     <string name="next_gate">Siguiente: puerta</string>
-    <string name="next_gate_value">Siguiente: %1$d %2$s</string>
+    <string name="next_gate_value">Siguiente puerta: %1$d %2$s</string>
     <string name="progress_positions_value">Progreso: %1$d/%2$d posiciones de recorrido · %3$.0f%%</string>
     <string name="progress_value">Progreso: %1$d/%2$d balizas · %3$.0f%%</string>
     <string name="boat_status_value">Barco: %1$s</string>

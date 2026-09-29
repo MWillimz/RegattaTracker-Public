@@ -67,6 +67,25 @@ class CourseMapDetailsTest {
     }
 
     @Test
+    fun gateStillUsesMarkDetailContract() {
+        val gate = CourseMapMark(
+            order = 4,
+            label = "4 Leegate",
+            skipped = false,
+            kind = CoursePositionKind.GATE
+        )
+        assertTrue(gate.clickable)
+        assertEquals(
+            "https://race.example/course-map-detail?event_name=Series+1&view=mark&order=4",
+            buildCourseMapImageUrl(
+                baseUrl = "https://race.example",
+                eventName = "Series 1",
+                view = CourseMapView.Mark(order = requireNotNull(gate.order))
+            )
+        )
+    }
+
+    @Test
     fun only404TriggersCompatibilityFallback() {
         assertTrue(shouldFallbackToCourseOverview(404))
         assertFalse(shouldFallbackToCourseOverview(400))

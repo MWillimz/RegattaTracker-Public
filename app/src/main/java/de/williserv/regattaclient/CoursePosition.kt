@@ -2,7 +2,7 @@ package de.williserv.regattaclient
 
 import org.json.JSONObject
 
-internal enum class CoursePositionKind {
+enum class CoursePositionKind {
     MARK,
     GATE
 }
@@ -39,7 +39,7 @@ internal fun parseCoursePositions(course: JSONObject?): List<CoursePosition> {
         val order = item.optInt("order", index + 1)
         val isGate = item.optString("type") == "gate"
         val kind = if (isGate) CoursePositionKind.GATE else CoursePositionKind.MARK
-        val defaultName = if (isGate) "Gate $order" else "Mark $order"
+        val defaultName = if (isGate) "Gate" else "Mark"
 
         if (isGate) {
             result += CoursePosition(
