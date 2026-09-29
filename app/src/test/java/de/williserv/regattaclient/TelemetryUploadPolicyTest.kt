@@ -144,7 +144,7 @@ class TelemetryUploadPolicyTest {
         repeat(99) {
             assertEquals(
                 TelemetryLiveWakeupDecisionKind.SKIP_REDUNDANT_OFFLINE,
-                gate.decide(hasActiveNetwork = false)
+                gate.decide(hasActiveNetwork = false).kind
             )
         }
 
