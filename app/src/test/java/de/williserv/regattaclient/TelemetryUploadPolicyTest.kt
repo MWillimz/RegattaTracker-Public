@@ -24,6 +24,7 @@ class TelemetryUploadPolicyTest {
     fun setUp() {
         context = RuntimeEnvironment.getApplication()
         context.deleteDatabase(DB_NAME)
+        TelemetryUploadScheduler.resetLiveWakeupCoalescing()
     }
 
     @After
@@ -130,6 +131,65 @@ class TelemetryUploadPolicyTest {
                     ExistingWorkPolicy.REPLACE
             )
         }
+    }
+
+    @Test
+    fun offlineWakeupGate_coalescesRepeatedOfflineSamples() {
+        val gate = TelemetryOfflineWakeupGate()
+
+        assertEquals(
+            TelemetryLiveWakeupDecision.ENQUEUE_FIRST_OFFLINE,
+            gate.decide(hasActiveNetwork = false)
+        )
+        repeat(99) {
+            assertEquals(
+                TelemetryLiveWakeupDecision.SKIP_REDUNDANT_OFFLINE,
+                gate.decide(hasActiveNetwork = false)
+            )
+        }
+
+        assertEquals(
+            TelemetryLiveWakeupDecision.ENQUEUE,
+            gate.decide(hasActiveNetwork = true)
+        )
+        assertEquals(
+            TelemetryLiveWakeupDecision.ENQUEUE_FIRST_OFFLINE,
+            gate.decide(hasActiveNetwork = false)
+        )
+    }
+
+    @Test
+    fun offlineWakeupGate_failsOpenForUnknownNetworkState() {
+        val gate = TelemetryOfflineWakeupGate()
+
+        assertEquals(
+            TelemetryLiveWakeupDecision.ENQUEUE_FIRST_OFFLINE,
+            gate.decide(hasActiveNetwork = false)
+        )
+        assertEquals(
+            TelemetryLiveWakeupDecision.ENQUEUE,
+            gate.decide(hasActiveNetwork = null)
+        )
+        assertEquals(
+            TelemetryLiveWakeupDecision.ENQUEUE_FIRST_OFFLINE,
+            gate.decide(hasActiveNetwork = false)
+        )
+    }
+
+    @Test
+    fun offlineWakeupGate_canRetryAfterEnqueuePersistenceFailure() {
+        val gate = TelemetryOfflineWakeupGate()
+
+        assertEquals(
+            TelemetryLiveWakeupDecision.ENQUEUE_FIRST_OFFLINE,
+            gate.decide(hasActiveNetwork = false)
+        )
+        gate.clear()
+
+        assertEquals(
+            TelemetryLiveWakeupDecision.ENQUEUE_FIRST_OFFLINE,
+            gate.decide(hasActiveNetwork = false)
+        )
     }
 
     @Test
