@@ -2007,6 +2007,9 @@ internal class RegattaLinkBleClient(
             )
         }
 
+        if (!disconnectConfirmed) {
+            runCatching { activeGatt.disconnect() }
+        }
         activeGatt.close()
         if (gatt === activeGatt) {
             gatt = null
