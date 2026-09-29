@@ -969,19 +969,37 @@ private fun RegattaLinkNmeaSetupSheet(
                 }
             }
 
+            val nmeaAppliedStateUnknown =
+                connected &&
+                    !configurationState.nmeaTxRuntimeStatusSupported &&
+                    (
+                        configurationState.nmeaTxSupported ||
+                            configurationState.nmeaAttitudeTxSupported
+                        )
+            val nmeaRestartActionAvailable =
+                regattaLinkNmeaRestartRequired(configurationState) ||
+                    nmeaAppliedStateUnknown
+
             if (
                 connected &&
                 (
-                    regattaLinkNmeaRestartRequired(configurationState) ||
+                    nmeaRestartActionAvailable ||
                         configurationState.restartAwaitingDisconnect
                     )
             ) {
                 Text(
                     text =
-                        if (configurationState.restartAwaitingDisconnect) {
-                            stringResource(R.string.regattalink_restarting)
-                        } else {
-                            stringResource(R.string.regattalink_nmea_restart_required)
+                        when {
+                            configurationState.restartAwaitingDisconnect ->
+                                stringResource(R.string.regattalink_restarting)
+                            nmeaAppliedStateUnknown ->
+                                stringResource(
+                                    R.string.regattalink_nmea_runtime_unknown_restart
+                                )
+                            else ->
+                                stringResource(
+                                    R.string.regattalink_nmea_restart_required
+                                )
                         },
                     modifier = Modifier.padding(top = 14.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -991,7 +1009,7 @@ private fun RegattaLinkNmeaSetupSheet(
                     enabled =
                         configEnabled &&
                             configurationState.deviceControlSupported &&
-                            regattaLinkNmeaRestartRequired(configurationState) &&
+                            nmeaRestartActionAvailable &&
                             !configurationState.restartAwaitingDisconnect,
                     modifier = Modifier
                         .fillMaxWidth()
