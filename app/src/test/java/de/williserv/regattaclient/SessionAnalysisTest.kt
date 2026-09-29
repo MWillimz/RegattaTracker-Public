@@ -87,7 +87,32 @@ class SessionAnalysisTest {
     }
 
     @Test
-    fun invalidRecordedCogIsExcludedWhileValidNorthRemainsAvailable() {
+    fun missingRecordedCogFallsBackToAdjacentGpsTrack() {
+        val samples = listOf(
+            sample(
+                timestamp = "2026-09-24T12:00:00",
+                lat = 54.0,
+                lon = 10.0,
+                cog = 0f,
+                cogValid = false
+            ),
+            sample(
+                timestamp = "2026-09-24T12:00:01",
+                lat = 54.0,
+                lon = 10.001,
+                cog = 90f,
+                cogValid = true
+            )
+        )
+
+        val prepared = prepareAnalysisSamples(samples)
+
+        assertEquals(90.0, prepared[0].cogDeg, 0.1)
+        assertTrue(hasGpsManeuverFilterData(prepared))
+    }
+
+    @Test
+    fun missingRecordedCogWithoutAdjacentGpsTrackRemainsUnavailable() {
         val invalid = prepareAnalysisSamples(
             listOf(sample(cog = 0f, cogValid = false))
         ).single()
@@ -97,8 +122,6 @@ class SessionAnalysisTest {
 
         assertTrue(invalid.cogDeg.isNaN())
         assertEquals(0.0, validNorth.cogDeg, 0.001)
-        assertFalse(hasGpsManeuverFilterData(listOf(invalid)))
-        assertTrue(hasGpsManeuverFilterData(listOf(validNorth, validNorth.copy(sourceIndex = 1))))
     }
 
     @Test
