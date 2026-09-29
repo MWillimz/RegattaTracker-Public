@@ -3928,6 +3928,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun applyStorageCounts(counts: TrackingStorageCounts) {
+        if (!asyncLifetime.isActive()) return
+
         rowCountText.value = getString(R.string.rows_stored, counts.total)
         pendingUploadCount.value = counts.pending
 
