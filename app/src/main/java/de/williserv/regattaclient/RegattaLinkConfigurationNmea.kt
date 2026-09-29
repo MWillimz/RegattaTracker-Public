@@ -318,6 +318,63 @@ internal fun regattaLinkNmeaRestartRequired(
 ): Boolean =
     state.nmeaTxRestartRequired || state.nmeaAttitudeTxRestartRequired
 
+internal fun regattaLinkNmeaSelectionAfterWriteSuccess(
+    state: RegattaLinkConfigurationState,
+    attitudeSelector: Boolean,
+    enabled: Boolean
+): RegattaLinkConfigurationState {
+    val updated =
+        if (attitudeSelector) {
+            state.copy(
+                nmeaAttitudeTxSupported = true,
+                nmeaAttitudeTxEnabled = enabled,
+                nmeaAttitudeTxRestartRequired =
+                    if (
+                        state.nmeaTxRuntimeStatusSupported &&
+                        state.nmeaBootOutputMask != null
+                    ) {
+                        state.nmeaAttitudeTxRestartRequired
+                    } else {
+                        true
+                    }
+            )
+        } else {
+            state.copy(
+                nmeaTxSupported = true,
+                nmeaTxEnabled = enabled,
+                nmeaTxRestartRequired =
+                    if (
+                        state.nmeaTxRuntimeStatusSupported &&
+                        state.nmeaTxBootSelected != null
+                    ) {
+                        state.nmeaTxRestartRequired
+                    } else {
+                        true
+                    }
+            )
+        }
+    return regattaLinkReconcileNmeaTxState(updated)
+}
+
+internal fun regattaLinkNmeaSelectionAfterWriteFailure(
+    state: RegattaLinkConfigurationState,
+    attitudeSelector: Boolean,
+    rereadValue: Boolean?
+): RegattaLinkConfigurationState {
+    val updated =
+        if (attitudeSelector) {
+            state.copy(
+                nmeaAttitudeTxEnabled =
+                    rereadValue ?: state.nmeaAttitudeTxEnabled
+            )
+        } else {
+            state.copy(
+                nmeaTxEnabled = rereadValue ?: state.nmeaTxEnabled
+            )
+        }
+    return regattaLinkReconcileNmeaTxState(updated)
+}
+
 internal fun parseRegattaLinkPgnInventory(
     raw: ByteArray
 ): List<RegattaLinkPgnInventoryEntry> {
