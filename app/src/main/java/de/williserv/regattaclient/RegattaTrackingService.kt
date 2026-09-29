@@ -33,13 +33,6 @@ import java.util.Locale
 import kotlin.concurrent.thread
 import kotlin.math.abs
 
-data class CourseMark(
-    val order: Int,
-    val name: String,
-    val point: GeoPoint,
-    val radiusM: Double
-)
-
 internal fun shouldFinishTrackingServiceStop(
     handoffGeneration: Long,
     currentGeneration: Long,
@@ -126,8 +119,8 @@ class RegattaTrackingService : Service() {
 
     private var startLine: StartLine? = null
     private var finishLine: StartLine? = null
-    private var courseMarks: List<CourseMark> = emptyList()
-    private var firstCourseMark: GeoPoint? = null
+    private var coursePositions: List<CoursePosition> = emptyList()
+    private var firstCourseReference: GeoPoint? = null
 
     private val startLineToleranceM = 10.0
     private val usableAccuracyM = 25f
@@ -352,8 +345,8 @@ class RegattaTrackingService : Service() {
 
         startLine = null
         finishLine = null
-        courseMarks = emptyList()
-        firstCourseMark = null
+        coursePositions = emptyList()
+        firstCourseReference = null
 
         previousStartLinePosition = null
         previousStartLineTimestampMillis = null
@@ -912,7 +905,7 @@ class RegattaTrackingService : Service() {
             position = position,
             startLine = startLine,
             finishLine = finishLine,
-            courseMarks = courseMarks,
+            coursePositions = coursePositions,
             trackingProfile = TrackingProfileConfig.read(this),
             sailNumber = sailNumber,
             previousBand = samplingBand
@@ -1092,8 +1085,8 @@ class RegattaTrackingService : Service() {
 
         startLine = null
         finishLine = null
-        courseMarks = emptyList()
-        firstCourseMark = null
+        coursePositions = emptyList()
+        firstCourseReference = null
 
         val course = snapshot.courseJson
             .takeIf { it.isNotBlank() }
@@ -1101,7 +1094,9 @@ class RegattaTrackingService : Service() {
 
         parseStartLine(course)
         parseFinishLine(course)
-        parseMarks(course)
+        coursePositions = parseCoursePositions(course)
+            .activeCoursePositions(courseShortened)
+        firstCourseReference = coursePositions.firstOrNull()?.referencePoint()
 
         RaceRuntimeStateStore.publish(
             server = serverUrl,
@@ -1150,37 +1145,6 @@ class RegattaTrackingService : Service() {
                 )
             )
         }
-    }
-
-    private fun parseMarks(course: JSONObject?) {
-        val marksArray = course?.optJSONArray("marks") ?: return
-
-        val parsedMarks = mutableListOf<CourseMark>()
-
-        for (i in 0 until marksArray.length()) {
-            val mark = marksArray.optJSONObject(i) ?: continue
-
-            val omitWhenShortened = mark.optBoolean("omit_when_shortened", false)
-
-            if (courseShortened && omitWhenShortened) {
-                continue
-            }
-
-            parsedMarks.add(
-                CourseMark(
-                    order = mark.optInt("order", i + 1),
-                    name = mark.optString("name", "Mark ${i + 1}"),
-                    point = GeoPoint(
-                        lat = mark.optDouble("lat"),
-                        lon = mark.optDouble("lon")
-                    ),
-                    radiusM = mark.optDouble("radius_m", 100.0)
-                )
-            )
-        }
-
-        courseMarks = parsedMarks.sortedBy { it.order }
-        firstCourseMark = courseMarks.firstOrNull()?.point
     }
 
     private fun parseServerInstant(value: String): Instant? {
@@ -1436,7 +1400,7 @@ class RegattaTrackingService : Service() {
         line: StartLine,
         boatSignedDistance: Double
     ) {
-        val mark = resolveCourseSideReference(firstCourseMark, finishLine) ?: return
+        val mark = resolveCourseSideReference(firstCourseReference, finishLine) ?: return
 
         val markSignedDistance = StartLineMath.signedDistanceToStartLineM(
             point = mark,
@@ -1468,7 +1432,7 @@ class RegattaTrackingService : Service() {
         boatSignedDistance: Double
     ): Boolean {
         val lastMark = resolveFinishApproachReference(
-            courseMarks.lastOrNull()?.point,
+            coursePositions.lastOrNull()?.referencePoint(),
             startLine
         ) ?: return false
 
@@ -1491,7 +1455,7 @@ class RegattaTrackingService : Service() {
         boatSignedDistance: Double
     ): Boolean {
         val approachReference = resolveFinishApproachReference(
-            courseMarks.lastOrNull()?.point,
+            coursePositions.lastOrNull()?.referencePoint(),
             startLine
         ) ?: return false
 
@@ -1511,7 +1475,7 @@ class RegattaTrackingService : Service() {
         line: StartLine,
         boatSignedDistance: Double
     ): Boolean {
-        val mark = resolveCourseSideReference(firstCourseMark, finishLine) ?: return false
+        val mark = resolveCourseSideReference(firstCourseReference, finishLine) ?: return false
 
         val markSignedDistance = StartLineMath.signedDistanceToStartLineM(
             point = mark,
@@ -1552,53 +1516,99 @@ class RegattaTrackingService : Service() {
         }
         val currentFinishStableSide = currentFinishSignedDistance?.let(::sideWithTolerance) ?: 0
 
-        val nextMarkIndex = passedMarks
-        val nextMark = courseMarks.getOrNull(nextMarkIndex)
+        val nextPositionIndex = passedMarks
+        val nextPosition = coursePositions.getOrNull(nextPositionIndex)
 
-        if (nextMark != null) {
+        if (nextPosition != null) {
             if (currentFinishStableSide != 0) {
                 lastFinishStableSide = currentFinishStableSide
             }
 
-            currentTargetDistanceM = StartLineMath.distanceBetweenMeters(
-                currentGeoPoint,
-                nextMark.point
-            )
-
-            val anchors = resolveMarkDetectionAnchors(
-                previousCoursePosition = courseMarks.getOrNull(nextMarkIndex - 1)?.point,
-                nextCoursePosition = courseMarks.getOrNull(nextMarkIndex + 1)?.point,
-                startLine = startLine,
-                finishLine = finishLine
-            )
-            val geometry = anchors?.let {
-                buildMarkDetectionGeometry(
-                    previousAnchor = it.previous,
-                    mark = nextMark.point,
-                    nextAnchor = it.next,
-                    radiusM = nextMark.radiusM
-                )
-            }
-
             val previousPosition = previousMarkDetectionPosition
-            if (geometry == null) {
-                markDetectionProgress = null
-            } else if (previousPosition != null) {
-                val progress = updateMarkDetectionProgress(
-                    previousPosition = previousPosition,
-                    currentPosition = currentGeoPoint,
-                    geometry = geometry,
-                    previousProgress = markDetectionProgress
-                )
-                markDetectionProgress = progress
 
-                if (progress.completed) {
-                    passedMarks += 1
+            when (nextPosition.kind) {
+                CoursePositionKind.MARK -> {
+                    val markPoint = nextPosition.markPoint
+                    val anchors = markPoint?.let {
+                        resolveMarkDetectionAnchors(
+                            previousCoursePosition = coursePositions
+                                .getOrNull(nextPositionIndex - 1)
+                                ?.referencePoint(),
+                            nextCoursePosition = coursePositions
+                                .getOrNull(nextPositionIndex + 1)
+                                ?.referencePoint(),
+                            startLine = startLine,
+                            finishLine = finishLine
+                        )
+                    }
+                    val geometry = if (markPoint != null && anchors != null) {
+                        buildMarkDetectionGeometry(
+                            previousAnchor = anchors.previous,
+                            mark = markPoint,
+                            nextAnchor = anchors.next,
+                            radiusM = nextPosition.radiusM ?: 100.0
+                        )
+                    } else {
+                        null
+                    }
+
+                    currentTargetDistanceM = markPoint?.let {
+                        StartLineMath.distanceBetweenMeters(currentGeoPoint, it)
+                    }
+
+                    if (geometry == null) {
+                        markDetectionProgress = null
+                    } else if (previousPosition != null) {
+                        val progress = updateMarkDetectionProgress(
+                            previousPosition = previousPosition,
+                            currentPosition = currentGeoPoint,
+                            geometry = geometry,
+                            previousProgress = markDetectionProgress
+                        )
+                        markDetectionProgress = progress
+
+                        if (progress.completed) {
+                            passedMarks += 1
+                            markDetectionProgress = null
+                            savePersistedRaceState()
+                        }
+                    }
+                }
+
+                CoursePositionKind.GATE -> {
                     markDetectionProgress = null
-                    savePersistedRaceState()
+
+                    val previousAnchor = coursePositions
+                        .getOrNull(nextPositionIndex - 1)
+                        ?.referencePoint()
+                        ?: startLine?.let(::lineMidpoint)
+                    val geometry = buildCourseGateDetectionGeometry(
+                        previousAnchor = previousAnchor,
+                        gate = nextPosition
+                    )
+
+                    currentTargetDistanceM = geometry?.let {
+                        distanceToGateDetectionLineM(currentGeoPoint, it)
+                    }
+
+                    if (
+                        geometry != null &&
+                        previousPosition != null &&
+                        gateDetectionCrossingFraction(
+                            previousPosition = previousPosition,
+                            currentPosition = currentGeoPoint,
+                            geometry = geometry
+                        ) != null
+                    ) {
+                        passedMarks += 1
+                        savePersistedRaceState()
+                    }
                 }
             }
 
+            // Always advance the segment endpoint, including while Gate geometry is
+            // temporarily invalid. This mirrors the server's per-segment semantics
+            // and prevents a later crossing from spanning multiple GPS samples.
             previousMarkDetectionPosition = currentGeoPoint
             return
         }
@@ -1620,7 +1630,7 @@ class RegattaTrackingService : Service() {
 
         val stableSide = sideWithTolerance(metrics.signedDistanceM)
         val approachReference = resolveFinishApproachReference(
-            courseMarks.lastOrNull()?.point,
+            coursePositions.lastOrNull()?.referencePoint(),
             startLine
         )
         val approachSide = approachReference?.let {
@@ -1669,34 +1679,29 @@ class RegattaTrackingService : Service() {
         currentTargetDistanceM = when (target) {
             "start_line", "ocs_clear" -> {
                 val line = startLine
-                if (line != null) {
-                    abs(StartLineMath.signedDistanceToStartLineM(currentGeoPoint, line))
-                } else {
-                    null
-                }
+                if (line != null) abs(StartLineMath.signedDistanceToStartLineM(currentGeoPoint, line)) else null
             }
-
             "finish_line" -> {
                 val line = finishLine
-                if (line != null) {
-                    abs(StartLineMath.signedDistanceToStartLineM(currentGeoPoint, line))
-                } else {
-                    null
-                }
+                if (line != null) abs(StartLineMath.signedDistanceToStartLineM(currentGeoPoint, line)) else null
             }
-
-            "finished" -> {
-                null
+            "finished" -> null
+            "mark" -> coursePositions.getOrNull(passedMarks)
+                ?.markPoint
+                ?.let { StartLineMath.distanceBetweenMeters(currentGeoPoint, it) }
+            "gate" -> {
+                val gate = coursePositions.getOrNull(passedMarks)
+                val previousAnchor = coursePositions
+                    .getOrNull(passedMarks - 1)
+                    ?.referencePoint()
+                    ?: startLine?.let(::lineMidpoint)
+                if (gate != null) {
+                    buildCourseGateDetectionGeometry(previousAnchor, gate)?.let {
+                        distanceToGateDetectionLineM(currentGeoPoint, it)
+                    }
+                } else null
             }
-
-            else -> {
-                val nextMark = courseMarks.getOrNull(passedMarks)
-                if (nextMark != null) {
-                    StartLineMath.distanceBetweenMeters(currentGeoPoint, nextMark.point)
-                } else {
-                    null
-                }
-            }
+            else -> null
         }
     }
 
@@ -1705,9 +1710,12 @@ class RegattaTrackingService : Service() {
         if (isOcs) return "ocs_clear"
         if (!raceStarted) return "start_line"
 
-        val nextMark = courseMarks.getOrNull(passedMarks)
-        if (nextMark != null) {
-            return "mark"
+        val nextPosition = coursePositions.getOrNull(passedMarks)
+        if (nextPosition != null) {
+            return when (nextPosition.kind) {
+                CoursePositionKind.MARK -> "mark"
+                CoursePositionKind.GATE -> "gate"
+            }
         }
 
         return "finish_line"
@@ -1720,26 +1728,31 @@ class RegattaTrackingService : Service() {
             "start_line" -> getString(R.string.next_start_line)
             "finish_line" -> getString(R.string.next_finish_line)
             "mark" -> {
-                val mark = courseMarks.getOrNull(passedMarks)
-                if (mark != null) {
-                    getString(R.string.next_mark_value, mark.order, mark.name)
-                } else {
-                    getString(R.string.next_mark)
-                }
+                val mark = coursePositions.getOrNull(passedMarks)
+                if (mark != null) getString(R.string.next_mark_value, mark.order, mark.name)
+                else getString(R.string.next_mark)
             }
-
+            "gate" -> {
+                val gate = coursePositions.getOrNull(passedMarks)
+                if (gate != null) getString(R.string.next_gate_value, gate.order, gate.name)
+                else getString(R.string.next_gate)
+            }
             else -> getString(R.string.next_unknown)
         }
     }
 
     private fun buildProgressText(): String {
         return buildLocalProgressText(
-            totalMarks = courseMarks.size,
+            totalMarks = coursePositions.size,
             passedMarks = passedMarks,
             raceStarted = raceStarted,
             raceFinished = raceFinished,
             markedFormatter = { passed, total, percent ->
-                getString(R.string.progress_value, passed, total, percent)
+                if (coursePositions.any { it.kind == CoursePositionKind.GATE }) {
+                    getString(R.string.progress_positions_value, passed, total, percent)
+                } else {
+                    getString(R.string.progress_value, passed, total, percent)
+                }
             },
             directFormatter = { percent ->
                 getString(R.string.progress_direct_value, percent)
@@ -1766,8 +1779,8 @@ class RegattaTrackingService : Service() {
         passedMarksFromUser: Int,
         raceStartedFromUser: Boolean
     ) {
-        val safePassedMarks = if (courseMarks.isNotEmpty()) {
-            passedMarksFromUser.coerceIn(0, courseMarks.size)
+        val safePassedMarks = if (coursePositions.isNotEmpty()) {
+            passedMarksFromUser.coerceIn(0, coursePositions.size)
         } else {
             passedMarksFromUser.coerceAtLeast(0)
         }

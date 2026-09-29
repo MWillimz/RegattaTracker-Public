@@ -53,7 +53,7 @@
     <string name="course_shortened_banner">PARCOURS RACCOURCI</string>
     <string name="next_target">Prochaine cible</string>
     <string name="override_course_title">Remplacer la progression du parcours ?</string>
-    <string name="override_course_message">Cela modifie manuellement la progression du parcours pour ce bateau. À utiliser uniquement si la détection automatique des marques est incorrecte.</string>
+    <string name="override_course_message">Cela modifie manuellement la progression du parcours pour ce bateau. À utiliser uniquement si la détection automatique des positions du parcours est incorrecte.</string>
     <string name="confirm_override">Confirmer le remplacement</string>
     <string name="next">Suivant</string>
     <string name="set_next_target">Définir la prochaine cible</string>
@@ -61,6 +61,8 @@
     <string name="start_line">Ligne de départ</string>
     <string name="finish_line">Ligne d’arrivée</string>
     <string name="marks">Marques</string>
+    <string name="course_positions">Positions de parcours</string>
+    <string name="gate_name_value">Porte · %1$s</string>
     <string name="race_info">Infos de course</string>
     <string name="mark_skipped">%1$s — omise</string>
     <string name="course_map">Carte du parcours</string>
@@ -181,9 +183,12 @@
     <string name="stop_value">Fin : %1$s</string>
     <string name="info_value">Info : %1$s</string>
     <string name="course_mark_count">Parcours : %1$d marques</string>
+    <string name="course_position_count">Parcours : %1$d positions</string>
     <string name="start_line_value">Ligne de départ : %1$s → %2$s</string>
     <string name="finish_line_value">Ligne d’arrivée : %1$s → %2$s</string>
     <string name="marks_value">Marques : %1$s</string>
+    <string name="course_positions_value">Positions de parcours : %1$s</string>
+    <string name="position_skipped_compact">%1$s [omise]</string>
     <string name="mark_skipped_compact">%1$d %2$s [omise]</string>
     <string name="stop_tracking_before_delete">Arrêtez le suivi de course/manuel avant de supprimer les données</string>
     <string name="no_csv_line_yet">Aucune ligne CSV pour le moment</string>
@@ -220,6 +225,9 @@
     <string name="next_finish_line">Suivant : ligne d’arrivée</string>
     <string name="next_mark">Suivant : marque</string>
     <string name="next_mark_value">Suivant : %1$d %2$s</string>
+    <string name="next_gate">Suivant : porte</string>
+    <string name="next_gate_value">Prochaine porte : %1$d %2$s</string>
+    <string name="progress_positions_value">Progression : %1$d/%2$d positions de parcours · %3$.0f%%</string>
     <string name="progress_value">Progression : %1$d/%2$d marques · %3$.0f%%</string>
     <string name="boat_status_value">Bateau : %1$s</string>
     <string name="boat_status_finished">terminé</string>

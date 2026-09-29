@@ -63,7 +63,7 @@
 
     <!-- Course -->
     <string name="override_course_title">Override course?</string>
-    <string name="override_course_message">This manually changes course progress for this boat. Use it only if automatic mark detection is wrong.</string>
+    <string name="override_course_message">This manually changes course progress for this boat. Use it only if automatic course-position detection is wrong.</string>
     <string name="confirm_override">Confirm Override</string>
     <string name="next">Next</string>
     <string name="set_next_target">Set next target</string>
@@ -71,6 +71,8 @@
     <string name="start_line">Start line</string>
     <string name="finish_line">Finish line</string>
     <string name="marks">Marks</string>
+    <string name="course_positions">Course positions</string>
+    <string name="gate_name_value">Gate · %1$s</string>
     <string name="race_info">Race Info</string>
     <string name="mark_skipped">%1$s — skipped</string>
 
@@ -203,9 +205,12 @@
     <string name="stop_value">Stop: %1$s</string>
     <string name="info_value">Info: %1$s</string>
     <string name="course_mark_count">Course: %1$d marks</string>
+    <string name="course_position_count">Course: %1$d positions</string>
     <string name="start_line_value">Start line: %1$s → %2$s</string>
     <string name="finish_line_value">Finish line: %1$s → %2$s</string>
     <string name="marks_value">Marks: %1$s</string>
+    <string name="course_positions_value">Course positions: %1$s</string>
+    <string name="position_skipped_compact">%1$s [skipped]</string>
     <string name="mark_skipped_compact">%1$d %2$s [skipped]</string>
     <string name="stop_tracking_before_delete">Stop Race/Manual Tracking before deleting data</string>
     <string name="no_csv_line_yet">No CSV line yet</string>
@@ -244,6 +249,9 @@
     <string name="next_finish_line">Next: finish line</string>
     <string name="next_mark">Next: mark</string>
     <string name="next_mark_value">Next: %1$d %2$s</string>
+    <string name="next_gate">Next: gate</string>
+    <string name="next_gate_value">Next gate: %1$d %2$s</string>
+    <string name="progress_positions_value">Progress: %1$d/%2$d course positions · %3$.0f%%</string>
     <string name="progress_value">Progress: %1$d/%2$d marks · %3$.0f%%</string>
     <string name="boat_status_value">Boat: %1$s</string>
     <string name="boat_status_finished">finished</string>

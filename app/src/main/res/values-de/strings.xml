@@ -53,7 +53,7 @@
     <string name="course_shortened_banner">KURS VERKÜRZT</string>
     <string name="next_target">Nächstes Ziel</string>
     <string name="override_course_title">Kursfortschritt überschreiben?</string>
-    <string name="override_course_message">Dadurch wird der Kursfortschritt für dieses Boot manuell geändert. Nur verwenden, wenn die automatische Bahnmarkenerkennung falsch liegt.</string>
+    <string name="override_course_message">Dadurch wird der Kursfortschritt für dieses Boot manuell geändert. Nur verwenden, wenn die automatische Kurspositionserkennung falsch liegt.</string>
     <string name="confirm_override">Überschreiben bestätigen</string>
     <string name="next">Nächstes Ziel</string>
     <string name="set_next_target">Nächstes Ziel setzen</string>
@@ -61,6 +61,8 @@
     <string name="start_line">Startlinie</string>
     <string name="finish_line">Ziellinie</string>
     <string name="marks">Bahnmarken</string>
+    <string name="course_positions">Kurspositionen</string>
+    <string name="gate_name_value">Gate · %1$s</string>
     <string name="race_info">Regattainfo</string>
     <string name="mark_skipped">%1$s — übersprungen</string>
     <string name="course_map">Kurskarte</string>
@@ -181,9 +183,12 @@
     <string name="stop_value">Ende: %1$s</string>
     <string name="info_value">Info: %1$s</string>
     <string name="course_mark_count">Kurs: %1$d Bahnmarken</string>
+    <string name="course_position_count">Kurs: %1$d Kurspositionen</string>
     <string name="start_line_value">Startlinie: %1$s → %2$s</string>
     <string name="finish_line_value">Ziellinie: %1$s → %2$s</string>
     <string name="marks_value">Bahnmarken: %1$s</string>
+    <string name="course_positions_value">Kurspositionen: %1$s</string>
+    <string name="position_skipped_compact">%1$s [übersprungen]</string>
     <string name="mark_skipped_compact">%1$d %2$s [übersprungen]</string>
     <string name="stop_tracking_before_delete">Regatta-/manuelle Aufzeichnung vor dem Löschen stoppen</string>
     <string name="no_csv_line_yet">Noch keine CSV-Zeile</string>
@@ -220,6 +225,9 @@
     <string name="next_finish_line">Nächstes Ziel: Ziellinie</string>
     <string name="next_mark">Nächstes Ziel: Bahnmarke</string>
     <string name="next_mark_value">Nächstes Ziel: %1$d %2$s</string>
+    <string name="next_gate">Nächstes Ziel: Gate</string>
+    <string name="next_gate_value">Nächstes Gate: %1$d %2$s</string>
+    <string name="progress_positions_value">Fortschritt: %1$d/%2$d Kurspositionen · %3$.0f%%</string>
     <string name="progress_value">Fortschritt: %1$d/%2$d Bahnmarken · %3$.0f%%</string>
     <string name="boat_status_value">Boot: %1$s</string>
     <string name="boat_status_finished">im Ziel</string>
