@@ -96,6 +96,8 @@ internal class RegattaLinkBleClient(
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b71000b")
         val NMEA_ATTITUDE_TX_UUID: UUID =
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b71000c")
+        val NMEA_TX_RUNTIME_STATUS_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b71000d")
         val TELEMETRY_SERVICE_UUID: UUID =
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710020")
         val TELEMETRY_FAST_UUID: UUID =
@@ -281,10 +283,6 @@ internal class RegattaLinkBleClient(
             nowElapsedMs = { SystemClock.elapsedRealtime() },
             expectedDisconnectTimeoutMs = RESTART_EXPECTED_DISCONNECT_TIMEOUT_MS
         )
-    private val nmeaTxStateLock = Any()
-    private var nmeaTxBaselineStableId: String? = null
-    private var nmeaTxBootAppliedEnabled: Boolean? = null
-    private var nmeaAttitudeTxBootAppliedEnabled: Boolean? = null
     private var serviceRediscoveryGatt: BluetoothGatt? = null
     @Volatile private var gattSchemaReconnectGatt: BluetoothGatt? = null
     @Volatile private var gattSchemaReconnectDevice: BluetoothDevice? = null
@@ -877,7 +875,6 @@ internal class RegattaLinkBleClient(
     }
 
     private fun completeFactoryResetDisconnect(activeGatt: BluetoothGatt) {
-        clearNmeaTxBootBaseline()
         connected = false
         establishedConnection = false
         resetServiceDiscoveryState()
@@ -896,7 +893,6 @@ internal class RegattaLinkBleClient(
 
     private fun completeRestartDisconnect(activeGatt: BluetoothGatt) {
         val previousState = lastState
-        clearNmeaTxBootBaseline()
         connected = false
         establishedConnection = false
         resetServiceDiscoveryState()
@@ -2307,65 +2303,13 @@ internal class RegattaLinkBleClient(
         }
         if (!optionalFeatureWorkAllowed(activeGatt)) return
 
-        setupConfiguration(activeGatt, info)
+        setupConfiguration(activeGatt)
         if (!optionalFeatureWorkAllowed(activeGatt)) return
 
         setupNmea(activeGatt)
     }
 
-    private fun establishNmeaTxBootBaseline(
-        stableId: String,
-        nmeaTxEnabled: Boolean?,
-        nmeaAttitudeTxEnabled: Boolean?
-    ) {
-        synchronized(nmeaTxStateLock) {
-            if (nmeaTxBaselineStableId != stableId) {
-                nmeaTxBaselineStableId = stableId
-                nmeaTxBootAppliedEnabled = nmeaTxEnabled
-                nmeaAttitudeTxBootAppliedEnabled = nmeaAttitudeTxEnabled
-                return
-            }
-            if (nmeaTxBootAppliedEnabled == null && nmeaTxEnabled != null) {
-                nmeaTxBootAppliedEnabled = nmeaTxEnabled
-            }
-            if (
-                nmeaAttitudeTxBootAppliedEnabled == null &&
-                nmeaAttitudeTxEnabled != null
-            ) {
-                nmeaAttitudeTxBootAppliedEnabled = nmeaAttitudeTxEnabled
-            }
-        }
-    }
-
-    private fun clearNmeaTxBootBaseline() {
-        synchronized(nmeaTxStateLock) {
-            nmeaTxBaselineStableId = null
-            nmeaTxBootAppliedEnabled = null
-            nmeaAttitudeTxBootAppliedEnabled = null
-        }
-    }
-
-    private fun withNmeaTxRestartState(
-        state: RegattaLinkConfigurationState
-    ): RegattaLinkConfigurationState =
-        synchronized(nmeaTxStateLock) {
-            state.copy(
-                nmeaTxRestartRequired =
-                    state.nmeaTxEnabled != null &&
-                        nmeaTxBootAppliedEnabled != null &&
-                        state.nmeaTxEnabled != nmeaTxBootAppliedEnabled,
-                nmeaAttitudeTxRestartRequired =
-                    state.nmeaAttitudeTxEnabled != null &&
-                        nmeaAttitudeTxBootAppliedEnabled != null &&
-                        state.nmeaAttitudeTxEnabled !=
-                            nmeaAttitudeTxBootAppliedEnabled
-            )
-        }
-
-    private fun setupConfiguration(
-        activeGatt: BluetoothGatt,
-        info: RegattaLinkDeviceInfo
-    ) {
+    private fun setupConfiguration(activeGatt: BluetoothGatt) {
         if (!optionalFeatureWorkAllowed(activeGatt)) return
 
         val service = activeGatt.getService(CONFIG_SERVICE_UUID)
@@ -2379,6 +2323,8 @@ internal class RegattaLinkBleClient(
             extensionService?.getCharacteristic(NMEA_TX_UUID)
         val nmeaAttitudeTxCharacteristic =
             extensionService?.getCharacteristic(NMEA_ATTITUDE_TX_UUID)
+        val nmeaTxRuntimeStatusCharacteristic =
+            extensionService?.getCharacteristic(NMEA_TX_RUNTIME_STATUS_UUID)
         val diagnosticLogCharacteristic =
             extensionService?.getCharacteristic(DIAGNOSTIC_LOG_UUID)
         val deviceControlCharacteristic =
@@ -2391,6 +2337,8 @@ internal class RegattaLinkBleClient(
             loadPrecisionSupported = loadPrecisionCharacteristic != null,
             nmeaTxSupported = nmeaTxCharacteristic != null,
             nmeaAttitudeTxSupported = nmeaAttitudeTxCharacteristic != null,
+            nmeaTxRuntimeStatusSupported =
+                nmeaTxRuntimeStatusCharacteristic != null,
             diagnosticLogSupported = diagnosticLogCharacteristic != null,
             deviceControlSupported = deviceControlCharacteristic != null
         )
@@ -2502,6 +2450,27 @@ internal class RegattaLinkBleClient(
         }
 
         if (
+            nmeaTxRuntimeStatusCharacteristic != null &&
+            optionalFeatureWorkAllowed(activeGatt)
+        ) {
+            runCatching {
+                parseRegattaLinkNmeaTxRuntimeStatus(
+                    readCharacteristicBlocking(
+                        activeGatt,
+                        nmeaTxRuntimeStatusCharacteristic
+                    )
+                )
+            }.onSuccess { runtime ->
+                next = regattaLinkApplyNmeaTxRuntimeStatus(next, runtime)
+            }.onFailure { error ->
+                if (errorMessage.isBlank()) {
+                    errorMessage = error.message
+                        ?: "Could not read RegattaLink NMEA2000 runtime TX status"
+                }
+            }
+        }
+
+        if (
             deviceControlCharacteristic != null &&
             optionalFeatureWorkAllowed(activeGatt)
         ) {
@@ -2523,12 +2492,7 @@ internal class RegattaLinkBleClient(
         }
 
         if (gatt === activeGatt && connected) {
-            establishNmeaTxBootBaseline(
-                stableId = info.stableId,
-                nmeaTxEnabled = next.nmeaTxEnabled,
-                nmeaAttitudeTxEnabled = next.nmeaAttitudeTxEnabled
-            )
-            next = withNmeaTxRestartState(next)
+            next = regattaLinkReconcileNmeaTxState(next)
             emitConfiguration(
                 next.copy(
                     userMessage =
@@ -3290,12 +3254,21 @@ internal class RegattaLinkBleClient(
                         byteArrayOf(if (enabled) 1 else 0)
                     )
                     updateConfiguration { current ->
-                        withNmeaTxRestartState(
+                        regattaLinkReconcileNmeaTxState(
                             when (setting) {
                                 NmeaTxSetting.MASTER ->
                                     current.copy(
                                         nmeaTxSupported = true,
                                         nmeaTxEnabled = enabled,
+                                        nmeaTxRestartRequired =
+                                            if (
+                                                current.nmeaTxRuntimeStatusSupported &&
+                                                current.nmeaTxBootSelected != null
+                                            ) {
+                                                current.nmeaTxRestartRequired
+                                            } else {
+                                                true
+                                            },
                                         busy = false,
                                         userMessage = null,
                                         error = ""
@@ -3304,6 +3277,15 @@ internal class RegattaLinkBleClient(
                                     current.copy(
                                         nmeaAttitudeTxSupported = true,
                                         nmeaAttitudeTxEnabled = enabled,
+                                        nmeaAttitudeTxRestartRequired =
+                                            if (
+                                                current.nmeaTxRuntimeStatusSupported &&
+                                                current.nmeaBootOutputMask != null
+                                            ) {
+                                                current.nmeaAttitudeTxRestartRequired
+                                            } else {
+                                                true
+                                            },
                                         busy = false,
                                         userMessage = null,
                                         error = ""
@@ -3340,7 +3322,7 @@ internal class RegattaLinkBleClient(
                             null
                         }
                     updateConfiguration { current ->
-                        withNmeaTxRestartState(
+                        regattaLinkReconcileNmeaTxState(
                             when (setting) {
                                 NmeaTxSetting.MASTER ->
                                     current.copy(
