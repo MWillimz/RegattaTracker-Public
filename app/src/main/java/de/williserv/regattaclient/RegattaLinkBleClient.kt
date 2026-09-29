@@ -90,6 +90,8 @@ internal class RegattaLinkBleClient(
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710008")
         val MOTION_DAMPING_UUID: UUID =
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710009")
+        val LOAD_PRECISION_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b71000a")
         val TELEMETRY_SERVICE_UUID: UUID =
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710020")
         val TELEMETRY_FAST_UUID: UUID =
@@ -102,6 +104,8 @@ internal class RegattaLinkBleClient(
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710024")
         val TELEMETRY_MOTION_ONE_HZ_UUID: UUID =
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710025")
+        val TELEMETRY_LOAD_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710026")
 
         internal val NORMAL_TELEMETRY_UUIDS: Set<UUID> =
             setOf(TELEMETRY_MOTION_ONE_HZ_UUID)
@@ -160,9 +164,21 @@ internal class RegattaLinkBleClient(
     }
 
     private val appContext = context.applicationContext
+    private val loadAliasStore = RegattaLinkLoadAliasStore(appContext)
+    private val loadPacketAssembler =
+        RegattaLinkLoadPacketAssembler(loadAliasStore::get)
     private val bluetoothManager =
         appContext.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
     private val handler = Handler(Looper.getMainLooper())
+    private val loadTelemetryStaleRunnable = Runnable {
+        val nowElapsedMs = SystemClock.elapsedRealtime()
+        updateNmea { state ->
+            regattaLinkExpireLoadSensorsIfTransportStale(
+                state = state,
+                nowElapsedMs = nowElapsedMs
+            )
+        }
+    }
     private val otaExecutor = Executors.newSingleThreadExecutor()
     /*
      * OTA itself can block in reconnectCandidate(). GATT schema reconciliation
@@ -583,6 +599,9 @@ internal class RegattaLinkBleClient(
                             pausedForOta = true
                         )
                     }
+                    handler.removeCallbacks(loadTelemetryStaleRunnable)
+                    loadPacketAssembler.reset()
+                    RegattaLinkLoadSnapshotStore.clear()
                     emitNmea(
                         RegattaLinkNmeaState(
                             pausedForOta = true
@@ -2256,6 +2275,8 @@ internal class RegattaLinkBleClient(
         val nameCharacteristic = service?.getCharacteristic(DEVICE_NAME_UUID)
         val brightnessCharacteristic = service?.getCharacteristic(LED_BRIGHTNESS_UUID)
         val dampingCharacteristic = service?.getCharacteristic(MOTION_DAMPING_UUID)
+        val loadPrecisionCharacteristic =
+            service?.getCharacteristic(LOAD_PRECISION_UUID)
         val diagnosticLogCharacteristic =
             extensionService?.getCharacteristic(DIAGNOSTIC_LOG_UUID)
         val deviceControlCharacteristic =
@@ -2265,6 +2286,7 @@ internal class RegattaLinkBleClient(
             deviceNameSupported = nameCharacteristic != null,
             ledBrightnessSupported = brightnessCharacteristic != null,
             motionDampingSupported = dampingCharacteristic != null,
+            loadPrecisionSupported = loadPrecisionCharacteristic != null,
             diagnosticLogSupported = diagnosticLogCharacteristic != null,
             deviceControlSupported = deviceControlCharacteristic != null
         )
@@ -2308,6 +2330,27 @@ internal class RegattaLinkBleClient(
                 if (errorMessage.isBlank()) {
                     errorMessage = error.message
                         ?: "Could not read RegattaLink motion damping"
+                }
+            }
+        }
+
+        if (
+            loadPrecisionCharacteristic != null &&
+            optionalFeatureWorkAllowed(activeGatt)
+        ) {
+            runCatching {
+                parseRegattaLinkLoadPrecision(
+                    readCharacteristicBlocking(
+                        activeGatt,
+                        loadPrecisionCharacteristic
+                    )
+                )
+            }.onSuccess { x10 ->
+                next = next.copy(loadPrecisionX10 = x10)
+            }.onFailure { error ->
+                if (errorMessage.isBlank()) {
+                    errorMessage = error.message
+                        ?: "Could not read RegattaLink load precision"
                 }
             }
         }
@@ -2357,90 +2400,169 @@ internal class RegattaLinkBleClient(
         val telemetryService = activeGatt.getService(TELEMETRY_SERVICE_UUID)
         val boatStateCharacteristic =
             telemetryService?.getCharacteristic(TELEMETRY_BOAT_STATE_UUID)
+        val loadCharacteristic =
+            telemetryService?.getCharacteristic(TELEMETRY_LOAD_UUID)
+
+        handler.removeCallbacks(loadTelemetryStaleRunnable)
+        loadPacketAssembler.reset()
+        RegattaLinkLoadSnapshotStore.clear()
 
         emitNmea(
             RegattaLinkNmeaState(
                 pgnInventorySupported = pgnSupported,
                 rawCanSupported = rawSupported,
                 boatStateSupported = boatStateCharacteristic != null,
+                loadSupported = loadCharacteristic != null,
                 pausedForOta = otaRunning.get()
             )
         )
 
-        if (boatStateCharacteristic == null || !optionalFeatureWorkAllowed(activeGatt)) {
-            return
-        }
+        if (
+            boatStateCharacteristic != null &&
+            optionalFeatureWorkAllowed(activeGatt)
+        ) {
+            if (mtu < REGATTALINK_BOAT_STATE_NOTIFICATION_MTU) {
+                requestMtuBestEffort(activeGatt)
+            }
+            if (!optionalFeatureWorkAllowed(activeGatt)) return
 
-        if (mtu < REGATTALINK_BOAT_STATE_NOTIFICATION_MTU) {
-            requestMtuBestEffort(activeGatt)
-        }
-        if (!optionalFeatureWorkAllowed(activeGatt)) return
-
-        var subscribed = false
-        var errorMessage = ""
-        if (activeGatt.setCharacteristicNotification(boatStateCharacteristic, true)) {
-            val descriptor = boatStateCharacteristic.getDescriptor(CCCD_UUID)
-            if (descriptor != null) {
-                runCatching {
-                    writeDescriptorBlocking(
-                        activeGatt,
-                        descriptor,
-                        BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                    )
-                }.onSuccess {
-                    subscribed = true
-                }.onFailure { error ->
-                    errorMessage = error.message
-                        ?: "Could not subscribe to RegattaLink Boat State"
+            var subscribed = false
+            var errorMessage = ""
+            if (
+                activeGatt.setCharacteristicNotification(
+                    boatStateCharacteristic,
+                    true
+                )
+            ) {
+                val descriptor = boatStateCharacteristic.getDescriptor(CCCD_UUID)
+                if (descriptor != null) {
+                    runCatching {
+                        writeDescriptorBlocking(
+                            activeGatt,
+                            descriptor,
+                            BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                        )
+                    }.onSuccess {
+                        subscribed = true
+                    }.onFailure { error ->
+                        errorMessage = error.message
+                            ?: "Could not subscribe to RegattaLink Boat State"
+                    }
+                } else {
+                    errorMessage =
+                        "RegattaLink Boat State CCCD is unavailable"
                 }
             } else {
-                errorMessage = "RegattaLink Boat State CCCD is unavailable"
+                errorMessage =
+                    "Could not enable RegattaLink Boat State notifications"
             }
-        } else {
-            errorMessage = "Could not enable RegattaLink Boat State notifications"
-        }
 
-        if (!optionalFeatureWorkAllowed(activeGatt)) return
+            if (!optionalFeatureWorkAllowed(activeGatt)) return
 
-        var boatState: RegattaLinkBoatState? = null
-        var boatStateReceivedAtElapsedMs: Long? = null
-        runCatching {
-            parseRegattaLinkBoatState(
-                readCharacteristicBlocking(activeGatt, boatStateCharacteristic)
-            )
-        }.onSuccess {
-            boatState = it
-            boatStateReceivedAtElapsedMs = SystemClock.elapsedRealtime()
-        }.onFailure { error ->
-            if (errorMessage.isBlank()) {
-                errorMessage = error.message ?: "Could not read RegattaLink Boat State"
-            }
-        }
-
-        if (gatt === activeGatt && connected) {
-            updateNmea {
-                it.copy(
-                    boatStateSupported = true,
-                    boatStateSubscribed = subscribed,
-                    boatStateLiveNotifications =
-                        subscribed && mtu >= REGATTALINK_BOAT_STATE_NOTIFICATION_MTU,
-                    boatState = boatState ?: it.boatState,
-                    boatStateReceivedAtElapsedMs =
-                        if (boatState != null) {
-                            boatStateReceivedAtElapsedMs
-                        } else {
-                            it.boatStateReceivedAtElapsedMs
-                        },
-                    userMessage =
-                        if (errorMessage.isBlank()) {
-                            null
-                        } else if (!subscribed) {
-                            RegattaLinkUiMessage.NMEA_NOTIFICATIONS_FAILED
-                        } else {
-                            RegattaLinkUiMessage.NMEA_BOAT_STATE_READ_FAILED
-                        },
-                    error = errorMessage
+            var boatState: RegattaLinkBoatState? = null
+            var boatStateReceivedAtElapsedMs: Long? = null
+            runCatching {
+                parseRegattaLinkBoatState(
+                    readCharacteristicBlocking(
+                        activeGatt,
+                        boatStateCharacteristic
+                    )
                 )
+            }.onSuccess {
+                boatState = it
+                boatStateReceivedAtElapsedMs =
+                    SystemClock.elapsedRealtime()
+            }.onFailure { error ->
+                if (errorMessage.isBlank()) {
+                    errorMessage = error.message
+                        ?: "Could not read RegattaLink Boat State"
+                }
+            }
+
+            if (gatt === activeGatt && connected) {
+                updateNmea {
+                    it.copy(
+                        boatStateSupported = true,
+                        boatStateSubscribed = subscribed,
+                        boatStateLiveNotifications =
+                            subscribed &&
+                                mtu >= REGATTALINK_BOAT_STATE_NOTIFICATION_MTU,
+                        boatState = boatState ?: it.boatState,
+                        boatStateReceivedAtElapsedMs =
+                            if (boatState != null) {
+                                boatStateReceivedAtElapsedMs
+                            } else {
+                                it.boatStateReceivedAtElapsedMs
+                            },
+                        userMessage =
+                            if (errorMessage.isBlank()) {
+                                it.userMessage
+                            } else if (!subscribed) {
+                                RegattaLinkUiMessage.NMEA_NOTIFICATIONS_FAILED
+                            } else {
+                                RegattaLinkUiMessage.NMEA_BOAT_STATE_READ_FAILED
+                            },
+                        error =
+                            listOf(it.error, errorMessage)
+                                .filter { message -> message.isNotBlank() }
+                                .joinToString("; ")
+                    )
+                }
+            }
+        }
+
+        if (
+            loadCharacteristic != null &&
+            optionalFeatureWorkAllowed(activeGatt)
+        ) {
+            var subscribed = false
+            var errorMessage = ""
+            if (
+                activeGatt.setCharacteristicNotification(
+                    loadCharacteristic,
+                    true
+                )
+            ) {
+                val descriptor = loadCharacteristic.getDescriptor(CCCD_UUID)
+                if (descriptor != null) {
+                    runCatching {
+                        writeDescriptorBlocking(
+                            activeGatt,
+                            descriptor,
+                            BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                        )
+                    }.onSuccess {
+                        subscribed = true
+                    }.onFailure { error ->
+                        errorMessage = error.message
+                            ?: "Could not subscribe to RegattaLink load telemetry"
+                    }
+                } else {
+                    errorMessage =
+                        "RegattaLink load telemetry CCCD is unavailable"
+                }
+            } else {
+                errorMessage =
+                    "Could not enable RegattaLink load telemetry notifications"
+            }
+
+            if (gatt === activeGatt && connected) {
+                updateNmea {
+                    it.copy(
+                        loadSupported = true,
+                        loadSubscribed = subscribed,
+                        userMessage =
+                            if (errorMessage.isBlank()) {
+                                it.userMessage
+                            } else {
+                                RegattaLinkUiMessage.NMEA_NOTIFICATIONS_FAILED
+                            },
+                        error =
+                            listOf(it.error, errorMessage)
+                                .filter { message -> message.isNotBlank() }
+                                .joinToString("; ")
+                    )
+                }
             }
         }
     }
@@ -2545,6 +2667,51 @@ internal class RegattaLinkBleClient(
                     null,
                     error.message ?: "Invalid OTA status notification"
                 )
+            }
+            return
+        }
+
+        if (characteristicUuid == TELEMETRY_LOAD_UUID) {
+            if (otaRunning.get()) return
+            runCatching {
+                loadPacketAssembler.accept(value)
+            }.onSuccess { sensors ->
+                if (sensors != null) {
+                    val receivedAtElapsedMs = SystemClock.elapsedRealtime()
+                    RegattaLinkLoadSnapshotStore.update(
+                        sensors,
+                        receivedAtElapsedMs = receivedAtElapsedMs
+                    )
+                    updateNmea {
+                        it.copy(
+                            loadSupported = true,
+                            loadSubscribed = true,
+                            loadSensors = sensors,
+                            loadReceivedAtElapsedMs =
+                                receivedAtElapsedMs.takeIf {
+                                    sensors.isNotEmpty()
+                                },
+                            userMessage = null,
+                            error = ""
+                        )
+                    }
+                    handler.removeCallbacks(loadTelemetryStaleRunnable)
+                    if (sensors.isNotEmpty()) {
+                        handler.postDelayed(
+                            loadTelemetryStaleRunnable,
+                            REGATTALINK_LOAD_TRANSPORT_STALE_MS
+                        )
+                    }
+                }
+            }.onFailure { error ->
+                updateNmea {
+                    it.copy(
+                        loadSupported = true,
+                        userMessage = RegattaLinkUiMessage.NMEA_FAILED,
+                        error = error.message
+                            ?: "Invalid RegattaLink load telemetry"
+                    )
+                }
             }
             return
         }
@@ -2900,6 +3067,87 @@ internal class RegattaLinkBleClient(
                             userMessage = RegattaLinkUiMessage.CONFIGURATION_FAILED,
                             error = error.message
                                 ?: "Could not change RegattaLink motion damping"
+                        )
+                    }
+                }
+            } finally {
+                configurationMutationRunning.set(false)
+            }
+        }
+        return true
+    }
+
+    override fun setLoadPrecisionX10(enabled: Boolean): Boolean {
+        if (otaRunning.get() || !isConnected()) return false
+
+        val activeGatt = gatt ?: return false
+        if (
+            configurationMutationBlocked(activeGatt) ||
+            !configurationMutationRunning.compareAndSet(false, true)
+        ) {
+            return false
+        }
+
+        otaExecutor.execute {
+            try {
+                if (
+                    !optionalFeatureWorkAllowed(activeGatt) ||
+                    configurationMutationBlocked(activeGatt)
+                ) {
+                    return@execute
+                }
+                updateConfiguration {
+                    it.copy(busy = true, userMessage = null, error = "")
+                }
+                try {
+                    val characteristic = activeGatt
+                        .getService(CONFIG_SERVICE_UUID)
+                        ?.getCharacteristic(LOAD_PRECISION_UUID)
+                        ?: throw RegattaLinkOtaTransportException(
+                            "RegattaLink load precision setting is unavailable",
+                            ambiguous = false
+                        )
+                    writeCharacteristicBlockingDirect(
+                        activeGatt,
+                        characteristic,
+                        byteArrayOf(if (enabled) 1 else 0)
+                    )
+                    updateConfiguration {
+                        it.copy(
+                            loadPrecisionSupported = true,
+                            loadPrecisionX10 = enabled,
+                            busy = false,
+                            userMessage = null,
+                            error = ""
+                        )
+                    }
+                } catch (error: Exception) {
+                    val reread =
+                        if (optionalFeatureWorkAllowed(activeGatt)) {
+                            runCatching {
+                                val characteristic = activeGatt
+                                    .getService(CONFIG_SERVICE_UUID)
+                                    ?.getCharacteristic(LOAD_PRECISION_UUID)
+                                    ?: return@runCatching null
+                                parseRegattaLinkLoadPrecision(
+                                    readCharacteristicBlocking(
+                                        activeGatt,
+                                        characteristic
+                                    )
+                                )
+                            }.getOrNull()
+                        } else {
+                            null
+                        }
+                    updateConfiguration {
+                        it.copy(
+                            loadPrecisionX10 =
+                                reread ?: it.loadPrecisionX10,
+                            busy = false,
+                            userMessage =
+                                RegattaLinkUiMessage.CONFIGURATION_FAILED,
+                            error = error.message
+                                ?: "Could not change RegattaLink load precision"
                         )
                     }
                 }
@@ -4580,6 +4828,9 @@ internal class RegattaLinkBleClient(
     }
 
     private fun clearNmea() {
+        handler.removeCallbacks(loadTelemetryStaleRunnable)
+        loadPacketAssembler.reset()
+        RegattaLinkLoadSnapshotStore.clear()
         emitNmea(RegattaLinkNmeaState())
     }
 
@@ -4659,9 +4910,14 @@ internal class RegattaLinkBleClient(
         if (lastNmeaState.pausedForOta != paused) {
             updateNmea {
                 if (paused) {
+                    handler.removeCallbacks(loadTelemetryStaleRunnable)
+                    loadPacketAssembler.reset()
+                    RegattaLinkLoadSnapshotStore.clear()
                     it.copy(
                         boatState = null,
                         boatStateReceivedAtElapsedMs = null,
+                        loadSensors = emptyList(),
+                        loadReceivedAtElapsedMs = null,
                         pausedForOta = true
                     )
                 } else {

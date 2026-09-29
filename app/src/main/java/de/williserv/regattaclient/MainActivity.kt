@@ -780,6 +780,15 @@ class MainActivity : ComponentActivity() {
                             onSetMotionDamping = { seconds ->
                                 regattaLinkManager.setMotionDamping(seconds)
                             },
+                            onSetLoadPrecisionX10 = { enabled ->
+                                regattaLinkManager.setLoadPrecisionX10(enabled)
+                            },
+                            onSetLoadSensorAlias = { identityKey, alias ->
+                                regattaLinkManager.setLoadSensorAlias(
+                                    identityKey,
+                                    alias
+                                )
+                            },
                             onDrainDiagnosticLog = {
                                 regattaLinkManager.drainDiagnosticLog()
                             },

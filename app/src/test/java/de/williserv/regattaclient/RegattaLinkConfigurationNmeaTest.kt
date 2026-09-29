@@ -104,6 +104,17 @@ class RegattaLinkConfigurationNmeaTest {
     }
 
     @Test
+    fun parsesLoadPrecisionStrictly() {
+        assertFalse(parseRegattaLinkLoadPrecision(byteArrayOf(0)))
+        assertTrue(parseRegattaLinkLoadPrecision(byteArrayOf(1)))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsInvalidLoadPrecision() {
+        parseRegattaLinkLoadPrecision(byteArrayOf(2))
+    }
+
+    @Test
     fun parsesMotionDampingStrictly() {
         assertEquals(1, parseRegattaLinkMotionDamping(byteArrayOf(1)))
         assertEquals(3, parseRegattaLinkMotionDamping(byteArrayOf(3)))

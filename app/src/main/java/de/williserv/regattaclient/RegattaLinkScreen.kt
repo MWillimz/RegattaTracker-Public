@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -160,6 +161,8 @@ fun RegattaLinkScreen(
     onChangeName: (String) -> Unit,
     onSetLedBrightness: (Int) -> Unit,
     onSetMotionDamping: (Int) -> Unit,
+    onSetLoadPrecisionX10: (Boolean) -> Unit = {},
+    onSetLoadSensorAlias: (String, String) -> Unit = { _, _ -> },
     onDrainDiagnosticLog: () -> Unit,
     onDeviceControl: (RegattaLinkDeviceControlOpcode, Int) -> Unit,
     onRefreshPgnInventory: () -> Unit,
@@ -305,9 +308,13 @@ fun RegattaLinkScreen(
         RegattaLinkSetupDestination.NMEA -> {
             RegattaLinkNmeaSetupSheet(
                 nmeaState = nmeaState,
+                configurationState = configurationState,
                 connected = connected,
+                configEnabled = configEnabled,
                 otaActive = otaState.isActive,
                 rawCaptureActive = rawCaptureState.isActive,
+                onSetLoadPrecisionX10 = onSetLoadPrecisionX10,
+                onSetLoadSensorAlias = onSetLoadSensorAlias,
                 onRefreshPgnInventory = onRefreshPgnInventory,
                 onDismiss = { activeSetupDestination = null }
             )
@@ -760,16 +767,23 @@ private fun rememberRawCaptureRemainingSeconds(
 @Composable
 private fun RegattaLinkNmeaSetupSheet(
     nmeaState: RegattaLinkNmeaState,
+    configurationState: RegattaLinkConfigurationState,
     connected: Boolean,
+    configEnabled: Boolean,
     otaActive: Boolean,
     rawCaptureActive: Boolean,
+    onSetLoadPrecisionX10: (Boolean) -> Unit,
+    onSetLoadSensorAlias: (String, String) -> Unit,
     onRefreshPgnInventory: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val nmeaAvailable =
         connected &&
-            (nmeaState.boatStateSupported ||
-                nmeaState.pgnInventorySupported)
+            (
+                nmeaState.boatStateSupported ||
+                    nmeaState.pgnInventorySupported ||
+                    nmeaState.loadSupported
+                )
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -801,6 +815,153 @@ private fun RegattaLinkNmeaSetupSheet(
                     modifier = Modifier.padding(top = 8.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+
+            if (
+                connected &&
+                configurationState.loadPrecisionSupported
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 18.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(
+                                R.string.regattalink_load_precision
+                            ),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = stringResource(
+                                if (configurationState.loadPrecisionX10 == true) {
+                                    R.string.regattalink_load_precision_x10
+                                } else {
+                                    R.string.regattalink_load_precision_x1
+                                }
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked =
+                            configurationState.loadPrecisionX10 == true,
+                        onCheckedChange = onSetLoadPrecisionX10,
+                        enabled = configEnabled
+                    )
+                }
+            }
+
+            if (connected && nmeaState.loadSupported) {
+                Text(
+                    text = stringResource(
+                        R.string.regattalink_load_sensors
+                    ),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 18.dp)
+                )
+
+                if (!nmeaState.loadSubscribed) {
+                    Text(
+                        text = stringResource(
+                            R.string.regattalink_load_not_subscribed
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                } else if (nmeaState.loadSensors.isEmpty()) {
+                    Text(
+                        text = stringResource(
+                            R.string.regattalink_load_waiting
+                        ),
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+
+                nmeaState.loadSensors.forEach { sensor ->
+                    var aliasDraft by remember(
+                        sensor.identityKey,
+                        sensor.alias
+                    ) {
+                        mutableStateOf(sensor.alias.orEmpty())
+                    }
+
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            telemetryValue(
+                                label = sensor.label,
+                                value = "%.1f kg".format(
+                                    Locale.ROOT,
+                                    sensor.loadKg
+                                )
+                            )
+                            Text(
+                                text = sensor.measurementKey,
+                                color =
+                                    MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 12.sp
+                            )
+
+                            if (sensor.stableIdentity) {
+                                OutlinedTextField(
+                                    value = aliasDraft,
+                                    onValueChange = { aliasDraft = it },
+                                    singleLine = true,
+                                    enabled = configEnabled,
+                                    label = {
+                                        Text(
+                                            stringResource(
+                                                R.string.regattalink_load_alias
+                                            )
+                                        )
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 8.dp)
+                                )
+                                TextButton(
+                                    onClick = {
+                                        onSetLoadSensorAlias(
+                                            sensor.identityKey,
+                                            aliasDraft
+                                        )
+                                    },
+                                    enabled =
+                                        configEnabled &&
+                                            aliasDraft
+                                                .toByteArray(Charsets.UTF_8)
+                                                .size <=
+                                                REGATTALINK_LOAD_MAX_ALIAS_BYTES,
+                                    modifier = Modifier.align(Alignment.End)
+                                ) {
+                                    Text(
+                                        stringResource(
+                                            R.string.regattalink_save
+                                        )
+                                    )
+                                }
+                            } else {
+                                Text(
+                                    text = stringResource(
+                                        R.string.regattalink_load_identity_temporary
+                                    ),
+                                    color =
+                                        MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(top = 6.dp)
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
             if (connected && nmeaState.boatStateSupported) {
@@ -874,7 +1035,7 @@ private fun RegattaLinkNmeaSetupSheet(
                     .sortedBy { it.pgn }
                     .forEach { entry ->
                         telemetryValue(
-                            label = "PGN ${entry.pgn}",
+                            label = "PGN " + entry.pgn,
                             value = stringResource(
                                 R.string.regattalink_last_seen_ms,
                                 entry.lastSeenMs
