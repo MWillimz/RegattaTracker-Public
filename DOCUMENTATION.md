@@ -80,10 +80,9 @@ Boat setup fields are edited as a screen-local draft. The draft is persisted onl
 Leaving the Boat Data screen without confirming intentionally discards all unconfirmed edits. This includes:
 
 - navigating back to Home
-- opening RegattaLink and returning
 - any other navigation that removes the Boat Data screen from composition
 
-This is deliberate UX behavior, not a data-loss bug: **Confirm Setup is the commit action; leaving the screen is discard.** RegattaLink must not implicitly save or preserve an unconfirmed boat-data draft.
+This is deliberate UX behavior, not a data-loss bug: **Confirm Setup is the commit action; leaving the screen is discard.** Navigation away must not implicitly save or preserve an unconfirmed boat-data draft.
 
 Decision recorded in issue #221.
 
