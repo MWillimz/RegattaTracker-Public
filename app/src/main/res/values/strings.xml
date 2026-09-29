@@ -707,4 +707,14 @@
     <string name="regattalink_nmea_restart_required">Restart RegattaLink to apply the NMEA2000 transmission changes.</string>
     <string name="regattalink_restart">Restart RegattaLink</string>
     <string name="regattalink_restarting">Restarting RegattaLink…</string>
+    <string name="regattalink_nmea_tx_selected_on_runtime_unknown">Selected on. Applied state is unavailable on this RegattaLink firmware.</string>
+    <string name="regattalink_nmea_tx_selected_off_runtime_unknown">Selected off. Applied state is unavailable on this RegattaLink firmware.</string>
+    <string name="regattalink_nmea_tx_enable_pending">Enabled setting saved. Restart RegattaLink to apply it.</string>
+    <string name="regattalink_nmea_tx_disable_pending">Disabled setting saved. RegattaLink may still transmit until it restarts.</string>
+    <string name="regattalink_nmea_tx_selected_but_inactive">Selected for this boot, but transmission is inactive (fail-closed).</string>
+    <string name="regattalink_nmea_attitude_selected_on_runtime_unknown">Heel / Trim selected. Applied state is unavailable on this RegattaLink firmware.</string>
+    <string name="regattalink_nmea_attitude_selected_off_runtime_unknown">Heel / Trim not selected. Applied state is unavailable on this RegattaLink firmware.</string>
+    <string name="regattalink_nmea_attitude_enable_pending">Heel / Trim setting saved. Restart RegattaLink to enable PGN 127257.</string>
+    <string name="regattalink_nmea_attitude_disable_pending">Heel / Trim disabled setting saved. PGN 127257 may remain enabled until restart.</string>
+    <string name="regattalink_nmea_attitude_tx_inactive">Selected for this boot, but PGN 127257 output is not runtime-enabled.</string>
 </resources>
