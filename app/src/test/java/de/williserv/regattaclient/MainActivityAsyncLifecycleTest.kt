@@ -36,10 +36,10 @@ class MainActivityAsyncLifecycleTest {
         val activity = controller.get()
         val rowCount = getField<MutableState<String>>(activity, "rowCountText")
         val pending = getField<MutableState<Long>>(activity, "pendingUploadCount")
-        rowCount.value = "sentinel"
-        pending.value = 7L
 
         controller.destroy()
+        rowCount.value = "sentinel"
+        pending.value = 7L
 
         activity.javaClass.getDeclaredMethod(
             "applyStorageCounts",
