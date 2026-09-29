@@ -41,7 +41,13 @@ class GateCourseProgressRegressionTest {
 
             invokeMarkAndFinishState(service, localPoint(0.0, -20.0), 1_000L)
 
-            setField(service, "coursePositions", listOf(gate(y = 30.0)))
+            invokeApplyRaceEventSnapshot(service, snapshotWithGate(y = 30.0))
+            assertEquals(0, getField<Int>(service, "passedMarks"))
+            assertEquals(
+                localPoint(0.0, -20.0),
+                getField<GeoPoint?>(service, "previousMarkDetectionPosition")
+            )
+
             invokeMarkAndFinishState(service, localPoint(0.0, 20.0), 2_000L)
 
             assertEquals(0, getField<Int>(service, "passedMarks"))
@@ -52,6 +58,59 @@ class GateCourseProgressRegressionTest {
 
             invokeMarkAndFinishState(service, localPoint(0.0, 40.0), 3_000L)
             assertEquals(1, getField<Int>(service, "passedMarks"))
+        }
+    }
+
+    @Test
+    fun stationarySampleAfterGeometryUpdateDoesNotCreatePassage() {
+        withService { service ->
+            configureRacing(service, listOf(gate(y = 0.0)))
+            val stationaryPoint = localPoint(0.0, -20.0)
+
+            invokeMarkAndFinishState(service, stationaryPoint, 1_000L)
+            invokeApplyRaceEventSnapshot(service, snapshotWithGate(y = -30.0))
+
+            assertEquals(0, getField<Int>(service, "passedMarks"))
+            invokeMarkAndFinishState(service, stationaryPoint, 2_000L)
+            assertEquals(0, getField<Int>(service, "passedMarks"))
+        }
+    }
+
+    @Test
+    fun markAfterGateUsesGateMidpointAsPreviousAnchor() {
+        withService { service ->
+            val courseGate = gate(y = 0.0)
+            val markPoint = localPoint(0.0, 100.0)
+            val finishLine = StartLine(
+                ref = localPoint(-50.0, 200.0),
+                mark = localPoint(50.0, 200.0)
+            )
+            val mark = CoursePosition(
+                order = 2,
+                name = "Windward",
+                kind = CoursePositionKind.MARK,
+                omitWhenShortened = false,
+                markPoint = markPoint,
+                radiusM = 10.0
+            )
+
+            configureRacing(service, listOf(courseGate, mark))
+            setField(service, "passedMarks", 1)
+            setField(service, "finishLine", finishLine)
+            setField(service, "previousMarkDetectionPosition", localPoint(0.0, 80.0))
+
+            invokeMarkAndFinishState(service, localPoint(0.0, 95.0), 1_000L)
+
+            val progress = getField<MarkDetectionProgress?>(service, "markDetectionProgress")
+            assertNotNull(progress)
+
+            val expected = buildMarkDetectionGeometry(
+                previousAnchor = requireNotNull(courseGate.referencePoint()),
+                mark = markPoint,
+                nextAnchor = lineMidpoint(finishLine),
+                radiusM = 10.0
+            )
+            assertEquals(expected, progress?.geometry)
         }
     }
 
@@ -174,6 +233,45 @@ class GateCourseProgressRegressionTest {
         gateDirection = GateDirection.POSITIVE,
         gateOffsetM = offsetM
     )
+
+    private fun snapshotWithGate(y: Double): RaceEventSnapshot {
+        val ref = localPoint(-50.0, y)
+        val mark = localPoint(50.0, y)
+        return RaceEventSnapshot(
+            resolvedEventName = "Gate Race",
+            status = "racing",
+            startRaw = "2026-09-29T10:00:00Z",
+            stopRaw = "2026-09-29T20:00:00Z",
+            raceInfo = "",
+            courseJson = """
+                {
+                  "marks": [{
+                    "order": 1,
+                    "type": "gate",
+                    "name": "Gate",
+                    "ref": {"lat": ${ref.lat}, "lon": ${ref.lon}},
+                    "mark": {"lat": ${mark.lat}, "lon": ${mark.lon}},
+                    "direction": "positive",
+                    "offset_m": 0
+                  }]
+                }
+            """.trimIndent(),
+            courseShortened = false
+        )
+    }
+
+    private fun invokeApplyRaceEventSnapshot(
+        service: RegattaTrackingService,
+        snapshot: RaceEventSnapshot
+    ) {
+        service.javaClass.getDeclaredMethod(
+            "applyRaceEventSnapshot",
+            RaceEventSnapshot::class.java
+        ).apply {
+            isAccessible = true
+            invoke(service, snapshot)
+        }
+    }
 
     private fun invokeMarkAndFinishState(
         service: RegattaTrackingService,
