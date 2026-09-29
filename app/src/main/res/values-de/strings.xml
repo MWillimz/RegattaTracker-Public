@@ -653,4 +653,15 @@
     <string name="regattalink_load_not_subscribed">Benachrichtigungen der Lastsensoren sind nicht verfügbar.</string>
     <string name="regattalink_load_alias">Optionaler Name</string>
     <string name="regattalink_load_identity_temporary">Temporäre NMEA-Identität; Benennung ist verfügbar, sobald der stabile NMEA2000-NAME bekannt ist.</string>
+    <string name="regattalink_nmea_tx_title">NMEA2000-Übertragung</string>
+    <string name="regattalink_nmea_tx_receive_only">Nur Empfang. RegattaLink sendet nicht auf NMEA2000.</string>
+    <string name="regattalink_nmea_tx_enabled">Übertragung erlaubt. Standard-NMEA2000-Verwaltungsverkehr kann gesendet werden.</string>
+    <string name="regattalink_nmea_tx_state_unavailable">Status konnte nicht von RegattaLink gelesen werden.</string>
+    <string name="regattalink_nmea_attitude_tx">Krängung / Trimm</string>
+    <string name="regattalink_nmea_attitude_tx_enabled">Lokale RegattaLink-IMU Pitch/Roll · PGN 127257 · 5 Hz</string>
+    <string name="regattalink_nmea_attitude_tx_disabled">PGN-127257-Ausgabe deaktiviert.</string>
+    <string name="regattalink_nmea_attitude_tx_master_off">Ausgewählt, aber solange die NMEA2000-Übertragung aus ist, ist keine Anwendungsübertragung aktiv.</string>
+    <string name="regattalink_nmea_restart_required">RegattaLink neu starten, um die NMEA2000-Änderungen anzuwenden.</string>
+    <string name="regattalink_restart">RegattaLink neu starten</string>
+    <string name="regattalink_restarting">RegattaLink wird neu gestartet…</string>
 </resources>
