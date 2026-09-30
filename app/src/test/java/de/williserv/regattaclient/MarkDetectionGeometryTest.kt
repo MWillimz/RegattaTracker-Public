@@ -67,6 +67,44 @@ class MarkDetectionGeometryTest {
     }
 
     @Test
+    fun markProgressSurvivesResolvedGeometryChange() {
+        val initialGeometry = straightGeometry()
+
+        val afterEntry = updateMarkDetectionProgress(
+            previousPosition = localPoint(-80.0, 0.0),
+            currentPosition = localPoint(-20.0, 0.0),
+            geometry = initialGeometry,
+            previousProgress = null
+        )
+
+        assertTrue(afterEntry.entryCrossed)
+        assertFalse(afterEntry.exitCrossed)
+
+        val movedMark = localPoint(10.0, 0.0)
+        val movedGeometry = requireNotNull(
+            buildMarkDetectionGeometry(
+                previousAnchor = localPoint(-200.0, 0.0),
+                mark = movedMark,
+                nextAnchor = localPoint(200.0, 0.0),
+                radiusM = 50.0
+            )
+        )
+        assertFalse(initialGeometry == movedGeometry)
+
+        val afterExit = updateMarkDetectionProgress(
+            previousPosition = localPoint(-20.0, 0.0),
+            currentPosition = localPoint(80.0, 0.0),
+            geometry = movedGeometry,
+            previousProgress = afterEntry
+        )
+
+        assertEquals(movedGeometry, afterExit.geometry)
+        assertTrue(afterExit.entryCrossed)
+        assertTrue(afterExit.exitCrossed)
+        assertTrue(afterExit.completed)
+    }
+
+    @Test
     fun crossingInWrongDirectionDoesNotCount() {
         val geometry = straightGeometry()
 
