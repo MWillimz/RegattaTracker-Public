@@ -26,7 +26,7 @@
         <li>boat information such as boat name, skipper/captain name, hull color, sail number, boat type and yardstick;</li>
         <li>race configuration such as server address, event identifier and the credential/shared secret required by that server;</li>
         <li>precise GPS position, timestamp, GPS accuracy, course over ground (COG) and speed over ground (SOG);</li>
-        <li>accelerometer and gyroscope measurements used for tracking and later analysis;</li>
+        <li>detailed RegattaLink / Boat Data measurements used locally for replay, diagnostics and later analysis;</li>
         <li>race state such as start/finish state, OCS state and course progress;</li>
         <li>race and course information downloaded from the configured server.</li>
       </ul>
@@ -35,7 +35,7 @@
       <p>The data is processed to provide the app's core functions, including regatta tracking, start-line and OCS detection, course progress, finish detection, local status display, CSV export and troubleshooting/analysis.</p>
 
       <h2>4. Transmission to a configured regatta server</h2>
-      <p>When the user enters a race and race tracking is active, the app can transmit tracking samples to the configured regatta server. Depending on the server/API version, these samples can include the timestamp, boat and skipper information, sail number, boat type, yardstick, precise latitude and longitude, GPS accuracy, COG, SOG, accelerometer data and gyroscope data. The configured event identifier and server credential are used to address and authorize the requests.</p>
+      <p>When the user enters a race and race tracking is active, the app can transmit tracking samples to the configured regatta server. Depending on the server/API version, these samples can include the timestamp, boat and skipper information, sail number, boat type, yardstick, precise latitude and longitude, GPS accuracy, COG, SOG, battery status and tracking-profile metadata. Detailed RegattaLink / Boat Data measurements stored for local replay, diagnostics and analysis are not included in the automatic race-server upload. The configured event identifier and server credential are used to address and authorize the requests.</p>
       <p>The app also requests race, course and status information from the configured server.</p>
       <p>The app developer does not receive this data merely because the app is installed. Data is sent to the server configured for the relevant race. If that server is operated by another club, organizer or provider, its operator determines the server-side handling of the transmitted data.</p>
 
@@ -79,7 +79,7 @@
         <li>Bootsdaten wie Bootsname, Name des Skippers, Rumpffarbe, Segelnummer, Bootstyp und Yardstick;</li>
         <li>Regattakonfiguration wie Serveradresse, Event-Kennung und das für den Server benötigte Zugangstoken/Shared Secret;</li>
         <li>präzise GPS-Position, Zeitstempel, GPS-Genauigkeit, Kurs über Grund (COG) und Geschwindigkeit über Grund (SOG);</li>
-        <li>Beschleunigungs- und Gyroskopdaten für Tracking und spätere Auswertung;</li>
+        <li>detaillierte RegattaLink-/Boat-Data-Messwerte für lokale Wiedergabe, Diagnose und spätere Auswertung;</li>
         <li>lokalen Regattastatus wie Start-/Zielstatus, OCS-Status und Bahnfortschritt;</li>
         <li>vom konfigurierten Server geladene Regatta- und Bahndaten.</li>
       </ul>
@@ -88,7 +88,7 @@
       <p lang="de">Die Daten werden zur Bereitstellung der Kernfunktionen der App verarbeitet, insbesondere für Regatta-Tracking, Startlinien- und OCS-Erkennung, Bahnfortschritt, Zielerkennung, lokale Statusanzeige, CSV-Export sowie Fehleranalyse und Auswertung.</p>
 
       <h2 lang="de">4. Übertragung an einen konfigurierten Regatta-Server</h2>
-      <p lang="de">Wenn der Nutzer einer Regatta beitritt und das Regatta-Tracking aktiv ist, kann die App Tracking-Samples an den konfigurierten Regatta-Server übertragen. Abhängig von Server und API-Version können diese Daten Zeitstempel, Boots- und Skipperdaten, Segelnummer, Bootstyp, Yardstick, präzise Längen- und Breitengrade, GPS-Genauigkeit, COG, SOG sowie Beschleunigungs- und Gyroskopdaten enthalten. Event-Kennung und Server-Zugangsdaten werden zur Zuordnung und Autorisierung der Anfragen verwendet.</p>
+      <p lang="de">Wenn der Nutzer einer Regatta beitritt und das Regatta-Tracking aktiv ist, kann die App Tracking-Samples an den konfigurierten Regatta-Server übertragen. Abhängig von Server und API-Version können diese Daten Zeitstempel, Boots- und Skipperdaten, Segelnummer, Bootstyp, Yardstick, präzise Längen- und Breitengrade, GPS-Genauigkeit, COG, SOG, Batteriestatus sowie Metadaten zum Tracking-Profil enthalten. Detaillierte RegattaLink-/Boat-Data-Messwerte, die lokal für Wiedergabe, Diagnose und Analyse gespeichert werden, sind nicht Bestandteil der automatischen Übertragung an den Regatta-Server. Event-Kennung und Server-Zugangsdaten werden zur Zuordnung und Autorisierung der Anfragen verwendet.</p>
       <p lang="de">Die App ruft außerdem Regatta-, Bahn- und Statusdaten vom konfigurierten Server ab.</p>
       <p lang="de">Der App-Entwickler erhält diese Daten nicht allein dadurch, dass die App installiert wird. Die Übertragung erfolgt an den für die jeweilige Regatta konfigurierten Server. Wird dieser Server von einem anderen Verein, Veranstalter oder Anbieter betrieben, bestimmt dessen Betreiber die serverseitige Verarbeitung der übertragenen Daten.</p>
 
