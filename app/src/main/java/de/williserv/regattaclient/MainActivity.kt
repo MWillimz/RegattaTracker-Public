@@ -3318,7 +3318,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun leaveRace(preserveLocalRaceStatus: Boolean = false) {
+    private fun leaveRace() {
+        leaveRace(preserveLocalRaceStatus = false)
+    }
+
+    private fun leaveRace(preserveLocalRaceStatus: Boolean) {
 
 
         retirementStatusText.value = ""
