@@ -72,7 +72,7 @@ class TelemetryBatchUploadTest {
     }
 
     @Test
-    fun batchPayload_usesSamePersistedMeasurementsAsSingleUpload() {
+    fun batchPayload_doesNotUploadPersistedMeasurements() {
         val measurements =
             """{"regattalink.summary.motion_intensity":{"value":74,"group":"regattalink"}}"""
         val sample = sample(
@@ -86,10 +86,8 @@ class TelemetryBatchUploadTest {
             .getJSONArray("samples")
             .getJSONObject(0)
 
-        assertEquals(
-            single.getJSONObject("measurements").toString(),
-            batch.getJSONObject("measurements").toString()
-        )
+        assertFalse(single.has("measurements"))
+        assertFalse(batch.has("measurements"))
     }
 
     @Test
