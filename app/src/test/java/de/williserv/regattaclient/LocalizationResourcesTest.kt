@@ -224,6 +224,29 @@ class LocalizationResourcesTest {
     }
 
     @Test
+    fun regattaLinkUserFacingStrings_useBoatDataTerminology() {
+        val resRoot = sequenceOf(
+            File("src/main/res"),
+            File("app/src/main/res")
+        ).firstOrNull { File(it, "values/strings.xml").isFile }
+
+        assertTrue("Could not locate Android string resources", resRoot != null)
+        val root = requireNotNull(resRoot)
+
+        listOf("values", "values-de", "values-fr", "values-it", "values-es").forEach { localeDir ->
+            val strings = readStringResources(File(root, "$localeDir/strings.xml"))
+            strings
+                .filterKeys { it.startsWith("regattalink_") }
+                .forEach { (key, value) ->
+                    assertFalse(
+                        "Legacy protocol branding leaked into $key in $localeDir: '$value'",
+                        LEGACY_BOAT_DATA_BRANDING_REGEX.containsMatchIn(value)
+                    )
+                }
+        }
+    }
+
+    @Test
     fun localizedResourceFiles_matchTranslatableDefaultKeysAndPlaceholders() {
         val resRoot = sequenceOf(
             File("src/main/res"),
@@ -286,5 +309,7 @@ class LocalizationResourcesTest {
     companion object {
         private val FORMAT_PLACEHOLDER_REGEX =
             Regex("%(?:\\d+\\$)?[-#+ 0,(]*\\d*(?:\\.\\d+)?[a-zA-Z%]")
+        private val LEGACY_BOAT_DATA_BRANDING_REGEX =
+            Regex("\\bNMEA(?:\\s*2000)?\\b", RegexOption.IGNORE_CASE)
     }
 }
