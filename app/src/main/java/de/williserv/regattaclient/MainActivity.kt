@@ -54,6 +54,7 @@ enum class Screen {
     BOAT_DATA,
     REGATTALINK,
     RACE,
+    SERVER_INFORMATION,
     RACE_LEGAL,
     COURSE,
     MAP,
@@ -403,6 +404,7 @@ class MainActivity : ComponentActivity() {
             }
             Screen.SESSION_REPLAY,
             Screen.SESSION_ANALYSIS -> Screen.SESSION_DETAIL
+            Screen.SERVER_INFORMATION,
             Screen.RACE_LEGAL,
             Screen.QR_SCANNER -> Screen.RACE
             Screen.MAP -> if (selectedCourseMapView.value == null) {
@@ -932,6 +934,9 @@ class MainActivity : ComponentActivity() {
                                     fetchRaceLegalText()
                                 }
                             },
+                            onServerInformation = {
+                                currentScreen.value = Screen.SERVER_INFORMATION
+                            },
                             onScanQr = {
                                 currentScreen.value = Screen.QR_SCANNER
                             },
@@ -952,6 +957,14 @@ class MainActivity : ComponentActivity() {
                                 )
                             },
                             onBack = ::navigateBack
+                        )
+
+                        Screen.SERVER_INFORMATION -> ServerInformationScreen(
+                            server = raceServer.value,
+                            event = raceEvent.value,
+                            secret = raceSecret.value,
+                            onClose = ::navigateBack,
+                            modifier = Modifier.padding(innerPadding)
                         )
 
                         Screen.COURSE -> CourseScreen(
