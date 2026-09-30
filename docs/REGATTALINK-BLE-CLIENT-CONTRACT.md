@@ -17,7 +17,7 @@ The current BLE contract contains four RegattaLink service families. Firmware co
 | telemetry | 0020 | implemented with legacy IMU 0021-0023, normalized Boat State 0024, Motion 1 Hz 0025 and normalized Load Telemetry 0026 | normal IMU flow consumes only 0025; 0024 remains Boat State; 0026 is independently subscribed when discovered |
 | post-core extensions | 0030 | implemented; 0007 Diagnostic Log, 0008 Device Control, schema-13 Boat Data TX master 000B, schema-14 Heel/Trim selector 000C and schema-15 runtime TX status 000D live here | 0007 bounded drain; 0008 Set Upright, trim, Factory Reset and Restart lifecycle; 000B/000C selected values plus read-only 000D applied/runtime status consumed when present |
 
-The firmware contract currently defines seven Boat Data-facing BLE surfaces relevant to clients:
+The firmware contract currently defines seven Boat Data BLE surfaces relevant to clients:
 
 - 0004 exposes a compact inventory of PGNs observed on the live Boat Data bus;
 - 0005 exposes an optional raw received-CAN FIFO for diagnostics;
@@ -849,7 +849,7 @@ Properties:
 - encrypted/bonded access required;
 - optional for compatibility with older firmware.
 
-Presence is determined by GATT discovery and is independent of Boat Data bring-up success. With no currently usable Boat Data data, firmware still returns a valid v1 record with a zero validity bitmap. Do not infer 0024 from Device Info capability bit 3; that bit retains its legacy IMU-telemetry meaning.
+Presence is determined by GATT discovery and is independent of Boat Data bring-up success. With no currently usable Boat Data input, firmware still returns a valid v1 record with a zero validity bitmap. Do not infer 0024 from Device Info capability bit 3; that bit retains its legacy IMU-telemetry meaning.
 
 RegattaLink owns Boat Data source selection and freshness for this normalized state:
 
@@ -928,7 +928,7 @@ Validity bitmap:
 | 17 | wind speed |
 | 18 | wind angle |
 
-A cleared validity bit means absent regardless of the numeric bytes. protocol NA/error values must not be interpreted as numeric zero. Heading/COG/wind angles are normalized by firmware before encoding.
+A cleared validity bit means absent regardless of the numeric bytes. Protocol NA/error values must not be interpreted as numeric zero. Heading/COG/wind angles are normalized by firmware before encoding.
 
 The 32-bit depth fields are intentional and avoid an artificial 655.35 m limit. If an engineering value cannot be represented by its wire field, firmware clears the corresponding validity bit rather than silently saturating it.
 
