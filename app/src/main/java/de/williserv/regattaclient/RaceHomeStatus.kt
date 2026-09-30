@@ -8,6 +8,7 @@ internal enum class RaceHomeStatus {
     REGISTERED_NOT_ENTERED,
     READY,
     RACING,
+    FINISHED,
     SERVER_STATUS
 }
 
@@ -18,7 +19,8 @@ internal fun resolveRaceHomeStatus(
     raceConfigured: Boolean,
     inRace: Boolean,
     raceRegistered: Boolean,
-    millisToStart: Long?
+    millisToStart: Long?,
+    localRaceFinished: Boolean = false
 ): RaceHomeStatus {
     if (!raceDataReady) {
         return if (
@@ -35,6 +37,10 @@ internal fun resolveRaceHomeStatus(
     val status = raceStatusCode.trim().lowercase()
     if (status in setOf("finished", "postponed", "cancelled")) {
         return RaceHomeStatus.SERVER_STATUS
+    }
+
+    if (localRaceFinished) {
+        return RaceHomeStatus.FINISHED
     }
 
     val raceRunning = status == "racing" || status == "started"
