@@ -2825,8 +2825,8 @@ class MainActivity : ComponentActivity() {
         }
 
         if (currentRaceStatus.equals("finished", ignoreCase = true)) {
-            startPanelText.value = getString(R.string.finished)
-            startPanelMode.value = "finished"
+            startPanelText.value = getString(R.string.finalised)
+            startPanelMode.value = "finalised"
             return
         }
 
