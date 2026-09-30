@@ -592,6 +592,7 @@ class MainActivity : ComponentActivity() {
                             retirementStatusText = retirementStatusText.value,
                             raceDataReady = raceDataReady.value,
                             raceRegistered = raceRegistered.value,
+                            localRaceFinished = localRaceFinished,
                             dtlText = dtlText.value,
                             ttlText = ttlText.value,
                             ocsText = ocsText.value,
@@ -1078,7 +1079,7 @@ class MainActivity : ComponentActivity() {
                     FinishDetectedDialog(
                         onStopTracking = {
                             showFinishDetectedDialog.value = false
-                            leaveRace()
+                            leaveRace(preserveLocalRaceStatus = true)
                         },
                         onContinue = {
                             showFinishDetectedDialog.value = false
@@ -2824,14 +2825,20 @@ class MainActivity : ComponentActivity() {
         }
 
         if (currentRaceStatus.equals("finished", ignoreCase = true)) {
-            startPanelText.value = getString(R.string.finished)
-            startPanelMode.value = "finished"
+            startPanelText.value = getString(R.string.finalised)
+            startPanelMode.value = "finalised"
             return
         }
 
         if (currentRaceStatus.equals("postponed", ignoreCase = true)) {
             startPanelText.value = getString(R.string.postponed)
             startPanelMode.value = "postponed"
+            return
+        }
+
+        if (localRaceFinished) {
+            startPanelText.value = getString(R.string.finished)
+            startPanelMode.value = "finished"
             return
         }
 
@@ -3312,6 +3319,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun leaveRace() {
+        leaveRace(preserveLocalRaceStatus = false)
+    }
+
+    private fun leaveRace(preserveLocalRaceStatus: Boolean) {
 
 
         retirementStatusText.value = ""
@@ -3322,7 +3333,9 @@ class MainActivity : ComponentActivity() {
         statusText.value = getString(R.string.race_left)
         serviceStatusText.value = getString(R.string.service_stopped)
 
-        stopRegattaForegroundService()
+        stopRegattaForegroundService(
+            preserveLocalRaceStatus = preserveLocalRaceStatus
+        )
 
         currentScreen.value = Screen.HOME
     }
@@ -3374,9 +3387,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun stopRegattaForegroundService() {
+    private fun stopRegattaForegroundService(
+        preserveLocalRaceStatus: Boolean = false
+    ) {
         val intent = Intent(this, RegattaTrackingService::class.java).apply {
             action = RegattaTrackingService.ACTION_STOP
+            putExtra(
+                RegattaTrackingService.EXTRA_PRESERVE_LOCAL_RACE_STATUS,
+                preserveLocalRaceStatus
+            )
         }
 
         startService(intent)

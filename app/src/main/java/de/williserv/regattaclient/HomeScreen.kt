@@ -119,6 +119,7 @@ fun HomeScreen(
     retirementStatusText: String,
     raceDataReady: Boolean,
     raceRegistered: Boolean,
+    localRaceFinished: Boolean,
     dtlText: String,
     ttlText: String,
     ocsText: String,
@@ -202,14 +203,16 @@ fun HomeScreen(
         raceConfigured = raceEvent.isNotBlank(),
         inRace = inRace,
         raceRegistered = raceRegistered,
-        millisToStart = millisToStart
+        millisToStart = millisToStart,
+        localRaceFinished = localRaceFinished
     )
     val raceColor = when (raceHomeStatus) {
         RaceHomeStatus.CHECKING,
         RaceHomeStatus.REGISTERED_NOT_ENTERED -> MaterialTheme.colorScheme.outline
         RaceHomeStatus.NOT_ENTERED -> RegattaRed
         RaceHomeStatus.READY,
-        RaceHomeStatus.RACING -> RegattaGreen
+        RaceHomeStatus.RACING,
+        RaceHomeStatus.FINISHED -> RegattaGreen
         RaceHomeStatus.SERVER_STATUS -> raceStatusColor(raceStatusCode, inRace, raceDataReady)
     }
     val startPrefix = stringResource(R.string.start_prefix)
@@ -300,6 +303,7 @@ fun HomeScreen(
                     stringResource(R.string.status_registered_not_entered)
                 RaceHomeStatus.READY -> stringResource(R.string.status_ready)
                 RaceHomeStatus.RACING -> stringResource(R.string.status_racing)
+                RaceHomeStatus.FINISHED -> stringResource(R.string.status_finished)
                 RaceHomeStatus.SERVER_STATUS -> shortRaceStatusText(
                     raceStatusCode = raceStatusCode,
                     raceStatusDisplayText = raceStatusDisplayText,
@@ -314,7 +318,7 @@ fun HomeScreen(
                     plannedText = stringResource(R.string.status_planned),
                     racingText = stringResource(R.string.status_racing),
                     startedText = stringResource(R.string.status_started),
-                    finishedText = stringResource(R.string.status_finished),
+                    finishedText = stringResource(R.string.status_finalised),
                     postponedText = stringResource(R.string.status_postponed),
                     cancelledText = stringResource(R.string.status_cancelled)
                 )
@@ -524,7 +528,7 @@ fun HeaderPanel(
         "postponed" -> MaterialTheme.colorScheme.tertiary
         "countdown" -> MaterialTheme.colorScheme.primary
         "started" -> MaterialTheme.colorScheme.secondary
-        "finished" -> MaterialTheme.colorScheme.secondary
+        "finished", "finalised" -> MaterialTheme.colorScheme.secondary
         else -> MaterialTheme.colorScheme.secondary
     }
     val contentColor = when (startPanelMode) {
@@ -532,7 +536,7 @@ fun HeaderPanel(
         "postponed" -> MaterialTheme.colorScheme.onTertiary
         "countdown" -> MaterialTheme.colorScheme.onPrimary
         "started" -> MaterialTheme.colorScheme.onSecondary
-        "finished" -> MaterialTheme.colorScheme.onSecondary
+        "finished", "finalised" -> MaterialTheme.colorScheme.onSecondary
         else -> MaterialTheme.colorScheme.onSecondary
     }
 
@@ -544,6 +548,7 @@ fun HeaderPanel(
         "countdown" -> startPanelText
         "started" -> startPanelText
         "finished" -> stringResource(R.string.finished)
+        "finalised" -> stringResource(R.string.finalised)
         else -> stringResource(R.string.app_name)
     }
 
