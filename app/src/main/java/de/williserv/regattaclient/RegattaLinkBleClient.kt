@@ -2544,7 +2544,7 @@ internal class RegattaLinkBleClient(
             }.onFailure { error ->
                 if (errorMessage.isBlank()) {
                     errorMessage = error.message
-                        ?: "Could not read RegattaLink NMEA2000 TX setting"
+                        ?: "Could not read RegattaLink Boat Data TX setting"
                 }
             }
         }
@@ -2565,7 +2565,7 @@ internal class RegattaLinkBleClient(
             }.onFailure { error ->
                 if (errorMessage.isBlank()) {
                     errorMessage = error.message
-                        ?: "Could not read RegattaLink NMEA2000 attitude TX setting"
+                        ?: "Could not read RegattaLink Boat Data attitude TX setting"
                 }
             }
         }
@@ -2586,7 +2586,7 @@ internal class RegattaLinkBleClient(
             }.onFailure { error ->
                 if (errorMessage.isBlank()) {
                     errorMessage = error.message
-                        ?: "Could not read RegattaLink NMEA2000 runtime TX status"
+                        ?: "Could not read RegattaLink Boat Data runtime TX status"
                 }
             }
         }
@@ -3321,13 +3321,13 @@ internal class RegattaLinkBleClient(
     ) {
         MASTER(
             NMEA_TX_UUID,
-            "RegattaLink NMEA2000 TX setting is unavailable",
-            "Could not change RegattaLink NMEA2000 TX setting"
+            "RegattaLink Boat Data TX setting is unavailable",
+            "Could not change RegattaLink Boat Data TX setting"
         ),
         ATTITUDE(
             NMEA_ATTITUDE_TX_UUID,
-            "RegattaLink NMEA2000 attitude TX setting is unavailable",
-            "Could not change RegattaLink NMEA2000 attitude TX setting"
+            "RegattaLink Boat Data attitude TX setting is unavailable",
+            "Could not change RegattaLink Boat Data attitude TX setting"
         )
     }
 
