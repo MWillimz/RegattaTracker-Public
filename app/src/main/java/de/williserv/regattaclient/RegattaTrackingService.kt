@@ -138,6 +138,7 @@ class RegattaTrackingService : Service() {
 
         const val EXTRA_BOAT_TYPE = "boat_type"
         const val EXTRA_MANUAL_RECORDING = "manual_recording"
+        const val EXTRA_PRESERVE_LOCAL_RACE_STATUS = "preserve_local_race_status"
 
         private const val NOTIFICATION_CHANNEL_ID = "regatta_tracking_channel"
         private const val NOTIFICATION_ID = 1001
@@ -347,10 +348,14 @@ class RegattaTrackingService : Service() {
 
             ACTION_STOP -> {
                 val appPrefs = getSharedPreferences("app_state", Context.MODE_PRIVATE)
+                val preserveLocalRaceStatus =
+                    intent.getBooleanExtra(EXTRA_PRESERVE_LOCAL_RACE_STATUS, false)
                 val explicitRaceLeave = !manualRecording &&
                     !appPrefs.getBoolean("in_race", false) &&
                     !appPrefs.getBoolean("manual_tracking", false)
-                stopTrackingService(clearLocalRaceStatus = explicitRaceLeave)
+                stopTrackingService(
+                    clearLocalRaceStatus = explicitRaceLeave && !preserveLocalRaceStatus
+                )
                 return START_NOT_STICKY
             }
 
