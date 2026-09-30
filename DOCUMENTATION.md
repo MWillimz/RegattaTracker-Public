@@ -311,7 +311,7 @@ Payload fields:
 
 ### Extended telemetry / `measurements` contract
 
-RegattaServer #300 defines an additive extended-telemetry contract for future RegattaLink/Boat Data data. Clients that implement this extension may add an optional `measurements` object to an otherwise normal telemetry sample.
+RegattaServer #300 defines an additive extended-telemetry contract for future RegattaLink/Boat Data measurements. Clients that implement this extension may add an optional `measurements` object to an otherwise normal telemetry sample.
 
 Example:
 
