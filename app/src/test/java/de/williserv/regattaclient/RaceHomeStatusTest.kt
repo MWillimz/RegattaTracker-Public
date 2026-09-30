@@ -86,6 +86,23 @@ class RaceHomeStatusTest {
     }
 
     @Test
+    fun locallyFinishedRunningRace_isFinishedAfterTrackingStops() {
+        assertEquals(
+            RaceHomeStatus.FINISHED,
+            resolveRaceHomeStatus(
+                raceStatusCode = "racing",
+                raceStatusDisplayText = "",
+                raceDataReady = true,
+                raceConfigured = true,
+                inRace = false,
+                raceRegistered = true,
+                millisToStart = -1L,
+                localRaceFinished = true
+            )
+        )
+    }
+
+    @Test
     fun enteredPrestart_isReady() {
         assertEquals(
             RaceHomeStatus.READY,

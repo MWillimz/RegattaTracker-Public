@@ -208,6 +208,7 @@
     <string name="start_in">DÉPART DANS %1$d:%2$02d</string>
     <string name="ocs">OCS</string>
     <string name="finished">TERMINÉ</string>
+    <string name="finalised">CLÔTURÉE</string>
     <string name="postponed">REPORTÉ</string>
     <string name="csv_preview_not_live">L’aperçu CSV n’est plus mis à jour en direct par le service.</string>
     <string name="race_cannot_clear_while_running">Course : impossible d’effacer la configuration pendant la course</string>
@@ -275,6 +276,7 @@
     <string name="status_racing">en course</string>
     <string name="status_started">démarrée</string>
     <string name="status_finished">terminée</string>
+    <string name="status_finalised">clôturée</string>
     <string name="status_postponed">reportée</string>
     <string name="status_cancelled">annulée</string>
     <string name="status_not_active">non active</string>
