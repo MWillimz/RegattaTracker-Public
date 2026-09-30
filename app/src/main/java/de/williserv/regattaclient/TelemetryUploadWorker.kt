@@ -406,9 +406,6 @@ internal fun buildTelemetryUploadPayload(
     sample.batteryPercent?.let { put("battery_percent", it) }
     sample.batteryCharging?.let { put("battery_charging", it) }
     sample.trackingProfile?.let { put("tracking_profile", it) }
-    sample.measurementsJson?.let { persisted ->
-        put("measurements", JSONObject(persisted))
-    }
 }
 
 internal object TelemetryUploadStatusStore {
