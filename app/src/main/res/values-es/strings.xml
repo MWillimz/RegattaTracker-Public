@@ -208,6 +208,7 @@
     <string name="start_in">SALIDA EN %1$d:%2$02d</string>
     <string name="ocs">OCS</string>
     <string name="finished">FINALIZADA</string>
+    <string name="finalised">CERRADA</string>
     <string name="postponed">APLAZADA</string>
     <string name="csv_preview_not_live">La vista previa CSV ya no se actualiza en directo desde el servicio.</string>
     <string name="race_cannot_clear_while_running">Regata: no se puede borrar la configuración durante la regata</string>
@@ -275,6 +276,7 @@
     <string name="status_racing">en curso</string>
     <string name="status_started">iniciada</string>
     <string name="status_finished">finalizada</string>
+    <string name="status_finalised">cerrada</string>
     <string name="status_postponed">aplazada</string>
     <string name="status_cancelled">cancelada</string>
     <string name="status_not_active">no activa</string>
