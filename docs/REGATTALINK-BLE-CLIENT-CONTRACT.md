@@ -14,23 +14,23 @@ The current BLE contract contains four RegattaLink service families. Firmware co
 | --- | ---: | --- | --- |
 | configuration/device information | 0001 | implemented with 0002-0006, Motion Damping 0009, and Load Precision 000A in schema 12 | 0002-0006, 0009 and optional 000A discovered and consumed |
 | OTA | 0010 | implemented | implemented |
-| telemetry | 0020 | implemented with legacy IMU 0021-0023, normalized NMEA Boat State 0024, Motion 1 Hz 0025 and normalized Load Telemetry 0026 | normal IMU flow consumes only 0025; 0024 remains Boat State; 0026 is independently subscribed when discovered |
-| post-core extensions | 0030 | implemented; 0007 Diagnostic Log, 0008 Device Control, schema-13 NMEA TX master 000B, schema-14 Heel/Trim selector 000C and schema-15 runtime TX status 000D live here | 0007 bounded drain; 0008 Set Upright, trim, Factory Reset and Restart lifecycle; 000B/000C selected values plus read-only 000D applied/runtime status consumed when present |
+| telemetry | 0020 | implemented with legacy IMU 0021-0023, normalized Boat State 0024, Motion 1 Hz 0025 and normalized Load Telemetry 0026 | normal IMU flow consumes only 0025; 0024 remains Boat State; 0026 is independently subscribed when discovered |
+| post-core extensions | 0030 | implemented; 0007 Diagnostic Log, 0008 Device Control, schema-13 Boat Data TX master 000B, schema-14 Heel/Trim selector 000C and schema-15 runtime TX status 000D live here | 0007 bounded drain; 0008 Set Upright, trim, Factory Reset and Restart lifecycle; 000B/000C selected values plus read-only 000D applied/runtime status consumed when present |
 
-The firmware contract currently defines seven NMEA2000-facing BLE surfaces relevant to clients:
+The firmware contract currently defines seven Boat Data BLE surfaces relevant to clients:
 
-- 0004 exposes a compact inventory of PGNs observed on the live NMEA2000 bus;
+- 0004 exposes a compact inventory of PGNs observed on the live Boat Data bus;
 - 0005 exposes an optional raw received-CAN FIFO for diagnostics;
-- 000B is the persistent, fail-closed master permission for RegattaLink NMEA2000 transmission;
+- 000B is the persistent, fail-closed master permission for RegattaLink Boat Data transmission;
 - 000C independently selects local RegattaLink IMU Heel/Trim output as PGN 127257;
-- 000D reports the boot-selected and boot-applied NMEA TX gates without changing persistent configuration;
-- 0024 exposes normalized NMEA2000 Boat State v1 as read + notify telemetry;
+- 000D reports the boot-selected and boot-applied Boat Data TX gates without changing persistent configuration;
+- 0024 exposes normalized Boat State v1 as read + notify telemetry;
 - 0026 exposes normalized multi-sensor load telemetry as catalog + compact 1 Hz snapshots;
-- RegattaLink, not Android, owns NMEA source selection/freshness for 0024, load freshness for 0026, and all persistent TX configuration state.
+- RegattaLink, not Android, owns Boat Data source selection/freshness for 0024, load freshness for 0026, and all persistent TX configuration state.
 
 RegattaTracker must discover optional characteristics by UUID and must not infer their presence from unrelated capability bits. A documented firmware surface may exist before RegattaTracker has UI or consumption logic for it; that distinction is intentional and must remain explicit.
 
-Clients must not invent undocumented NMEA, proprietary-load or control layouts beyond the surfaces defined here.
+Clients must not invent undocumented Boat Data, proprietary-load or control layouts beyond the surfaces defined here.
 
 ## 2. UUID namespace
 
@@ -43,16 +43,16 @@ Base UUID:
 | Configuration service | 0001 | service | implemented | discovery anchor |
 | Device name | 0002 | encrypted/bonded read + write | implemented | implemented |
 | Device info | 0003 | encrypted/bonded read | implemented | implemented |
-| NMEA2000 PGN inventory | 0004 | encrypted/bonded read | implemented | implemented |
-| NMEA2000 raw CAN FIFO | 0005 | encrypted/bonded read | implemented | implemented as explicit bounded diagnostic read |
+| Boat Data PGN inventory | 0004 | encrypted/bonded read | implemented | implemented |
+| Boat Data raw CAN FIFO | 0005 | encrypted/bonded read | implemented | implemented as explicit bounded diagnostic read |
 | Global LED brightness | 0006 | encrypted/bonded read + write | additive contract in RegattaLink #135 / PR #136; optional by discovery | implemented when discovered |
 | Diagnostic log FIFO | 0007 | encrypted/bonded read in service 0030 | implemented; optional by discovery | implemented as explicit bounded 20-read drain with UI presentation |
 | Device Control | 0008 | encrypted/bonded read + write with response in service 0030 | implemented | request/status engine, Set Upright, direction-labelled trims, Factory Reset and Restart lifecycle/UI implemented |
 | Motion damping | 0009 | encrypted/bonded read + write in service 0001 | implemented in RegattaLink #164, 1 byte 1..10 s | implemented |
 | Load telemetry precision | 000A | encrypted/bonded read + write in service 0001 | schema 12; 0 = 1 kg/count, 1 = 0.1 kg/count | implemented when discovered |
-| NMEA2000 TX master | 000B | encrypted/bonded read + write in service 0030 | schema 13; 0 = receive-only, 1 = TX explicitly permitted | implemented when discovered |
-| NMEA2000 Heel / Trim TX | 000C | encrypted/bonded read + write in service 0030 | schema 14; 0 = disabled, 1 = local IMU PGN 127257 selected | implemented when discovered |
-| NMEA2000 applied TX status | 000D | encrypted/bonded read-only in service 0030 | schema 15; versioned boot-selected and boot-applied application-output state | implemented when discovered |
+| Boat Data TX master | 000B | encrypted/bonded read + write in service 0030 | schema 13; 0 = receive-only, 1 = TX explicitly permitted | implemented when discovered |
+| Boat Data Heel / Trim TX | 000C | encrypted/bonded read + write in service 0030 | schema 14; 0 = disabled, 1 = local IMU PGN 127257 selected | implemented when discovered |
+| Boat Data applied TX status | 000D | encrypted/bonded read-only in service 0030 | schema 15; versioned boot-selected and boot-applied application-output state | implemented when discovered |
 | OTA service | 0010 | service | implemented | implemented |
 | OTA control | 0011 | encrypted/bonded write with response | implemented | implemented |
 | OTA DATA | 0012 | encrypted/bonded write; no-response preferred, response supported | implemented | implemented |
@@ -61,7 +61,7 @@ Base UUID:
 | Fast motion telemetry | 0021 | encrypted/bonded read + notify | implemented | parser retained; not subscribed in normal flow |
 | Motion summary telemetry | 0022 | encrypted/bonded read + notify | implemented | parser retained; not subscribed in normal flow |
 | Calibration diagnostics telemetry | 0023 | encrypted/bonded read + notify | implemented | parser retained; not subscribed in normal flow |
-| Normalized NMEA Boat State v1 | 0024 | encrypted/bonded read + notify | implemented | implemented; UUID-discovered independently of IMU capability |
+| Normalized Boat State v1 | 0024 | encrypted/bonded read + notify | implemented | implemented; UUID-discovered independently of IMU capability |
 | Motion 1 Hz | 0025 | encrypted/bonded read + notify | implemented by RegattaLink #165 / PR #166, fixed 20-byte v1 | required normal IMU/motion subscription |
 | Compact normalized load telemetry | 0026 | encrypted/bonded notify | schema 12; catalog + compact 1 Hz snapshot | implemented when discovered |
 | Extension service | 0030 | service | implemented | discovery anchor for 0007/0008/000B/000C/000D |
@@ -116,9 +116,9 @@ quiet-time heuristic is not part of the reconciliation path.
 
 Schema 15 is the current target generation after schema 10 added configuration
 characteristic 0009, schema 11 appended Motion 1 Hz 0025, schema 12 appended
-Load Precision 000A plus Load Telemetry 0026, schema 13 appended the NMEA2000 TX
+Load Precision 000A plus Load Telemetry 0026, schema 13 appended the Boat Data TX
 master 000B, schema 14 appended the local Heel/Trim PGN 127257 selector 000C,
-and schema 15 appended read-only NMEA2000 runtime TX status 000D.
+and schema 15 appended read-only Boat Data runtime TX status 000D.
 Clients must continue to treat the advertised generation as authoritative and
 reconcile any change before using downstream handles. RegattaTracker discovers every
 characteristic by UUID rather than hard-coded ATT handle.
@@ -211,7 +211,7 @@ Protocol minor is additive within the same major. A client must not reject a new
 
 The stable identity is the logical RegattaLink identity used to reconcile reconnects. The current Bluetooth address shown by Android/Linux is not a substitute for this field.
 
-### 4.3 NMEA2000 PGN inventory 0004
+### 4.3 Boat Data PGN inventory 0004
 
 Full UUID:
 
@@ -229,7 +229,7 @@ The value contains zero or more fixed-size 8-byte records:
 
 | Record offset | Width | Type | Meaning |
 | ---: | ---: | --- | --- |
-| 0 | 4 | u32 | NMEA2000 PGN |
+| 0 | 4 | u32 | Boat Data PGN |
 | 4 | 4 | u32 | age in milliseconds since that PGN was last observed |
 
 The value length must be divisible by 8. A non-empty value with another length is malformed and must be rejected.
@@ -250,14 +250,14 @@ The firmware stores at most 64 distinct PGNs per boot. Maximum value size is the
 
 Clients must support the normal ATT long-read procedure. Firmware freezes one coherent inventory snapshot at offset zero so Read Blob fragments from one long read represent the same observation instant.
 
-An empty value is valid and means that no valid NMEA2000 PGN has yet been observed during the current boot/session.
+An empty value is valid and means that no valid Boat Data PGN has yet been observed during the current boot/session.
 
 When the 64-entry inventory is full, already-known PGNs continue to refresh. Additional previously unseen PGNs are ignored until reboot.
 
 Client UI may map known PGNs to human-readable names locally, but the numeric PGN must remain visible so unknown/proprietary traffic can still be diagnosed.
 
 
-### 4.4 NMEA2000 raw CAN FIFO 0005
+### 4.4 Boat Data raw CAN FIFO 0005
 
 Full UUID:
 
@@ -270,7 +270,7 @@ Properties:
 - optional for compatibility with older firmware;
 - diagnostic read-to-drain surface, not a normal telemetry stream.
 
-Firmware keeps a fixed FIFO of up to 128 complete valid received NMEA2000 CAN frames. A successful characteristic read returns exactly one fixed 21-byte value and removes at most one oldest frame.
+Firmware keeps a fixed FIFO of up to 128 complete valid received Boat Data CAN frames. A successful characteristic read returns exactly one fixed 21-byte value and removes at most one oldest frame.
 
 | Offset | Width | Type | Meaning |
 | ---: | ---: | --- | --- |
@@ -289,11 +289,11 @@ Important semantics:
 
 - frames are appended in receive order;
 - when the FIFO is full, diagnostic copies of additional frames are ignored until reads free space; old queued frames are not overwritten;
-- this FIFO behavior does not block or alter normal NMEA decoding, PGN inventory, Boat State telemetry or OTA;
+- this FIFO behavior does not block or alter normal Boat Data decoding, PGN inventory, Boat State telemetry or OTA;
 - a read reserves the complete response before the firmware removes the FIFO head, so an ATT-buffer failure does not lose the oldest queued frame;
 - remaining_count is a point-in-time occupancy after the pop; live CAN traffic can increase it again before the next read;
 - the original CAN ID, DLC and payload are authoritative; priority/PGN/source/destination are derived client-side;
-- NMEA fast-packet traffic remains individual raw CAN frames on this surface;
+- Boat Data fast-packet traffic remains individual raw CAN frames on this surface;
 - there is no START/STOP command, notification stream, capture session, rolling overwrite or overflow counter.
 
 RegattaTracker consumes 0005 only after an explicit diagnostic user action. Each drain operation is bounded to at most 128 reads and never runs as normal background telemetry.
@@ -585,7 +585,7 @@ The value is persistent in RegattaLink. A successful write changes the firmware-
 Heel/Pitch presentation damping. Android must not duplicate this filter. Configuration
 writes share the existing serialized mutation/OTA exclusion policy.
 
-### 4.9 NMEA2000 TX master 000B (extension service 0030)
+### 4.9 Boat Data TX master 000B (extension service 0030)
 
 Full UUID:
 
@@ -603,14 +603,14 @@ The value is persisted by RegattaLink. Fresh/default, missing, malformed or
 out-of-range firmware configuration resolves fail-closed to 0. Factory Reset also
 returns the setting to 0.
 
-000B is the master permission for RegattaLink to transmit on NMEA2000. It does not
+000B is the master permission for RegattaLink to transmit on Boat Data. It does not
 mean that every application data source is enabled. When the boot-applied value is 1
-and node initialization succeeds, RegattaLink may emit normal NMEA2000 node-management
+and node initialization succeeds, RegattaLink may emit normal Boat Data node-management
 traffic such as ISO Address Claim. When it is 0, the CAN controller remains in the
 firmware's receive-only/listen-only mode.
 
 A successful BLE write changes the persistent selected value but does not reconfigure
-the live CAN/NMEA transport in place. The selected value becomes boot-applied on the
+the live CAN / Boat Data transport in place. The selected value becomes boot-applied on the
 next RegattaLink reboot. Tracker must not infer that boot-applied state from 000B
 itself; schema-15 firmware exposes it authoritatively through 000D. If the selected
 000B value differs from the 000D boot-selected master bit, the UI offers the explicit
@@ -618,7 +618,7 @@ Device Control RESTART flow. An unrelated disconnect/reconnect must not falsely 
 that pending state; after a confirmed RESTART disconnect, Tracker reconnects,
 rediscovers and re-reads 000B/000C/000D before clearing it.
 
-### 4.10 NMEA2000 Heel / Trim TX selector 000C (extension service 0030)
+### 4.10 Boat Data Heel / Trim TX selector 000C (extension service 0030)
 
 Full UUID:
 
@@ -639,15 +639,15 @@ the other.
 
 PGN 127257 is emitted only when both the boot-applied 000B master and boot-applied
 000C selector are active and the RegattaLink node/IMU state is valid. The source is
-the local fused RegattaLink IMU, not received NMEA attitude and not phone orientation.
+the local fused RegattaLink IMU, not received Boat Data attitude and not phone orientation.
 The initial rate is 5 Hz. Pitch/Roll use the established RegattaLink boat-frame
-semantics and Yaw is NMEA NA because no valid absolute yaw reference exists.
+semantics and Yaw is protocol NA because no valid absolute yaw reference exists.
 
 Like 000B, a successful 000C write changes persistent selection immediately but the
 application-output set is applied at boot. Tracker uses the same explicit RESTART,
 expected-disconnect, reconnect and re-read flow to apply it.
 
-### 4.11 NMEA2000 runtime TX status 000D (extension service 0030)
+### 4.11 Boat Data runtime TX status 000D (extension service 0030)
 
 Full UUID:
 
@@ -687,7 +687,7 @@ Application-output bitmap assignments are stable between bytes 2 and 3:
 current-boot/applied companion state. Tracker must never infer boot-applied state
 from a fresh 000B/000C read: an Android process can start after a persistent write
 but before the RLink reboot, and Factory Reset changes the persistent values without
-restarting the current NMEA transport.
+restarting the current Boat Data transport.
 
 Restart-required is therefore computed by comparing persistent selected values with
 000D boot-selected state. The 000D active/enabled fields describe the gates that were
@@ -715,7 +715,7 @@ Full service UUID:
 7f2c4b10-6f63-4a8d-9a3e-2e5d6b710020
 
 The telemetry service carries legacy RegattaLink IMU/motion state (0021-0023),
-normalized NMEA2000 Boat State v1 (0024), and the compact Motion 1 Hz record (0025).
+normalized Boat State v1 (0024), and the compact Motion 1 Hz record (0025).
 
 All application characteristic values require an encrypted persistent bond. Presence is discovered by UUID.
 
@@ -732,7 +732,7 @@ For the legacy IMU characteristics 0021-0023:
 
 0024 is independent of the legacy IMU telemetry capability bit. Its presence must be discovered directly; absence must not break 0021-0023 or OTA.
 
-Telemetry notifications are paused during active OTA PREPARING/RECEIVING/VERIFYING work. The client must not reinterpret missing notifications during OTA as sensor/NMEA failure. Firmware continues its underlying sensor/NMEA processing and fresh records resume after OTA leaves the active transfer state.
+Telemetry notifications are paused during active OTA PREPARING/RECEIVING/VERIFYING work. The client must not reinterpret missing notifications during OTA as sensor / Boat Data failure. Firmware continues its underlying sensor / Boat Data processing and fresh records resume after OTA leaves the active transfer state.
 
 Current publication behavior:
 
@@ -836,7 +836,7 @@ Unknown flag bits must be ignored.
 
 RegattaTracker considers the last received diagnostics record fresh for 3000 ms of phone monotonic time.
 
-### 5.4 Normalized NMEA Boat State v1 0024
+### 5.4 Normalized Boat State v1 0024
 
 Full UUID:
 
@@ -849,15 +849,15 @@ Properties:
 - encrypted/bonded access required;
 - optional for compatibility with older firmware.
 
-Presence is determined by GATT discovery and is independent of NMEA bring-up success. With no currently usable NMEA data, firmware still returns a valid v1 record with a zero validity bitmap. Do not infer 0024 from Device Info capability bit 3; that bit retains its legacy IMU-telemetry meaning.
+Presence is determined by GATT discovery and is independent of Boat Data bring-up success. With no currently usable Boat Data input, firmware still returns a valid v1 record with a zero validity bitmap. Do not infer 0024 from Device Info capability bit 3; that bit retains its legacy IMU-telemetry meaning.
 
-RegattaLink owns NMEA source selection and freshness for this normalized state:
+RegattaLink owns Boat Data source selection and freshness for this normalized state:
 
 - selection is per coherent logical group;
-- the lowest currently eligible NMEA source address wins;
+- the lowest currently eligible Boat Data source address wins;
 - each source and each logical group expire independently after 60 seconds;
 - source timeout/fallback clears or replaces the corresponding validity bits in firmware;
-- Android must not apply a second independent NMEA source-selection or 60-second aging policy to the wire record.
+- Android must not apply a second independent Boat Data source-selection or 60-second aging policy to the wire record.
 
 Record size: exactly 80 bytes, little-endian schema v1.
 
@@ -884,7 +884,7 @@ Record size: exactly 80 bytes, little-endian schema v1.
 | 36 | 4 | i32 | depth offset, signed centimetres |
 | 40 | 4 | u32 | depth range, unsigned centimetres |
 | 44 | 2 | i16 | water temperature, centi-degrees Celsius |
-| 46 | 1 | u8 | NMEA temperature source; 0xff unavailable |
+| 46 | 1 | u8 | Boat Data temperature source; 0xff unavailable |
 | 47 | 1 | u8 | reserved, zero |
 | 48 | 4 | i32 | latitude, degrees x 1e7 |
 | 52 | 4 | i32 | longitude, degrees x 1e7 |
@@ -901,7 +901,7 @@ Record size: exactly 80 bytes, little-endian schema v1.
 | 70 | 4 | i32 | altitude, signed centimetres |
 | 74 | 2 | u16 | wind speed, centimetres/second |
 | 76 | 2 | u16 | wind angle, centidegrees |
-| 78 | 1 | u8 | NMEA wind reference; 0xff unavailable |
+| 78 | 1 | u8 | Boat Data wind reference; 0xff unavailable |
 | 79 | 1 | u8 | reserved, zero |
 
 Validity bitmap:
@@ -928,13 +928,13 @@ Validity bitmap:
 | 17 | wind speed |
 | 18 | wind angle |
 
-A cleared validity bit means absent regardless of the numeric bytes. NMEA NA/error values must not be interpreted as numeric zero. Heading/COG/wind angles are normalized by firmware before encoding.
+A cleared validity bit means absent regardless of the numeric bytes. Protocol NA/error values must not be interpreted as numeric zero. Heading/COG/wind angles are normalized by firmware before encoding.
 
 The 32-bit depth fields are intentional and avoid an artificial 655.35 m limit. If an engineering value cannot be represented by its wire field, firmware clears the corresponding validity bit rather than silently saturating it.
 
 Notifications contain complete snapshots and are change-coalesced, capped at 10 Hz. An 80-byte notification requires ATT MTU at least 83. At smaller MTU, live notifications wait for a sufficient negotiated MTU, while ordinary ATT long reads remain valid.
 
-OTA PREPARING/RECEIVING/VERIFYING pauses 0024 notifications but does not stop NMEA ingestion, source selection or firmware freshness tracking.
+OTA PREPARING/RECEIVING/VERIFYING pauses 0024 notifications but does not stop Boat Data ingestion, source selection or firmware freshness tracking.
 
 RegattaTracker consumes 0024 independently of IMU capability bit 3. It requests a sufficient MTU best-effort for live 80-byte notifications and retains ordinary long-read snapshot access when the negotiated MTU remains smaller than 83.
 
@@ -986,9 +986,9 @@ Calibration:
 
 Stale records and telemetry paused for OTA are not attached to newly created tracking samples.
 
-Normalized NMEA Boat State 0024 is persisted into the same per-sample measurements object. This does not change tracking or upload frequency. The Android client retains only the latest received complete Boat State snapshot for persistence, rejects it after 60 seconds without a fresh snapshot, clears it across disconnect/reconnect lifecycle boundaries, and never attaches it while NMEA telemetry is paused for OTA. The firmware validity bitmap remains authoritative for individual fields.
+Normalized Boat State 0024 is persisted into the same per-sample measurements object. This does not change tracking or upload frequency. The Android client retains only the latest received complete Boat State snapshot for persistence, rejects it after 60 seconds without a fresh snapshot, clears it across disconnect/reconnect lifecycle boundaries, and never attaches it while Boat Data telemetry is paused for OTA. The firmware validity bitmap remains authoritative for individual fields.
 
-Stable NMEA measurement keys currently used by RegattaTracker:
+Stable Boat Data measurement keys currently used by RegattaTracker:
 
 - `nmea.heading_true_deg`
 - `nmea.heading_magnetic_deg`
@@ -1098,8 +1098,8 @@ Byte 0 packs wire version 1 in bits 7..4, frame type in bits 3..1 (`1` catalog, 
 
 Catalog frame: `[header, epoch, slot, identity_kind|stable_bit, id_len, identity...]`.
 
-- identity kind 1: temporary NMEA source address + instance (2 bytes);
-- identity kind 2: stable NMEA2000 NAME + instance (9 bytes: eight little-endian NAME bytes plus instance);
+- identity kind 1: temporary Boat Data source address + instance (2 bytes);
+- identity kind 2: stable protocol NAME + instance (9 bytes: eight little-endian NAME bytes plus instance);
 - runtime slot is compression only and must never be persisted as sensor identity.
 
 Stable kind-2 identities map to the deterministic session key `nmea.load.<16-hex-name>.<instance>`. A temporary source-address identity is recordable immediately but cannot receive a persistent alias.
@@ -1108,13 +1108,13 @@ Sample frame: `[header, epoch, sequence, fragment_info, {slot,u16 load}...]`. Th
 
 At x1 each count is 1 kg. At x10 each count is 0.1 kg. The scale bit in each sample is authoritative; decoding must not depend on cached configuration.
 
-A complete sample replaces the current fresh sensor set. Missing sensors therefore stop being persisted. An empty sample clears the set. As a transport fail-safe, after 3500 ms without another complete load sample Tracker both stops persisting the last non-empty 0026 snapshot and clears the visible current load values in the NMEA setup; this protects against loss of the firmware's one empty transition notification and does not redefine per-sensor freshness. Disconnect, device/reconnect setup and OTA pause clear both the load catalog assembler and the current load snapshot.
+A complete sample replaces the current fresh sensor set. Missing sensors therefore stop being persisted. An empty sample clears the set. As a transport fail-safe, after 3500 ms without another complete load sample Tracker both stops persisting the last non-empty 0026 snapshot and clears the visible current load values in the Boat Data setup; this protects against loss of the firmware's one empty transition notification and does not redefine per-sensor freshness. Disconnect, device/reconnect setup and OTA pause clear both the load catalog assembler and the current load snapshot.
 
 #### Load precision configuration 000A
 
 Full UUID: `7f2c4b10-6f63-4a8d-9a3e-2e5d6b71000a`.
 
-It is an optional encrypted/bonded one-byte read/write setting: `0` selects x1 (1 kg), `1` selects x10 (0.1 kg). Firmware persists the setting. Tracker exposes it in NMEA setup when discovered.
+It is an optional encrypted/bonded one-byte read/write setting: `0` selects x1 (1 kg), `1` selects x10 (0.1 kg). Firmware persists the setting. Tracker exposes it in Boat Data setup when discovered.
 
 #### Local session persistence and aliases
 
@@ -1436,22 +1436,22 @@ Clients must discover by UUID and degrade optional features independently.
 Optional/current compatibility behavior:
 
 - 0004 PGN inventory may be absent on older firmware;
-- 0005 raw CAN FIFO may be absent on older firmware and must never be required for ordinary NMEA/Boat State operation;
+- 0005 raw CAN FIFO may be absent on older firmware and must never be required for ordinary Boat Data/Boat State operation;
 - 0006 LED brightness may be absent on firmware predating the additive brightness contract;
 - 0007 Diagnostic Log may be absent on older firmware;
 - 0008 Device Control may be absent on older firmware; its absence must not break ordinary connection/OTA;
 - 000A Load Precision may be absent on pre-schema-12 firmware;
-- 000B NMEA2000 TX master may be absent on pre-schema-13 firmware and then no TX control is shown;
+- 000B Boat Data TX master may be absent on pre-schema-13 firmware and then no TX control is shown;
 - 000C Heel/Trim TX may be absent on pre-schema-14 firmware and degrades independently of 000B;
 - 000D runtime TX status may be absent on pre-schema-15 firmware; selected 000B/000C values must then not be presented as authoritative applied/live state;
 - 0024 normalized Boat State may be absent on older firmware and is not implied by the IMU telemetry capability bit;
 - 0026 Load Telemetry may be absent on pre-schema-12 firmware and degrades independently of Boat State and Motion 1 Hz;
 - the telemetry service or individual optional telemetry characteristics may be absent/unavailable without breaking Device Info or OTA;
-- NMEA bus availability must not be inferred from Device Info capability bit 3;
-- an empty NMEA inventory is valid;
+- Boat Data bus availability must not be inferred from Device Info capability bit 3;
+- an empty Boat Data inventory is valid;
 - an empty raw-CAN FIFO read is valid and represented by frame_present=0;
 - a Boat State record with validity bitmap zero is valid;
-- unknown NMEA PGNs must be retained/displayable where 0004 is consumed;
+- unknown Boat Data PGNs must be retained/displayable where 0004 is consumed;
 - unknown capability bits must be ignored;
 - unknown fixed-record schema versions must be rejected rather than decoded with the wrong layout;
 - malformed fixed-size records must be rejected;
@@ -1481,7 +1481,7 @@ OTA has additional capability/manifest requirements and may be unavailable even 
 
 The following must not be implemented by guessing wire layouts:
 
-- any NMEA2000 field not represented by the documented 0024 v1 schema;
+- any Boat Data field not represented by the documented 0024 v1 schema;
 - any raw-CAN control/write/notification protocol beyond the documented read-only 0005 FIFO;
 - direct Cyclops BLE decoding in Android or any proprietary load layout outside the explicitly defined normalized 0026 contract;
 - undocumented LED/debug configuration values beyond the one-byte 0006 brightness percentage.
@@ -1507,7 +1507,7 @@ A RegattaTracker change affecting RegattaLink BLE should verify, as applicable:
 - optional 0007 is a bounded 20-record/22-byte read-to-drain FIFO and is never background-polled;
 - optional 0008 requires exact 8-byte request / 20-byte status parsing, matching request_id completion and explicit TIMEOUT handling;
 - RESTART uses opcode 6 with value 0; only matching terminal SUCCESS/OK marks its subsequent disconnect as expected, after which Tracker reconnects and re-reads authoritative configuration;
-- arbitrary BLE disconnect never proves Restart success or clears a pending boot-applied NMEA setting change;
+- arbitrary BLE disconnect never proves Restart success or clears a pending boot-applied Boat Data setting change;
 - 000B/000C parse exactly one byte 0/1 and remain the firmware-authoritative persistent selected values; 000D v1 parses exactly four bytes and is authoritative for boot-selected/boot-applied TX state;
 - Restart-required is derived from 000B/000C versus 000D boot-selected state when 000D exists; selected values must never be relabeled as applied state after app restart or Factory Reset;
 - future GNSS/load selectors use their own explicit opt-in UUIDs while 000D application-output bitmap bits 1/2 are already reserved for their boot-applied status;
@@ -1542,7 +1542,7 @@ A client-visible RegattaLink BLE change is incomplete unless the public contract
 - changing required security;
 - adding a capability bit used by clients;
 - changing stale/freshness semantics;
-- defining a new NMEA2000 BLE surface;
+- defining a new Boat Data BLE surface;
 - changing OTA transaction or success semantics.
 
 The corresponding RegattaTracker parser/behavior should be covered by tests so documentation and implementation do not silently diverge.

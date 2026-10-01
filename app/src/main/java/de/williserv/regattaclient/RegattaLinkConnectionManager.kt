@@ -560,7 +560,7 @@ internal class RegattaLinkConnectionManager(
         val timestamp = DateTimeFormatter
             .ofPattern("yyyyMMdd-HHmmss", Locale.ROOT)
             .format(ZonedDateTime.now())
-        val fileName = "regattalink-nmea-capture-$timestamp.csv"
+        val fileName = "regattalink-boat-data-capture-$timestamp.csv"
         val file = File(captureDir, fileName)
         val session = try {
             RegattaLinkRawCaptureFileSession(file)

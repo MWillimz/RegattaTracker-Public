@@ -237,10 +237,10 @@ private fun parseRegattaLinkBooleanConfig(
 }
 
 internal fun parseRegattaLinkNmeaTxEnabled(raw: ByteArray): Boolean =
-    parseRegattaLinkBooleanConfig(raw, "RegattaLink NMEA2000 TX setting")
+    parseRegattaLinkBooleanConfig(raw, "RegattaLink Boat Data TX setting")
 
 internal fun parseRegattaLinkNmeaAttitudeTxEnabled(raw: ByteArray): Boolean =
-    parseRegattaLinkBooleanConfig(raw, "RegattaLink NMEA2000 attitude TX setting")
+    parseRegattaLinkBooleanConfig(raw, "RegattaLink Boat Data attitude TX setting")
 
 internal const val REGATTALINK_NMEA_TX_OUTPUT_ATTITUDE = 1 shl 0
 internal const val REGATTALINK_NMEA_TX_OUTPUT_TRACKER_GNSS = 1 shl 1
@@ -263,11 +263,11 @@ internal fun parseRegattaLinkNmeaTxRuntimeStatus(
     raw: ByteArray
 ): RegattaLinkNmeaTxRuntimeStatus {
     require(raw.size == 4) {
-        "RegattaLink NMEA2000 runtime TX status must be exactly four bytes"
+        "RegattaLink Boat Data runtime TX status must be exactly four bytes"
     }
     val version = raw[0].toInt() and 0xff
     require(version == 1) {
-        "Unsupported RegattaLink NMEA2000 runtime TX status version $version"
+        "Unsupported RegattaLink Boat Data runtime TX status version $version"
     }
     val masterFlags = raw[1].toInt() and 0xff
     return RegattaLinkNmeaTxRuntimeStatus(

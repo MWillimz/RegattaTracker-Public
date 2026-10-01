@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -20,7 +19,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,8 +32,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -45,48 +41,27 @@ fun ServerInformationEntry(
     server: String,
     event: String,
     secret: String,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     if (server.isBlank() || event.isBlank() || secret.isBlank()) return
 
-    var showServerInformation by remember(server, event, secret) {
-        mutableStateOf(false)
-    }
-
     Button(
-        onClick = { showServerInformation = true },
+        onClick = onClick,
         colors = primaryButtonColors(),
         modifier = modifier.fillMaxWidth()
     ) {
         Text(stringResource(R.string.server_information))
     }
-
-    if (showServerInformation) {
-        Dialog(
-            onDismissRequest = { showServerInformation = false },
-            properties = DialogProperties(usePlatformDefaultWidth = false)
-        ) {
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.background
-            ) {
-                ServerInformationScreen(
-                    server = server,
-                    event = event,
-                    secret = secret,
-                    onClose = { showServerInformation = false }
-                )
-            }
-        }
-    }
 }
 
 @Composable
-private fun ServerInformationScreen(
+fun ServerInformationScreen(
     server: String,
     event: String,
     secret: String,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     var selectedLegalKind by remember { mutableStateOf<ServerLegalKind?>(null) }
 
@@ -100,7 +75,8 @@ private fun ServerInformationScreen(
             event = event,
             secret = secret,
             kind = kind,
-            onBack = { selectedLegalKind = null }
+            onBack = { selectedLegalKind = null },
+            modifier = modifier
         )
         return
     }
@@ -131,9 +107,8 @@ private fun ServerInformationScreen(
     }
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
-            .safeDrawingPadding()
             .padding(20.dp)
             .verticalScroll(rememberScrollState())
     ) {
@@ -260,7 +235,8 @@ private fun ServerLegalDocumentView(
     event: String,
     secret: String,
     kind: ServerLegalKind,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     var document by remember(server, event, secret, kind) {
         mutableStateOf<ServerLegalDocument?>(null)
@@ -282,9 +258,8 @@ private fun ServerLegalDocumentView(
     }
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
-            .safeDrawingPadding()
             .padding(20.dp)
             .verticalScroll(rememberScrollState())
     ) {
