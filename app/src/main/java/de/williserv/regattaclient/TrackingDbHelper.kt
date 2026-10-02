@@ -894,9 +894,8 @@ class TrackingDbHelper(context: Context) :
     fun exportAllAsCsv(): String {
         val db = readableDatabase
         val measurementKeys = discoverCsvMeasurementKeys(db)
-        val measurementColumns = measurementKeys.associateWith(::csvMeasurementColumnName)
 
-        val headerColumns = listOf(
+        val baseHeaderColumns = listOf(
             "sequence_id",
             "timestamp",
             "utc_offset_minutes",
@@ -911,13 +910,22 @@ class TrackingDbHelper(context: Context) :
             "accuracy",
             "cog",
             "sog",
+            "local_id",
             "cog_valid",
+            "uploaded",
+            "access_context_id",
             "battery_percent",
             "battery_charging",
             "tracking_profile",
             "session_id",
             "race_context_id"
-        ) + measurementKeys.map { measurementColumns.getValue(it) }
+        )
+        val measurementColumns = buildCsvMeasurementColumns(
+            measurementKeys = measurementKeys,
+            reservedHeaders = baseHeaderColumns.toSet()
+        )
+        val headerColumns =
+            baseHeaderColumns + measurementColumns.map { it.second }
 
         val builder = StringBuilder()
         builder.append(headerColumns.joinToString(","))
@@ -940,7 +948,10 @@ class TrackingDbHelper(context: Context) :
                 accuracy,
                 cog,
                 sog,
+                id,
                 cog_valid,
+                uploaded,
+                access_context_id,
                 battery_percent,
                 battery_charging,
                 tracking_profile,
@@ -954,7 +965,7 @@ class TrackingDbHelper(context: Context) :
         ).use { cursor ->
             while (cursor.moveToNext()) {
                 val measurements = parseCsvMeasurements(
-                    if (cursor.isNull(20)) null else cursor.getString(20)
+                    if (cursor.isNull(23)) null else cursor.getString(23)
                 )
                 val row = mutableListOf(
                     cursor.getLong(0).toString(),
@@ -971,15 +982,18 @@ class TrackingDbHelper(context: Context) :
                     String.format(Locale.US, "%.2f", cursor.getDouble(11)),
                     String.format(Locale.US, "%.2f", cursor.getDouble(12)),
                     String.format(Locale.US, "%.2f", cursor.getDouble(13)),
-                    csvNullableBoolean(cursor, 14),
-                    csvNullableInt(cursor, 15),
-                    csvNullableBoolean(cursor, 16),
-                    if (cursor.isNull(17)) "" else csvEscape(cursor.getString(17)),
-                    csvNullableLong(cursor, 18),
-                    csvNullableLong(cursor, 19)
+                    cursor.getLong(14).toString(),
+                    csvNullableBoolean(cursor, 15),
+                    cursor.getInt(16).toString(),
+                    csvNullableLong(cursor, 17),
+                    csvNullableInt(cursor, 18),
+                    csvNullableBoolean(cursor, 19),
+                    if (cursor.isNull(20)) "" else csvEscape(cursor.getString(20)),
+                    csvNullableLong(cursor, 21),
+                    csvNullableLong(cursor, 22)
                 )
 
-                measurementKeys.forEach { key ->
+                measurementColumns.forEach { (key, _) ->
                     row += csvMeasurementValue(measurements, key)
                 }
 
@@ -1013,7 +1027,28 @@ class TrackingDbHelper(context: Context) :
                 }
             }
         }
-        return keys.sortedBy(::csvMeasurementColumnName)
+        return keys.toList()
+    }
+
+    private fun buildCsvMeasurementColumns(
+        measurementKeys: List<String>,
+        reservedHeaders: Set<String>
+    ): List<Pair<String, String>> {
+        val usedHeaders = reservedHeaders.toMutableSet()
+        return measurementKeys
+            .sortedWith(
+                compareBy<String> { csvMeasurementColumnName(it) }
+                    .thenBy { it }
+            )
+            .map { key ->
+                val baseName = csvMeasurementColumnName(key)
+                var header = baseName
+                var suffix = 2
+                while (!usedHeaders.add(header)) {
+                    header = "${baseName}_${suffix++}"
+                }
+                key to header
+            }
     }
 
     private fun parseCsvMeasurements(raw: String?): JSONObject? {
