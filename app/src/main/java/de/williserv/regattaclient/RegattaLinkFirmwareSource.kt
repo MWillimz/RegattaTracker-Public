@@ -153,5 +153,8 @@ internal fun regattaLinkFirmwareAuthHeaders(
         }
     }
 
-    is RegattaLinkFirmwareAuth.Event -> emptyMap()
+    is RegattaLinkFirmwareAuth.Event -> mapOf(
+        "X-Event-Name" to auth.eventIdentifier,
+        "X-Shared-Secret" to auth.sharedSecret
+    )
 }

@@ -23,7 +23,7 @@ class RegattaLinkFirmwareSourceTest {
     }
 
     @Test
-    fun eventSourcePreservesExistingFirmwareTransport() {
+    fun eventSourceUsesOnlyEventCredentials() {
         val headers = regattaLinkFirmwareAuthHeaders(
             RegattaLinkFirmwareAuth.Event(
                 eventIdentifier = "Weekend Cup",
@@ -31,7 +31,9 @@ class RegattaLinkFirmwareSourceTest {
             )
         )
 
-        assertTrue(headers.isEmpty())
+        assertEquals("Weekend Cup", headers["X-Event-Name"])
+        assertEquals("event-secret", headers["X-Shared-Secret"])
+        assertFalse(headers.containsKey("X-Regatta-Firmware-Key"))
     }
 
     @Test
