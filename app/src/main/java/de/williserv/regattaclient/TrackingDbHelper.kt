@@ -909,16 +909,7 @@ class TrackingDbHelper(context: Context) :
             "lon",
             "accuracy",
             "cog",
-            "sog",
-            "local_id",
-            "cog_valid",
-            "uploaded",
-            "access_context_id",
-            "battery_percent",
-            "battery_charging",
-            "tracking_profile",
-            "session_id",
-            "race_context_id"
+            "sog"
         )
         val measurementColumns = buildCsvMeasurementColumns(
             measurementKeys = measurementKeys,
@@ -948,15 +939,6 @@ class TrackingDbHelper(context: Context) :
                 accuracy,
                 cog,
                 sog,
-                id,
-                cog_valid,
-                uploaded,
-                access_context_id,
-                battery_percent,
-                battery_charging,
-                tracking_profile,
-                session_id,
-                race_context_id,
                 measurements_json
             FROM tracking_samples
             ORDER BY id ASC
@@ -965,7 +947,7 @@ class TrackingDbHelper(context: Context) :
         ).use { cursor ->
             while (cursor.moveToNext()) {
                 val measurements = parseCsvMeasurements(
-                    if (cursor.isNull(23)) null else cursor.getString(23)
+                    if (cursor.isNull(14)) null else cursor.getString(14)
                 )
                 val row = mutableListOf(
                     cursor.getLong(0).toString(),
@@ -981,16 +963,7 @@ class TrackingDbHelper(context: Context) :
                     String.format(Locale.US, "%.7f", cursor.getDouble(10)),
                     String.format(Locale.US, "%.2f", cursor.getDouble(11)),
                     String.format(Locale.US, "%.2f", cursor.getDouble(12)),
-                    String.format(Locale.US, "%.2f", cursor.getDouble(13)),
-                    cursor.getLong(14).toString(),
-                    csvNullableBoolean(cursor, 15),
-                    cursor.getInt(16).toString(),
-                    csvNullableLong(cursor, 17),
-                    csvNullableInt(cursor, 18),
-                    csvNullableBoolean(cursor, 19),
-                    if (cursor.isNull(20)) "" else csvEscape(cursor.getString(20)),
-                    csvNullableLong(cursor, 21),
-                    csvNullableLong(cursor, 22)
+                    String.format(Locale.US, "%.2f", cursor.getDouble(13))
                 )
 
                 measurementColumns.forEach { (key, _) ->
@@ -1087,22 +1060,6 @@ class TrackingDbHelper(context: Context) :
         cursor: android.database.Cursor,
         index: Int
     ): String = if (cursor.isNull(index)) "" else cursor.getInt(index).toString()
-
-    private fun csvNullableLong(
-        cursor: android.database.Cursor,
-        index: Int
-    ): String = if (cursor.isNull(index)) "" else cursor.getLong(index).toString()
-
-    private fun csvNullableBoolean(
-        cursor: android.database.Cursor,
-        index: Int
-    ): String = if (cursor.isNull(index)) {
-        ""
-    } else if (cursor.getInt(index) != 0) {
-        "1"
-    } else {
-        "0"
-    }
 
     private fun migrateToVersion4(db: SQLiteDatabase) {
         createAccessContextsTable(db)
