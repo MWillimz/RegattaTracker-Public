@@ -97,7 +97,7 @@
     <string name="build_value">Build: %1$s</string>
     <string name="release_notes">Release notes</string>
     <string name="legal_notice_body">Provider:\nMax Willimzik\n\nContact:\nwebmaster@raceoffice.williserv.de\n\nResponsible for contents:\nMax Willimzik</string>
-    <string name="privacy_policy_body">This app processes location data, boat data, and technical sensor data to provide regatta tracking.\n\nData processed:\n- GPS position\n- Timestamp\n- Boat data\n- Sail number\n- Captain/skipper name\n- Course over ground (COG)\n- Speed over ground (SOG)\n- GPS accuracy\n- Acceleration and gyroscope data\n- Event identifier, server address and server credential\n\nPurpose of processing:\n- Live regatta tracking\n- Start line check\n- OCS detection\n- Course progress\n- Finish detection\n- CSV export and later analysis\n\nStorage and transmission:\nData is first stored locally on the device. During a race session, tracking data may be transmitted to the compatible regatta server configured for that race. The operator of that server is responsible for server-side processing and retention.\n\nAndroid backup:\nApp-local configuration, credentials and tracking data are excluded from Android backup and device transfer.\n\nManual training:\nManually recorded training data is stored locally and is not automatically transmitted to the server.\n\nQR scanning:\nCamera frames used for QR scanning are processed locally and are not intentionally stored or uploaded by the app.\n\nConsent:\nLocation data is only processed if the user consents to processing and grants the Android location permission.</string>
+    <string name="privacy_policy_body">This app processes location data, boat data, and technical sensor data to provide regatta tracking.\n\nData processed:\n- GPS position\n- Timestamp\n- Boat data\n- Sail number\n- Captain/skipper name\n- Course over ground (COG)\n- Speed over ground (SOG)\n- GPS accuracy\n- Detailed RegattaLink / Boat Data measurements for local replay, diagnostics and analysis\n- Event identifier, server address and server credential\n\nPurpose of processing:\n- Live regatta tracking\n- Start line check\n- OCS detection\n- Course progress\n- Finish detection\n- CSV export and later analysis\n\nStorage and transmission:\nData is first stored locally on the device. During a race session, core tracking data may be transmitted to the compatible regatta server configured for that race, including GPS/track data, boat and skipper information, battery status and tracking-profile metadata. Detailed RegattaLink / Boat Data measurements remain local and are not included in the automatic race-server upload. The operator of that server is responsible for server-side processing and retention.\n\nAndroid backup:\nApp-local configuration, credentials and tracking data are excluded from Android backup and device transfer.\n\nManual training:\nManually recorded training data is stored locally and is not automatically transmitted to the server.\n\nQR scanning:\nCamera frames used for QR scanning are processed locally and are not intentionally stored or uploaded by the app.\n\nConsent:\nLocation data is only processed if the user consents to processing and grants the Android location permission.</string>
     <string name="regatta_server_body">The Regatta Server configured for an event is operated separately from this app.\n\nIts operator and legal information are specific to that server and can be found under Server information on the Event screen.</string>
     <string name="license_notices_body">Regatta Tracker source code:\nGNU General Public License v3.0 or later.\n\nQR decoding:\nZXing Core 3.5.4 — Apache License 2.0.\n\nThe full ZXing license text is bundled with the app and can be viewed below.\n\nMap and geodata:\n© OpenStreetMap contributors\n© OpenSeaMap contributors\n\nOpenStreetMap data is available under the Open Data Commons Open Database License (ODbL).</string>
     <string name="third_party_license_unavailable">Third-party license text is unavailable.</string>
@@ -230,6 +230,7 @@
     <string name="start_in">START IN %1$d:%2$02d</string>
     <string name="ocs">OCS</string>
     <string name="finished">FINISHED</string>
+    <string name="finalised">FINALISED</string>
     <string name="postponed">POSTPONED</string>
 
     <string name="csv_preview_not_live">CSV preview is no longer updated live by the service.</string>
@@ -300,6 +301,7 @@
     <string name="status_racing">racing</string>
     <string name="status_started">started</string>
     <string name="status_finished">finished</string>
+    <string name="status_finalised">finalised</string>
     <string name="status_postponed">postponed</string>
     <string name="status_cancelled">cancelled</string>
     <string name="status_not_active">not active</string>
@@ -474,10 +476,10 @@
     <string name="regattalink_error_name_change_failed">Could not change the RegattaLink name.</string>
     <string name="regattalink_error_led_brightness_range">LED brightness must be between 0 and 100 percent.</string>
     <string name="regattalink_error_motion_damping_range">Motion damping must be between 1 and 10 seconds.</string>
-    <string name="regattalink_error_nmea_failed">NMEA2000 diagnostics failed.</string>
-    <string name="regattalink_error_nmea_notifications_failed">Could not enable live NMEA2000 data.</string>
-    <string name="regattalink_error_nmea_boat_state_read_failed">Could not read NMEA2000 Boat State.</string>
-    <string name="regattalink_error_nmea_pgn_inventory_read_failed">Could not read the NMEA2000 PGN inventory.</string>
+    <string name="regattalink_error_nmea_failed">Boat Data diagnostics failed.</string>
+    <string name="regattalink_error_nmea_notifications_failed">Could not enable live Boat Data.</string>
+    <string name="regattalink_error_nmea_boat_state_read_failed">Could not read Boat State.</string>
+    <string name="regattalink_error_nmea_pgn_inventory_read_failed">Could not read the Boat Data PGN inventory.</string>
     <string name="regattalink_error_nmea_raw_can_read_failed">Could not read raw CAN frames.</string>
     <string name="regattalink_error_raw_capture_failed">Raw CAN capture failed.</string>
     <string name="regattalink_error_raw_capture_directory_failed">Could not create the raw CAN capture directory.</string>
@@ -506,6 +508,10 @@
     <string name="regattalink_direction_reinstall">Update direction: reinstall</string>
     <string name="regattalink_firmware_signed">Signed firmware</string>
     <string name="regattalink_firmware_unsigned">Unsigned development firmware</string>
+    <string name="regattalink_firmware_source">Firmware source</string>
+    <string name="regattalink_firmware_source_standard">Standard</string>
+    <string name="regattalink_firmware_source_event_beta">Event / Beta</string>
+    <string name="regattalink_firmware_source_event_helper">Firmware from the currently loaded event.</string>
     <string name="regattalink_check_firmware">Check firmware</string>
     <string name="regattalink_connect_before_firmware">Connect a RegattaLink before checking firmware.</string>
     <string name="regattalink_firmware_check_failed">Firmware check failed.</string>
@@ -605,7 +611,7 @@
     <string name="regattalink_settings_title">Settings</string>
     <string name="regattalink_setup">Setup</string>
     <string name="regattalink_setup_imu">Setup IMU</string>
-    <string name="regattalink_setup_nmea">Setup NMEA</string>
+    <string name="regattalink_setup_nmea">Setup Boat Data</string>
     <string name="regattalink_advanced_diagnostics">Advanced / Diagnostics</string>
     <string name="regattalink_device_settings">Device settings</string>
     <string name="regattalink_technical_details">Technical details</string>
@@ -638,14 +644,14 @@
     <string name="regattalink_motion_damping_value">%1$d s</string>
     <string name="regattalink_led_brightness_unavailable">LED brightness is not supported by this firmware.</string>
     <string name="regattalink_saving">Saving…</string>
-    <string name="regattalink_nmea_title">NMEA2000</string>
-    <string name="regattalink_nmea_available">NMEA2000 diagnostics available</string>
-    <string name="regattalink_nmea_unavailable">NMEA2000 diagnostics unavailable</string>
+    <string name="regattalink_nmea_title">Boat Data</string>
+    <string name="regattalink_nmea_available">Boat Data diagnostics available</string>
+    <string name="regattalink_nmea_unavailable">Boat Data diagnostics unavailable</string>
     <string name="regattalink_pgns_seen">Observed PGNs</string>
     <string name="regattalink_boat_state_title">Boat state</string>
     <string name="regattalink_boat_state_snapshot_only">Live notifications are unavailable at the current BLE MTU; snapshot reads still work.</string>
     <string name="regattalink_boat_state_waiting">Waiting for Boat State…</string>
-    <string name="regattalink_boat_state_no_data">Boat State is available, but no NMEA values are currently valid.</string>
+    <string name="regattalink_boat_state_no_data">Boat State is available, but no Boat Data values are currently valid.</string>
     <string name="regattalink_refreshing">Refreshing…</string>
     <string name="regattalink_refresh_pgns">Refresh PGN inventory</string>
     <string name="regattalink_last_seen_ms">%1$d ms ago</string>
@@ -703,16 +709,16 @@
     <string name="regattalink_load_waiting">Waiting for load sensor data…</string>
     <string name="regattalink_load_not_subscribed">Load sensor notifications are unavailable.</string>
     <string name="regattalink_load_alias">Optional name</string>
-    <string name="regattalink_load_identity_temporary">Temporary NMEA identity; naming is available once the stable NMEA2000 NAME is known.</string>
-    <string name="regattalink_nmea_tx_title">NMEA2000 transmission</string>
-    <string name="regattalink_nmea_tx_receive_only">Receive only. RegattaLink does not transmit on NMEA2000.</string>
-    <string name="regattalink_nmea_tx_enabled">Transmission permitted. Standard NMEA2000 management traffic may be sent.</string>
+    <string name="regattalink_load_identity_temporary">Temporary Boat Data identity; naming is available once the stable device identity is known.</string>
+    <string name="regattalink_nmea_tx_title">Boat Data transmission</string>
+    <string name="regattalink_nmea_tx_receive_only">Receive only. RegattaLink does not transmit Boat Data.</string>
+    <string name="regattalink_nmea_tx_enabled">Transmission permitted. Standard Boat Data management traffic may be sent.</string>
     <string name="regattalink_nmea_tx_state_unavailable">State could not be read from RegattaLink.</string>
     <string name="regattalink_nmea_attitude_tx">Heel / Trim</string>
     <string name="regattalink_nmea_attitude_tx_enabled">Local RegattaLink IMU Pitch/Roll · PGN 127257 · 5 Hz</string>
     <string name="regattalink_nmea_attitude_tx_disabled">PGN 127257 output disabled.</string>
-    <string name="regattalink_nmea_attitude_tx_master_off">Selected, but no application transmission is active while NMEA2000 transmission is off.</string>
-    <string name="regattalink_nmea_restart_required">Restart RegattaLink to apply the NMEA2000 transmission changes.</string>
+    <string name="regattalink_nmea_attitude_tx_master_off">Selected, but no application transmission is active while Boat Data transmission is off.</string>
+    <string name="regattalink_nmea_restart_required">Restart RegattaLink to apply the Boat Data transmission changes.</string>
     <string name="regattalink_restart">Restart RegattaLink</string>
     <string name="regattalink_restarting">Restarting RegattaLink…</string>
     <string name="regattalink_restart_timeout">RegattaLink restart timed out. Try again.</string>
@@ -726,7 +732,7 @@
     <string name="regattalink_nmea_attitude_enable_pending">Heel / Trim setting saved. Restart RegattaLink to enable PGN 127257.</string>
     <string name="regattalink_nmea_attitude_disable_pending">Heel / Trim disabled setting saved. PGN 127257 may remain enabled until restart.</string>
     <string name="regattalink_nmea_attitude_tx_inactive">Selected for this boot, but PGN 127257 output is not runtime-enabled.</string>
-    <string name="regattalink_nmea_runtime_unknown_restart">Applied NMEA2000 TX state is unavailable on this firmware. Restart RegattaLink to synchronize the selected settings.</string>
+    <string name="regattalink_nmea_runtime_unknown_restart">Applied Boat Data TX state is unavailable on this firmware. Restart RegattaLink to synchronize the selected settings.</string>
 
     <string name="session_metric_cog">COG</string>
     <string name="session_metric_sog">SOG</string>

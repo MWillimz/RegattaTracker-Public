@@ -126,10 +126,10 @@ internal fun updateMarkDetectionProgress(
     previousProgress: MarkDetectionProgress?
 ): MarkDetectionProgress {
     val base = previousProgress
-        ?.takeIf { it.geometry == geometry }
         ?: MarkDetectionProgress(geometry = geometry)
 
     return base.copy(
+        geometry = geometry,
         entryCrossed = base.entryCrossed || markDetectionGateCrossed(
             previousPosition = previousPosition,
             currentPosition = currentPosition,

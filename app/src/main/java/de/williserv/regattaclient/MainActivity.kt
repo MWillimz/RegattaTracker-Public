@@ -37,6 +37,7 @@ import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.util.Locale
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 import androidx.compose.material3.AlertDialog
@@ -54,6 +55,7 @@ enum class Screen {
     BOAT_DATA,
     REGATTALINK,
     RACE,
+    SERVER_INFORMATION,
     RACE_LEGAL,
     COURSE,
     MAP,
@@ -153,6 +155,8 @@ class MainActivity : ComponentActivity() {
     private val regattaLinkFirmwareClient = RegattaLinkFirmwareClient()
     private val regattaLinkFirmwareState = mutableStateOf(RegattaLinkFirmwareUiState())
     private var regattaLinkFirmwareArtifact: RegattaLinkFirmwareArtifact? = null
+    private var regattaLinkFirmwareArtifactDeviceStableId: String? = null
+    private var regattaLinkFirmwareRequestGeneration = 0L
     private val regattaLinkOtaState = mutableStateOf(RegattaLinkOtaUiState())
     private val regattaLinkTelemetryState = mutableStateOf(RegattaLinkTelemetryState())
     private val regattaLinkConfigurationState =
@@ -384,6 +388,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     regattaLinkFirmwareArtifact = null
+                    regattaLinkFirmwareArtifactDeviceStableId = null
                     regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState()
                     if (::regattaLinkManager.isInitialized) {
                         regattaLinkManager.resetOtaState()
@@ -403,6 +408,7 @@ class MainActivity : ComponentActivity() {
             }
             Screen.SESSION_REPLAY,
             Screen.SESSION_ANALYSIS -> Screen.SESSION_DETAIL
+            Screen.SERVER_INFORMATION,
             Screen.RACE_LEGAL,
             Screen.QR_SCANNER -> Screen.RACE
             Screen.MAP -> if (selectedCourseMapView.value == null) {
@@ -592,6 +598,7 @@ class MainActivity : ComponentActivity() {
                             retirementStatusText = retirementStatusText.value,
                             raceDataReady = raceDataReady.value,
                             raceRegistered = raceRegistered.value,
+                            localRaceFinished = localRaceFinished,
                             dtlText = dtlText.value,
                             ttlText = ttlText.value,
                             ocsText = ocsText.value,
@@ -808,7 +815,6 @@ class MainActivity : ComponentActivity() {
                             configurationState = regattaLinkConfigurationState.value,
                             nmeaState = regattaLinkNmeaState.value,
                             rawCaptureState = regattaLinkRawCaptureState.value,
-                            firmwareSourceAvailable = raceServer.value.isNotBlank(),
                             installAvailable =
                                 regattaLinkFirmwareArtifact != null &&
                                     regattaLinkFirmwareState.value.status ==
@@ -816,6 +822,7 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.padding(innerPadding),
                             onSearch = ::startRegattaLinkConnection,
                             onCheckFirmware = ::loadRegattaLinkFirmware,
+                            onFirmwareSourceSelected = ::selectRegattaLinkFirmwareSource,
                             onInstallFirmware = ::installRegattaLinkFirmware,
                             onCancelOta = {
                                 regattaLinkManager.cancelOta()
@@ -876,6 +883,7 @@ class MainActivity : ComponentActivity() {
                             onDisconnect = {
                                 regattaLinkManager.disconnect()
                                 regattaLinkFirmwareArtifact = null
+                                regattaLinkFirmwareArtifactDeviceStableId = null
                                 regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState()
                                 regattaLinkManager.resetOtaState()
                             },
@@ -931,6 +939,9 @@ class MainActivity : ComponentActivity() {
                                     fetchRaceLegalText()
                                 }
                             },
+                            onServerInformation = {
+                                currentScreen.value = Screen.SERVER_INFORMATION
+                            },
                             onScanQr = {
                                 currentScreen.value = Screen.QR_SCANNER
                             },
@@ -951,6 +962,14 @@ class MainActivity : ComponentActivity() {
                                 )
                             },
                             onBack = ::navigateBack
+                        )
+
+                        Screen.SERVER_INFORMATION -> ServerInformationScreen(
+                            server = raceServer.value,
+                            event = raceEvent.value,
+                            secret = raceSecret.value,
+                            onClose = ::navigateBack,
+                            modifier = Modifier.padding(innerPadding)
                         )
 
                         Screen.COURSE -> CourseScreen(
@@ -1078,7 +1097,7 @@ class MainActivity : ComponentActivity() {
                     FinishDetectedDialog(
                         onStopTracking = {
                             showFinishDetectedDialog.value = false
-                            leaveRace()
+                            leaveRace(preserveLocalRaceStatus = true)
                         },
                         onContinue = {
                             showFinishDetectedDialog.value = false
@@ -1527,6 +1546,7 @@ class MainActivity : ComponentActivity() {
         raceServer.value = ""
         raceEvent.value = ""
         raceSecret.value = ""
+        invalidateRegattaLinkFirmwareSelection()
         resolvedEventName.value = ""
         retirementReported.value = false
         retirementStatusText.value = ""
@@ -1804,6 +1824,7 @@ class MainActivity : ComponentActivity() {
             raceServer.value = server
             raceEvent.value = event
             raceSecret.value = secret
+            invalidateRegattaLinkFirmwareSelection()
             clearResolvedEventContextForAccessChange()
 
             setRaceRegistered(false)
@@ -2824,14 +2845,20 @@ class MainActivity : ComponentActivity() {
         }
 
         if (currentRaceStatus.equals("finished", ignoreCase = true)) {
-            startPanelText.value = getString(R.string.finished)
-            startPanelMode.value = "finished"
+            startPanelText.value = getString(R.string.finalised)
+            startPanelMode.value = "finalised"
             return
         }
 
         if (currentRaceStatus.equals("postponed", ignoreCase = true)) {
             startPanelText.value = getString(R.string.postponed)
             startPanelMode.value = "postponed"
+            return
+        }
+
+        if (localRaceFinished) {
+            startPanelText.value = getString(R.string.finished)
+            startPanelMode.value = "finished"
             return
         }
 
@@ -2956,7 +2983,14 @@ class MainActivity : ComponentActivity() {
 
     private fun installRegattaLinkFirmware() {
         val artifact = regattaLinkFirmwareArtifact
-        if (artifact == null) {
+        val connectedStableId = regattaLinkState.value.deviceInfo?.stableId
+        if (
+            artifact == null ||
+            connectedStableId == null ||
+            connectedStableId != regattaLinkFirmwareArtifactDeviceStableId
+        ) {
+            regattaLinkFirmwareArtifact = null
+            regattaLinkFirmwareArtifactDeviceStableId = null
             regattaLinkOtaState.value = RegattaLinkOtaUiState(
                 phase = RegattaLinkOtaPhase.ERROR,
                 error = getString(R.string.regattalink_firmware_check_first)
@@ -2966,10 +3000,67 @@ class MainActivity : ComponentActivity() {
         regattaLinkManager.startOta(artifact)
     }
 
+    private fun currentRegattaLinkEventFirmwareEndpoint():
+        RegattaLinkFirmwareEndpoint? {
+        val server = raceServer.value.trim()
+        val event = raceEvent.value.trim()
+        val secret = raceSecret.value.trim()
+        if (server.isBlank() || event.isBlank() || secret.isBlank()) {
+            return null
+        }
+
+        return runCatching {
+            RegattaLinkFirmwareEndpoint.event(
+                serverUrl = server,
+                eventIdentifier = event,
+                sharedSecret = secret
+            )
+        }.getOrNull()
+    }
+
+    private fun invalidateRegattaLinkFirmwareSelection() {
+        regattaLinkFirmwareRequestGeneration += 1
+        regattaLinkFirmwareArtifact = null
+        regattaLinkFirmwareArtifactDeviceStableId = null
+        regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState()
+        if (
+            ::regattaLinkManager.isInitialized &&
+            !regattaLinkOtaState.value.isActive
+        ) {
+            regattaLinkManager.resetOtaState()
+        }
+    }
+
+    private fun selectRegattaLinkFirmwareSource(
+        source: RegattaLinkFirmwareSource
+    ) {
+        if (regattaLinkOtaState.value.isActive) return
+
+        val current = regattaLinkFirmwareState.value
+        if (
+            source == current.selectedSource ||
+            source !in current.availableSources
+        ) {
+            return
+        }
+
+        regattaLinkFirmwareRequestGeneration += 1
+        regattaLinkFirmwareArtifact = null
+        regattaLinkFirmwareArtifactDeviceStableId = null
+        regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState(
+            selectedSource = source,
+            availableSources = current.availableSources
+        )
+        if (::regattaLinkManager.isInitialized) {
+            regattaLinkManager.resetOtaState()
+        }
+    }
+
     private fun loadRegattaLinkFirmware() {
         if (regattaLinkOtaState.value.isActive) return
         regattaLinkManager.resetOtaState()
         regattaLinkOtaState.value = RegattaLinkOtaUiState()
+
         val deviceInfo = regattaLinkState.value.deviceInfo
         if (deviceInfo == null) {
             regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState(
@@ -2979,24 +3070,61 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        val firmwareServer = raceServer.value.trim()
-        if (firmwareServer.isBlank()) {
-            regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState(
-                status = RegattaLinkFirmwareStatus.ERROR,
-                userMessage = RegattaLinkUiMessage.FIRMWARE_SERVER_REQUIRED
-            )
-            return
-        }
+        val preferredSource =
+            regattaLinkFirmwareState.value.selectedSource
+        val productionEndpoint = RegattaLinkFirmwareEndpoint.production(
+            BuildConfig.RLINK_FIRMWARE_ACCESS_KEY
+        )
+        val eventEndpoint = currentRegattaLinkEventFirmwareEndpoint()
+        val requestGeneration = ++regattaLinkFirmwareRequestGeneration
 
         regattaLinkFirmwareArtifact = null
+        regattaLinkFirmwareArtifactDeviceStableId = null
         regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState(
-            status = RegattaLinkFirmwareStatus.LOADING
+            status = RegattaLinkFirmwareStatus.LOADING,
+            selectedSource = preferredSource
         )
 
         thread {
+            var discovery: RegattaLinkFirmwareDiscovery? = null
             try {
-                val artifact = regattaLinkFirmwareClient.load(
-                    serverUrl = firmwareServer,
+                val productionFuture = CompletableFuture.supplyAsync {
+                    runCatching {
+                        regattaLinkFirmwareClient.loadMetadata(
+                            productionEndpoint
+                        )
+                    }
+                }
+                val eventFuture = eventEndpoint?.let { endpoint ->
+                    CompletableFuture.supplyAsync {
+                        runCatching {
+                            regattaLinkFirmwareClient.loadMetadata(endpoint)
+                        }
+                    }
+                }
+
+                val productionResult = productionFuture.get()
+                val eventResult = eventFuture?.get()
+                val resolved = chooseRegattaLinkFirmwareSource(
+                    production = productionResult,
+                    event = eventResult,
+                    preferredSource = preferredSource
+                )
+                discovery = resolved
+
+                val selectedEndpoint = when (resolved.selectedSource) {
+                    RegattaLinkFirmwareSource.STANDARD ->
+                        productionEndpoint
+                    RegattaLinkFirmwareSource.EVENT ->
+                        eventEndpoint
+                            ?: throw IllegalStateException(
+                                "Event firmware source is no longer available"
+                            )
+                }
+
+                val artifact = regattaLinkFirmwareClient.loadArtifact(
+                    endpoint = selectedEndpoint,
+                    manifest = resolved.selectedManifest,
                     deviceInfo = deviceInfo
                 )
                 val direction = validateRegattaLinkFirmwareForDevice(
@@ -3006,29 +3134,82 @@ class MainActivity : ComponentActivity() {
 
                 runOnUiThread {
                     if (!asyncLifetime.isActive()) return@runOnUiThread
-                    if (regattaLinkState.value.deviceInfo?.stableId != deviceInfo.stableId) {
+                    if (
+                        requestGeneration !=
+                        regattaLinkFirmwareRequestGeneration
+                    ) {
                         return@runOnUiThread
                     }
+                    if (
+                        regattaLinkState.value.deviceInfo?.stableId !=
+                        deviceInfo.stableId
+                    ) {
+                        invalidateRegattaLinkFirmwareSelection()
+                        return@runOnUiThread
+                    }
+                    if (
+                        currentRegattaLinkEventFirmwareEndpoint() !=
+                        eventEndpoint
+                    ) {
+                        invalidateRegattaLinkFirmwareSelection()
+                        return@runOnUiThread
+                    }
+
                     regattaLinkFirmwareArtifact = artifact
-                    regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState(
-                        status = RegattaLinkFirmwareStatus.READY,
-                        availableBuild = artifact.manifest.buildNumber.toString(),
-                        direction = direction,
-                        signed = artifact.manifest.signed
-                    )
+                    regattaLinkFirmwareArtifactDeviceStableId =
+                        deviceInfo.stableId
+                    regattaLinkFirmwareState.value =
+                        RegattaLinkFirmwareUiState(
+                            status = RegattaLinkFirmwareStatus.READY,
+                            availableBuild =
+                                artifact.manifest.buildNumber.toString(),
+                            direction = direction,
+                            signed = artifact.manifest.signed,
+                            selectedSource = resolved.selectedSource,
+                            availableSources = resolved.availableSources
+                        )
                 }
             } catch (error: Exception) {
                 runOnUiThread {
                     if (!asyncLifetime.isActive()) return@runOnUiThread
-                    if (regattaLinkState.value.deviceInfo?.stableId != deviceInfo.stableId) {
+                    if (
+                        requestGeneration !=
+                        regattaLinkFirmwareRequestGeneration
+                    ) {
                         return@runOnUiThread
                     }
+                    if (
+                        regattaLinkState.value.deviceInfo?.stableId !=
+                        deviceInfo.stableId
+                    ) {
+                        invalidateRegattaLinkFirmwareSelection()
+                        return@runOnUiThread
+                    }
+                    if (
+                        currentRegattaLinkEventFirmwareEndpoint() !=
+                        eventEndpoint
+                    ) {
+                        invalidateRegattaLinkFirmwareSelection()
+                        return@runOnUiThread
+                    }
+
                     regattaLinkFirmwareArtifact = null
-                    regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState(
-                        status = RegattaLinkFirmwareStatus.ERROR,
-                        userMessage = RegattaLinkUiMessage.FIRMWARE_CHECK_FAILED,
-                        error = error.message ?: "Firmware check failed"
-                    )
+                    regattaLinkFirmwareArtifactDeviceStableId = null
+                    val resolved = discovery
+                    regattaLinkFirmwareState.value =
+                        RegattaLinkFirmwareUiState(
+                            status = RegattaLinkFirmwareStatus.ERROR,
+                            selectedSource =
+                                resolved?.selectedSource ?: preferredSource,
+                            availableSources =
+                                resolved?.availableSources ?: emptySet(),
+                            userMessage =
+                                RegattaLinkUiMessage.FIRMWARE_CHECK_FAILED,
+                            error =
+                                error.cause?.message
+                                    ?: error.message
+                                    ?: "Firmware check failed"
+                        )
                 }
             }
         }
@@ -3037,6 +3218,7 @@ class MainActivity : ComponentActivity() {
     private fun startRegattaLinkConnection() {
         if (regattaLinkOtaState.value.isActive) return
         regattaLinkFirmwareArtifact = null
+        regattaLinkFirmwareArtifactDeviceStableId = null
         regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState()
         regattaLinkManager.resetOtaState()
         runRegattaLinkActionWithPermissions(
@@ -3312,6 +3494,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun leaveRace() {
+        leaveRace(preserveLocalRaceStatus = false)
+    }
+
+    private fun leaveRace(preserveLocalRaceStatus: Boolean) {
 
 
         retirementStatusText.value = ""
@@ -3322,7 +3508,9 @@ class MainActivity : ComponentActivity() {
         statusText.value = getString(R.string.race_left)
         serviceStatusText.value = getString(R.string.service_stopped)
 
-        stopRegattaForegroundService()
+        stopRegattaForegroundService(
+            preserveLocalRaceStatus = preserveLocalRaceStatus
+        )
 
         currentScreen.value = Screen.HOME
     }
@@ -3374,9 +3562,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun stopRegattaForegroundService() {
+    private fun stopRegattaForegroundService(
+        preserveLocalRaceStatus: Boolean = false
+    ) {
         val intent = Intent(this, RegattaTrackingService::class.java).apply {
             action = RegattaTrackingService.ACTION_STOP
+            putExtra(
+                RegattaTrackingService.EXTRA_PRESERVE_LOCAL_RACE_STATUS,
+                preserveLocalRaceStatus
+            )
         }
 
         startService(intent)

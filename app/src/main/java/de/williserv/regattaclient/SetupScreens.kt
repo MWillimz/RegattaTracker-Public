@@ -224,6 +224,7 @@ fun RaceScreen(
     onRetire: () -> Unit,
     onExitRace: () -> Unit,
     onShowRaceLegal: () -> Unit,
+    onServerInformation: () -> Unit,
     onClearRaceSetupClick: () -> Unit,
     onBack: () -> Unit,
     seriesDisplayMetadata: SeriesDisplayMetadata = SeriesDisplayMetadata()
@@ -481,6 +482,7 @@ fun RaceScreen(
                     server = raceServer,
                     event = raceEvent,
                     secret = raceSecret,
+                    onClick = onServerInformation,
                     modifier = Modifier.weight(1f)
                 )
 
