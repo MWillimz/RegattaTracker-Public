@@ -4,6 +4,9 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
+private const val REGATTALINK_FIRMWARE_METADATA_PATH =
+    "/regattalink/firmware/metadata"
+
 enum class RegattaLinkFirmwareStatus {
     IDLE,
     LOADING,
@@ -16,6 +19,9 @@ data class RegattaLinkFirmwareUiState(
     val availableBuild: String = "",
     val direction: RegattaLinkFirmwareDirection? = null,
     val signed: Boolean = false,
+    val selectedSource: RegattaLinkFirmwareSource =
+        RegattaLinkFirmwareSource.STANDARD,
+    val availableSources: Set<RegattaLinkFirmwareSource> = emptySet(),
     val error: String = "",
     val userMessage: RegattaLinkUiMessage? = null
 )
@@ -25,29 +31,58 @@ internal fun versionedRegattaLinkFirmwareDownloadUrl(
     buildNumber: ULong
 ): String {
     val separator = if (rawUrl.contains("?")) "&" else "?"
-    return "$rawUrl${separator}v=$buildNumber"
+    return rawUrl + separator + "v=" + buildNumber
 }
 
 class RegattaLinkFirmwareClient {
-    fun load(
-        serverUrl: String,
-        deviceInfo: RegattaLinkDeviceInfo
-    ): RegattaLinkFirmwareArtifact {
-        val baseUrl = normalizeFirmwareServerUrl(serverUrl)
-        val metadataJson = getJson("$baseUrl/regattalink/firmware/metadata")
-        val manifest = parseManifest(metadataJson)
-
-        validateRegattaLinkFirmwareManifest(manifest)
-        val firmwareUrl = versionedRegattaLinkFirmwareDownloadUrl(
-            baseUrl + manifest.downloadUrl,
-            manifest.buildNumber
+    fun loadMetadata(
+        endpoint: RegattaLinkFirmwareEndpoint
+    ): RegattaLinkFirmwareManifest {
+        val metadataJson = getJson(
+            endpoint = endpoint,
+            url = endpoint.baseUrl + REGATTALINK_FIRMWARE_METADATA_PATH
         )
-        val image = getFirmwareBytes(firmwareUrl, manifest.size)
-        return validateRegattaLinkFirmwareArtifact(manifest, image, deviceInfo)
+        val manifest = parseManifest(metadataJson)
+        validateRegattaLinkFirmwareManifest(manifest)
+        return manifest
     }
 
-    private fun getJson(url: String): JSONObject {
-        val connection = openGet(url, "application/json")
+    fun loadArtifact(
+        endpoint: RegattaLinkFirmwareEndpoint,
+        manifest: RegattaLinkFirmwareManifest,
+        deviceInfo: RegattaLinkDeviceInfo
+    ): RegattaLinkFirmwareArtifact {
+        validateRegattaLinkFirmwareManifest(manifest)
+
+        val firmwareUrl = versionedRegattaLinkFirmwareDownloadUrl(
+            endpoint.baseUrl + manifest.downloadUrl,
+            manifest.buildNumber
+        )
+        val image = getFirmwareBytes(
+            endpoint = endpoint,
+            url = firmwareUrl,
+            expectedSize = manifest.size
+        )
+        return validateRegattaLinkFirmwareArtifact(
+            manifest,
+            image,
+            deviceInfo
+        )
+    }
+
+    fun load(
+        endpoint: RegattaLinkFirmwareEndpoint,
+        deviceInfo: RegattaLinkDeviceInfo
+    ): RegattaLinkFirmwareArtifact {
+        val manifest = loadMetadata(endpoint)
+        return loadArtifact(endpoint, manifest, deviceInfo)
+    }
+
+    private fun getJson(
+        endpoint: RegattaLinkFirmwareEndpoint,
+        url: String
+    ): JSONObject {
+        val connection = openGet(endpoint, url, "application/json")
         return try {
             val body = readResponse(connection)
             JSONObject(body)
@@ -56,12 +91,20 @@ class RegattaLinkFirmwareClient {
         }
     }
 
-    private fun getFirmwareBytes(url: String, expectedSize: Int): ByteArray {
+    private fun getFirmwareBytes(
+        endpoint: RegattaLinkFirmwareEndpoint,
+        url: String,
+        expectedSize: Int
+    ): ByteArray {
         require(expectedSize in 1..REGATTALINK_FIRMWARE_MAX_BYTES) {
             "Firmware size is invalid"
         }
 
-        val connection = openGet(url, "application/octet-stream")
+        val connection = openGet(
+            endpoint,
+            url,
+            "application/octet-stream"
+        )
         return try {
             val responseCode = connection.responseCode
             if (responseCode !in 200..299) {
@@ -69,9 +112,9 @@ class RegattaLinkFirmwareClient {
                     ?.bufferedReader()
                     ?.use { it.readText() }
                     .orEmpty()
-                val suffix = if (errorBody.isBlank()) "" else ": $errorBody"
+                val suffix = if (errorBody.isBlank()) "" else ": " + errorBody
                 throw IllegalStateException(
-                    "Firmware download failed ($responseCode)$suffix"
+                    "Firmware download failed (" + responseCode + ")" + suffix
                 )
             }
 
@@ -84,7 +127,11 @@ class RegattaLinkFirmwareClient {
                 val buffer = ByteArray(expectedSize + 1)
                 var total = 0
                 while (total < buffer.size) {
-                    val count = input.read(buffer, total, buffer.size - total)
+                    val count = input.read(
+                        buffer,
+                        total,
+                        buffer.size - total
+                    )
                     if (count < 0) break
                     total += count
                 }
@@ -100,13 +147,20 @@ class RegattaLinkFirmwareClient {
         }
     }
 
-    private fun openGet(url: String, accept: String): HttpURLConnection {
+    private fun openGet(
+        endpoint: RegattaLinkFirmwareEndpoint,
+        url: String,
+        accept: String
+    ): HttpURLConnection {
         val connection = URL(url).openConnection() as HttpURLConnection
         connection.requestMethod = "GET"
         connection.instanceFollowRedirects = false
         connection.connectTimeout = 5_000
         connection.readTimeout = 15_000
         connection.setRequestProperty("Accept", accept)
+        regattaLinkFirmwareAuthHeaders(endpoint.auth).forEach { (name, value) ->
+            connection.setRequestProperty(name, value)
+        }
         connection.useCaches = false
         return connection
     }
@@ -116,12 +170,15 @@ class RegattaLinkFirmwareClient {
         val body = if (responseCode in 200..299) {
             connection.inputStream.bufferedReader().use { it.readText() }
         } else {
-            connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            connection.errorStream
+                ?.bufferedReader()
+                ?.use { it.readText() }
+                .orEmpty()
         }
         if (responseCode !in 200..299) {
-            val suffix = if (body.isBlank()) "" else ": $body"
+            val suffix = if (body.isBlank()) "" else ": " + body
             throw IllegalStateException(
-                "Firmware metadata request failed ($responseCode)$suffix"
+                "Firmware metadata request failed (" + responseCode + ")" + suffix
             )
         }
         return body
@@ -136,7 +193,8 @@ class RegattaLinkFirmwareClient {
         }
 
         val signingKey = when {
-            !json.has("signing_key_sha256") || json.isNull("signing_key_sha256") -> null
+            !json.has("signing_key_sha256") ||
+                json.isNull("signing_key_sha256") -> null
             else -> json.getString("signing_key_sha256").lowercase()
         }
 
@@ -155,47 +213,47 @@ class RegattaLinkFirmwareClient {
         )
     }
 
-    private fun requireUnsignedInteger(json: JSONObject, key: String): ULong {
+    private fun requireUnsignedInteger(
+        json: JSONObject,
+        key: String
+    ): ULong {
         val value = json.get(key)
         if (value !is Number) {
             throw IllegalArgumentException(
-                "Firmware manifest $key must be an integer"
+                "Firmware manifest " + key + " must be an integer"
             )
         }
         val text = value.toString()
         if (!Regex("^[0-9]+$").matches(text)) {
             throw IllegalArgumentException(
-                "Firmware manifest $key must be an integer"
+                "Firmware manifest " + key + " must be an integer"
             )
         }
         return text.toULongOrNull()
             ?.takeIf { it > 0uL }
             ?: throw IllegalArgumentException(
-                "Firmware manifest $key must be a positive u64"
+                "Firmware manifest " + key + " must be a positive u64"
             )
     }
 
-    private fun requirePositiveInt(json: JSONObject, key: String): Int {
+    private fun requirePositiveInt(
+        json: JSONObject,
+        key: String
+    ): Int {
         val value = json.get(key)
         val text = value.toString()
-        val longValue = if (value is Number && Regex("^[0-9]+$").matches(text)) {
-            text.toLongOrNull()
-        } else {
-            null
-        } ?: throw IllegalArgumentException(
-            "Firmware manifest $key must be an integer"
-        )
+        val longValue =
+            if (value is Number && Regex("^[0-9]+$").matches(text)) {
+                text.toLongOrNull()
+            } else {
+                null
+            }
+                ?: throw IllegalArgumentException(
+                    "Firmware manifest " + key + " must be an integer"
+                )
         require(longValue in 1..Int.MAX_VALUE.toLong()) {
-            "Firmware manifest $key is out of range"
+            "Firmware manifest " + key + " is out of range"
         }
         return longValue.toInt()
-    }
-
-    private fun normalizeFirmwareServerUrl(serverUrl: String): String {
-        val normalized = normalizeServerBaseUrl(serverUrl)
-        require(normalized.startsWith("https://")) {
-            "A configured HTTPS Regatta Server is required for firmware updates"
-        }
-        return normalized
     }
 }
