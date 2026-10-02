@@ -9,9 +9,9 @@
   Android 11+ · Kotlin · Jetpack Compose · GPL-3.0-or-later
 </p>
 
-Regatta Tracker is the participant-side Android client for GPS-supported sailing regattas. It connects to a compatible regatta server, keeps the sailor informed before and during a race, records telemetry locally, and uploads race data when a server connection is available.
+Regatta Tracker is the participant-side Android client for GPS-supported sailing regattas. It connects to a compatible regatta server, guides the sailor before and during a race, records tracking data locally, uploads the race data required by the event server, and keeps useful session data available for local review.
 
-The client is intentionally server-agnostic: the reference server is maintained separately and is not part of this repository.
+The client is intentionally server-agnostic: the reference server is maintained separately and is not part of this repository. Optional RegattaLink hardware can extend the app with BLE-connected boat, motion and diagnostic data.
 
 ## Highlights
 
@@ -21,9 +21,11 @@ The client is intentionally server-agnostic: the reference server is maintained 
 - **On-water race awareness** with start countdown, optional acoustic start/finish signals, OCS indication, next target, distance, course progress and finish detection.
 - **Course information and map** supplied by the connected server.
 - **Published results** directly in the app when the event server provides them.
-- **Reliable telemetry handling**: samples are stored locally first and pending uploads are retried when connectivity returns.
-- **Tracking profiles** including a Battery Saver mode that reduces tracking resolution away from relevant course elements.
-- **Manual tracking and CSV export** for local recording outside a race; manual sessions are not uploaded automatically.
+- **Reliable offline-first tracking**: samples are stored locally first and pending race uploads are retried when connectivity returns.
+- **Tracking profiles** for normal tracking, battery-saving operation and fixed 1-second recording.
+- **Local session history, analysis and replay** for recorded tracks and available sensor data.
+- **Manual tracking and CSV export** for recording outside a race; manual sessions are not uploaded automatically.
+- **Optional RegattaLink integration** for BLE-connected boat data, motion/IMU information, device setup, calibration, diagnostics and firmware updates.
 - **Localized UI** in English, German, French, Spanish and Italian.
 
 > Regatta Tracker provides participant-side tracking and live feedback. Official race evaluation and scoring remain the responsibility of the event server and race committee.
@@ -34,9 +36,11 @@ The client is intentionally server-agnostic: the reference server is maintained 
 2. **Load an event** from a QR code, shared link or compatible server configuration.
 3. **Review the event information** and accept the race notice when required.
 4. **Register with the race committee** when supported. This is a pre-registration only and does not start tracking.
-5. **Enter the race** within 24 hours of the scheduled start. Race tracking then runs as an Android foreground location service.
-6. **Follow the race** using countdown, OCS/start state, course progress, map and current target information while telemetry is queued and uploaded.
-7. **Finish or retire** explicitly. Published results can be viewed in the app when available.
+5. **Optionally connect RegattaLink** when compatible hardware is available.
+6. **Enter the race** within 24 hours of the scheduled start. Race tracking then runs as an Android foreground location service.
+7. **Follow the race** using countdown, OCS/start state, course progress, map and current target information while race telemetry is queued and uploaded.
+8. **Finish or retire** explicitly. Published results can be viewed in the app when available.
+9. **Review recorded sessions locally** using session history, analysis and replay.
 
 ## Connectivity and offline behavior
 
@@ -44,21 +48,54 @@ Tracking data is written to the device before upload. Temporary loss of connecti
 
 Local race state is also persisted so the app can recover useful UI state after an app or phone restart. This cannot reconstruct movement that happened while the phone was switched off, and a mark passed while no position was recorded cannot be detected retroactively.
 
+Manual tracking sessions stay local and are not placed in the race upload queue.
+
 ## Compatible servers
 
-Regatta Tracker is designed to work with compatible HTTPS regatta servers rather than one hard-coded backend. A server supplies the event/course data and may additionally provide race notices, operator/legal information, course maps, results and client compatibility metadata.
+Regatta Tracker is designed to work with compatible HTTPS regatta servers rather than one hard-coded backend. A server supplies event and course data and may additionally provide race notices, operator/legal information, course maps, results, client compatibility metadata and RegattaLink firmware metadata.
 
 The current protocol and endpoint details are documented in [DOCUMENTATION.md](DOCUMENTATION.md).
 
-### RegattaLink BLE client contract
+## RegattaLink
 
-The complete public RegattaLink ↔ RegattaTracker BLE wire contract is documented in [docs/REGATTALINK-BLE-CLIENT-CONTRACT.md](docs/REGATTALINK-BLE-CLIENT-CONTRACT.md). It covers security/bonding, all current service and characteristic UUIDs, Device Info capabilities, Boat Data PGN inventory and raw-CAN diagnostics, persistent LED brightness, IMU telemetry, normalized Boat State v1, OTA framing/state/reconciliation, Android GATT rules, compatibility behavior and the remaining explicitly undefined surfaces.
+RegattaLink is an optional BLE-connected companion device. When present, the app can use supported firmware capabilities for functions including:
+
+- device discovery, connection and status,
+- live motion/IMU information such as heel, trim and motion values,
+- Boat Data / NMEA-related values and diagnostics,
+- load-sensor information when provided by the device,
+- calibration and installation-orientation setup,
+- selected device settings and diagnostic functions,
+- firmware compatibility checks and BLE OTA updates.
+
+Capabilities are discovered from the connected device; older firmware may expose only a subset of these functions.
+
+The complete public RegattaLink ↔ RegattaTracker BLE wire contract is documented in [docs/REGATTALINK-BLE-CLIENT-CONTRACT.md](docs/REGATTALINK-BLE-CLIENT-CONTRACT.md). It defines security/bonding, service and characteristic UUIDs, Device Info capabilities, Boat Data interfaces, motion telemetry, device configuration, diagnostics and OTA behavior.
+
+## Local sessions and analysis
+
+Recorded tracking data remains available locally for session review. Depending on the data captured during a session, the app can provide:
+
+- session history,
+- track replay,
+- speed/course and derived sailing metrics,
+- additional recorded Boat Data and RegattaLink values,
+- configurable replay values,
+- CSV export.
+
+The analysis is intended as a local sailing aid. It is separate from official race scoring performed by the event server.
 
 ## Privacy and data handling
 
-The app processes location, boat and technical telemetry required for tracking. Race telemetry may be sent to the server configured for the active event; the operator of that server is responsible for its server-side processing and retention.
+The app processes location, boat identity/configuration, device status and optional locally available sensor data.
 
-Manual training sessions remain local unless the user exports them. QR camera frames are processed locally for scanning and are not intentionally stored or uploaded. App-local credentials and tracking data are excluded from Android backup/device-transfer mechanisms.
+For an active race, the client uploads the core tracking information required by the configured event server, including GPS/race samples and applicable boat information. Device battery state and the selected tracking profile may also be included.
+
+High-resolution RegattaLink, Boat Data, IMU, rig/load and other extended measurement data stored with local samples is **not included in normal race telemetry uploads**. This keeps detailed boat/sensor analysis on the participant's device while still allowing the server to perform race tracking.
+
+Manual tracking sessions remain local unless the user explicitly exports them. QR camera frames are processed locally for scanning and are not intentionally stored or uploaded. App-local credentials and tracking data are excluded from Android backup/device-transfer mechanisms.
+
+The operator of the configured event server is responsible for server-side processing and retention of data that is uploaded to that server.
 
 See the [privacy policy](docs/privacy/) for the full user-facing information.
 
@@ -68,6 +105,7 @@ The project is a standard Gradle Android application using Kotlin and Jetpack Co
 
 ```bash
 ./gradlew test
+./gradlew lint
 ./gradlew assembleDebug
 ```
 
@@ -81,7 +119,7 @@ For implementation details, API behavior, persistence and race-state logic, see 
 app/                    Android application
 app/src/main/           App source and resources
 app/src/test/           Unit and regression tests
-docs/                   Privacy and supporting documentation
+docs/                   Privacy, RegattaLink and supporting documentation
 DOCUMENTATION.md        Technical/API documentation
 THIRD_PARTY_NOTICES.md  Third-party notices
 ```
