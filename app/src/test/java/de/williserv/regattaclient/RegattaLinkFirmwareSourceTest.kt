@@ -162,6 +162,38 @@ class RegattaLinkFirmwareSourceTest {
     }
 
     @Test
+    fun eventFirmwareRevealAlwaysWaitsUntilTwentySecondsFromProbeStart() {
+        assertEquals(
+            20_000L,
+            regattaLinkEventFirmwareRevealDelayMs(
+                probeStartedAtElapsedMs = 1_000L,
+                completedAtElapsedMs = 1_000L
+            )
+        )
+        assertEquals(
+            15_000L,
+            regattaLinkEventFirmwareRevealDelayMs(
+                probeStartedAtElapsedMs = 1_000L,
+                completedAtElapsedMs = 6_000L
+            )
+        )
+        assertEquals(
+            0L,
+            regattaLinkEventFirmwareRevealDelayMs(
+                probeStartedAtElapsedMs = 1_000L,
+                completedAtElapsedMs = 21_000L
+            )
+        )
+        assertEquals(
+            20_000L,
+            regattaLinkEventFirmwareRevealDelayMs(
+                probeStartedAtElapsedMs = 5_000L,
+                completedAtElapsedMs = 4_000L
+            )
+        )
+    }
+
+    @Test
     fun eventEndpointNormalizesIngestSuffixAndRequiresHttps() {
         val endpoint = RegattaLinkFirmwareEndpoint.event(
             serverUrl = "https://race.example/ingest/",
