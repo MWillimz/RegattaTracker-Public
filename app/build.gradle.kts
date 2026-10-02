@@ -91,6 +91,26 @@ val buildChannel = resolveBuildChannel(
     providers.gradleProperty("regattaBuildChannel").orNull
 )
 val appBuildIdentifier = createBuildIdentifier(buildTimestamp, buildChannel)
+val regattaLinkFirmwareAccessKey =
+    providers.gradleProperty("regattaLinkFirmwareAccessKey").orNull
+        ?.trim()
+        .orEmpty()
+
+if (regattaLinkFirmwareAccessKey.isNotEmpty()) {
+    if (
+        regattaLinkFirmwareAccessKey.length !in 32..256 ||
+        regattaLinkFirmwareAccessKey.any { it.code !in 33..126 }
+    ) {
+        throw org.gradle.api.GradleException(
+            "regattaLinkFirmwareAccessKey must be 32..256 printable ASCII characters without whitespace"
+        )
+    }
+}
+
+fun buildConfigString(value: String): String =
+    "\"" + value
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"") + "\""
 
 val keystorePropertiesFile = rootProject.file("key.properties")
 val keystoreProperties = Properties()
@@ -116,6 +136,11 @@ android {
 
         buildConfigField("String", "APP_VERSION_NAME", "\"$appBuildIdentifier\"")
         buildConfigField("String", "BUILD_DATE", "\"${buildTimestamp.toLocalDate()}\"")
+        buildConfigField(
+            "String",
+            "RLINK_FIRMWARE_ACCESS_KEY",
+            buildConfigString(regattaLinkFirmwareAccessKey)
+        )
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
