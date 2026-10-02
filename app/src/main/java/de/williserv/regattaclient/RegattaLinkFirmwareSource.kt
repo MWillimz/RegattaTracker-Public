@@ -2,6 +2,17 @@ package de.williserv.regattaclient
 
 internal const val REGATTALINK_PRODUCTION_FIRMWARE_BASE_URL =
     "https://rlink.regattatracker.de"
+internal const val REGATTALINK_EVENT_FIRMWARE_REVEAL_DELAY_MS = 20_000L
+
+internal fun regattaLinkEventFirmwareRevealDelayMs(
+    probeStartedAtElapsedMs: Long,
+    completedAtElapsedMs: Long
+): Long {
+    val elapsed =
+        (completedAtElapsedMs - probeStartedAtElapsedMs).coerceAtLeast(0L)
+    return (REGATTALINK_EVENT_FIRMWARE_REVEAL_DELAY_MS - elapsed)
+        .coerceAtLeast(0L)
+}
 
 enum class RegattaLinkFirmwareSource {
     STANDARD,
