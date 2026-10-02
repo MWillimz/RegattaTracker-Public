@@ -207,6 +207,8 @@ fun RegattaLinkScreen(
     var nameDraft by rememberSaveable { mutableStateOf("") }
 
     val connected = state.status == RegattaLinkConnectionStatus.CONNECTED
+    val firmwareSetupOpen =
+        activeSetupDestination == RegattaLinkSetupDestination.FIRMWARE
     val displayedName = configurationState.deviceName.ifBlank { state.deviceName }
     val configEnabled =
         connected &&
@@ -256,6 +258,16 @@ fun RegattaLinkScreen(
     val nmeaSetupOpen =
         activeSetupDestination == RegattaLinkSetupDestination.NMEA &&
             connected
+
+    LaunchedEffect(
+        firmwareSetupOpen,
+        connected,
+        state.deviceAddress
+    ) {
+        if (firmwareSetupOpen && connected) {
+            onCheckFirmware()
+        }
+    }
 
     LaunchedEffect(
         nmeaSetupOpen,
@@ -1917,6 +1929,7 @@ private fun RegattaLinkFirmwareSheet(
                 ) {
                     val sourceSelectionEnabled =
                         !otaState.isActive &&
+                            !firmwareState.installPreparing &&
                             firmwareState.status !=
                             RegattaLinkFirmwareStatus.LOADING
 
@@ -2010,6 +2023,7 @@ private fun RegattaLinkFirmwareSheet(
                     connected &&
                         !configurationState.deviceControlBusy &&
                         !configurationState.diagnosticLogLoading &&
+                        !firmwareState.installPreparing &&
                         firmwareState.status !=
                             RegattaLinkFirmwareStatus.LOADING,
                 modifier = Modifier
@@ -2108,8 +2122,16 @@ private fun RegattaLinkFirmwareSheet(
                     )
                 }
 
+                if (firmwareState.installPreparing) {
+                    Text(
+                        text = stringResource(R.string.regattalink_ota_preparing),
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
+
                 if (
                     installAvailable &&
+                    !firmwareState.installPreparing &&
                     !otaState.isActive &&
                     !rawCaptureState.isActive &&
                     otaState.phase !in setOf(

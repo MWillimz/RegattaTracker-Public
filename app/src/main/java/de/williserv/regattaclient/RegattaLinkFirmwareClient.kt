@@ -22,6 +22,7 @@ data class RegattaLinkFirmwareUiState(
     val selectedSource: RegattaLinkFirmwareSource =
         RegattaLinkFirmwareSource.STANDARD,
     val availableSources: Set<RegattaLinkFirmwareSource> = emptySet(),
+    val installPreparing: Boolean = false,
     val error: String = "",
     val userMessage: RegattaLinkUiMessage? = null
 )
