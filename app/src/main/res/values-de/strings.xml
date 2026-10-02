@@ -701,7 +701,8 @@
     <string name="session_metric_tws">TWS</string>
     <string name="session_metric_vmg">VMG</string>
     <string name="session_metric_heel">Krängung</string>
-    <string name="session_metric_pitch">Nickwinkel</string>
+    <string name="session_metric_pitch_imu">Nickwinkel (IMU)</string>
+    <string name="session_metric_pitch_boat_data">Nickwinkel (Boat Data)</string>
     <string name="session_metric_depth">Tiefe</string>
     <string name="session_metric_water_temperature">Wassertemperatur</string>
     <string name="session_metric_acceleration_5s">Beschleunigung (5 s)</string>
