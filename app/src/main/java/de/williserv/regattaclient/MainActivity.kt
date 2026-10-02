@@ -3182,6 +3182,7 @@ class MainActivity : ComponentActivity() {
                         regattaLinkState.value.deviceInfo?.stableId !=
                         deviceInfo.stableId
                     ) {
+                        invalidateRegattaLinkFirmwareSelection()
                         return@runOnUiThread
                     }
                     if (
