@@ -180,7 +180,10 @@ class TrackingDbHelperTest {
         fun value(column: String): String = row[header.indexOf(column)]
 
         assertEquals("120", value("utc_offset_minutes"))
+        assertTrue(value("local_id").toLong() > 0L)
         assertEquals("1", value("cog_valid"))
+        assertEquals("0", value("uploaded"))
+        assertEquals("", value("access_context_id"))
         assertEquals("87", value("battery_percent"))
         assertEquals("1", value("battery_charging"))
         assertEquals("\"high_rate\"", value("tracking_profile"))
