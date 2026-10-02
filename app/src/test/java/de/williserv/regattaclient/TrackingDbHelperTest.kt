@@ -142,7 +142,7 @@ class TrackingDbHelperTest {
     }
 
     @Test
-    fun csvExport_includesStoredSampleMetadataAlongsideMeasurements() {
+    fun csvExport_omitsInternalStorageAndUploadMetadata() {
         val helper = TrackingDbHelper(context)
 
         helper.insertSample(
@@ -170,26 +170,22 @@ class TrackingDbHelperTest {
                 """{"regattalink.motion.heel_deg":{"value":12.3,"group":"regattalink","unit":"deg"}}"""
         )
 
-        val lines = helper.exportAllAsCsv()
+        val header = helper.exportAllAsCsv()
             .lineSequence()
-            .filter { it.isNotBlank() }
-            .toList()
-        val header = lines[0].split(',')
-        val row = lines[1].split(',')
+            .first()
+            .split(',')
 
-        fun value(column: String): String = row[header.indexOf(column)]
-
-        assertEquals("120", value("utc_offset_minutes"))
-        assertTrue(value("local_id").toLong() > 0L)
-        assertEquals("1", value("cog_valid"))
-        assertEquals("0", value("uploaded"))
-        assertEquals("", value("access_context_id"))
-        assertEquals("87", value("battery_percent"))
-        assertEquals("1", value("battery_charging"))
-        assertEquals("\"high_rate\"", value("tracking_profile"))
-        assertEquals("42", value("session_id"))
-        assertEquals("43", value("race_context_id"))
-        assertEquals("12.3", value("imu_heel_deg"))
+        assertTrue(header.contains("utc_offset_minutes"))
+        assertTrue(header.contains("imu_heel_deg"))
+        assertFalse(header.contains("local_id"))
+        assertFalse(header.contains("cog_valid"))
+        assertFalse(header.contains("uploaded"))
+        assertFalse(header.contains("access_context_id"))
+        assertFalse(header.contains("battery_percent"))
+        assertFalse(header.contains("battery_charging"))
+        assertFalse(header.contains("tracking_profile"))
+        assertFalse(header.contains("session_id"))
+        assertFalse(header.contains("race_context_id"))
     }
 
     @Test
