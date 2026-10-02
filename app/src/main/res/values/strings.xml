@@ -508,6 +508,10 @@
     <string name="regattalink_direction_reinstall">Update direction: reinstall</string>
     <string name="regattalink_firmware_signed">Signed firmware</string>
     <string name="regattalink_firmware_unsigned">Unsigned development firmware</string>
+    <string name="regattalink_firmware_source">Firmware source</string>
+    <string name="regattalink_firmware_source_standard">Standard</string>
+    <string name="regattalink_firmware_source_event_beta">Event / Beta</string>
+    <string name="regattalink_firmware_source_event_helper">Firmware from the currently loaded event.</string>
     <string name="regattalink_check_firmware">Check firmware</string>
     <string name="regattalink_connect_before_firmware">Connect a RegattaLink before checking firmware.</string>
     <string name="regattalink_firmware_check_failed">Firmware check failed.</string>

@@ -465,6 +465,10 @@
     <string name="regattalink_direction_reinstall">Update-Richtung: Neuinstallation</string>
     <string name="regattalink_firmware_signed">Signierte Firmware</string>
     <string name="regattalink_firmware_unsigned">Unsignierte Entwicklungs-Firmware</string>
+    <string name="regattalink_firmware_source">Firmware-Quelle</string>
+    <string name="regattalink_firmware_source_standard">Standard</string>
+    <string name="regattalink_firmware_source_event_beta">Event / Beta</string>
+    <string name="regattalink_firmware_source_event_helper">Firmware vom aktuell geladenen Event.</string>
     <string name="regattalink_check_firmware">Firmware prüfen</string>
     <string name="regattalink_connect_before_firmware">Vor der Firmware-Prüfung einen RegattaLink verbinden.</string>
     <string name="regattalink_firmware_check_failed">Firmware-Prüfung fehlgeschlagen.</string>
