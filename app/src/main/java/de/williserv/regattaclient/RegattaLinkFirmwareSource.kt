@@ -9,7 +9,9 @@ enum class RegattaLinkFirmwareSource {
 }
 
 sealed interface RegattaLinkFirmwareAuth {
-    data class Production(val accessKey: String) : RegattaLinkFirmwareAuth
+    data class Production(val accessKey: String) : RegattaLinkFirmwareAuth {
+        override fun toString(): String = "Production(accessKey=<redacted>)"
+    }
 
     data class Event(
         val eventIdentifier: String,
@@ -23,6 +25,9 @@ sealed interface RegattaLinkFirmwareAuth {
                 "Event firmware access requires a shared secret"
             }
         }
+
+        override fun toString(): String =
+            "Event(eventIdentifier=" + eventIdentifier + ", sharedSecret=<redacted>)"
     }
 }
 
