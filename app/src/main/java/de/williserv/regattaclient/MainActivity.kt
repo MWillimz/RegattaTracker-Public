@@ -155,6 +155,7 @@ class MainActivity : ComponentActivity() {
     private val regattaLinkFirmwareClient = RegattaLinkFirmwareClient()
     private val regattaLinkFirmwareState = mutableStateOf(RegattaLinkFirmwareUiState())
     private var regattaLinkFirmwareArtifact: RegattaLinkFirmwareArtifact? = null
+    private var regattaLinkFirmwareArtifactDeviceStableId: String? = null
     private var regattaLinkFirmwareRequestGeneration = 0L
     private val regattaLinkOtaState = mutableStateOf(RegattaLinkOtaUiState())
     private val regattaLinkTelemetryState = mutableStateOf(RegattaLinkTelemetryState())
@@ -387,6 +388,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     regattaLinkFirmwareArtifact = null
+                    regattaLinkFirmwareArtifactDeviceStableId = null
                     regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState()
                     if (::regattaLinkManager.isInitialized) {
                         regattaLinkManager.resetOtaState()
@@ -881,6 +883,7 @@ class MainActivity : ComponentActivity() {
                             onDisconnect = {
                                 regattaLinkManager.disconnect()
                                 regattaLinkFirmwareArtifact = null
+                                regattaLinkFirmwareArtifactDeviceStableId = null
                                 regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState()
                                 regattaLinkManager.resetOtaState()
                             },
@@ -2980,7 +2983,14 @@ class MainActivity : ComponentActivity() {
 
     private fun installRegattaLinkFirmware() {
         val artifact = regattaLinkFirmwareArtifact
-        if (artifact == null) {
+        val connectedStableId = regattaLinkState.value.deviceInfo?.stableId
+        if (
+            artifact == null ||
+            connectedStableId == null ||
+            connectedStableId != regattaLinkFirmwareArtifactDeviceStableId
+        ) {
+            regattaLinkFirmwareArtifact = null
+            regattaLinkFirmwareArtifactDeviceStableId = null
             regattaLinkOtaState.value = RegattaLinkOtaUiState(
                 phase = RegattaLinkOtaPhase.ERROR,
                 error = getString(R.string.regattalink_firmware_check_first)
@@ -3011,6 +3021,7 @@ class MainActivity : ComponentActivity() {
     private fun invalidateRegattaLinkFirmwareSelection() {
         regattaLinkFirmwareRequestGeneration += 1
         regattaLinkFirmwareArtifact = null
+        regattaLinkFirmwareArtifactDeviceStableId = null
         regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState()
         if (
             ::regattaLinkManager.isInitialized &&
@@ -3035,6 +3046,7 @@ class MainActivity : ComponentActivity() {
 
         regattaLinkFirmwareRequestGeneration += 1
         regattaLinkFirmwareArtifact = null
+        regattaLinkFirmwareArtifactDeviceStableId = null
         regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState(
             selectedSource = source,
             availableSources = current.availableSources
@@ -3067,6 +3079,7 @@ class MainActivity : ComponentActivity() {
         val requestGeneration = ++regattaLinkFirmwareRequestGeneration
 
         regattaLinkFirmwareArtifact = null
+        regattaLinkFirmwareArtifactDeviceStableId = null
         regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState(
             status = RegattaLinkFirmwareStatus.LOADING,
             selectedSource = preferredSource
@@ -3131,6 +3144,7 @@ class MainActivity : ComponentActivity() {
                         regattaLinkState.value.deviceInfo?.stableId !=
                         deviceInfo.stableId
                     ) {
+                        invalidateRegattaLinkFirmwareSelection()
                         return@runOnUiThread
                     }
                     if (
@@ -3142,6 +3156,8 @@ class MainActivity : ComponentActivity() {
                     }
 
                     regattaLinkFirmwareArtifact = artifact
+                    regattaLinkFirmwareArtifactDeviceStableId =
+                        deviceInfo.stableId
                     regattaLinkFirmwareState.value =
                         RegattaLinkFirmwareUiState(
                             status = RegattaLinkFirmwareStatus.READY,
@@ -3177,6 +3193,7 @@ class MainActivity : ComponentActivity() {
                     }
 
                     regattaLinkFirmwareArtifact = null
+                    regattaLinkFirmwareArtifactDeviceStableId = null
                     val resolved = discovery
                     regattaLinkFirmwareState.value =
                         RegattaLinkFirmwareUiState(
@@ -3200,6 +3217,7 @@ class MainActivity : ComponentActivity() {
     private fun startRegattaLinkConnection() {
         if (regattaLinkOtaState.value.isActive) return
         regattaLinkFirmwareArtifact = null
+        regattaLinkFirmwareArtifactDeviceStableId = null
         regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState()
         regattaLinkManager.resetOtaState()
         runRegattaLinkActionWithPermissions(
