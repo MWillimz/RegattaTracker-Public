@@ -3016,10 +3016,18 @@ class MainActivity : ComponentActivity() {
         manifest: RegattaLinkFirmwareManifest,
         deviceInfo: RegattaLinkDeviceInfo
     ) {
-        val direction = validateRegattaLinkFirmwareForDevice(
-            manifest,
-            deviceInfo
-        )
+        val direction = runCatching {
+            validateRegattaLinkFirmwareForDevice(manifest, deviceInfo)
+        }.getOrElse { error ->
+            regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState(
+                status = RegattaLinkFirmwareStatus.ERROR,
+                selectedSource = source,
+                availableSources = currentRegattaLinkFirmwareSources(),
+                userMessage = RegattaLinkUiMessage.FIRMWARE_CHECK_FAILED,
+                error = error.message ?: "Firmware check failed"
+            )
+            return
+        }
         regattaLinkFirmwareState.value = RegattaLinkFirmwareUiState(
             status = RegattaLinkFirmwareStatus.READY,
             availableBuild = manifest.buildNumber.toString(),
@@ -3235,11 +3243,11 @@ class MainActivity : ComponentActivity() {
                 val result = runCatching {
                     regattaLinkFirmwareClient.loadMetadata(eventEndpoint)
                 }
-                val elapsed =
-                    (SystemClock.elapsedRealtime() - probeStartedAt)
-                        .coerceAtLeast(0L)
                 val revealDelay =
-                    (20_000L - elapsed).coerceAtLeast(0L)
+                    regattaLinkEventFirmwareRevealDelayMs(
+                        probeStartedAtElapsedMs = probeStartedAt,
+                        completedAtElapsedMs = SystemClock.elapsedRealtime()
+                    )
                 handler.postDelayed({
                     if (!asyncLifetime.isActive()) return@postDelayed
                     if (
