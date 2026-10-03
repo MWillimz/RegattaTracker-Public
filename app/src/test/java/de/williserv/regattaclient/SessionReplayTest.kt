@@ -1,6 +1,7 @@
 package de.williserv.regattaclient
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -75,6 +76,73 @@ class SessionReplayTest {
         assertEquals(0.5f, replaySpeedFraction(5.0, 10.0), 0.0001f)
         assertEquals(1f, replaySpeedFraction(20.0, 10.0), 0.0001f)
         assertEquals(0f, replaySpeedFraction(Double.NaN, 10.0), 0.0001f)
+    }
+
+    @Test
+    fun replayTrackColorData_usesMetricDisplayScaleAndSessionRange() {
+        val metric = AnalysisMetric(
+            id = "gps.sog",
+            label = "SOG",
+            unit = "kn",
+            source = AnalysisMetricSource.GPS_SOG,
+            displayScale = MPS_TO_KNOTS
+        )
+        val prepared = listOf(
+            PreparedAnalysisSample(null, 90.0, 1.0, emptyMap()),
+            PreparedAnalysisSample(null, 90.0, 2.0, emptyMap()),
+            PreparedAnalysisSample(null, 90.0, 3.0, emptyMap())
+        )
+
+        val data = prepareReplayTrackColorData(prepared, metric)
+
+        assertEquals(1.0 * MPS_TO_KNOTS, data.minValue!!, 0.000001)
+        assertEquals(3.0 * MPS_TO_KNOTS, data.maxValue!!, 0.000001)
+        assertEquals(0f, data.fractionAt(0)!!, 0.0001f)
+        assertEquals(0.5f, data.fractionAt(1)!!, 0.0001f)
+        assertEquals(1f, data.fractionAt(2)!!, 0.0001f)
+    }
+
+    @Test
+    fun replayTrackColorData_keepsMissingMeasurementValuesMissing() {
+        val metric = AnalysisMetric(
+            id = "measurement:test.load",
+            label = "Load",
+            unit = "N",
+            source = AnalysisMetricSource.MEASUREMENT,
+            measurementKey = "test.load"
+        )
+        val prepared = listOf(
+            PreparedAnalysisSample(null, 90.0, 2.0, mapOf("test.load" to 100.0)),
+            PreparedAnalysisSample(null, 90.0, 2.0, emptyMap()),
+            PreparedAnalysisSample(null, 90.0, 2.0, mapOf("test.load" to 300.0))
+        )
+
+        val data = prepareReplayTrackColorData(prepared, metric)
+
+        assertEquals(100.0, data.minValue!!, 0.000001)
+        assertEquals(300.0, data.maxValue!!, 0.000001)
+        assertNull(data.values[1])
+        assertNull(data.fractionAt(1))
+    }
+
+    @Test
+    fun replayTrackColorData_constantMetricUsesMiddleOfScale() {
+        val metric = AnalysisMetric(
+            id = "measurement:test.constant",
+            label = "Constant",
+            unit = null,
+            source = AnalysisMetricSource.MEASUREMENT,
+            measurementKey = "test.constant"
+        )
+        val prepared = listOf(
+            PreparedAnalysisSample(null, 90.0, 2.0, mapOf("test.constant" to 42.0)),
+            PreparedAnalysisSample(null, 90.0, 2.0, mapOf("test.constant" to 42.0))
+        )
+
+        val data = prepareReplayTrackColorData(prepared, metric)
+
+        assertEquals(0.5f, data.fractionAt(0)!!, 0.0001f)
+        assertEquals(0.5f, data.fractionAt(1)!!, 0.0001f)
     }
 
     @Test

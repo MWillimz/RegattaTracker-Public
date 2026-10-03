@@ -665,8 +665,8 @@
     <string name="regattalink_load_sensors">Sensori di carico</string>
     <string name="regattalink_load_waiting">In attesa dei dati dei sensori di carico…</string>
     <string name="regattalink_load_not_subscribed">Le notifiche dei sensori di carico non sono disponibili.</string>
+    <string name="regattalink_load_listen_only">Modalità solo ascolto: l’identità stabile del sensore di carico potrebbe non essere disponibile dopo un riavvio. I sensori vengono mostrati come Load 0, Load 1, ecc.; i valori di carico in tempo reale non sono interessati.</string>
     <string name="regattalink_load_alias">Nome opzionale</string>
-    <string name="regattalink_load_identity_temporary">Identità Boat Data temporanea; il nome sarà disponibile quando sarà nota l’identità stabile del dispositivo.</string>
     <string name="regattalink_nmea_tx_title">Trasmissione Boat Data</string>
     <string name="regattalink_nmea_tx_receive_only">Solo ricezione. RegattaLink non trasmette Boat Data.</string>
     <string name="regattalink_nmea_tx_enabled">Trasmissione consentita. Può essere inviato traffico standard di gestione Boat Data.</string>
@@ -702,6 +702,8 @@
     <string name="session_metric_vmg">VMG</string>
     <string name="session_metric_heel">Sbandamento</string>
     <string name="session_metric_pitch">Beccheggio</string>
+    <string name="session_metric_pitch_imu">Beccheggio (IMU)</string>
+    <string name="session_metric_pitch_boat_data">Beccheggio (Boat Data)</string>
     <string name="session_metric_depth">Profondità</string>
     <string name="session_metric_water_temperature">Temperatura dell’acqua</string>
     <string name="session_metric_acceleration_5s">Accelerazione (5 s)</string>
