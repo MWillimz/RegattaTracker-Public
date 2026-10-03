@@ -1100,9 +1100,11 @@ Catalog frame: `[header, epoch, slot, identity_kind|stable_bit, id_len, identity
 
 - identity kind 1: temporary Boat Data source address + instance (2 bytes);
 - identity kind 2: stable protocol NAME + instance (9 bytes: eight little-endian NAME bytes plus instance);
-- runtime slot is compression only and must never be persisted as sensor identity.
+- runtime slot is compression only and must never be treated as persistent sensor identity.
 
-Stable kind-2 identities map to the deterministic session key `nmea.load.<16-hex-name>.<instance>`. A temporary source-address identity is recordable immediately but cannot receive a persistent alias.
+Stable kind-2 identities map to the deterministic session key `nmea.load.<16-hex-name>.<instance>`. A kind-1 identity is transport metadata only: Tracker deliberately does not expose or persist the source address as a user-facing sensor identity. Until a stable identity is known, Tracker maps the current runtime slot to the anonymous boot-local channel `regattalink.load.<slot>` and label `Load <slot>`. These anonymous channel numbers are not guaranteed to identify the same physical sensor after a RegattaLink restart and cannot receive a persistent alias.
+
+When the firmware-authoritative Boat Data runtime TX state reports receive-only/listen-only operation, the setup UI explains this limitation. Live load values remain valid; only stable naming/alias continuity may be unavailable if the sensor's Address Claim was not observed during the current RegattaLink boot.
 
 Sample frame: `[header, epoch, sequence, fragment_info, {slot,u16 load}...]`. The high nibble of `fragment_info` is `fragment_count-1`; the low nibble is `fragment_index`. Up to five sensors fit in one 19-byte frame. A fragmented logical snapshot is published only after every fragment for the same epoch/sequence/count/scale has arrived. `0xffff` is invalid.
 
