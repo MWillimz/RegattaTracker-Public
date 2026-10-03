@@ -44,6 +44,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.text.DateFormat
+import java.util.Date
 import java.util.Locale
 import kotlin.math.min
 
@@ -111,6 +113,9 @@ fun SessionAnalysisScreen(
                 remember(detail.session.id) {
                     mutableStateMapOf<String, ClosedFloatingPointRange<Float>>()
                 }
+            var activeTimeRange by remember(detail.session.id) {
+                mutableStateOf<ClosedFloatingPointRange<Float>?>(null)
+            }
             var filtersExpanded by rememberSaveable(detail.session.id) {
                 mutableStateOf(false)
             }
@@ -177,12 +182,20 @@ fun SessionAnalysisScreen(
             val analysisSamples = remember(prepared, sampleFilters) {
                 applyAnalysisSampleFilters(prepared, sampleFilters)
             }
+            val timeFilter = remember(prepared, activeTimeRange) {
+                activeTimeRange?.let { range ->
+                    analysisTimeFilterFromFraction(prepared, range)
+                }
+            }
+            val timeFilteredSamples = remember(analysisSamples, timeFilter) {
+                applyAnalysisTimeFilter(analysisSamples, timeFilter)
+            }
 
-            LaunchedEffect(analysisSamples, metricsById) {
+            LaunchedEffect(timeFilteredSamples, metricsById) {
                 activeFilterRanges.keys.toList().forEach { metricId ->
                     val metric = metricsById[metricId]
                     val observed = metric?.let {
-                        metricObservedRange(it, analysisSamples)
+                        metricObservedRange(it, timeFilteredSamples)
                     }
                     if (observed == null) {
                         activeFilterRanges.remove(metricId)
@@ -229,14 +242,14 @@ fun SessionAnalysisScreen(
                 }
 
             val dataset = remember(
-                analysisSamples,
+                timeFilteredSamples,
                 angleMetric,
                 radiusMetric,
                 colorMetric,
                 activeFilters
             ) {
                 buildSessionAnalysisDataset(
-                    samples = analysisSamples,
+                    samples = timeFilteredSamples,
                     angleMetric = angleMetric,
                     radiusMetric = radiusMetric,
                     colorMetric = colorMetric,
@@ -308,6 +321,7 @@ fun SessionAnalysisScreen(
                 }
 
                 if (
+                    analysisObservedTimeRange(prepared) != null ||
                     capabilities.filterMetrics.isNotEmpty() ||
                     capabilities.gpsManeuverFilterAvailable ||
                     capabilities.imuStabilityFilterAvailable
@@ -327,6 +341,13 @@ fun SessionAnalysisScreen(
                     }
 
                     if (filtersExpanded) {
+                        item {
+                            AnalysisTimeFilterRow(
+                                samples = prepared,
+                                activeRange = activeTimeRange,
+                                onActiveRangeChange = { activeTimeRange = it }
+                            )
+                        }
                         item {
                             AnalysisStateFilters(
                                 gpsAvailable =
@@ -363,7 +384,7 @@ fun SessionAnalysisScreen(
                         item {
                             AnalysisFilters(
                                 metrics = capabilities.filterMetrics,
-                                preparedSamples = analysisSamples,
+                                preparedSamples = timeFilteredSamples,
                                 activeRanges = activeFilterRanges,
                                 allExpanded = allFiltersExpanded,
                                 onAllExpandedChange = { allFiltersExpanded = it }
@@ -498,7 +519,62 @@ private fun AnalysisMetricSelector(
 }
 
 @Composable
-private fun AnalysisStateFilters(
+internal fun AnalysisTimeFilterRow(
+    samples: List<PreparedAnalysisSample>,
+    activeRange: ClosedFloatingPointRange<Float>?,
+    onActiveRangeChange: (ClosedFloatingPointRange<Float>?) -> Unit
+) {
+    val observed = remember(samples) {
+        analysisObservedTimeRange(samples)
+    } ?: return
+    val enabled = activeRange != null
+    val range = activeRange ?: (0f..1f)
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(
+                checked = enabled,
+                onCheckedChange = { checked ->
+                    onActiveRangeChange(if (checked) 0f..1f else null)
+                }
+            )
+            Text(stringResource(R.string.session_analysis_time_filter))
+        }
+
+        if (enabled) {
+            if (observed.first < observed.last) {
+                RangeSlider(
+                    value = range,
+                    onValueChange = onActiveRangeChange,
+                    valueRange = 0f..1f,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            val selected = analysisTimeFilterFromFraction(samples, range)
+            if (selected != null) {
+                Text(
+                    text = stringResource(
+                        R.string.session_analysis_time_filter_range,
+                        formatAnalysisTimeMillis(selected.startMs),
+                        formatAnalysisTimeMillis(selected.endMs)
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp
+                )
+            }
+        }
+    }
+}
+
+private fun formatAnalysisTimeMillis(timestampMs: Long): String =
+    DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(timestampMs))
+
+@Composable
+internal fun AnalysisStateFilters(
     gpsAvailable: Boolean,
     gpsEnabled: Boolean,
     onGpsEnabledChange: (Boolean) -> Unit,
@@ -616,7 +692,7 @@ private fun AnalysisRecoverySlider(
 }
 
 @Composable
-private fun AnalysisFilters(
+internal fun AnalysisFilters(
     metrics: List<AnalysisMetric>,
     preparedSamples: List<PreparedAnalysisSample>,
     activeRanges: MutableMap<String, ClosedFloatingPointRange<Float>>,
@@ -675,7 +751,7 @@ private fun AnalysisFilters(
 }
 
 @Composable
-private fun AnalysisFilterRow(
+internal fun AnalysisFilterRow(
     metric: AnalysisMetric,
     samples: List<PreparedAnalysisSample>,
     activeRanges: MutableMap<String, ClosedFloatingPointRange<Float>>
