@@ -4219,14 +4219,32 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun exportCsvToUri(uri: Uri) {
-        try {
-            val csv = db.exportAllAsCsv()
-            contentResolver.openOutputStream(uri)?.use { outputStream ->
-                outputStream.write(csv.toByteArray(Charsets.UTF_8))
+        thread(name = "regatta-csv-export") {
+            val error = runCatching {
+                val helper = TrackingDbHelper(applicationContext)
+                try {
+                    val outputStream = requireNotNull(
+                        contentResolver.openOutputStream(uri)
+                    ) {
+                        "Could not open CSV destination"
+                    }
+                    outputStream.bufferedWriter(Charsets.UTF_8).use { writer ->
+                        helper.exportAllAsCsv(writer)
+                    }
+                } finally {
+                    helper.close()
+                }
+            }.exceptionOrNull()
+
+            if (!asyncLifetime.isActive()) return@thread
+            runOnUiThread {
+                if (!asyncLifetime.isActive()) return@runOnUiThread
+                statusText.value = if (error == null) {
+                    getString(R.string.csv_exported)
+                } else {
+                    getString(R.string.csv_export_failed, error.message ?: "")
+                }
             }
-            statusText.value = getString(R.string.csv_exported)
-        } catch (e: Exception) {
-            statusText.value = getString(R.string.csv_export_failed, e.message ?: "")
         }
     }
 

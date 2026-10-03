@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import org.json.JSONObject
 import java.util.Locale
 
 data class TrackingStorageCounts(
@@ -890,14 +891,45 @@ class TrackingDbHelper(context: Context) :
         }
     }
 
-    fun exportAllAsCsv(): String {
-        val header =
-            "sequence_id,timestamp,utc_offset_minutes,boat_name,captain_name,hull_color,sail_number,yardstick,boat_type,lat,lon,accuracy,cog,sog\n"
+    fun exportAllAsCsv(): String = buildString {
+        exportAllAsCsv(this)
+    }
 
-        val builder = StringBuilder()
-        builder.append(header)
+    fun exportAllAsCsv(output: Appendable) {
+        val db = readableDatabase
+        val snapshotMaxId = csvExportSnapshotMaxId(db)
+        val measurementKeys = discoverCsvMeasurementKeys(
+            db = db,
+            snapshotMaxId = snapshotMaxId
+        )
 
-        readableDatabase.rawQuery(
+        val baseHeaderColumns = listOf(
+            "sequence_id",
+            "timestamp",
+            "utc_offset_minutes",
+            "boat_name",
+            "captain_name",
+            "hull_color",
+            "sail_number",
+            "yardstick",
+            "boat_type",
+            "lat",
+            "lon",
+            "accuracy",
+            "cog",
+            "sog"
+        )
+        val measurementColumns = buildCsvMeasurementColumns(
+            measurementKeys = measurementKeys,
+            reservedHeaders = baseHeaderColumns.toSet()
+        )
+        val headerColumns =
+            baseHeaderColumns + measurementColumns.map { it.second }
+
+        output.append(headerColumns.joinToString(","))
+        output.append('\n')
+
+        db.rawQuery(
             """
             SELECT
                 sequence_id,
@@ -913,39 +945,141 @@ class TrackingDbHelper(context: Context) :
                 lon,
                 accuracy,
                 cog,
-                sog
+                sog,
+                measurements_json
             FROM tracking_samples
+            WHERE id <= ?
             ORDER BY id ASC
             """.trimIndent(),
-            null
+            arrayOf(snapshotMaxId.toString())
         ).use { cursor ->
             while (cursor.moveToNext()) {
-                val utcOffset = if (cursor.isNull(2)) "" else cursor.getInt(2).toString()
-                builder.append(
-                    String.format(
-                        Locale.US,
-                        "%d,%s,%s,%s,%s,%s,%s,%.2f,%s,%.7f,%.7f,%.2f,%.2f,%.2f\n",
-                        cursor.getLong(0),
-                        csvEscape(cursor.getString(1)),
-                        utcOffset,
-                        csvEscape(cursor.getString(3)),
-                        csvEscape(cursor.getString(4)),
-                        csvEscape(cursor.getString(5)),
-                        csvEscape(cursor.getString(6)),
-                        cursor.getDouble(7),
-                        csvEscape(cursor.getString(8)),
-                        cursor.getDouble(9),
-                        cursor.getDouble(10),
-                        cursor.getDouble(11),
-                        cursor.getDouble(12),
-                        cursor.getDouble(13)
-                    )
+                val measurements = parseCsvMeasurements(
+                    if (cursor.isNull(14)) null else cursor.getString(14)
                 )
+                val row = mutableListOf(
+                    cursor.getLong(0).toString(),
+                    csvEscape(cursor.getString(1)),
+                    csvNullableInt(cursor, 2),
+                    csvEscape(cursor.getString(3)),
+                    csvEscape(cursor.getString(4)),
+                    csvEscape(cursor.getString(5)),
+                    csvEscape(cursor.getString(6)),
+                    String.format(Locale.US, "%.2f", cursor.getDouble(7)),
+                    csvEscape(cursor.getString(8)),
+                    String.format(Locale.US, "%.7f", cursor.getDouble(9)),
+                    String.format(Locale.US, "%.7f", cursor.getDouble(10)),
+                    String.format(Locale.US, "%.2f", cursor.getDouble(11)),
+                    String.format(Locale.US, "%.2f", cursor.getDouble(12)),
+                    String.format(Locale.US, "%.2f", cursor.getDouble(13))
+                )
+
+                measurementColumns.forEach { (key, _) ->
+                    row += csvMeasurementValue(measurements, key)
+                }
+
+                output.append(row.joinToString(","))
+                output.append('\n')
             }
         }
-
-        return builder.toString()
     }
+
+    private fun csvExportSnapshotMaxId(db: SQLiteDatabase): Long {
+        db.rawQuery(
+            "SELECT COALESCE(MAX(id), 0) FROM tracking_samples",
+            null
+        ).use { cursor ->
+            cursor.moveToFirst()
+            return cursor.getLong(0)
+        }
+    }
+
+    private fun discoverCsvMeasurementKeys(
+        db: SQLiteDatabase,
+        snapshotMaxId: Long
+    ): List<String> {
+        val keys = mutableSetOf<String>()
+        db.rawQuery(
+            """
+            SELECT measurements_json
+            FROM tracking_samples
+            WHERE id <= ?
+              AND measurements_json IS NOT NULL
+            ORDER BY id ASC
+            """.trimIndent(),
+            arrayOf(snapshotMaxId.toString())
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val measurements = parseCsvMeasurements(cursor.getString(0)) ?: continue
+                val iterator = measurements.keys()
+                while (iterator.hasNext()) {
+                    val key = iterator.next()
+                    val measurement = measurements.optJSONObject(key) ?: continue
+                    if (!measurement.has("value")) continue
+                    keys += key
+                }
+            }
+        }
+        return keys.toList()
+    }
+
+    private fun buildCsvMeasurementColumns(
+        measurementKeys: List<String>,
+        reservedHeaders: Set<String>
+    ): List<Pair<String, String>> {
+        val usedHeaders = reservedHeaders.toMutableSet()
+        return measurementKeys
+            .sortedWith(
+                compareBy<String> { csvMeasurementColumnName(it) }
+                    .thenBy { it }
+            )
+            .map { key ->
+                val baseName = csvMeasurementColumnName(key)
+                var header = baseName
+                var suffix = 2
+                while (!usedHeaders.add(header)) {
+                    header = "${baseName}_${suffix++}"
+                }
+                key to header
+            }
+    }
+
+    private fun parseCsvMeasurements(raw: String?): JSONObject? {
+        if (raw.isNullOrBlank()) return null
+        return runCatching { JSONObject(raw) }.getOrNull()
+    }
+
+    private fun csvMeasurementColumnName(key: String): String {
+        val visibleKey = when {
+            key.startsWith("nmea.") ->
+                "boat_data." + key.removePrefix("nmea.")
+            key.startsWith("regattalink.motion.") ->
+                "imu." + key.removePrefix("regattalink.motion.")
+            else -> key
+        }
+        return visibleKey.replace('.', '_')
+    }
+
+    private fun csvMeasurementValue(
+        measurements: JSONObject?,
+        key: String
+    ): String {
+        val measurement = measurements?.optJSONObject(key) ?: return ""
+        if (!measurement.has("value")) return ""
+        val value = measurement.opt("value")
+        if (value == null || value === JSONObject.NULL) return ""
+
+        return when (value) {
+            is Number -> value.toString()
+            is Boolean -> if (value) "1" else "0"
+            else -> csvEscape(value.toString())
+        }
+    }
+
+    private fun csvNullableInt(
+        cursor: android.database.Cursor,
+        index: Int
+    ): String = if (cursor.isNull(index)) "" else cursor.getInt(index).toString()
 
     private fun migrateToVersion4(db: SQLiteDatabase) {
         createAccessContextsTable(db)

@@ -702,6 +702,8 @@
     <string name="session_metric_vmg">VMG</string>
     <string name="session_metric_heel">Escora</string>
     <string name="session_metric_pitch">Cabeceo</string>
+    <string name="session_metric_pitch_imu">Cabeceo (IMU)</string>
+    <string name="session_metric_pitch_boat_data">Cabeceo (Boat Data)</string>
     <string name="session_metric_depth">Profundidad</string>
     <string name="session_metric_water_temperature">Temperatura del agua</string>
     <string name="session_metric_acceleration_5s">Aceleración (5 s)</string>
