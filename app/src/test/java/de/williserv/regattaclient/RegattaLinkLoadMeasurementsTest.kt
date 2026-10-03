@@ -51,6 +51,64 @@ class RegattaLinkLoadMeasurementsTest {
     }
 
     @Test
+    fun listenOnlyModeAnonymizesEvenKnownStableIdentity() {
+        var anonymousMode = true
+        val assembler = RegattaLinkLoadPacketAssembler(
+            aliasProvider = { "Vorstag" },
+            anonymousModeProvider = { anonymousMode }
+        )
+        assembler.accept(
+            catalog(
+                epoch = 7,
+                slot = 0,
+                stable = true,
+                kind = 2,
+                id = byteArrayOf(1, 2, 3, 4, 5, 6, 7, 8, 3)
+            )
+        )
+
+        val anonymous = requireNotNull(
+            assembler.accept(
+                sample(
+                    epoch = 7,
+                    sequence = 1,
+                    x10 = true,
+                    entries = listOf(0 to 705)
+                )
+            )
+        ).single()
+
+        assertEquals("temporary:load-slot:0", anonymous.identityKey)
+        assertEquals("regattalink.load.0", anonymous.measurementKey)
+        assertEquals("Load 0", anonymous.label)
+        assertNull(anonymous.alias)
+        assertFalse(anonymous.stableIdentity)
+
+        anonymousMode = false
+        val identified = requireNotNull(
+            assembler.accept(
+                sample(
+                    epoch = 7,
+                    sequence = 2,
+                    x10 = true,
+                    entries = listOf(0 to 705)
+                )
+            )
+        ).single()
+
+        assertEquals(
+            "stable:nmea:0807060504030201.3",
+            identified.identityKey
+        )
+        assertEquals(
+            "nmea.load.0807060504030201.3",
+            identified.measurementKey
+        )
+        assertEquals("Vorstag", identified.label)
+        assertTrue(identified.stableIdentity)
+    }
+
+    @Test
     fun x1SampleUsesOneKilogramCounts() {
         val assembler = RegattaLinkLoadPacketAssembler()
         assembler.accept(
