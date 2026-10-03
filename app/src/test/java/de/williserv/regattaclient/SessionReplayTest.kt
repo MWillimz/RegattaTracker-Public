@@ -71,6 +71,16 @@ class SessionReplayTest {
     }
 
     @Test
+    fun filteredReplaySelection_keepsSourceIdentityOrNearestSample() {
+        val sourceIndices = listOf(10, 20, 30)
+
+        assertEquals(1, replaySelectedFilteredIndex(sourceIndices, 20))
+        assertEquals(1, replaySelectedFilteredIndex(sourceIndices, 24))
+        assertEquals(2, replaySelectedFilteredIndex(sourceIndices, 29))
+        assertEquals(0, replaySelectedFilteredIndex(emptyList(), 20))
+    }
+
+    @Test
     fun filteredReplaySourceIndices_doNotBridgeRemovedSamples() {
         assertEquals(true, replaySourceIndicesAreContiguous(listOf(4, 5, 6), 1))
         assertEquals(false, replaySourceIndicesAreContiguous(listOf(4, 6), 1))
