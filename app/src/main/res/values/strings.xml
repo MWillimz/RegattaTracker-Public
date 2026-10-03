@@ -708,6 +708,7 @@
     <string name="regattalink_load_sensors">Load sensors</string>
     <string name="regattalink_load_waiting">Waiting for load sensor data…</string>
     <string name="regattalink_load_not_subscribed">Load sensor notifications are unavailable.</string>
+    <string name="regattalink_load_listen_only">Listen-only mode: stable load-sensor identity may be unavailable after restart. Sensors are shown as Load 0, Load 1, etc.; live load values are unaffected.</string>
     <string name="regattalink_load_alias">Optional name</string>
     <string name="regattalink_load_identity_temporary">Temporary Boat Data identity; naming is available once the stable device identity is known.</string>
     <string name="regattalink_nmea_tx_title">Boat Data transmission</string>
