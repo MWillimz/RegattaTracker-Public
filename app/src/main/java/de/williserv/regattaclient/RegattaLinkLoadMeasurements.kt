@@ -34,7 +34,8 @@ private data class RegattaLinkLoadCatalogEntry(
 )
 
 internal class RegattaLinkLoadPacketAssembler(
-    private val aliasProvider: (String) -> String? = { null }
+    private val aliasProvider: (String) -> String? = { null },
+    private val anonymousModeProvider: () -> Boolean = { false }
 ) {
     private var catalogEpoch: Int? = null
     private val catalog = linkedMapOf<Int, RegattaLinkLoadCatalogEntry>()
@@ -213,22 +214,33 @@ internal class RegattaLinkLoadPacketAssembler(
         resetPending()
 
         val result = mutableListOf<RegattaLinkLoadSensor>()
+        val anonymousMode = anonymousModeProvider()
         for ((slot, encoded) in allEntries) {
             val entry = catalog[slot] ?: return null
-            val alias = if (entry.stableIdentity) {
-                aliasProvider(entry.identityKey)
+            val stableIdentity = entry.stableIdentity && !anonymousMode
+            val identityKey =
+                if (anonymousMode) "temporary:load-slot:" + slot
+                else entry.identityKey
+            val measurementKey =
+                if (anonymousMode) "regattalink.load." + slot
+                else entry.measurementKey
+            val defaultLabel =
+                if (anonymousMode) "Load " + slot
+                else entry.defaultLabel
+            val alias = if (stableIdentity) {
+                aliasProvider(identityKey)
                     ?.trim()
                     ?.takeIf { it.isNotBlank() }
             } else {
                 null
             }
             result += RegattaLinkLoadSensor(
-                identityKey = entry.identityKey,
-                measurementKey = entry.measurementKey,
-                defaultLabel = entry.defaultLabel,
+                identityKey = identityKey,
+                measurementKey = measurementKey,
+                defaultLabel = defaultLabel,
                 alias = alias,
                 loadKg = encoded * scale,
-                stableIdentity = entry.stableIdentity
+                stableIdentity = stableIdentity
             )
         }
         return result.sortedBy { it.measurementKey }
