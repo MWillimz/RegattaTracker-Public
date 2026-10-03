@@ -173,7 +173,13 @@ internal class RegattaLinkBleClient(
     private val appContext = context.applicationContext
     private val loadAliasStore = RegattaLinkLoadAliasStore(appContext)
     private val loadPacketAssembler =
-        RegattaLinkLoadPacketAssembler(loadAliasStore::get)
+        RegattaLinkLoadPacketAssembler(
+            aliasProvider = loadAliasStore::get,
+            anonymousModeProvider = {
+                lastConfigurationState.nmeaTxRuntimeStatusSupported &&
+                    lastConfigurationState.nmeaTxActive == false
+            }
+        )
     private val bluetoothManager =
         appContext.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
     private val handler = Handler(Looper.getMainLooper())

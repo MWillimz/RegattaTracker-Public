@@ -1104,6 +1104,20 @@ private fun RegattaLinkNmeaSetupSheet(
                     modifier = Modifier.padding(top = 18.dp)
                 )
 
+                if (
+                    nmeaRuntimeKnown &&
+                    configurationState.nmeaTxActive == false
+                ) {
+                    Text(
+                        text = stringResource(
+                            R.string.regattalink_load_listen_only
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+
                 if (!nmeaState.loadSubscribed) {
                     Text(
                         text = stringResource(
@@ -1142,14 +1156,13 @@ private fun RegattaLinkNmeaSetupSheet(
                                     sensor.loadKg
                                 )
                             )
-                            Text(
-                                text = sensor.measurementKey,
-                                color =
-                                    MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 12.sp
-                            )
-
                             if (sensor.stableIdentity) {
+                                Text(
+                                    text = sensor.measurementKey,
+                                    color =
+                                        MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 12.sp
+                                )
                                 OutlinedTextField(
                                     value = aliasDraft,
                                     onValueChange = { aliasDraft = it },
@@ -1187,16 +1200,6 @@ private fun RegattaLinkNmeaSetupSheet(
                                         )
                                     )
                                 }
-                            } else {
-                                Text(
-                                    text = stringResource(
-                                        R.string.regattalink_load_identity_temporary
-                                    ),
-                                    color =
-                                        MaterialTheme.colorScheme.onSurfaceVariant,
-                                    fontSize = 12.sp,
-                                    modifier = Modifier.padding(top = 6.dp)
-                                )
                             }
                         }
                     }

@@ -1100,9 +1100,13 @@ Catalog frame: `[header, epoch, slot, identity_kind|stable_bit, id_len, identity
 
 - identity kind 1: temporary Boat Data source address + instance (2 bytes);
 - identity kind 2: stable protocol NAME + instance (9 bytes: eight little-endian NAME bytes plus instance);
-- runtime slot is compression only and must never be persisted as sensor identity.
+- runtime slot is compression only and must never be treated as persistent sensor identity.
 
-Stable kind-2 identities map to the deterministic session key `nmea.load.<16-hex-name>.<instance>`. A temporary source-address identity is recordable immediately but cannot receive a persistent alias.
+Stable kind-2 identities map to the deterministic session key `nmea.load.<16-hex-name>.<instance>` only while the firmware-authoritative Boat Data runtime TX state is active. A kind-1 identity is transport metadata only: Tracker deliberately does not expose or persist the source address as a user-facing sensor identity.
+
+While the runtime TX state reports receive-only/listen-only operation, Tracker intentionally presents and persists all load sensors as anonymous boot-local channels `regattalink.load.<slot>` with labels `Load <slot>`, even if a stable kind-2 identity happened to be observed passively. These anonymous channel numbers are not guaranteed to identify the same physical sensor after a RegattaLink restart and cannot receive a persistent alias. This keeps passive operation simple and avoids implying identity continuity that the listen-only receiver cannot guarantee.
+
+The setup UI explains this limitation in listen-only mode. Live load values are unaffected. When runtime TX becomes active on a later boot, stable kind-2 identity and persistent aliases are used again.
 
 Sample frame: `[header, epoch, sequence, fragment_info, {slot,u16 load}...]`. The high nibble of `fragment_info` is `fragment_count-1`; the low nibble is `fragment_index`. Up to five sensors fit in one 19-byte frame. A fragmented logical snapshot is published only after every fragment for the same epoch/sequence/count/scale has arrived. `0xffff` is invalid.
 

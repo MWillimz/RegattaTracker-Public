@@ -665,8 +665,8 @@
     <string name="regattalink_load_sensors">Lastsensoren</string>
     <string name="regattalink_load_waiting">Warte auf Daten der Lastsensoren…</string>
     <string name="regattalink_load_not_subscribed">Benachrichtigungen der Lastsensoren sind nicht verfügbar.</string>
+    <string name="regattalink_load_listen_only">Nur-Empfang: Eine stabile Lastsensor-Identität ist nach einem Neustart möglicherweise nicht verfügbar. Sensoren werden als Load 0, Load 1 usw. angezeigt; die Live-Lastwerte sind davon nicht betroffen.</string>
     <string name="regattalink_load_alias">Optionaler Name</string>
-    <string name="regattalink_load_identity_temporary">Temporäre Boat-Data-Identität; Benennung ist verfügbar, sobald die stabile Geräteidentität bekannt ist.</string>
     <string name="regattalink_nmea_tx_title">Boat-Data-Übertragung</string>
     <string name="regattalink_nmea_tx_receive_only">Nur Empfang. RegattaLink sendet keine Boat Data.</string>
     <string name="regattalink_nmea_tx_enabled">Übertragung erlaubt. Standardmäßiger Boat-Data-Verwaltungsverkehr kann gesendet werden.</string>
