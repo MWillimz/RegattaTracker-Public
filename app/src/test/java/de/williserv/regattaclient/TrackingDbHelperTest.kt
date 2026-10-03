@@ -171,8 +171,8 @@ class TrackingDbHelperTest {
             .filter { it.isNotBlank() }
             .toList()
         assertEquals(2, lines.size)
-        assertTrue(lines[1].contains(""SNAPSHOT""))
-        assertFalse(lines[1].contains(""LATE""))
+        assertTrue(lines[1].contains("\"SNAPSHOT\""))
+        assertFalse(lines[1].contains("\"LATE\""))
         assertFalse(lines[0].contains("late_measurement"))
         assertEquals(2L, helper.countSamples())
     }
