@@ -98,6 +98,86 @@ class TrackingDbHelperTest {
     }
 
     @Test
+    fun csvExport_streamingApiMatchesStringCompatibilityWrapper() {
+        val helper = TrackingDbHelper(context)
+        insertSample(
+            helper = helper,
+            sequenceId = 1L,
+            accessContextId = null,
+            measurementsJson =
+                """{"nmea.depth_m":{"value":4.2,"group":"nmea","unit":"m"}}"""
+        )
+
+        val streamed = StringBuilder()
+        helper.exportAllAsCsv(streamed)
+
+        assertEquals(helper.exportAllAsCsv(), streamed.toString())
+    }
+
+    @Test
+    fun csvExport_usesStableSnapshotWhenSampleArrivesAfterHeaderDiscovery() {
+        val helper = TrackingDbHelper(context)
+        insertSample(
+            helper = helper,
+            sequenceId = 1L,
+            accessContextId = null,
+            sailNumber = "SNAPSHOT",
+            measurementsJson =
+                """{"nmea.depth_m":{"value":4.2,"group":"nmea","unit":"m"}}"""
+        )
+
+        val sink = StringBuilder()
+        var insertedLateSample = false
+        val output = object : Appendable {
+            private fun beforeFirstWrite() {
+                if (insertedLateSample) return
+                insertedLateSample = true
+                insertSample(
+                    helper = helper,
+                    sequenceId = 2L,
+                    accessContextId = null,
+                    sailNumber = "LATE",
+                    measurementsJson =
+                        """{"late.measurement":{"value":99,"group":"test"}}"""
+                )
+            }
+
+            override fun append(value: CharSequence?): Appendable {
+                beforeFirstWrite()
+                sink.append(value)
+                return this
+            }
+
+            override fun append(
+                value: CharSequence?,
+                start: Int,
+                end: Int
+            ): Appendable {
+                beforeFirstWrite()
+                sink.append(value, start, end)
+                return this
+            }
+
+            override fun append(value: Char): Appendable {
+                beforeFirstWrite()
+                sink.append(value)
+                return this
+            }
+        }
+
+        helper.exportAllAsCsv(output)
+
+        val lines = sink.lineSequence()
+            .filter { it.isNotBlank() }
+            .toList()
+        assertEquals(2, lines.size)
+        assertTrue(lines[1].contains(""SNAPSHOT""))
+        assertFalse(lines[1].contains(""LATE""))
+        assertFalse(lines[0].contains("late_measurement"))
+        assertEquals(2L, helper.countSamples())
+    }
+
+    @Test
     fun csvExport_flattensMeasurementsIntoDedicatedColumns() {
         val helper = TrackingDbHelper(context)
 
