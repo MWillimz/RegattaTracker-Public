@@ -891,9 +891,17 @@ class TrackingDbHelper(context: Context) :
         }
     }
 
-    fun exportAllAsCsv(): String {
+    fun exportAllAsCsv(): String = buildString {
+        exportAllAsCsv(this)
+    }
+
+    fun exportAllAsCsv(output: Appendable) {
         val db = readableDatabase
-        val measurementKeys = discoverCsvMeasurementKeys(db)
+        val snapshotMaxId = csvExportSnapshotMaxId(db)
+        val measurementKeys = discoverCsvMeasurementKeys(
+            db = db,
+            snapshotMaxId = snapshotMaxId
+        )
 
         val baseHeaderColumns = listOf(
             "sequence_id",
@@ -918,9 +926,8 @@ class TrackingDbHelper(context: Context) :
         val headerColumns =
             baseHeaderColumns + measurementColumns.map { it.second }
 
-        val builder = StringBuilder()
-        builder.append(headerColumns.joinToString(","))
-        builder.append('\n')
+        output.append(headerColumns.joinToString(","))
+        output.append('\n')
 
         db.rawQuery(
             """
@@ -941,9 +948,10 @@ class TrackingDbHelper(context: Context) :
                 sog,
                 measurements_json
             FROM tracking_samples
+            WHERE id <= ?
             ORDER BY id ASC
             """.trimIndent(),
-            null
+            arrayOf(snapshotMaxId.toString())
         ).use { cursor ->
             while (cursor.moveToNext()) {
                 val measurements = parseCsvMeasurements(
@@ -970,24 +978,36 @@ class TrackingDbHelper(context: Context) :
                     row += csvMeasurementValue(measurements, key)
                 }
 
-                builder.append(row.joinToString(","))
-                builder.append('\n')
+                output.append(row.joinToString(","))
+                output.append('\n')
             }
         }
-
-        return builder.toString()
     }
 
-    private fun discoverCsvMeasurementKeys(db: SQLiteDatabase): List<String> {
+    private fun csvExportSnapshotMaxId(db: SQLiteDatabase): Long {
+        db.rawQuery(
+            "SELECT COALESCE(MAX(id), 0) FROM tracking_samples",
+            null
+        ).use { cursor ->
+            cursor.moveToFirst()
+            return cursor.getLong(0)
+        }
+    }
+
+    private fun discoverCsvMeasurementKeys(
+        db: SQLiteDatabase,
+        snapshotMaxId: Long
+    ): List<String> {
         val keys = mutableSetOf<String>()
         db.rawQuery(
             """
             SELECT measurements_json
             FROM tracking_samples
-            WHERE measurements_json IS NOT NULL
+            WHERE id <= ?
+              AND measurements_json IS NOT NULL
             ORDER BY id ASC
             """.trimIndent(),
-            null
+            arrayOf(snapshotMaxId.toString())
         ).use { cursor ->
             while (cursor.moveToNext()) {
                 val measurements = parseCsvMeasurements(cursor.getString(0)) ?: continue
