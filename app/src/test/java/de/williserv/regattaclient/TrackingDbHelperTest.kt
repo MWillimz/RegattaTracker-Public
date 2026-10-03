@@ -33,6 +33,17 @@ class TrackingDbHelperTest {
     }
 
     @Test
+    fun trackingDatabase_enablesWriteAheadLogging() {
+        val helper = TrackingDbHelper(context)
+
+        try {
+            assertTrue(helper.writableDatabase.isWriteAheadLoggingEnabled)
+        } finally {
+            helper.close()
+        }
+    }
+
+    @Test
     fun storageCounts_returnTotalAndPendingTogether() {
         val helper = TrackingDbHelper(context)
         val contextId = createAccessContext(helper, "Event A", "secret-a")
