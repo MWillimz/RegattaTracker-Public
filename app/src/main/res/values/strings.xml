@@ -744,6 +744,7 @@
     <string name="session_metric_tws">TWS</string>
     <string name="session_metric_vmg">VMG</string>
     <string name="session_metric_heel">Heel</string>
+    <string name="session_metric_pitch">Pitch</string>
     <string name="session_metric_pitch_imu">Pitch (IMU)</string>
     <string name="session_metric_pitch_boat_data">Pitch (Boat Data)</string>
     <string name="session_metric_depth">Depth</string>
