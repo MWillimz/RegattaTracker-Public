@@ -1435,6 +1435,74 @@ internal fun replayPlaybackIndexForOffset(
     return low
 }
 
+internal fun replaySourceIndicesAreContiguous(
+    sourceIndices: List<Int>,
+    currentIndex: Int
+): Boolean {
+    if (currentIndex <= 0 || currentIndex >= sourceIndices.size) return false
+    val previous = sourceIndices[currentIndex - 1]
+    val current = sourceIndices[currentIndex]
+    return previous >= 0 && current == previous + 1
+}
+
+internal data class ReplayViewport(
+    val zoom: Float = 1f,
+    val panX: Float = 0f,
+    val panY: Float = 0f
+)
+
+internal fun updateReplayViewport(
+    viewport: ReplayViewport,
+    zoomChange: Float,
+    panX: Float,
+    panY: Float,
+    centroidX: Float,
+    centroidY: Float,
+    widthPx: Float,
+    heightPx: Float
+): ReplayViewport {
+    if (widthPx <= 0f || heightPx <= 0f) return viewport
+
+    val oldZoom = viewport.zoom.coerceIn(1f, REPLAY_MAX_ZOOM)
+    val safeZoomChange = zoomChange.takeIf { it.isFinite() && it > 0f } ?: 1f
+    val newZoom = (oldZoom * safeZoomChange).coerceIn(1f, REPLAY_MAX_ZOOM)
+    if (newZoom <= 1f) return ReplayViewport()
+
+    val ratio = newZoom / oldZoom
+    val centerX = widthPx / 2f
+    val centerY = heightPx / 2f
+    val nextPanX =
+        viewport.panX * ratio +
+            (1f - ratio) * (centroidX - centerX) +
+            panX
+    val nextPanY =
+        viewport.panY * ratio +
+            (1f - ratio) * (centroidY - centerY) +
+            panY
+    val maxPanX = (newZoom - 1f) * widthPx / 2f
+    val maxPanY = (newZoom - 1f) * heightPx / 2f
+
+    return ReplayViewport(
+        zoom = newZoom,
+        panX = nextPanX.coerceIn(-maxPanX, maxPanX),
+        panY = nextPanY.coerceIn(-maxPanY, maxPanY)
+    )
+}
+
+internal fun replayTransformPoint(
+    point: Offset,
+    viewport: ReplayViewport,
+    widthPx: Float,
+    heightPx: Float
+): Offset {
+    val centerX = widthPx / 2f
+    val centerY = heightPx / 2f
+    return Offset(
+        x = centerX + (point.x - centerX) * viewport.zoom + viewport.panX,
+        y = centerY + (point.y - centerY) * viewport.zoom + viewport.panY
+    )
+}
+
 internal data class ReplayCanvasSizing(
     val sailedTrackWidthPx: Float,
     val futureTrackWidthPx: Float,
@@ -1477,7 +1545,8 @@ internal fun replaySpeedFraction(speedMps: Double, maxSpeedMps: Double): Float {
 
 internal fun replayBoatBearingDegrees(
     samples: List<SessionTrackingSample>,
-    selectedIndex: Int
+    selectedIndex: Int,
+    sourceIndices: List<Int> = emptyList()
 ): Float {
     if (samples.isEmpty()) return 0f
 
@@ -1496,14 +1565,19 @@ internal fun replayBoatBearingDegrees(
         return recorded ?: 0f
     }
 
-    return replayTrackBearingDegrees(samples, index)
+    return replayTrackBearingDegrees(
+        samples = samples,
+        selectedIndex = index,
+        sourceIndices = sourceIndices
+    )
         ?: recorded
         ?: 0f
 }
 
 private fun replayTrackBearingDegrees(
     samples: List<SessionTrackingSample>,
-    selectedIndex: Int
+    selectedIndex: Int,
+    sourceIndices: List<Int>
 ): Float? {
     val selected = samples.getOrNull(selectedIndex)
         ?.takeIf { it.hasUsableGpsPosition() }
@@ -1529,10 +1603,20 @@ private fun replayTrackBearingDegrees(
     }
 
     samples.getOrNull(selectedIndex + 1)?.let { next ->
-        bearing(selected, next)?.let { return it }
+        if (
+            sourceIndices.isEmpty() ||
+            replaySourceIndicesAreContiguous(sourceIndices, selectedIndex + 1)
+        ) {
+            bearing(selected, next)?.let { return it }
+        }
     }
     samples.getOrNull(selectedIndex - 1)?.let { previous ->
-        bearing(previous, selected)?.let { return it }
+        if (
+            sourceIndices.isEmpty() ||
+            replaySourceIndicesAreContiguous(sourceIndices, selectedIndex)
+        ) {
+            bearing(previous, selected)?.let { return it }
+        }
     }
     return null
 }
@@ -1648,6 +1732,7 @@ private fun DrawScope.drawReplayBoat(
     }
 }
 
+private const val REPLAY_MAX_ZOOM = 6f
 private const val REPLAY_PLAYBACK_TICK_MS = 50L
 private const val REPLAY_FALLBACK_SAMPLE_INTERVAL_MS = 1_000L
 private const val METERS_PER_LAT_DEGREE = 111_320.0
