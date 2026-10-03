@@ -548,7 +548,7 @@ internal fun AnalysisTimeFilterRow(
             if (observed.first < observed.last) {
                 RangeSlider(
                     value = range,
-                    onValueChange = onActiveRangeChange,
+                    onValueChange = { onActiveRangeChange(it) },
                     valueRange = 0f..1f,
                     modifier = Modifier.fillMaxWidth()
                 )
