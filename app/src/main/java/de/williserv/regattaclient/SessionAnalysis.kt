@@ -285,8 +285,10 @@ internal fun analysisTimeFilterFromFraction(
     val spanMs = observed.last - observed.first
 
     return AnalysisTimeRangeFilter(
-        startMs = observed.first + (spanMs * startFraction).toLong(),
-        endMs = observed.first + (spanMs * endFraction).toLong()
+        startMs = observed.first +
+            (spanMs.toDouble() * startFraction.toDouble()).toLong(),
+        endMs = observed.first +
+            (spanMs.toDouble() * endFraction.toDouble()).toLong()
     )
 }
 
