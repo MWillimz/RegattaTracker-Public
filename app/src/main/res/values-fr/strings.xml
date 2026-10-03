@@ -701,6 +701,7 @@
     <string name="session_metric_tws">TWS</string>
     <string name="session_metric_vmg">VMG</string>
     <string name="session_metric_heel">Gîte</string>
+    <string name="session_metric_pitch">Tangage</string>
     <string name="session_metric_pitch_imu">Tangage (IMU)</string>
     <string name="session_metric_pitch_boat_data">Tangage (Boat Data)</string>
     <string name="session_metric_depth">Profondeur</string>
