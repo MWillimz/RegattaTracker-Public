@@ -702,6 +702,8 @@
     <string name="session_metric_vmg">VMG</string>
     <string name="session_metric_heel">Sbandamento</string>
     <string name="session_metric_pitch">Beccheggio</string>
+    <string name="session_metric_pitch_imu">Beccheggio (IMU)</string>
+    <string name="session_metric_pitch_boat_data">Beccheggio (Boat Data)</string>
     <string name="session_metric_depth">Profondità</string>
     <string name="session_metric_water_temperature">Temperatura dell’acqua</string>
     <string name="session_metric_acceleration_5s">Accelerazione (5 s)</string>

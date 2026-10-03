@@ -1002,7 +1002,9 @@ private fun analysisMetricLabel(metric: AnalysisMetric): String =
         "measurement:regattalink.motion.heel_deg" ->
             stringResource(R.string.session_metric_heel)
         "measurement:regattalink.motion.pitch_deg" ->
-            stringResource(R.string.session_metric_pitch)
+            stringResource(R.string.session_metric_pitch_imu)
+        "measurement:nmea.pitch_deg" ->
+            stringResource(R.string.session_metric_pitch_boat_data)
         "measurement:nmea.depth_m" ->
             stringResource(R.string.session_metric_depth)
         "measurement:nmea.water_temperature_c" ->

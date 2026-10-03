@@ -380,10 +380,12 @@ private fun ReplayFieldConfigRow(
     val source = field.measurementGroup
         ?.takeIf { it.isNotBlank() }
         ?.let { group ->
-            if (group.equals("regattalink", ignoreCase = true)) {
-                "RegattaLink"
-            } else {
-                group
+            when {
+                group.equals("regattalink", ignoreCase = true) ->
+                    "RegattaLink"
+                group.equals("nmea", ignoreCase = true) ->
+                    stringResource(R.string.regattalink_nmea_title)
+                else -> group
             }
         }
         ?: stringResource(R.string.session_replay_field_source_measurements)
