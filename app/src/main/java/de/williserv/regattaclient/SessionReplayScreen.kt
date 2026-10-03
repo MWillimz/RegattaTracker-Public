@@ -76,7 +76,7 @@ fun SessionReplayScreen(
     onBack: () -> Unit
 ) {
     val sourceSamples = detail?.samples.orEmpty()
-    var selectedIndex by rememberSaveable(detail?.session?.id) {
+    var selectedIndex by rememberSaveable(detail?.session?.id, sourceSamples.size) {
         mutableIntStateOf(replayInitialSampleIndex(sourceSamples.size))
     }
     var isPlaying by rememberSaveable(detail?.session?.id) {
@@ -514,6 +514,7 @@ fun SessionReplayScreen(
 
                     ReplayTimeline(
                         samples = replaySamples,
+                        sourceIndices = replaySourceIndices,
                         selectedIndex = safeIndex,
                         onSelectedIndex = {
                             isPlaying = false
@@ -1219,6 +1220,7 @@ private fun formatReplayColorLegendValue(value: Double): String =
 @Composable
 private fun ReplayTimeline(
     samples: List<SessionTrackingSample>,
+    sourceIndices: List<Int>,
     selectedIndex: Int,
     onSelectedIndex: (Int) -> Unit,
     modifier: Modifier = Modifier
@@ -1276,14 +1278,22 @@ private fun ReplayTimeline(
                 var index = 0
                 while (index < samples.lastIndex) {
                     val next = min(samples.lastIndex, index + stride)
-                    val y1 = fractions[index] * size.height
-                    val y2 = fractions[next] * size.height
-                    drawLine(
-                        color = replaySpeedColor(samples[index].sog.toDouble(), maxSog),
-                        start = Offset(x, y1),
-                        end = Offset(x, max(y1 + timelineMinSegmentPx, y2)),
-                        strokeWidth = timelineStrokeWidthPx
-                    )
+                    val sourceSpanContinuous =
+                        sourceIndices.size != samples.size ||
+                            sourceIndices[next] - sourceIndices[index] == next - index
+                    if (sourceSpanContinuous) {
+                        val y1 = fractions[index] * size.height
+                        val y2 = fractions[next] * size.height
+                        drawLine(
+                            color = replaySpeedColor(
+                                samples[index].sog.toDouble(),
+                                maxSog
+                            ),
+                            start = Offset(x, y1),
+                            end = Offset(x, max(y1 + timelineMinSegmentPx, y2)),
+                            strokeWidth = timelineStrokeWidthPx
+                        )
+                    }
                     index = next
                 }
             }
