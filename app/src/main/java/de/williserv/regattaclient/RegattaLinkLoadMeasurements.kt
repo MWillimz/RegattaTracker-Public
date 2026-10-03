@@ -125,17 +125,17 @@ internal class RegattaLinkLoadPacketAssembler(
         }
 
         if (kind == 1 && bytes.size == 2) {
-            val source = bytes[0].toInt() and 0xff
-            val instance = bytes[1].toInt() and 0xff
+            /*
+             * Source address + instance is only a transport fallback. In
+             * receive-only operation it may be the only identity available
+             * for the whole boot and must not be presented as a device name.
+             * Expose the boot-local slot as an anonymous load channel instead.
+             */
             return RegattaLinkLoadCatalogEntry(
                 slot = slot,
-                identityKey = "temporary:nmea-source:" + source + "." + instance,
-                measurementKey = "nmea.load.source%02x.%d".format(
-                    Locale.ROOT,
-                    source,
-                    instance
-                ),
-                defaultLabel = "Load " + instance,
+                identityKey = "temporary:load-slot:" + slot,
+                measurementKey = "regattalink.load." + slot,
+                defaultLabel = "Load " + slot,
                 stableIdentity = false
             )
         }
