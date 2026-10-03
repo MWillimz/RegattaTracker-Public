@@ -34,8 +34,8 @@ private data class RegattaLinkLoadCatalogEntry(
 )
 
 internal class RegattaLinkLoadPacketAssembler(
-    private val aliasProvider: (String) -> String? = { null },
-    private val anonymousModeProvider: () -> Boolean = { false }
+    private val anonymousModeProvider: () -> Boolean = { false },
+    private val aliasProvider: (String) -> String? = { null }
 ) {
     private var catalogEpoch: Int? = null
     private val catalog = linkedMapOf<Int, RegattaLinkLoadCatalogEntry>()
