@@ -76,7 +76,10 @@ fun SessionReplayScreen(
     onBack: () -> Unit
 ) {
     val sourceSamples = detail?.samples.orEmpty()
-    var selectedIndex by rememberSaveable(detail?.session?.id, sourceSamples.size) {
+    var selectedSourceIndex by rememberSaveable(
+        detail?.session?.id,
+        sourceSamples.size
+    ) {
         mutableIntStateOf(replayInitialSampleIndex(sourceSamples.size))
     }
     var isPlaying by rememberSaveable(detail?.session?.id) {
@@ -278,12 +281,15 @@ fun SessionReplayScreen(
                 replayPrepared.map { it.sourceIndex }
             }
 
+            val selectedIndex = replaySelectedFilteredIndex(
+                sourceIndices = replaySourceIndices,
+                selectedSourceIndex = selectedSourceIndex
+            )
+
             LaunchedEffect(replayPrepared) {
                 isPlaying = false
-                selectedIndex = if (replaySamples.isEmpty()) {
-                    0
-                } else {
-                    selectedIndex.coerceIn(0, replaySamples.lastIndex)
+                if (replaySourceIndices.isNotEmpty()) {
+                    selectedSourceIndex = replaySourceIndices[selectedIndex]
                 }
             }
 
@@ -298,7 +304,7 @@ fun SessionReplayScreen(
                 var startIndex = selectedIndex.coerceIn(0, replaySamples.lastIndex)
                 if (startIndex >= replaySamples.lastIndex) {
                     startIndex = 0
-                    selectedIndex = 0
+                    selectedSourceIndex = replaySourceIndices[0]
                 }
 
                 val offsets = replayPlaybackOffsetsMs(replaySamples)
@@ -312,14 +318,14 @@ fun SessionReplayScreen(
                     val nextIndex = replayPlaybackIndexForOffset(offsets, targetOffset)
 
                     if (nextIndex >= 0) {
-                        selectedIndex = nextIndex
+                        selectedSourceIndex = replaySourceIndices[nextIndex]
                     }
 
                     if (
                         offsets.isNotEmpty() &&
                         targetOffset >= offsets.last()
                     ) {
-                        selectedIndex = replaySamples.lastIndex
+                        selectedSourceIndex = replaySourceIndices.last()
                         isPlaying = false
                         break
                     }
@@ -518,7 +524,7 @@ fun SessionReplayScreen(
                         selectedIndex = safeIndex,
                         onSelectedIndex = {
                             isPlaying = false
-                            selectedIndex = it
+                            selectedSourceIndex = replaySourceIndices[it]
                         },
                         modifier = Modifier
                             .width(52.dp)
@@ -1338,6 +1344,19 @@ internal fun prepareReplayTrackColorData(
         minValue = observed.minOrNull(),
         maxValue = observed.maxOrNull()
     )
+}
+
+internal fun replaySelectedFilteredIndex(
+    sourceIndices: List<Int>,
+    selectedSourceIndex: Int
+): Int {
+    if (sourceIndices.isEmpty()) return 0
+    val exact = sourceIndices.indexOf(selectedSourceIndex)
+    if (exact >= 0) return exact
+
+    return sourceIndices.indices.minByOrNull { index ->
+        abs(sourceIndices[index] - selectedSourceIndex)
+    } ?: 0
 }
 
 internal fun replayInitialSampleIndex(sampleCount: Int): Int =
