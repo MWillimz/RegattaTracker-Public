@@ -38,7 +38,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.res.stringResource
@@ -742,7 +741,7 @@ private fun SessionPolarPlot(
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
     val pointColor = MaterialTheme.colorScheme.primary
     val neutralColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
-    val colorScale = analysisColorScale()
+    val colorScale = sessionColorScale()
 
     Column(modifier = modifier) {
         Box(
@@ -835,15 +834,12 @@ private fun SessionPolarPlot(
                         dataset.colorMin != null &&
                         dataset.colorMax != null
                     ) {
-                        val span = dataset.colorMax - dataset.colorMin
-                        val t = if (span > 0.0) {
-                            ((point.colorValue - dataset.colorMin) / span)
-                                .coerceIn(0.0, 1.0)
-                                .toFloat()
-                        } else {
-                            0.5f
-                        }
-                        sampleAnalysisColor(colorScale, t)
+                        val t = sessionColorFraction(
+                            value = point.colorValue,
+                            minValue = dataset.colorMin,
+                            maxValue = dataset.colorMax
+                        ) ?: 0.5f
+                        sampleSessionColor(colorScale, t)
                     } else if (colorMetric != null) {
                         neutralColor
                     } else {
@@ -898,7 +894,7 @@ private fun PlotColorLegend(
     maxValue: Double,
     modifier: Modifier = Modifier
 ) {
-    val colorScale = analysisColorScale()
+    val colorScale = sessionColorScale()
 
     Column(
         modifier = modifier
@@ -947,7 +943,7 @@ private fun AnalysisColorLegend(
     minValue: Double,
     maxValue: Double
 ) {
-    val colorScale = analysisColorScale()
+    val colorScale = sessionColorScale()
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
@@ -983,7 +979,7 @@ private fun AnalysisColorLegend(
 }
 
 @Composable
-private fun analysisMetricLabel(metric: AnalysisMetric): String =
+internal fun analysisMetricLabel(metric: AnalysisMetric): String =
     when (metric.id) {
         "gps.cog" -> stringResource(R.string.session_metric_cog)
         "gps.sog" -> stringResource(R.string.session_metric_sog)
@@ -1017,7 +1013,7 @@ private fun analysisMetricLabel(metric: AnalysisMetric): String =
     }
 
 @Composable
-private fun analysisMetricDisplayName(metric: AnalysisMetric): String {
+internal fun analysisMetricDisplayName(metric: AnalysisMetric): String {
     val label = analysisMetricLabel(metric)
     return metric.unit?.takeIf { it.isNotBlank() }
         ?.let { "$label ($it)" }
@@ -1027,33 +1023,3 @@ private fun analysisMetricDisplayName(metric: AnalysisMetric): String {
 private fun formatAnalysisNumber(value: Double): String =
     String.format(Locale.getDefault(), "%.1f", value)
 
-private fun analysisColorScale(): List<Color> = listOf(
-    Color(0xFF440154),
-    Color(0xFF3B528B),
-    Color(0xFF21918C),
-    Color(0xFF5EC962),
-    Color(0xFFFDE725)
-)
-
-private fun sampleAnalysisColor(
-    scale: List<Color>,
-    fraction: Float
-): Color {
-    if (scale.isEmpty()) return Color.Unspecified
-    if (scale.size == 1) return scale.first()
-
-    val t = fraction.coerceIn(0f, 1f)
-    val scaled = t * (scale.size - 1)
-    val lowerIndex = scaled.toInt().coerceIn(0, scale.lastIndex)
-    val upperIndex = (lowerIndex + 1).coerceAtMost(scale.lastIndex)
-    val localT = scaled - lowerIndex
-
-    val start = scale[lowerIndex]
-    val end = scale[upperIndex]
-    return Color(
-        red = start.red + (end.red - start.red) * localT,
-        green = start.green + (end.green - start.green) * localT,
-        blue = start.blue + (end.blue - start.blue) * localT,
-        alpha = start.alpha + (end.alpha - start.alpha) * localT
-    )
-}
