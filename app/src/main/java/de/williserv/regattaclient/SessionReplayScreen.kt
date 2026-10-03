@@ -4,6 +4,7 @@ import android.os.SystemClock
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -33,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -73,9 +75,12 @@ fun SessionReplayScreen(
     onExtraFieldIdsChange: (Set<String>) -> Unit = {},
     onBack: () -> Unit
 ) {
-    val samples = detail?.samples.orEmpty()
-    var selectedIndex by remember(detail?.session?.id, samples.size) {
-        mutableIntStateOf(replayInitialSampleIndex(samples.size))
+    val sourceSamples = detail?.samples.orEmpty()
+    var selectedSourceIndex by rememberSaveable(
+        detail?.session?.id,
+        sourceSamples.size
+    ) {
+        mutableIntStateOf(replayInitialSampleIndex(sourceSamples.size))
     }
     var isPlaying by rememberSaveable(detail?.session?.id) {
         mutableStateOf(false)
@@ -89,41 +94,35 @@ fun SessionReplayScreen(
     var colorMetricId by rememberSaveable(detail?.session?.id) {
         mutableStateOf<String?>(null)
     }
-
-    LaunchedEffect(isPlaying, playbackSpeed, detail?.session?.id, samples.size) {
-        if (!isPlaying || samples.isEmpty()) return@LaunchedEffect
-
-        var startIndex = selectedIndex.coerceIn(0, samples.lastIndex)
-        if (startIndex >= samples.lastIndex) {
-            startIndex = 0
-            selectedIndex = 0
-        }
-
-        val offsets = replayPlaybackOffsetsMs(samples)
-        val startOffset = offsets.getOrElse(startIndex) { 0L }
-        val startedAt = SystemClock.elapsedRealtime()
-
-        while (isPlaying) {
-            val elapsedRealMs = SystemClock.elapsedRealtime() - startedAt
-            val targetOffset = startOffset +
-                (elapsedRealMs * playbackSpeed.toLong())
-            val nextIndex = replayPlaybackIndexForOffset(offsets, targetOffset)
-
-            if (nextIndex >= 0) {
-                selectedIndex = nextIndex
-            }
-
-            if (
-                offsets.isNotEmpty() &&
-                targetOffset >= offsets.last()
-            ) {
-                selectedIndex = samples.lastIndex
-                isPlaying = false
-                break
-            }
-
-            delay(REPLAY_PLAYBACK_TICK_MS)
-        }
+    val activeFilterRanges = remember(detail?.session?.id) {
+        mutableStateMapOf<String, ClosedFloatingPointRange<Float>>()
+    }
+    var activeTimeRange by remember(detail?.session?.id) {
+        mutableStateOf<ClosedFloatingPointRange<Float>?>(null)
+    }
+    var filtersExpanded by rememberSaveable(detail?.session?.id) {
+        mutableStateOf(false)
+    }
+    var allFiltersExpanded by rememberSaveable(detail?.session?.id) {
+        mutableStateOf(false)
+    }
+    var gpsManeuverFilterEnabled by rememberSaveable(detail?.session?.id) {
+        mutableStateOf(false)
+    }
+    var gpsManeuverThresholdDeg by rememberSaveable(detail?.session?.id) {
+        mutableStateOf(DEFAULT_GPS_MANEUVER_THRESHOLD_DEG.toFloat())
+    }
+    var gpsManeuverRecoverySeconds by rememberSaveable(detail?.session?.id) {
+        mutableStateOf(DEFAULT_ANALYSIS_RECOVERY_SECONDS.toFloat())
+    }
+    var imuStabilityFilterEnabled by rememberSaveable(detail?.session?.id) {
+        mutableStateOf(false)
+    }
+    var imuMaxAttitudeRateDps by rememberSaveable(detail?.session?.id) {
+        mutableStateOf(DEFAULT_IMU_STEADY_ATTITUDE_RATE_DPS.toFloat())
+    }
+    var imuRecoverySeconds by rememberSaveable(detail?.session?.id) {
+        mutableStateOf(DEFAULT_ANALYSIS_RECOVERY_SECONDS.toFloat())
     }
 
     Column(
@@ -146,7 +145,7 @@ fun SessionReplayScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        if (detail == null || samples.isEmpty()) {
+        if (detail == null || sourceSamples.isEmpty()) {
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -159,22 +158,189 @@ fun SessionReplayScreen(
                 )
             }
         } else {
-            val safeIndex = selectedIndex.coerceIn(0, samples.lastIndex)
-            val selectedSample = samples[safeIndex]
-            val extraFields = detail.replayFields
-                .filter { it.id in extraFieldIds }
-            val preparedAnalysis = remember(detail.session.id, samples) {
-                prepareAnalysisSamples(samples)
+            val preparedAnalysis = remember(detail.session.id, sourceSamples) {
+                prepareAnalysisSamples(sourceSamples)
             }
-            val replayColorMetrics = remember(
+            val capabilities = remember(
                 detail.session.id,
-                samples,
+                sourceSamples,
                 preparedAnalysis
             ) {
                 discoverSessionAnalysisCapabilities(
-                    sourceSamples = samples,
+                    sourceSamples = sourceSamples,
                     preparedSamples = preparedAnalysis
-                ).colorMetrics.filter { metric ->
+                )
+            }
+            val metricsById = remember(capabilities.metrics) {
+                capabilities.metrics.associateBy { it.id }
+            }
+
+            LaunchedEffect(
+                capabilities.gpsManeuverFilterAvailable,
+                capabilities.imuStabilityFilterAvailable
+            ) {
+                if (!capabilities.gpsManeuverFilterAvailable) {
+                    gpsManeuverFilterEnabled = false
+                }
+                if (!capabilities.imuStabilityFilterAvailable) {
+                    imuStabilityFilterEnabled = false
+                }
+            }
+
+            val sampleFilters = buildList<AnalysisSampleFilter> {
+                if (
+                    gpsManeuverFilterEnabled &&
+                    capabilities.gpsManeuverFilterAvailable
+                ) {
+                    add(
+                        GpsManeuverAnalysisFilter(
+                            changeThresholdDeg = gpsManeuverThresholdDeg.toDouble(),
+                            recoverySeconds = gpsManeuverRecoverySeconds.toDouble()
+                        )
+                    )
+                }
+                if (
+                    imuStabilityFilterEnabled &&
+                    capabilities.imuStabilityFilterAvailable
+                ) {
+                    add(
+                        ImuStabilityAnalysisFilter(
+                            maxAttitudeRateDps = imuMaxAttitudeRateDps.toDouble(),
+                            recoverySeconds = imuRecoverySeconds.toDouble()
+                        )
+                    )
+                }
+            }
+            val stateFilteredSamples = remember(preparedAnalysis, sampleFilters) {
+                applyAnalysisSampleFilters(preparedAnalysis, sampleFilters)
+            }
+            val timeFilter = remember(preparedAnalysis, activeTimeRange) {
+                activeTimeRange?.let { range ->
+                    analysisTimeFilterFromFraction(preparedAnalysis, range)
+                }
+            }
+            val timeFilteredSamples = remember(stateFilteredSamples, timeFilter) {
+                applyAnalysisTimeFilter(stateFilteredSamples, timeFilter)
+            }
+
+            LaunchedEffect(timeFilteredSamples, metricsById) {
+                activeFilterRanges.keys.toList().forEach { metricId ->
+                    val metric = metricsById[metricId]
+                    val observed = metric?.let {
+                        metricObservedRange(it, timeFilteredSamples)
+                    }
+                    if (observed == null) {
+                        activeFilterRanges.remove(metricId)
+                    } else {
+                        val current = activeFilterRanges[metricId]
+                            ?: return@forEach
+                        val observedStart = observed.start.toFloat()
+                        val observedEnd = observed.endInclusive.toFloat()
+                        val rangeStart = current.start.coerceIn(
+                            observedStart,
+                            observedEnd
+                        )
+                        val rangeEnd = current.endInclusive.coerceIn(
+                            observedStart,
+                            observedEnd
+                        )
+                        activeFilterRanges[metricId] =
+                            minOf(rangeStart, rangeEnd)..maxOf(rangeStart, rangeEnd)
+                    }
+                }
+            }
+
+            val activeFilters = activeFilterRanges.mapNotNull { (metricId, range) ->
+                if (metricsById[metricId] == null) {
+                    null
+                } else {
+                    AnalysisRangeFilter(
+                        metricId = metricId,
+                        min = range.start.toDouble(),
+                        max = range.endInclusive.toDouble()
+                    )
+                }
+            }
+            val replayPrepared = remember(
+                timeFilteredSamples,
+                activeFilters,
+                metricsById
+            ) {
+                applyAnalysisRangeFilters(
+                    samples = timeFilteredSamples,
+                    filters = activeFilters,
+                    metricsById = metricsById
+                )
+            }
+            val replaySamples = remember(sourceSamples, replayPrepared) {
+                replayPrepared.mapNotNull { prepared ->
+                    sourceSamples.getOrNull(prepared.sourceIndex)
+                }
+            }
+            val replaySourceIndices = remember(replayPrepared) {
+                replayPrepared.map { it.sourceIndex }
+            }
+
+            val selectedIndex = replaySelectedFilteredIndex(
+                sourceIndices = replaySourceIndices,
+                selectedSourceIndex = selectedSourceIndex
+            )
+
+            LaunchedEffect(replayPrepared) {
+                isPlaying = false
+                if (replaySourceIndices.isNotEmpty()) {
+                    selectedSourceIndex = replaySourceIndices[selectedIndex]
+                }
+            }
+
+            LaunchedEffect(
+                isPlaying,
+                playbackSpeed,
+                detail.session.id,
+                replaySamples
+            ) {
+                if (!isPlaying || replaySamples.isEmpty()) return@LaunchedEffect
+
+                var startIndex = selectedIndex.coerceIn(0, replaySamples.lastIndex)
+                if (startIndex >= replaySamples.lastIndex) {
+                    startIndex = 0
+                    selectedSourceIndex = replaySourceIndices[0]
+                }
+
+                val offsets = replayPlaybackOffsetsMs(replaySamples)
+                val startOffset = offsets.getOrElse(startIndex) { 0L }
+                val startedAt = SystemClock.elapsedRealtime()
+
+                while (isPlaying) {
+                    val elapsedRealMs = SystemClock.elapsedRealtime() - startedAt
+                    val targetOffset = startOffset +
+                        (elapsedRealMs * playbackSpeed.toLong())
+                    val nextIndex = replayPlaybackIndexForOffset(offsets, targetOffset)
+
+                    if (nextIndex >= 0) {
+                        selectedSourceIndex = replaySourceIndices[nextIndex]
+                    }
+
+                    if (
+                        offsets.isNotEmpty() &&
+                        targetOffset >= offsets.last()
+                    ) {
+                        selectedSourceIndex = replaySourceIndices.last()
+                        isPlaying = false
+                        break
+                    }
+
+                    delay(REPLAY_PLAYBACK_TICK_MS)
+                }
+            }
+
+            val extraFields = detail.replayFields
+                .filter { it.id in extraFieldIds }
+            val replayColorMetrics = remember(
+                capabilities.colorMetrics,
+                preparedAnalysis
+            ) {
+                capabilities.colorMetrics.filter { metric ->
                     metricObservedRange(metric, preparedAnalysis) != null
                 }
             }
@@ -191,30 +357,33 @@ fun SessionReplayScreen(
             val colorMetric = colorMetricId?.let { selectedId ->
                 replayColorMetrics.firstOrNull { it.id == selectedId }
             }
-            val trackColorData = remember(preparedAnalysis, colorMetric) {
+            val trackColorData = remember(replayPrepared, colorMetric) {
                 colorMetric?.let { metric ->
-                    prepareReplayTrackColorData(preparedAnalysis, metric)
+                    prepareReplayTrackColorData(replayPrepared, metric)
                 }
             }
 
-            ReplayCurrentSampleCard(
-                sample = selectedSample,
-                fallbackEvent = detail.session.eventIdentifier,
-                extraFields = extraFields
-            )
+            if (replaySamples.isNotEmpty()) {
+                val safeIndex = selectedIndex.coerceIn(0, replaySamples.lastIndex)
+                ReplayCurrentSampleCard(
+                    sample = replaySamples[safeIndex],
+                    fallbackEvent = detail.session.eventIdentifier,
+                    extraFields = extraFields
+                )
 
-            Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-            ReplayPlaybackControls(
-                isPlaying = isPlaying,
-                speed = playbackSpeed,
-                onPlayPause = {
-                    isPlaying = !isPlaying
-                },
-                onSpeedChange = { newSpeed ->
-                    playbackSpeed = newSpeed
-                }
-            )
+                ReplayPlaybackControls(
+                    isPlaying = isPlaying,
+                    speed = playbackSpeed,
+                    onPlayPause = {
+                        isPlaying = !isPlaying
+                    },
+                    onSpeedChange = { newSpeed ->
+                        playbackSpeed = newSpeed
+                    }
+                )
+            }
 
             if (detail.replayFields.isNotEmpty()) {
                 TextButton(
@@ -246,35 +415,122 @@ fun SessionReplayScreen(
                 }
             )
 
+            TextButton(
+                onClick = { filtersExpanded = !filtersExpanded }
+            ) {
+                Text(
+                    if (filtersExpanded) {
+                        stringResource(R.string.session_analysis_hide_filters)
+                    } else {
+                        stringResource(R.string.session_analysis_show_filters)
+                    }
+                )
+            }
+
+            if (filtersExpanded) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .heightIn(max = 280.dp)
+                            .verticalScroll(rememberScrollState())
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        AnalysisTimeFilterRow(
+                            samples = preparedAnalysis,
+                            activeRange = activeTimeRange,
+                            onActiveRangeChange = { activeTimeRange = it }
+                        )
+                        AnalysisStateFilters(
+                            gpsAvailable = capabilities.gpsManeuverFilterAvailable,
+                            gpsEnabled = gpsManeuverFilterEnabled,
+                            onGpsEnabledChange = {
+                                gpsManeuverFilterEnabled = it
+                            },
+                            gpsThresholdDeg = gpsManeuverThresholdDeg,
+                            onGpsThresholdChange = {
+                                gpsManeuverThresholdDeg = it
+                            },
+                            gpsRecoverySeconds = gpsManeuverRecoverySeconds,
+                            onGpsRecoveryChange = {
+                                gpsManeuverRecoverySeconds = it
+                            },
+                            imuAvailable = capabilities.imuStabilityFilterAvailable,
+                            imuEnabled = imuStabilityFilterEnabled,
+                            onImuEnabledChange = {
+                                imuStabilityFilterEnabled = it
+                            },
+                            imuMaxAttitudeRateDps = imuMaxAttitudeRateDps,
+                            onImuMaxAttitudeRateChange = {
+                                imuMaxAttitudeRateDps = it
+                            },
+                            imuRecoverySeconds = imuRecoverySeconds,
+                            onImuRecoveryChange = {
+                                imuRecoverySeconds = it
+                            }
+                        )
+                        AnalysisFilters(
+                            metrics = capabilities.filterMetrics,
+                            preparedSamples = timeFilteredSamples,
+                            activeRanges = activeFilterRanges,
+                            allExpanded = allFiltersExpanded,
+                            onAllExpandedChange = { allFiltersExpanded = it }
+                        )
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(8.dp))
 
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                ReplayTrackCanvas(
-                    samples = samples,
-                    selectedIndex = safeIndex,
-                    colorMetric = colorMetric,
-                    colorData = trackColorData,
+            if (replaySamples.isEmpty()) {
+                Box(
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxHeight()
-                )
-
-                ReplayTimeline(
-                    samples = samples,
-                    selectedIndex = safeIndex,
-                    onSelectedIndex = {
-                        isPlaying = false
-                        selectedIndex = it
-                    },
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = stringResource(R.string.session_replay_no_filtered_samples),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                val safeIndex = selectedIndex.coerceIn(0, replaySamples.lastIndex)
+                Row(
                     modifier = Modifier
-                        .width(52.dp)
-                        .fillMaxHeight()
-                )
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ReplayTrackCanvas(
+                        samples = replaySamples,
+                        sourceIndices = replaySourceIndices,
+                        selectedIndex = safeIndex,
+                        colorMetric = colorMetric,
+                        colorData = trackColorData,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                    )
+
+                    ReplayTimeline(
+                        samples = replaySamples,
+                        sourceIndices = replaySourceIndices,
+                        selectedIndex = safeIndex,
+                        onSelectedIndex = {
+                            isPlaying = false
+                            selectedSourceIndex = replaySourceIndices[it]
+                        },
+                        modifier = Modifier
+                            .width(52.dp)
+                            .fillMaxHeight()
+                    )
+                }
             }
         }
 
@@ -667,6 +923,7 @@ private fun ReplayValue(
 @Composable
 private fun ReplayTrackCanvas(
     samples: List<SessionTrackingSample>,
+    sourceIndices: List<Int>,
     selectedIndex: Int,
     colorMetric: AnalysisMetric?,
     colorData: ReplayTrackColorData?,
@@ -695,6 +952,13 @@ private fun ReplayTrackCanvas(
     val validSamples = remember(samples) {
         samples.filter { it.hasUsableGpsPosition() }
     }
+    var viewport by remember(
+        samples.firstOrNull()?.localId,
+        samples.lastOrNull()?.localId,
+        samples.size
+    ) {
+        mutableStateOf(ReplayViewport())
+    }
 
     Box(
         modifier = modifier
@@ -715,6 +979,20 @@ private fun ReplayTrackCanvas(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(4.dp)
+                .pointerInput(samples.size, sourceIndices) {
+                    detectTransformGestures { centroid, pan, zoom, _ ->
+                        viewport = updateReplayViewport(
+                            viewport = viewport,
+                            zoomChange = zoom,
+                            panX = pan.x,
+                            panY = pan.y,
+                            centroidX = centroid.x,
+                            centroidY = centroid.y,
+                            widthPx = size.width.toFloat(),
+                            heightPx = size.height.toFloat()
+                        )
+                    }
+                }
         ) {
             val geoPoints = buildList {
                 validSamples.forEach { add(OwnShipGeoPoint(it.lat, it.lon)) }
@@ -729,11 +1007,19 @@ private fun ReplayTrackCanvas(
                 minPaddingPx = minPaddingPx
             ) ?: return@Canvas
 
+            fun transformed(point: Offset): Offset =
+                replayTransformPoint(
+                    point = point,
+                    viewport = viewport,
+                    widthPx = size.width,
+                    heightPx = size.height
+                )
+
             fun point(sample: SessionTrackingSample): Offset? =
-                projection.project(sample.lat, sample.lon)
+                projection.project(sample.lat, sample.lon)?.let(::transformed)
 
             fun coursePoint(point: CourseOverlayGeoPoint): Offset? =
-                projection.project(point.lat, point.lon)
+                projection.project(point.lat, point.lon)?.let(::transformed)
 
             val sizing = replayCanvasSizing(
                 canvasScalePx = min(size.width, size.height),
@@ -746,7 +1032,8 @@ private fun ReplayTrackCanvas(
                 if (
                     !previous.hasUsableGpsPosition() ||
                     !current.hasUsableGpsPosition() ||
-                    !areSessionSamplesContiguous(previous, current)
+                    !areSessionSamplesContiguous(previous, current) ||
+                    !replaySourceIndicesAreContiguous(sourceIndices, index)
                 ) {
                     continue
                 }
@@ -857,7 +1144,11 @@ private fun ReplayTrackCanvas(
                     drawReplayBoat(
                         center = center,
                         radius = sizing.boatRadiusPx,
-                        bearingDegrees = replayBoatBearingDegrees(samples, selectedIndex),
+                        bearingDegrees = replayBoatBearingDegrees(
+                            samples = samples,
+                            selectedIndex = selectedIndex,
+                            sourceIndices = sourceIndices
+                        ),
                         color = markerColor,
                         outlineWidth = sizing.boatOutlineWidthPx
                     )
@@ -935,6 +1226,7 @@ private fun formatReplayColorLegendValue(value: Double): String =
 @Composable
 private fun ReplayTimeline(
     samples: List<SessionTrackingSample>,
+    sourceIndices: List<Int>,
     selectedIndex: Int,
     onSelectedIndex: (Int) -> Unit,
     modifier: Modifier = Modifier
@@ -992,14 +1284,22 @@ private fun ReplayTimeline(
                 var index = 0
                 while (index < samples.lastIndex) {
                     val next = min(samples.lastIndex, index + stride)
-                    val y1 = fractions[index] * size.height
-                    val y2 = fractions[next] * size.height
-                    drawLine(
-                        color = replaySpeedColor(samples[index].sog.toDouble(), maxSog),
-                        start = Offset(x, y1),
-                        end = Offset(x, max(y1 + timelineMinSegmentPx, y2)),
-                        strokeWidth = timelineStrokeWidthPx
-                    )
+                    val sourceSpanContinuous =
+                        sourceIndices.size != samples.size ||
+                            sourceIndices[next] - sourceIndices[index] == next - index
+                    if (sourceSpanContinuous) {
+                        val y1 = fractions[index] * size.height
+                        val y2 = fractions[next] * size.height
+                        drawLine(
+                            color = replaySpeedColor(
+                                samples[index].sog.toDouble(),
+                                maxSog
+                            ),
+                            start = Offset(x, y1),
+                            end = Offset(x, max(y1 + timelineMinSegmentPx, y2)),
+                            strokeWidth = timelineStrokeWidthPx
+                        )
+                    }
                     index = next
                 }
             }
@@ -1044,6 +1344,19 @@ internal fun prepareReplayTrackColorData(
         minValue = observed.minOrNull(),
         maxValue = observed.maxOrNull()
     )
+}
+
+internal fun replaySelectedFilteredIndex(
+    sourceIndices: List<Int>,
+    selectedSourceIndex: Int
+): Int {
+    if (sourceIndices.isEmpty()) return 0
+    val exact = sourceIndices.indexOf(selectedSourceIndex)
+    if (exact >= 0) return exact
+
+    return sourceIndices.indices.minByOrNull { index ->
+        abs(sourceIndices[index] - selectedSourceIndex)
+    } ?: 0
 }
 
 internal fun replayInitialSampleIndex(sampleCount: Int): Int =
@@ -1151,6 +1464,74 @@ internal fun replayPlaybackIndexForOffset(
     return low
 }
 
+internal fun replaySourceIndicesAreContiguous(
+    sourceIndices: List<Int>,
+    currentIndex: Int
+): Boolean {
+    if (currentIndex <= 0 || currentIndex >= sourceIndices.size) return false
+    val previous = sourceIndices[currentIndex - 1]
+    val current = sourceIndices[currentIndex]
+    return previous >= 0 && current == previous + 1
+}
+
+internal data class ReplayViewport(
+    val zoom: Float = 1f,
+    val panX: Float = 0f,
+    val panY: Float = 0f
+)
+
+internal fun updateReplayViewport(
+    viewport: ReplayViewport,
+    zoomChange: Float,
+    panX: Float,
+    panY: Float,
+    centroidX: Float,
+    centroidY: Float,
+    widthPx: Float,
+    heightPx: Float
+): ReplayViewport {
+    if (widthPx <= 0f || heightPx <= 0f) return viewport
+
+    val oldZoom = viewport.zoom.coerceIn(1f, REPLAY_MAX_ZOOM)
+    val safeZoomChange = zoomChange.takeIf { it.isFinite() && it > 0f } ?: 1f
+    val newZoom = (oldZoom * safeZoomChange).coerceIn(1f, REPLAY_MAX_ZOOM)
+    if (newZoom <= 1f) return ReplayViewport()
+
+    val ratio = newZoom / oldZoom
+    val centerX = widthPx / 2f
+    val centerY = heightPx / 2f
+    val nextPanX =
+        viewport.panX * ratio +
+            (1f - ratio) * (centroidX - centerX) +
+            panX
+    val nextPanY =
+        viewport.panY * ratio +
+            (1f - ratio) * (centroidY - centerY) +
+            panY
+    val maxPanX = (newZoom - 1f) * widthPx / 2f
+    val maxPanY = (newZoom - 1f) * heightPx / 2f
+
+    return ReplayViewport(
+        zoom = newZoom,
+        panX = nextPanX.coerceIn(-maxPanX, maxPanX),
+        panY = nextPanY.coerceIn(-maxPanY, maxPanY)
+    )
+}
+
+internal fun replayTransformPoint(
+    point: Offset,
+    viewport: ReplayViewport,
+    widthPx: Float,
+    heightPx: Float
+): Offset {
+    val centerX = widthPx / 2f
+    val centerY = heightPx / 2f
+    return Offset(
+        x = centerX + (point.x - centerX) * viewport.zoom + viewport.panX,
+        y = centerY + (point.y - centerY) * viewport.zoom + viewport.panY
+    )
+}
+
 internal data class ReplayCanvasSizing(
     val sailedTrackWidthPx: Float,
     val futureTrackWidthPx: Float,
@@ -1193,7 +1574,8 @@ internal fun replaySpeedFraction(speedMps: Double, maxSpeedMps: Double): Float {
 
 internal fun replayBoatBearingDegrees(
     samples: List<SessionTrackingSample>,
-    selectedIndex: Int
+    selectedIndex: Int,
+    sourceIndices: List<Int> = emptyList()
 ): Float {
     if (samples.isEmpty()) return 0f
 
@@ -1212,14 +1594,19 @@ internal fun replayBoatBearingDegrees(
         return recorded ?: 0f
     }
 
-    return replayTrackBearingDegrees(samples, index)
+    return replayTrackBearingDegrees(
+        samples = samples,
+        selectedIndex = index,
+        sourceIndices = sourceIndices
+    )
         ?: recorded
         ?: 0f
 }
 
 private fun replayTrackBearingDegrees(
     samples: List<SessionTrackingSample>,
-    selectedIndex: Int
+    selectedIndex: Int,
+    sourceIndices: List<Int>
 ): Float? {
     val selected = samples.getOrNull(selectedIndex)
         ?.takeIf { it.hasUsableGpsPosition() }
@@ -1245,10 +1632,20 @@ private fun replayTrackBearingDegrees(
     }
 
     samples.getOrNull(selectedIndex + 1)?.let { next ->
-        bearing(selected, next)?.let { return it }
+        if (
+            sourceIndices.isEmpty() ||
+            replaySourceIndicesAreContiguous(sourceIndices, selectedIndex + 1)
+        ) {
+            bearing(selected, next)?.let { return it }
+        }
     }
     samples.getOrNull(selectedIndex - 1)?.let { previous ->
-        bearing(previous, selected)?.let { return it }
+        if (
+            sourceIndices.isEmpty() ||
+            replaySourceIndicesAreContiguous(sourceIndices, selectedIndex)
+        ) {
+            bearing(previous, selected)?.let { return it }
+        }
     }
     return null
 }
@@ -1364,6 +1761,7 @@ private fun DrawScope.drawReplayBoat(
     }
 }
 
+private const val REPLAY_MAX_ZOOM = 6f
 private const val REPLAY_PLAYBACK_TICK_MS = 50L
 private const val REPLAY_FALLBACK_SAMPLE_INTERVAL_MS = 1_000L
 private const val METERS_PER_LAT_DEGREE = 111_320.0

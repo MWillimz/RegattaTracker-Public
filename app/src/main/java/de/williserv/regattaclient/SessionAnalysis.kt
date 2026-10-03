@@ -83,6 +83,11 @@ data class AnalysisRangeFilter(
     val max: Double
 )
 
+data class AnalysisTimeRangeFilter(
+    val startMs: Long,
+    val endMs: Long
+)
+
 data class AnalysisPoint(
     val angleDeg: Double,
     val radius: Double,
@@ -253,6 +258,65 @@ private fun analysisAccelerationOverLookback(
     }
 
     return null
+}
+
+internal fun analysisObservedTimeRange(
+    samples: List<PreparedAnalysisSample>
+): LongRange? {
+    val timestamps = samples.mapNotNull { it.timestampMs }
+    val start = timestamps.minOrNull() ?: return null
+    val end = timestamps.maxOrNull() ?: return null
+    return start..end
+}
+
+internal fun analysisTimeFilterFromFraction(
+    samples: List<PreparedAnalysisSample>,
+    fractionRange: ClosedFloatingPointRange<Float>
+): AnalysisTimeRangeFilter? {
+    val observed = analysisObservedTimeRange(samples) ?: return null
+    val startFraction = minOf(
+        fractionRange.start,
+        fractionRange.endInclusive
+    ).coerceIn(0f, 1f)
+    val endFraction = maxOf(
+        fractionRange.start,
+        fractionRange.endInclusive
+    ).coerceIn(0f, 1f)
+    val spanMs = observed.last - observed.first
+
+    return AnalysisTimeRangeFilter(
+        startMs = observed.first +
+            (spanMs.toDouble() * startFraction.toDouble()).toLong(),
+        endMs = observed.first +
+            (spanMs.toDouble() * endFraction.toDouble()).toLong()
+    )
+}
+
+internal fun applyAnalysisTimeFilter(
+    samples: List<PreparedAnalysisSample>,
+    filter: AnalysisTimeRangeFilter?
+): List<PreparedAnalysisSample> {
+    if (filter == null) return samples
+    val start = minOf(filter.startMs, filter.endMs)
+    val end = maxOf(filter.startMs, filter.endMs)
+    return samples.filter { sample ->
+        sample.timestampMs?.let { it in start..end } == true
+    }
+}
+
+internal fun applyAnalysisRangeFilters(
+    samples: List<PreparedAnalysisSample>,
+    filters: List<AnalysisRangeFilter>,
+    metricsById: Map<String, AnalysisMetric>
+): List<PreparedAnalysisSample> {
+    if (filters.isEmpty()) return samples
+    return samples.filter { sample ->
+        filters.all { filter ->
+            val metric = metricsById[filter.metricId] ?: return@all false
+            val value = metricValue(metric, sample) ?: return@all false
+            value in filter.min..filter.max
+        }
+    }
 }
 
 internal fun applyAnalysisSampleFilters(
@@ -784,15 +848,13 @@ internal fun buildSessionAnalysisDataset(
     aggregationWindowMs: Long = 0L
 ): SessionAnalysisDataset {
     val kind = angleMetric.angleKind
+    val filteredSamples = applyAnalysisRangeFilters(
+        samples = samples,
+        filters = filters,
+        metricsById = metricsById
+    )
     val eligible = buildList {
-        samples.forEach { sample ->
-            val passes = filters.all { filter ->
-                val metric = metricsById[filter.metricId] ?: return@all false
-                val value = metricValue(metric, sample) ?: return@all false
-                value in filter.min..filter.max
-            }
-            if (!passes) return@forEach
-
+        filteredSamples.forEach { sample ->
             val rawAngle = metricValue(angleMetric, sample) ?: return@forEach
             val angleKind = kind ?: return@forEach
             val angle = normalizeAnalysisAngle(rawAngle, angleKind)
