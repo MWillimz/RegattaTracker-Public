@@ -71,6 +71,66 @@ class SessionReplayTest {
     }
 
     @Test
+    fun filteredReplaySelection_keepsSourceIdentityOrNearestSample() {
+        val sourceIndices = listOf(10, 20, 30)
+
+        assertEquals(1, replaySelectedFilteredIndex(sourceIndices, 20))
+        assertEquals(1, replaySelectedFilteredIndex(sourceIndices, 24))
+        assertEquals(2, replaySelectedFilteredIndex(sourceIndices, 29))
+        assertEquals(0, replaySelectedFilteredIndex(emptyList(), 20))
+    }
+
+    @Test
+    fun filteredReplaySourceIndices_doNotBridgeRemovedSamples() {
+        assertEquals(true, replaySourceIndicesAreContiguous(listOf(4, 5, 6), 1))
+        assertEquals(false, replaySourceIndicesAreContiguous(listOf(4, 6), 1))
+    }
+
+    @Test
+    fun replayViewport_clampsZoomAndPanToVisibleBounds() {
+        val zoomed = updateReplayViewport(
+            viewport = ReplayViewport(),
+            zoomChange = 2f,
+            panX = 0f,
+            panY = 0f,
+            centroidX = 100f,
+            centroidY = 50f,
+            widthPx = 200f,
+            heightPx = 100f
+        )
+        assertEquals(2f, zoomed.zoom, 0.0001f)
+        assertEquals(0f, zoomed.panX, 0.0001f)
+        assertEquals(0f, zoomed.panY, 0.0001f)
+
+        val panned = updateReplayViewport(
+            viewport = zoomed,
+            zoomChange = 1f,
+            panX = 500f,
+            panY = -500f,
+            centroidX = 100f,
+            centroidY = 50f,
+            widthPx = 200f,
+            heightPx = 100f
+        )
+        assertEquals(100f, panned.panX, 0.0001f)
+        assertEquals(-50f, panned.panY, 0.0001f)
+
+        val reset = updateReplayViewport(
+            viewport = panned,
+            zoomChange = 0.1f,
+            panX = 0f,
+            panY = 0f,
+            centroidX = 100f,
+            centroidY = 50f,
+            widthPx = 200f,
+            heightPx = 100f
+        )
+        assertEquals(1f, reset.zoom, 0.0001f)
+        assertEquals(0f, reset.panX, 0.0001f)
+        assertEquals(0f, reset.panY, 0.0001f)
+    }
+
+    @Test
     fun speedFraction_isRelativeToSessionMaximumAndClamped() {
         assertEquals(0f, replaySpeedFraction(0.0, 10.0), 0.0001f)
         assertEquals(0.5f, replaySpeedFraction(5.0, 10.0), 0.0001f)
