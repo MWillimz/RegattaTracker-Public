@@ -123,6 +123,10 @@ internal fun normalizeAccessContextKey(
 class TrackingDbHelper(context: Context) :
     SQLiteOpenHelper(context, "regatta_tracking.db", null, 13) {
 
+    init {
+        setWriteAheadLoggingEnabled(true)
+    }
+
     private val appContext = context.applicationContext
     private var lastBatteryReadAtMs: Long? = null
     private var lastEmittedTrackingProfile: String? = null
