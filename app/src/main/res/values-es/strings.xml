@@ -666,7 +666,6 @@
     <string name="regattalink_load_waiting">Esperando datos de los sensores de carga…</string>
     <string name="regattalink_load_not_subscribed">Las notificaciones de los sensores de carga no están disponibles.</string>
     <string name="regattalink_load_alias">Nombre opcional</string>
-    <string name="regattalink_load_identity_temporary">Identidad Boat Data temporal; se podrá asignar un nombre cuando se conozca la identidad estable del dispositivo.</string>
     <string name="regattalink_nmea_tx_title">Transmisión Boat Data</string>
     <string name="regattalink_nmea_tx_receive_only">Solo recepción. RegattaLink no transmite Boat Data.</string>
     <string name="regattalink_nmea_tx_enabled">Transmisión permitida. Puede enviarse tráfico estándar de gestión Boat Data.</string>
