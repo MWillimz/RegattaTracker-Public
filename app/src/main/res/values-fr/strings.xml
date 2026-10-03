@@ -384,6 +384,8 @@
     <string name="session_analysis_show_filters">Afficher les filtres</string>
     <string name="session_analysis_hide_filters">Masquer les filtres</string>
     <string name="session_analysis_filter_range">%1$s–%2$s %3$s</string>
+    <string name="session_analysis_time_filter">Plage horaire</string>
+    <string name="session_analysis_time_filter_range">%1$s–%2$s</string>
     <string name="session_analysis_gps_maneuver_filter">Filtre de manœuvre GPS</string>
     <string name="session_analysis_gps_maneuver_threshold">Changement de cap : %1$d° / 5 s</string>
     <string name="session_analysis_imu_stability_filter">Filtre de stabilité IMU</string>
@@ -394,6 +396,7 @@
     <string name="session_replay_button">Replay</string>
     <string name="session_replay_title">Replay de la session</string>
     <string name="session_replay_empty">Aucun échantillon disponible pour le replay.</string>
+    <string name="session_replay_no_filtered_samples">Aucun échantillon ne correspond aux filtres actifs.</string>
     <string name="session_replay_no_position">Aucune position GPS exploitable dans cette session.</string>
     <string name="session_replay_time_label">Heure</string>
     <string name="session_replay_sog_label">SOG</string>
