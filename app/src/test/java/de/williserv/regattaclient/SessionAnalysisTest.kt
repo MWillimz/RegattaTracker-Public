@@ -25,6 +25,53 @@ class SessionAnalysisTest {
     }
 
     @Test
+    fun timeRangeFilter_keepsOnlySelectedSessionWindow() {
+        val samples = listOf(
+            sample(timestamp = "2026-09-24T12:00:00"),
+            sample(timestamp = "2026-09-24T12:00:10"),
+            sample(timestamp = "2026-09-24T12:00:20")
+        )
+        val prepared = prepareAnalysisSamples(samples)
+        val filter = analysisTimeFilterFromFraction(prepared, 0.25f..0.75f)
+
+        val filtered = applyAnalysisTimeFilter(prepared, filter)
+
+        assertEquals(listOf(1), filtered.map { it.sourceIndex })
+    }
+
+    @Test
+    fun analysisRangeFilters_areReusableForPreparedSamples() {
+        val prepared = prepareAnalysisSamples(
+            listOf(
+                sample(sog = 1f),
+                sample(sog = 3f),
+                sample(sog = 5f)
+            )
+        )
+        val metric = AnalysisMetric(
+            id = "gps.sog",
+            label = "SOG",
+            unit = "kn",
+            source = AnalysisMetricSource.GPS_SOG,
+            displayScale = MPS_TO_KNOTS
+        )
+
+        val filtered = applyAnalysisRangeFilters(
+            samples = prepared,
+            filters = listOf(
+                AnalysisRangeFilter(
+                    metricId = metric.id,
+                    min = 2.0 * MPS_TO_KNOTS,
+                    max = 4.0 * MPS_TO_KNOTS
+                )
+            ),
+            metricsById = mapOf(metric.id to metric)
+        )
+
+        assertEquals(listOf(1), filtered.map { it.sourceIndex })
+    }
+
+    @Test
     fun trueWindAndStwArePreferredOverApparentWind() {
         val samples = listOf(
             sample(
