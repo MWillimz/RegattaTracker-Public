@@ -183,6 +183,66 @@ class SessionReplayTest {
     }
 
     @Test
+    fun replayTrackColorData_supportsAbsoluteValuesAndCustomRange() {
+        val metric = AnalysisMetric(
+            id = "measurement:test.heel",
+            label = "Heel",
+            unit = "deg",
+            source = AnalysisMetricSource.MEASUREMENT,
+            measurementKey = "test.heel"
+        )
+        val prepared = listOf(
+            PreparedAnalysisSample(
+                null,
+                90.0,
+                2.0,
+                mapOf("test.heel" to -20.0)
+            ),
+            PreparedAnalysisSample(
+                null,
+                90.0,
+                2.0,
+                mapOf("test.heel" to 5.0)
+            ),
+            PreparedAnalysisSample(
+                null,
+                90.0,
+                2.0,
+                mapOf("test.heel" to 20.0)
+            )
+        )
+
+        val data = prepareReplayTrackColorData(
+            samples = prepared,
+            metric = metric,
+            useAbsoluteValue = true
+        )
+
+        assertTrue(data.hasNegativeValues)
+        assertEquals(5.0, data.minValue!!, 0.0001)
+        assertEquals(20.0, data.maxValue!!, 0.0001)
+        assertEquals(data.fractionAt(0), data.fractionAt(2))
+        assertEquals(
+            0f,
+            data.fractionAt(
+                index = 1,
+                minValue = 10.0,
+                maxValue = 15.0
+            )!!,
+            0.0001f
+        )
+        assertEquals(
+            1f,
+            data.fractionAt(
+                index = 0,
+                minValue = 10.0,
+                maxValue = 15.0
+            )!!,
+            0.0001f
+        )
+    }
+
+    @Test
     fun replayTrackColorData_keepsMissingMeasurementValuesMissing() {
         val metric = AnalysisMetric(
             id = "measurement:test.load",
