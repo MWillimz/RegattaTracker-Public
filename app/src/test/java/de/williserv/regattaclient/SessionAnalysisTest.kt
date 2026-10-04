@@ -605,7 +605,12 @@ class SessionAnalysisTest {
             aggregationWindowMs = ANALYSIS_AGGREGATION_WINDOW_MS
         )
         val observed = sessionColorObservedRange(
-            values = prepared.map { metricValue(color, it) },
+            values = analysisEligibleColorValues(
+                samples = prepared,
+                angleMetric = angle,
+                radiusMetric = radius,
+                colorMetric = color
+            ),
             useAbsoluteValue = false
         )
 
@@ -613,6 +618,71 @@ class SessionAnalysisTest {
         assertEquals(0.0, dataset.colorMax!!, 0.0001)
         assertEquals(-20.0, observed!!.start, 0.0001)
         assertEquals(20.0, observed.endInclusive, 0.0001)
+    }
+
+    @Test
+    fun colorRangeExcludesSamplesThatCannotProducePlotPoints() {
+        val angle = AnalysisMetric(
+            id = "measurement:test.angle",
+            label = "Angle",
+            unit = "deg",
+            source = AnalysisMetricSource.MEASUREMENT,
+            measurementKey = "test.angle",
+            angleKind = AnalysisAngleKind.RELATIVE
+        )
+        val radius = AnalysisMetric(
+            id = "measurement:test.radius",
+            label = "Radius",
+            unit = "kn",
+            source = AnalysisMetricSource.MEASUREMENT,
+            measurementKey = "test.radius"
+        )
+        val color = AnalysisMetric(
+            id = "measurement:test.color",
+            label = "Color",
+            unit = "deg",
+            source = AnalysisMetricSource.MEASUREMENT,
+            measurementKey = "test.color"
+        )
+        val prepared = listOf(
+            PreparedAnalysisSample(
+                timestampMs = 0L,
+                cogDeg = 0.0,
+                sogMps = 0.0,
+                measurements = mapOf(
+                    "test.angle" to 45.0,
+                    "test.radius" to 2.0,
+                    "test.color" to 5.0
+                ),
+                sourceIndex = 0
+            ),
+            PreparedAnalysisSample(
+                timestampMs = 1_000L,
+                cogDeg = 0.0,
+                sogMps = 0.0,
+                measurements = mapOf(
+                    "test.radius" to 2.0,
+                    "test.color" to -100.0
+                ),
+                sourceIndex = 1
+            )
+        )
+
+        val values = analysisEligibleColorValues(
+            samples = prepared,
+            angleMetric = angle,
+            radiusMetric = radius,
+            colorMetric = color
+        )
+        val observed = sessionColorObservedRange(
+            values = values,
+            useAbsoluteValue = false
+        )
+
+        assertEquals(listOf(5.0), values)
+        assertEquals(5.0, observed!!.start, 0.0001)
+        assertEquals(5.0, observed.endInclusive, 0.0001)
+        assertFalse(sessionColorHasNegativeValue(values))
     }
 
     @Test

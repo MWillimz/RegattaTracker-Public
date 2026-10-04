@@ -274,14 +274,19 @@ fun SessionAnalysisScreen(
             }
             val colorRawValues = remember(
                 colorFilteredSamples,
+                angleMetric,
+                radiusMetric,
                 colorMetric
             ) {
                 if (colorMetric == null) {
                     emptyList()
                 } else {
-                    colorFilteredSamples.map { sample ->
-                        metricValue(colorMetric, sample)
-                    }
+                    analysisEligibleColorValues(
+                        samples = colorFilteredSamples,
+                        angleMetric = angleMetric,
+                        radiusMetric = radiusMetric,
+                        colorMetric = colorMetric
+                    )
                 }
             }
             val colorHasNegativeValues =
