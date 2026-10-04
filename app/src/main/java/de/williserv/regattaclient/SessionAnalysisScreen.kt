@@ -287,6 +287,12 @@ fun SessionAnalysisScreen(
             val colorHasNegativeValues =
                 sessionColorHasNegativeValue(colorRawValues)
 
+            LaunchedEffect(colorHasNegativeValues) {
+                if (!colorHasNegativeValues) {
+                    colorUseAbsoluteValue = false
+                }
+            }
+
             val dataset = remember(
                 timeFilteredSamples,
                 angleMetric,
