@@ -743,10 +743,10 @@
     <string name="regattalink_nmea_runtime_unknown_restart">Applied Boat Data TX state is unavailable on this firmware. Restart RegattaLink to synchronize the selected settings.</string>
 
 
-    <string name="regattalink_nmea0183_tx">NMEA 0183 → Boat Data</string>
+    <string name="regattalink_nmea0183_tx">0183 input → Boat Data</string>
     <string name="regattalink_phone_gps_tx">Phone GPS → Boat Data</string>
     <string name="regattalink_compass_tx">Compass Heading → Boat Data</string>
-    <string name="regattalink_nmea0183_baud">NMEA 0183 baud</string>
+    <string name="regattalink_nmea0183_baud">0183 input baud</string>
     <string name="regattalink_applies_after_restart">Saved setting applies after RegattaLink restart.</string>
     <string name="regattalink_boat_data_output_selected_runtime_unknown">Selected. Applied state is unavailable.</string>
     <string name="regattalink_boat_data_output_off_runtime_unknown">Not selected. Applied state is unavailable.</string>
