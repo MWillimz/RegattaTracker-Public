@@ -144,6 +144,25 @@ class ReplayMapBackgroundTest {
     }
 
     @Test
+    fun contextfulSampleWithoutViewportDoesNotUseSessionFallback() {
+        val session = session(
+            resolvedEventName = "Legacy Run",
+            courseMapViewportJson = viewportJson("legacy")
+        )
+        val sampleWithContext = sample(
+            id = 1,
+            raceContextId = 10,
+            event = "Legacy Run",
+            generation = null
+        )
+
+        assertEquals(
+            emptyList<ReplayMapCandidate>(),
+            replayMapCandidates(session, listOf(sampleWithContext))
+        )
+    }
+
+    @Test
     fun legacySessionMetadataProvidesSingleFallbackCandidate() {
         val session = session(
             resolvedEventName = "Legacy Run",
