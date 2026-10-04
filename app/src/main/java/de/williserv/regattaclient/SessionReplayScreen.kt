@@ -1124,7 +1124,6 @@ private fun ReplayTrackCanvas(
 
     Box(
         modifier = modifier
-            .clickable(onClick = onClick)
             .background(
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 shape = MaterialTheme.shapes.medium
@@ -1354,6 +1353,7 @@ private fun ReplayTrackColorLegend(
 
     Column(
         modifier = modifier
+            .clickable(onClick = onClick)
             .background(
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
                 shape = MaterialTheme.shapes.small
