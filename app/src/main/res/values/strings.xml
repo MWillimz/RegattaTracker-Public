@@ -742,6 +742,24 @@
     <string name="regattalink_nmea_attitude_tx_inactive">Selected for this boot, but PGN 127257 output is not runtime-enabled.</string>
     <string name="regattalink_nmea_runtime_unknown_restart">Applied Boat Data TX state is unavailable on this firmware. Restart RegattaLink to synchronize the selected settings.</string>
 
+
+    <string name="regattalink_nmea0183_tx">NMEA 0183 → Boat Data</string>
+    <string name="regattalink_phone_gps_tx">Phone GPS → Boat Data</string>
+    <string name="regattalink_compass_tx">Compass Heading → Boat Data</string>
+    <string name="regattalink_nmea0183_baud">NMEA 0183 baud</string>
+    <string name="regattalink_applies_after_restart">Saved setting applies after RegattaLink restart.</string>
+    <string name="regattalink_boat_data_output_selected_runtime_unknown">Selected. Applied state is unavailable.</string>
+    <string name="regattalink_boat_data_output_off_runtime_unknown">Not selected. Applied state is unavailable.</string>
+    <string name="regattalink_boat_data_output_restart_required">Saved. Restart RegattaLink to apply.</string>
+    <string name="regattalink_boat_data_output_active">Active</string>
+    <string name="regattalink_boat_data_output_selected_inactive">Selected for this boot, but not runtime-active.</string>
+    <string name="regattalink_boat_data_output_off">Off</string>
+    <string name="regattalink_mag_background_learning">MAG background calibration learning</string>
+    <string name="regattalink_heading_trim">Compass heading trim</string>
+    <string name="regattalink_heading_trim_value">%1$d°</string>
+    <string name="regattalink_heading_trim_immediate">Applies immediately to the local onboard compass only.</string>
+    <string name="regattalink_config_restart_required">Restart RegattaLink to apply the saved configuration changes.</string>
+
     <string name="session_metric_cog">COG</string>
     <string name="session_metric_sog">SOG</string>
     <string name="session_metric_mag">MAG</string>
