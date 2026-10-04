@@ -511,7 +511,10 @@ class TrackingDbHelper(context: Context) :
                 samples.race_context_id,
                 race_contexts.resolved_event_name,
                 race_contexts.course_json,
-                race_contexts.course_map_viewport_json,
+                CASE
+                    WHEN race_contexts.context_key LIKE 'legacy:%' THEN NULL
+                    ELSE race_contexts.course_map_viewport_json
+                END,
                 samples.cog_valid
             FROM tracking_samples AS samples
             LEFT JOIN race_contexts
@@ -1344,6 +1347,8 @@ class TrackingDbHelper(context: Context) :
                     INNER JOIN race_contexts
                         ON race_contexts.access_context_id = tracking_sessions.access_context_id
                        AND race_contexts.resolved_event_name = tracking_sessions.resolved_event_name
+                       AND race_contexts.context_key =
+                           'migrated-session:' || tracking_sessions.id
                     WHERE tracking_sessions.id = tracking_samples.session_id
                     LIMIT 1
                 )
