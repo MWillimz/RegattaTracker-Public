@@ -128,7 +128,7 @@ The first Tracker migration step consumes the already-existing UI functionality 
 - Heel/Trim TX from bit 1;
 - Load precision from bit 8.
 
-The remaining selectors/configuration are exposed by the second #423 implementation step.
+The Tracker exposes all assigned schema-16 selectors/configuration from this same authoritative Config Word.
 
 ## Runtime TX status 001B v2
 
@@ -165,7 +165,7 @@ The frozen wire contract is:
 - immediate apply;
 - local onboard compass only.
 
-This control is exposed in the second #423 implementation step. It does not require another GATT change.
+Tracker exposes this control in the IMU setup surface. It applies immediately and does not require another GATT change.
 
 ## Background MAG
 
@@ -197,7 +197,7 @@ Validity flags:
 - bit4 altitude
 - bits5..7 zero
 
-Phone GNSS forwarding is implemented in the second #423 step.
+Tracker forwards fresh Android GPS observations through this characteristic at no more than 1 Hz while desired Config bits 0 and 3 are both enabled. The forwarding queue is latest-wins: at most one write is scheduled/in flight and one newer pending observation replaces the older pending observation.
 
 ## Existing Config/Control payloads retained
 
@@ -276,20 +276,27 @@ Required behavior:
 - future Extension characteristics are optional;
 - future schema generations may append protocol surface without moving the frozen prefix.
 
-## First-half #423 acceptance checklist
+## #423 acceptance checklist
 
-The first implementation step is complete when:
+The Android migration is complete when:
 
 - discovery scans for OTA `0001`;
 - all active core UUIDs use `...6b72`;
 - Device Info requires schema 16+;
 - existing Device Name, LED, damping, PGN inventory, Raw FIFO, diagnostics and Device Control work at their v2 UUIDs;
 - existing Motion 1 Hz, Boat State and Load telemetry work at their v2 UUIDs;
-- the existing TX master, Heel/Trim TX and Load Precision UI operates through one reserved-safe `0017` RMW path;
-- runtime status parses `001B` version 2;
-- explicit Restart continues to apply pending `0017` state;
+- Config `0017` is the single authoritative source for all assigned selector/config fields;
+- every `0017` edit performs a fresh reserved-safe four-byte read-modify-write and marks the current process restart-required when the confirmed word changes;
+- Boat Data TX master, Heel/Trim, NMEA0183, Phone GPS and local Compass selectors are exposed without auto-enabling each other;
+- NMEA0183 baud exposes exactly 4800 / 9600 / 19200 / 38400;
+- Load precision and MAG background-learning use their assigned `0017` bits;
+- Heading Trim `0018` uses exact signed LE -180..+180° encoding and applies without restart;
+- runtime status parses `001B` version 2 and remains separate from desired Config state;
+- Phone GNSS `001C` uses the exact 20-byte v1 frame, send-time monotonic age, validity bits and one write-with-response transaction;
+- Phone GNSS forwarding is gated by desired Config bits 0+3, stops on disconnect/OTA/disable, is rate-limited to 1 Hz and uses latest-wins buffering rather than a FIFO;
+- while Phone GNSS forwarding is enabled, Android GPS acquisition is requested at 1000 ms while local adaptive sample persistence keeps its existing cadence;
+- cached last-known locations are never forwarded as fresh Phone GNSS observations;
 - firmware OTA uses `0001..0004`;
-- post-reboot OTA success can be proven from secured OTA Status if Config/Device Info is temporarily unavailable;
-- no production code depends on the old Extension fallback or old `000A/000B/000C/000D` setting characteristics.
+- post-reboot OTA success can be proven from secured OTA Status if Config/Device Info is temporarily unavailable, after which the normal configured reconnect is restored;
+- no production code depends on the old Extension fallback or old `...6b71` characteristic map.
 
-The second #423 step adds the new selectors, baud/MAG/Heading Trim UI and 1 Hz Phone GNSS feed without another GATT schema change.
