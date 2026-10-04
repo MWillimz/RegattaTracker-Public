@@ -218,15 +218,15 @@ internal fun regattaLinkExpireLoadSensorsIfTransportStale(
     )
 }
 
-internal const val REGATTALINK_CONFIG_TX_MASTER: UInt = 1u shl 0
-internal const val REGATTALINK_CONFIG_TX_IMU: UInt = 1u shl 1
-internal const val REGATTALINK_CONFIG_TX_NMEA0183: UInt = 1u shl 2
-internal const val REGATTALINK_CONFIG_TX_PHONE_GPS: UInt = 1u shl 3
-internal const val REGATTALINK_CONFIG_TX_COMPASS: UInt = 1u shl 4
-internal const val REGATTALINK_CONFIG_TX_LOAD: UInt = 1u shl 5
-internal const val REGATTALINK_CONFIG_LOAD_PRECISION_X10: UInt = 1u shl 8
-internal const val REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING: UInt = 1u shl 9
-internal const val REGATTALINK_CONFIG_NMEA0183_BAUD_MASK: UInt = 0x3u shl 14
+internal const val REGATTALINK_CONFIG_TX_MASTER: UInt = 0x00000001u
+internal const val REGATTALINK_CONFIG_TX_IMU: UInt = 0x00000002u
+internal const val REGATTALINK_CONFIG_TX_NMEA0183: UInt = 0x00000004u
+internal const val REGATTALINK_CONFIG_TX_PHONE_GPS: UInt = 0x00000008u
+internal const val REGATTALINK_CONFIG_TX_COMPASS: UInt = 0x00000010u
+internal const val REGATTALINK_CONFIG_TX_LOAD: UInt = 0x00000020u
+internal const val REGATTALINK_CONFIG_LOAD_PRECISION_X10: UInt = 0x00000100u
+internal const val REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING: UInt = 0x00000200u
+internal const val REGATTALINK_CONFIG_NMEA0183_BAUD_MASK: UInt = 0x0000c000u
 
 internal fun parseRegattaLinkConfigWord(raw: ByteArray): UInt {
     require(raw.size == 4) {
