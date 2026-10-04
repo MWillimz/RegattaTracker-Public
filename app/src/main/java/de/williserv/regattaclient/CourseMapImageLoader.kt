@@ -42,7 +42,9 @@ internal fun loadCourseMapBitmapBlocking(
                 errorBody = errorBody
             )
         } else {
-            val bitmap = connection.inputStream.use { inputStream ->\n                BitmapFactory.decodeStream(inputStream)\n            }
+            val bitmap = connection.inputStream.use { inputStream ->
+                BitmapFactory.decodeStream(inputStream)
+            }
             if (bitmap == null) {
                 CourseMapImageLoadResult(
                     bitmap = null,
