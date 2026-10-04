@@ -208,15 +208,6 @@ internal class RegattaLinkBleClient(
     private val gattSchemaExecutor = Executors.newSingleThreadExecutor()
     private val gattSchemaStore = RegattaLinkGattSchemaStore(appContext)
     /*
-     * Schema 0 is legacy/unspecified and therefore cannot be trusted across an
-     * app restart. Keep its acceptance process-local only. This is still enough
-     * for OTA: once the initial connection observed Service Changed and
-     * rediscovered, the mandatory fresh pre-transfer reconnect may reuse that
-     * now-correct Android ATT cache within the same process.
-     */
-    private val legacyGattSchemaAcceptedThisProcess =
-        ConcurrentHashMap.newKeySet<String>()
-    /*
      * A persisted generation is only a hint. Every app process proves that the
      * actually cached Android handles work before trusting it. This catches the
      * exact failure where Service Changed/rediscovery completes but a CCCD write
@@ -1818,11 +1809,10 @@ internal class RegattaLinkBleClient(
             validatingAfterLocalCacheRefresh ||
                 validatingAfterServiceChangedReconnect
         val acceptedSchemaVersion =
-            when {
-                validatingAfterForcedRediscovery -> info.gattSchemaVersion
-                info.gattSchemaVersion == 0 &&
-                    legacyGattSchemaAcceptedThisProcess.contains(info.stableId) -> 0
-                else -> gattSchemaStore.acceptedVersion(info.stableId)
+            if (validatingAfterForcedRediscovery) {
+                info.gattSchemaVersion
+            } else {
+                gattSchemaStore.acceptedVersion(info.stableId)
             }
         val schemaDecision = regattaLinkGattSchemaDecision(
             reportedVersion = info.gattSchemaVersion,
@@ -2309,14 +2299,10 @@ internal class RegattaLinkBleClient(
                 verifiedGattSchemaThisProcess += key
                 gattCacheRefreshPendingValidation.remove(key)
                 gattServiceChangedReconnectPendingValidation.remove(key)
-                if (info.gattSchemaVersion == 0) {
-                    legacyGattSchemaAcceptedThisProcess += info.stableId
-                } else {
-                    gattSchemaStore.accept(
-                        info.stableId,
-                        info.gattSchemaVersion
-                    )
-                }
+                gattSchemaStore.accept(
+                    info.stableId,
+                    info.gattSchemaVersion
+                )
 
                 finishGattSchemaReconciliation()
                 completeConnectionAfterDeviceInfo(activeGatt, info)
@@ -2324,10 +2310,97 @@ internal class RegattaLinkBleClient(
         }
     }
 
+    private fun requireRegattaLinkV2FrozenCore(
+        activeGatt: BluetoothGatt
+    ) {
+        fun requireService(
+            uuid: UUID,
+            label: String
+        ): BluetoothGattService {
+            val matches = activeGatt.services.filter { it.uuid == uuid }
+            if (matches.size != 1) {
+                throw RegattaLinkOtaTransportException(
+                    "RegattaLink v2 $label service count is ${matches.size}, expected 1",
+                    ambiguous = false
+                )
+            }
+            return matches.single()
+        }
+
+        fun requireCharacteristic(
+            service: BluetoothGattService,
+            uuid: UUID,
+            label: String
+        ) {
+            val matches = service.characteristics.filter { it.uuid == uuid }
+            if (matches.size != 1) {
+                throw RegattaLinkOtaTransportException(
+                    "RegattaLink v2 $label characteristic count is " +
+                        "${matches.size}, expected 1",
+                    ambiguous = false
+                )
+            }
+        }
+
+        val otaService = requireService(
+            REGATTALINK_OTA_SERVICE_UUID,
+            "OTA"
+        )
+        listOf(
+            REGATTALINK_OTA_CONTROL_UUID to "OTA Control 0002",
+            REGATTALINK_OTA_DATA_UUID to "OTA Data 0003",
+            REGATTALINK_OTA_STATUS_UUID to "OTA Status 0004"
+        ).forEach { (uuid, label) ->
+            requireCharacteristic(otaService, uuid, label)
+        }
+
+        val configService = requireService(
+            CONFIG_SERVICE_UUID,
+            "Config/Control"
+        )
+        listOf(
+            DEVICE_NAME_UUID to "Device Name 0011",
+            DEVICE_INFO_UUID to "Device Info 0012",
+            NMEA_PGN_INVENTORY_UUID to "Boat Data PGN Inventory 0013",
+            NMEA_RAW_CAN_UUID to "Boat Data Raw FIFO 0014",
+            LED_BRIGHTNESS_UUID to "LED Brightness 0015",
+            MOTION_DAMPING_UUID to "Heel/Pitch Damping 0016",
+            CONFIG_WORD_UUID to "Config Word 0017",
+            HEADING_TRIM_UUID to "Heading Trim 0018",
+            DIAGNOSTIC_LOG_UUID to "Diagnostic Log 0019",
+            DEVICE_CONTROL_UUID to "Device Control 001A",
+            NMEA_TX_RUNTIME_STATUS_UUID to "TX Runtime Status 001B",
+            PHONE_GNSS_INPUT_UUID to "Phone GNSS Input 001C"
+        ).forEach { (uuid, label) ->
+            requireCharacteristic(configService, uuid, label)
+        }
+
+        val telemetryService = requireService(
+            TELEMETRY_SERVICE_UUID,
+            "Telemetry"
+        )
+        listOf(
+            TELEMETRY_FAST_UUID to "Fast Motion 0021",
+            TELEMETRY_SUMMARY_UUID to "Motion Summary 0022",
+            TELEMETRY_CALIBRATION_UUID to "IMU Diagnostics 0023",
+            TELEMETRY_BOAT_STATE_UUID to "Boat State 0024",
+            TELEMETRY_MOTION_ONE_HZ_UUID to "Motion 1 Hz 0025",
+            TELEMETRY_LOAD_UUID to "Load Telemetry 0026"
+        ).forEach { (uuid, label) ->
+            requireCharacteristic(telemetryService, uuid, label)
+        }
+
+        requireService(
+            EXTENSION_SERVICE_UUID,
+            "Extension"
+        )
+    }
+
     private fun probeCriticalGattLayout(
         activeGatt: BluetoothGatt,
         info: RegattaLinkDeviceInfo
     ) {
+        requireRegattaLinkV2FrozenCore(activeGatt)
         var provedCriticalLayout = false
 
         if (info.otaAvailable) {
@@ -2490,7 +2563,6 @@ internal class RegattaLinkBleClient(
         val key = gattSchemaKey(info)
         handler.removeCallbacks(gattSchemaReconcileTimeout)
         gattSchemaStore.clear(info.stableId)
-        legacyGattSchemaAcceptedThisProcess.remove(info.stableId)
         verifiedGattSchemaThisProcess.remove(key)
         gattServiceChangedReconnectPendingValidation.remove(key)
 
