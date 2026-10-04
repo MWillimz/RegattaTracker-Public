@@ -962,7 +962,7 @@ private fun RegattaLinkNmeaSetupSheet(
                                     )
                                 !nmeaRuntimeKnown ->
                                     stringResource(
-                                        if (configurationState.nmeaTxEnabled) {
+                                        if (configurationState.nmeaTxEnabled == true) {
                                             R.string.regattalink_nmea_tx_selected_on_runtime_unknown
                                         } else {
                                             R.string.regattalink_nmea_tx_selected_off_runtime_unknown
@@ -970,7 +970,7 @@ private fun RegattaLinkNmeaSetupSheet(
                                     )
                                 configurationState.nmeaTxRestartRequired ->
                                     stringResource(
-                                        if (configurationState.nmeaTxEnabled) {
+                                        if (configurationState.nmeaTxEnabled == true) {
                                             R.string.regattalink_nmea_tx_enable_pending
                                         } else {
                                             R.string.regattalink_nmea_tx_disable_pending
@@ -1026,7 +1026,7 @@ private fun RegattaLinkNmeaSetupSheet(
                                 nmeaAttitudeBootSelected == null ||
                                     nmeaAttitudeRuntimeActive == null ->
                                     stringResource(
-                                        if (configurationState.nmeaAttitudeTxEnabled) {
+                                        if (configurationState.nmeaAttitudeTxEnabled == true) {
                                             R.string.regattalink_nmea_attitude_selected_on_runtime_unknown
                                         } else {
                                             R.string.regattalink_nmea_attitude_selected_off_runtime_unknown
@@ -1034,7 +1034,7 @@ private fun RegattaLinkNmeaSetupSheet(
                                     )
                                 configurationState.nmeaAttitudeTxRestartRequired ->
                                     stringResource(
-                                        if (configurationState.nmeaAttitudeTxEnabled) {
+                                        if (configurationState.nmeaAttitudeTxEnabled == true) {
                                             R.string.regattalink_nmea_attitude_enable_pending
                                         } else {
                                             R.string.regattalink_nmea_attitude_disable_pending
