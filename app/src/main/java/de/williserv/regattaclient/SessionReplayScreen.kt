@@ -389,6 +389,12 @@ fun SessionReplayScreen(
                     )
                 }
             }
+            LaunchedEffect(trackColorData?.hasNegativeValues) {
+                if (trackColorData?.hasNegativeValues == false) {
+                    colorUseAbsoluteValue = false
+                }
+            }
+
             val colorObservedRange =
                 if (
                     trackColorData?.minValue != null &&
