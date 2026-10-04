@@ -392,6 +392,11 @@
     <string name="session_analysis_imu_attitude_limit">Cambio máximo de escora/cabeceo: %1$s °/s</string>
     <string name="session_analysis_recovery_seconds">Excluir durante %1$d s después</string>
     <string name="session_analysis_color_legend">Color: %1$s</string>
+    <string name="session_color_scale_title">Escala de color</string>
+    <string name="session_color_scale_observed">Observado: %1$s–%2$s %3$s</string>
+    <string name="session_color_scale_range">Rango de color: %1$s–%2$s %3$s</string>
+    <string name="session_color_scale_absolute">Valor absoluto</string>
+    <string name="session_color_scale_reset">Restablecer rango</string>
     <string name="session_analysis_points">%1$d puntos visibles</string>
     <string name="session_replay_button">Replay</string>
     <string name="session_replay_title">Replay de la sesión</string>
