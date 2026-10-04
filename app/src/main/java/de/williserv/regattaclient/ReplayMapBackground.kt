@@ -49,7 +49,7 @@ internal fun replayMapCandidates(
         )
     }
 
-    if (candidates.isEmpty()) {
+    if (candidates.isEmpty() && samples.none { it.raceContextId != null }) {
         val eventName = session.resolvedEventName
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
