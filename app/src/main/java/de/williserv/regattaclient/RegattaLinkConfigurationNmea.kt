@@ -15,6 +15,9 @@ data class RegattaLinkConfigurationState(
     val ledBrightnessPct: Int? = null,
     val motionDampingSupported: Boolean = false,
     val motionDampingSeconds: Int? = null,
+    val configWordSupported: Boolean = false,
+    val configWord: UInt? = null,
+    val configRestartRequired: Boolean = false,
     val loadPrecisionSupported: Boolean = false,
     val loadPrecisionX10: Boolean? = null,
     val nmeaTxSupported: Boolean = false,
@@ -215,36 +218,68 @@ internal fun regattaLinkExpireLoadSensorsIfTransportStale(
     )
 }
 
-internal fun parseRegattaLinkLoadPrecision(raw: ByteArray): Boolean {
-    require(raw.size == 1) {
-        "RegattaLink load precision must be exactly one byte"
+internal const val REGATTALINK_CONFIG_TX_MASTER: UInt = 1u shl 0
+internal const val REGATTALINK_CONFIG_TX_IMU: UInt = 1u shl 1
+internal const val REGATTALINK_CONFIG_TX_NMEA0183: UInt = 1u shl 2
+internal const val REGATTALINK_CONFIG_TX_PHONE_GPS: UInt = 1u shl 3
+internal const val REGATTALINK_CONFIG_TX_COMPASS: UInt = 1u shl 4
+internal const val REGATTALINK_CONFIG_TX_LOAD: UInt = 1u shl 5
+internal const val REGATTALINK_CONFIG_LOAD_PRECISION_X10: UInt = 1u shl 8
+internal const val REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING: UInt = 1u shl 9
+internal const val REGATTALINK_CONFIG_NMEA0183_BAUD_MASK: UInt = 0x3u shl 14
+
+internal fun parseRegattaLinkConfigWord(raw: ByteArray): UInt {
+    require(raw.size == 4) {
+        "RegattaLink config word must be exactly four bytes"
     }
-    val value = raw[0].toInt() and 0xff
-    require(value in 0..1) { "Invalid RegattaLink load precision $value" }
-    return value == 1
+    return ByteBuffer.wrap(raw)
+        .order(ByteOrder.LITTLE_ENDIAN)
+        .int
+        .toUInt()
 }
 
-private fun parseRegattaLinkBooleanConfig(
-    raw: ByteArray,
-    settingName: String
-): Boolean {
-    require(raw.size == 1) {
-        "$settingName must be exactly one byte"
+internal fun encodeRegattaLinkConfigWord(value: UInt): ByteArray =
+    ByteBuffer.allocate(4)
+        .order(ByteOrder.LITTLE_ENDIAN)
+        .putInt(value.toInt())
+        .array()
+
+internal fun regattaLinkConfigWordWithBit(
+    current: UInt,
+    bitMask: UInt,
+    enabled: Boolean
+): UInt {
+    require(bitMask != 0u && (bitMask and (bitMask - 1u)) == 0u) {
+        "Config mutation requires exactly one bit"
     }
-    val value = raw[0].toInt() and 0xff
-    require(value in 0..1) { "Invalid $settingName value $value" }
-    return value == 1
+    return if (enabled) current or bitMask else current and bitMask.inv()
 }
 
-internal fun parseRegattaLinkNmeaTxEnabled(raw: ByteArray): Boolean =
-    parseRegattaLinkBooleanConfig(raw, "RegattaLink Boat Data TX setting")
+internal fun regattaLinkApplyConfigWord(
+    state: RegattaLinkConfigurationState,
+    word: UInt
+): RegattaLinkConfigurationState =
+    regattaLinkReconcileNmeaTxState(
+        state.copy(
+            configWordSupported = true,
+            configWord = word,
+            loadPrecisionSupported = true,
+            loadPrecisionX10 =
+                word and REGATTALINK_CONFIG_LOAD_PRECISION_X10 != 0u,
+            nmeaTxSupported = true,
+            nmeaTxEnabled =
+                word and REGATTALINK_CONFIG_TX_MASTER != 0u,
+            nmeaAttitudeTxSupported = true,
+            nmeaAttitudeTxEnabled =
+                word and REGATTALINK_CONFIG_TX_IMU != 0u
+        )
+    )
 
-internal fun parseRegattaLinkNmeaAttitudeTxEnabled(raw: ByteArray): Boolean =
-    parseRegattaLinkBooleanConfig(raw, "RegattaLink Boat Data attitude TX setting")
-
-internal const val REGATTALINK_NMEA_TX_OUTPUT_ATTITUDE = 1 shl 0
-internal const val REGATTALINK_NMEA_TX_OUTPUT_TRACKER_GNSS = 1 shl 1
-internal const val REGATTALINK_NMEA_TX_OUTPUT_LOAD = 1 shl 2
+internal const val REGATTALINK_TX_OUTPUT_IMU = 1 shl 0
+internal const val REGATTALINK_TX_OUTPUT_NMEA0183 = 1 shl 1
+internal const val REGATTALINK_TX_OUTPUT_PHONE_GPS = 1 shl 2
+internal const val REGATTALINK_TX_OUTPUT_COMPASS = 1 shl 3
+internal const val REGATTALINK_TX_OUTPUT_LOAD = 1 shl 4
 
 data class RegattaLinkNmeaTxRuntimeStatus(
     val bootMasterSelected: Boolean,
@@ -253,10 +288,10 @@ data class RegattaLinkNmeaTxRuntimeStatus(
     val activeOutputMask: Int
 ) {
     val bootAttitudeSelected: Boolean
-        get() = bootOutputMask and REGATTALINK_NMEA_TX_OUTPUT_ATTITUDE != 0
+        get() = bootOutputMask and REGATTALINK_TX_OUTPUT_IMU != 0
 
     val attitudeActive: Boolean
-        get() = activeOutputMask and REGATTALINK_NMEA_TX_OUTPUT_ATTITUDE != 0
+        get() = activeOutputMask and REGATTALINK_TX_OUTPUT_IMU != 0
 }
 
 internal fun parseRegattaLinkNmeaTxRuntimeStatus(
@@ -266,7 +301,7 @@ internal fun parseRegattaLinkNmeaTxRuntimeStatus(
         "RegattaLink Boat Data runtime TX status must be exactly four bytes"
     }
     val version = raw[0].toInt() and 0xff
-    require(version == 1) {
+    require(version == 2) {
         "Unsupported RegattaLink Boat Data runtime TX status version $version"
     }
     val masterFlags = raw[1].toInt() and 0xff
@@ -302,7 +337,7 @@ internal fun regattaLinkReconcileNmeaTxState(
     if (!runtimeKnown) return state
 
     val bootAttitudeSelected =
-        state.nmeaBootOutputMask!! and REGATTALINK_NMEA_TX_OUTPUT_ATTITUDE != 0
+        state.nmeaBootOutputMask!! and REGATTALINK_TX_OUTPUT_IMU != 0
     return state.copy(
         nmeaTxRestartRequired =
             state.nmeaTxEnabled != null &&
@@ -316,7 +351,9 @@ internal fun regattaLinkReconcileNmeaTxState(
 internal fun regattaLinkNmeaRestartRequired(
     state: RegattaLinkConfigurationState
 ): Boolean =
-    state.nmeaTxRestartRequired || state.nmeaAttitudeTxRestartRequired
+    state.configRestartRequired ||
+        state.nmeaTxRestartRequired ||
+        state.nmeaAttitudeTxRestartRequired
 
 internal fun regattaLinkNmeaAppliedStateUnknown(
     state: RegattaLinkConfigurationState
@@ -331,63 +368,6 @@ internal fun regattaLinkNmeaAppliedStateUnknown(
         return true
     }
     return false
-}
-
-internal fun regattaLinkNmeaSelectionAfterWriteSuccess(
-    state: RegattaLinkConfigurationState,
-    attitudeSelector: Boolean,
-    enabled: Boolean
-): RegattaLinkConfigurationState {
-    val updated =
-        if (attitudeSelector) {
-            state.copy(
-                nmeaAttitudeTxSupported = true,
-                nmeaAttitudeTxEnabled = enabled,
-                nmeaAttitudeTxRestartRequired =
-                    if (
-                        state.nmeaTxRuntimeStatusSupported &&
-                        state.nmeaBootOutputMask != null
-                    ) {
-                        state.nmeaAttitudeTxRestartRequired
-                    } else {
-                        true
-                    }
-            )
-        } else {
-            state.copy(
-                nmeaTxSupported = true,
-                nmeaTxEnabled = enabled,
-                nmeaTxRestartRequired =
-                    if (
-                        state.nmeaTxRuntimeStatusSupported &&
-                        state.nmeaTxBootSelected != null
-                    ) {
-                        state.nmeaTxRestartRequired
-                    } else {
-                        true
-                    }
-            )
-        }
-    return regattaLinkReconcileNmeaTxState(updated)
-}
-
-internal fun regattaLinkNmeaSelectionAfterWriteFailure(
-    state: RegattaLinkConfigurationState,
-    attitudeSelector: Boolean,
-    rereadValue: Boolean?
-): RegattaLinkConfigurationState {
-    val updated =
-        if (attitudeSelector) {
-            state.copy(
-                nmeaAttitudeTxEnabled =
-                    rereadValue ?: state.nmeaAttitudeTxEnabled
-            )
-        } else {
-            state.copy(
-                nmeaTxEnabled = rereadValue ?: state.nmeaTxEnabled
-            )
-        }
-    return regattaLinkReconcileNmeaTxState(updated)
 }
 
 internal fun parseRegattaLinkPgnInventory(
