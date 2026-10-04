@@ -154,6 +154,89 @@ class SessionHistoryDbTest {
     }
 
     @Test
+    fun sameResolvedRun_keepsHistoricalMapGenerationPerSample() {
+        val helper = TrackingDbHelper(context)
+        val accessContextId = requireNotNull(
+            helper.getOrCreateAccessContext(
+                serverUrl = "https://raceoffice.example.org",
+                accessIdentifier = "Wednesday Race",
+                accessSecret = "secret-value"
+            )
+        )
+        val sessionId = requireNotNull(
+            helper.createTrackingSession(
+                startedAt = 1_000L,
+                mode = "race",
+                accessContextId = accessContextId,
+                displayName = "Race session",
+                resolvedEventName = "Wednesday Race - Run 1"
+            )
+        )
+
+        val generation1 = """{"projection":"web_mercator","zoom":12,"left_px":100.0,"top_px":200.0,"width_px":400,"height_px":300,"generation_id":"g1"}"""
+        val generation2 = """{"projection":"web_mercator","zoom":13,"left_px":300.0,"top_px":400.0,"width_px":600,"height_px":500,"generation_id":"g2"}"""
+
+        val firstContextId = requireNotNull(
+            helper.getOrCreateRaceContext(
+                accessContextId = accessContextId,
+                resolvedEventName = "Wednesday Race - Run 1",
+                courseJson = """{"marks":[1]}""",
+                courseMapViewportJson = generation1
+            )
+        )
+        insertSample(
+            helper = helper,
+            sequenceId = 1L,
+            sessionId = sessionId,
+            accessContextId = accessContextId,
+            raceContextId = firstContextId
+        )
+
+        val secondContextId = requireNotNull(
+            helper.getOrCreateRaceContext(
+                accessContextId = accessContextId,
+                resolvedEventName = "Wednesday Race - Run 1",
+                courseJson = """{"marks":[1,2]}""",
+                courseMapViewportJson = generation2
+            )
+        )
+        assertTrue(secondContextId != firstContextId)
+
+        insertSample(
+            helper = helper,
+            sequenceId = 2L,
+            sessionId = sessionId,
+            accessContextId = accessContextId,
+            raceContextId = secondContextId
+        )
+
+        val repeatedSecondContextId = requireNotNull(
+            helper.getOrCreateRaceContext(
+                accessContextId = accessContextId,
+                resolvedEventName = "Wednesday Race - Run 1",
+                courseJson = """{"marks":[1,2]}""",
+                courseMapViewportJson = generation2
+            )
+        )
+        assertEquals(secondContextId, repeatedSecondContextId)
+
+        val samples = helper.getTrackingSamplesForSession(sessionId)
+        assertEquals(listOf(firstContextId, secondContextId), samples.map { it.raceContextId })
+        assertEquals(
+            listOf("g1", "g2"),
+            samples.map {
+                parseCourseMapViewportJson(it.courseMapViewportJson)?.generationId
+            }
+        )
+        assertEquals(
+            listOf("""{"marks":[1]}""", """{"marks":[1,2]}"""),
+            samples.map { it.courseJson }
+        )
+
+        helper.close()
+    }
+
+    @Test
     fun samplesForSession_areIsolatedAndReturnedInLocalRowOrder() {
         val helper = TrackingDbHelper(context)
         val firstSession = requireNotNull(
