@@ -313,12 +313,15 @@ fun SessionAnalysisScreen(
                 )
             }
 
-            val colorObservedRange =
-                if (dataset.colorMin != null && dataset.colorMax != null) {
-                    dataset.colorMin..dataset.colorMax
-                } else {
-                    null
-                }
+            val colorObservedRange = remember(
+                colorRawValues,
+                colorUseAbsoluteValue
+            ) {
+                sessionColorObservedRange(
+                    values = colorRawValues,
+                    useAbsoluteValue = colorUseAbsoluteValue
+                )
+            }
 
             LaunchedEffect(colorObservedRange) {
                 selectedColorRange = clampSessionColorRange(
