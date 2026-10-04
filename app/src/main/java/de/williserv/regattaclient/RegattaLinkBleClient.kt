@@ -296,6 +296,8 @@ internal class RegattaLinkBleClient(
     @Volatile private var gattSchemaReconnectRefreshKey: String? = null
     @Volatile private var gattSchemaReconnectRefreshReason: String? = null
     private var reconnectFuture: CompletableFuture<RegattaLinkDeviceInfo?>? = null
+    @Volatile private var otaReconnectAllowOtaOnly = false
+    @Volatile private var otaReconnectExpectedStableId: String? = null
     private var selectedDeviceAddress: String? = null
     private val attemptedDiscoveryAddresses = mutableSetOf<String>()
     private var discoveryInProgress = false
@@ -751,6 +753,14 @@ internal class RegattaLinkBleClient(
                 service?.getCharacteristic(DEVICE_INFO_UUID)
 
             if (characteristic == null) {
+                if (
+                    maybeCompleteOtaOnlyReconnect(
+                        callbackGatt,
+                        "RegattaLink Device Info is unavailable"
+                    )
+                ) {
+                    return
+                }
                 closeGattWithError(
                     callbackGatt,
                     "RegattaLink Device Info is unavailable"
@@ -1724,6 +1734,14 @@ internal class RegattaLinkBleClient(
         }
 
         if (status != BluetoothGatt.GATT_SUCCESS) {
+            if (
+                maybeCompleteOtaOnlyReconnect(
+                    callbackGatt,
+                    "RegattaLink Device Info read failed ($status)"
+                )
+            ) {
+                return
+            }
             closeGattWithError(
                 callbackGatt,
                 "RegattaLink Device Info read failed ($status)",
@@ -1732,9 +1750,17 @@ internal class RegattaLinkBleClient(
             return
         }
 
-        val info = runCatching {
+        val info = try {
             parseRegattaLinkDeviceInfo(value)
-        }.getOrElse { error ->
+        } catch (error: Exception) {
+            if (
+                maybeCompleteOtaOnlyReconnect(
+                    callbackGatt,
+                    error.message ?: "Invalid RegattaLink Device Info"
+                )
+            ) {
+                return
+            }
             closeGattWithError(
                 callbackGatt,
                 error.message ?: "Invalid RegattaLink Device Info"
@@ -1744,6 +1770,14 @@ internal class RegattaLinkBleClient(
 
         val validationError = validateRegattaLinkDeviceInfo(info)
         if (validationError != null) {
+            if (
+                maybeCompleteOtaOnlyReconnect(
+                    callbackGatt,
+                    validationError
+                )
+            ) {
+                return
+            }
             closeGattWithError(callbackGatt, validationError)
             return
         }
@@ -1806,6 +1840,87 @@ internal class RegattaLinkBleClient(
 
         finishGattSchemaReconciliation()
         completeConnectionAfterDeviceInfo(callbackGatt, info)
+    }
+
+    private fun maybeCompleteOtaOnlyReconnect(
+        callbackGatt: BluetoothGatt,
+        deviceInfoFailure: String
+    ): Boolean {
+        if (
+            scanPurpose != ScanPurpose.OTA_RECONNECT ||
+            !otaReconnectAllowOtaOnly
+        ) {
+            return false
+        }
+
+        val expectedStableId = otaReconnectExpectedStableId ?: return false
+        val otaService = callbackGatt.getService(REGATTALINK_OTA_SERVICE_UUID)
+            ?: return false
+        val controlCharacteristic =
+            otaService.getCharacteristic(REGATTALINK_OTA_CONTROL_UUID)
+                ?: return false
+        val statusCharacteristic =
+            otaService.getCharacteristic(REGATTALINK_OTA_STATUS_UUID)
+                ?: return false
+
+        deviceInfoReadInProgress = false
+        emitForDevice(
+            callbackGatt.device,
+            RegattaLinkConnectionStatus.DISCOVERING
+        )
+
+        gattSchemaExecutor.execute {
+            var recoveredInfo: RegattaLinkDeviceInfo? = null
+            var failure: String? = null
+            try {
+                if (gatt !== callbackGatt || !connected) return@execute
+                writeCharacteristicBlockingDirect(
+                    callbackGatt,
+                    controlCharacteristic,
+                    encodeRegattaLinkOtaSnapshot()
+                )
+                val status = parseRegattaLinkOtaStatus(
+                    readCharacteristicBlocking(
+                        callbackGatt,
+                        statusCharacteristic
+                    )
+                )
+                recoveredInfo = RegattaLinkDeviceInfo(
+                    protocolMajor = REGATTALINK_PROTOCOL_MAJOR,
+                    protocolMinor = 0,
+                    capabilities = 0u,
+                    stableId = expectedStableId,
+                    productId = REGATTALINK_PRODUCT_ID,
+                    profileId = REGATTALINK_PROFILE_ID,
+                    runningBuild = status.runningBuild,
+                    otaSlotSize = 0u,
+                    maxInflightBlocks = 0
+                )
+            } catch (error: Exception) {
+                failure = error.message ?: "OTA Status validation failed"
+            }
+
+            handler.post {
+                if (gatt !== callbackGatt || !connected) return@post
+
+                val info = recoveredInfo
+                if (info == null) {
+                    closeGattWithError(
+                        callbackGatt,
+                        "OTA-only reconnect failed after $deviceInfoFailure: " +
+                            (failure ?: "OTA core is unavailable")
+                    )
+                    return@post
+                }
+
+                handler.removeCallbacks(gattTimeout)
+                connectionSetupComplete = true
+                establishedConnection = true
+                selectedDeviceAddress = callbackGatt.device.address
+                reconnectFuture?.complete(info)
+            }
+        }
+        return true
     }
 
     private fun completeConnectionAfterDeviceInfo(
@@ -4335,7 +4450,8 @@ internal class RegattaLinkBleClient(
 
     override fun reconnectCandidate(
         expectedStableId: String,
-        timeoutMs: Long
+        timeoutMs: Long,
+        allowOtaOnly: Boolean
     ): RegattaLinkDeviceInfo? {
         if (timeoutMs <= 0L) return null
         closeGatt()
@@ -4350,6 +4466,8 @@ internal class RegattaLinkBleClient(
 
         val future = CompletableFuture<RegattaLinkDeviceInfo?>()
         reconnectFuture = future
+        otaReconnectAllowOtaOnly = allowOtaOnly
+        otaReconnectExpectedStableId = expectedStableId
         scanPurpose = ScanPurpose.OTA_RECONNECT
 
         handler.post {
@@ -4378,6 +4496,8 @@ internal class RegattaLinkBleClient(
             null
         } finally {
             reconnectFuture = null
+            otaReconnectAllowOtaOnly = false
+            otaReconnectExpectedStableId = null
             handler.removeCallbacks(scanTimeout)
             scanPurpose = ScanPurpose.NORMAL
         }
