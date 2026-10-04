@@ -121,6 +121,7 @@ internal interface RegattaLinkConnectionClient {
     fun setMagBackgroundLearningEnabled(enabled: Boolean): Boolean = false
     fun setHeadingTrimDeg(value: Int): Boolean = false
     fun offerPhoneGnss(sample: RegattaLinkPhoneGnssSample): Boolean = false
+    fun clearPhoneGnss() = Unit
     fun drainDiagnosticLog(): Boolean = false
     fun executeDeviceControl(
         opcode: RegattaLinkDeviceControlOpcode,
@@ -493,6 +494,10 @@ internal class RegattaLinkConnectionManager(
     fun offerPhoneGnss(location: Location): Boolean {
         if (!isPhoneGnssForwardingEnabled()) return false
         return client.offerPhoneGnss(regattaLinkPhoneGnssSample(location))
+    }
+
+    fun stopPhoneGnssForwarding() {
+        client.clearPhoneGnss()
     }
 
     private inline fun withConfigMutationAllowed(
