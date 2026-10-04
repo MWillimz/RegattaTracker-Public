@@ -112,6 +112,38 @@ class ReplayMapBackgroundTest {
     }
 
     @Test
+    fun exactGenerationMustMatchEvenWhenRaceContextIdMatches() {
+        val requested = sample(
+            id = 2,
+            raceContextId = 10,
+            event = "Run 1",
+            generation = "g2"
+        )
+        val oldCandidate = replayMapCandidates(
+            session = session(),
+            samples = listOf(
+                sample(
+                    id = 1,
+                    raceContextId = 10,
+                    event = "Run 1",
+                    generation = "g1"
+                )
+            )
+        ).single()
+        val oldBackground = ReplayMapBackground(
+            candidate = oldCandidate,
+            bitmap = Bitmap.createBitmap(400, 300, Bitmap.Config.ARGB_8888)
+        )
+
+        assertNull(
+            replayMapBackgroundForSample(
+                requested,
+                mapOf(oldCandidate.key to oldBackground)
+            )
+        )
+    }
+
+    @Test
     fun legacySessionMetadataProvidesSingleFallbackCandidate() {
         val session = session(
             resolvedEventName = "Legacy Run",
