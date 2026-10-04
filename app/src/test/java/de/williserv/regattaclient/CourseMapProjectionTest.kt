@@ -74,4 +74,63 @@ class CourseMapProjectionTest {
             )
         )
     }
+
+    @Test
+    fun storedViewportJsonUsesStrictPublishedMapContract() {
+        val parsed = parseCourseMapViewportJson(
+            """{"projection":"web_mercator","zoom":12,"left_px":100.5,"top_px":200.5,"width_px":800,"height_px":600,"generation_id":"g42"}"""
+        )
+
+        assertNotNull(parsed)
+        assertEquals("web_mercator", parsed!!.projection)
+        assertEquals(12, parsed.zoom)
+        assertEquals(100.5, parsed.leftPx, 0.000001)
+        assertEquals(200.5, parsed.topPx, 0.000001)
+        assertEquals(800, parsed.widthPx)
+        assertEquals(600, parsed.heightPx)
+        assertEquals("g42", parsed.generationId)
+
+        assertEquals(
+            null,
+            parseCourseMapViewportJson(
+                """{"projection":"other","zoom":12,"left_px":100.5,"top_px":200.5,"width_px":800,"height_px":600,"generation_id":"g42"}"""
+            )
+        )
+        assertEquals(null, parseCourseMapViewportJson(""))
+    }
+
+    @Test
+    fun bitmapMustExactlyMatchPublishedViewportDimensions() {
+        assertTrue(courseMapBitmapMatchesViewport(400, 300, viewport))
+        assertFalse(courseMapBitmapMatchesViewport(401, 300, viewport))
+        assertFalse(courseMapBitmapMatchesViewport(400, 299, viewport))
+    }
+
+    @Test
+    fun fitRectAndPointUseSameContentScaleFitGeometry() {
+        val rect = fitCourseMapRect(
+            imageWidth = 1000,
+            imageHeight = 500,
+            containerWidth = 500,
+            containerHeight = 500
+        )
+        assertNotNull(rect)
+        assertEquals(0.0, rect!!.left, 0.000001)
+        assertEquals(125.0, rect.top, 0.000001)
+        assertEquals(500.0, rect.width, 0.000001)
+        assertEquals(250.0, rect.height, 0.000001)
+        assertEquals(0.5, rect.scale, 0.000001)
+
+        val fitted = fitCourseMapPoint(
+            point = CourseMapPixelPoint(250.0, 100.0),
+            imageWidth = 1000,
+            imageHeight = 500,
+            containerWidth = 500,
+            containerHeight = 500
+        )
+        assertNotNull(fitted)
+        assertEquals(rect.left + 250.0 * rect.scale, fitted!!.x, 0.000001)
+        assertEquals(rect.top + 100.0 * rect.scale, fitted.y, 0.000001)
+    }
+
 }
