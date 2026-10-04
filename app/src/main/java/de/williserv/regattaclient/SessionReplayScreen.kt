@@ -3,6 +3,7 @@ package de.williserv.regattaclient
 import android.os.SystemClock
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
@@ -71,7 +72,8 @@ import kotlin.math.sin
 
 private enum class ReplayConfigSheet {
     VALUES,
-    FILTERS
+    FILTERS,
+    COLOR
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -101,6 +103,18 @@ fun SessionReplayScreen(
     }
     var colorMetricId by rememberSaveable(detail?.session?.id) {
         mutableStateOf<String?>(null)
+    }
+    var colorUseAbsoluteValue by rememberSaveable(
+        detail?.session?.id,
+        colorMetricId
+    ) {
+        mutableStateOf(false)
+    }
+    var selectedColorRange by remember(
+        detail?.session?.id,
+        colorMetricId
+    ) {
+        mutableStateOf<ClosedFloatingPointRange<Float>?>(null)
     }
     val activeFilterRanges = remember(detail?.session?.id) {
         mutableStateMapOf<String, ClosedFloatingPointRange<Float>>()
@@ -362,11 +376,46 @@ fun SessionReplayScreen(
             val colorMetric = colorMetricId?.let { selectedId ->
                 replayColorMetrics.firstOrNull { it.id == selectedId }
             }
-            val trackColorData = remember(replayPrepared, colorMetric) {
+            val trackColorData = remember(
+                replayPrepared,
+                colorMetric,
+                colorUseAbsoluteValue
+            ) {
                 colorMetric?.let { metric ->
-                    prepareReplayTrackColorData(replayPrepared, metric)
+                    prepareReplayTrackColorData(
+                        samples = replayPrepared,
+                        metric = metric,
+                        useAbsoluteValue = colorUseAbsoluteValue
+                    )
                 }
             }
+            val colorObservedRange =
+                if (
+                    trackColorData?.minValue != null &&
+                    trackColorData.maxValue != null
+                ) {
+                    trackColorData.minValue..trackColorData.maxValue
+                } else {
+                    null
+                }
+
+            LaunchedEffect(colorObservedRange) {
+                selectedColorRange = clampSessionColorRange(
+                    selectedRange = selectedColorRange,
+                    observedRange = colorObservedRange
+                )
+                if (
+                    colorObservedRange == null &&
+                    configSheet == ReplayConfigSheet.COLOR
+                ) {
+                    configSheet = null
+                }
+            }
+
+            val effectiveColorRange = effectiveSessionColorRange(
+                selectedRange = selectedColorRange,
+                observedRange = colorObservedRange
+            )
 
             if (replaySamples.isNotEmpty()) {
                 val safeIndex = selectedIndex.coerceIn(0, replaySamples.lastIndex)
@@ -535,6 +584,38 @@ fun SessionReplayScreen(
                     }
                 }
 
+                ReplayConfigSheet.COLOR -> {
+                    if (
+                        colorMetric != null &&
+                        colorObservedRange != null &&
+                        trackColorData != null
+                    ) {
+                        SessionColorScaleEditorSheet(
+                            metricDisplayName =
+                                analysisMetricDisplayName(colorMetric),
+                            unit = colorMetric.unit,
+                            observedRange = colorObservedRange,
+                            selectedRange = selectedColorRange,
+                            hasNegativeValues =
+                                trackColorData.hasNegativeValues,
+                            useAbsoluteValue = colorUseAbsoluteValue,
+                            onRangeChange = {
+                                selectedColorRange = it
+                            },
+                            onAbsoluteValueChange = {
+                                colorUseAbsoluteValue = it
+                                selectedColorRange = null
+                            },
+                            onResetRange = {
+                                selectedColorRange = null
+                            },
+                            onDismiss = {
+                                configSheet = null
+                            }
+                        )
+                    }
+                }
+
                 null -> Unit
             }
 
@@ -566,6 +647,11 @@ fun SessionReplayScreen(
                         selectedIndex = safeIndex,
                         colorMetric = colorMetric,
                         colorData = trackColorData,
+                        colorMinValue = effectiveColorRange?.start,
+                        colorMaxValue = effectiveColorRange?.endInclusive,
+                        onColorLegendClick = {
+                            configSheet = ReplayConfigSheet.COLOR
+                        },
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight()
@@ -873,8 +959,11 @@ private fun ReplayCurrentSampleCard(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     extraFields.forEach { field ->
-                        val value = extraValues[field.id]
-                            ?: stringResource(R.string.session_unknown_value)
+                        val value = replayExtraFieldDisplayValue(
+                            sample = sample,
+                            field = field,
+                            fallback = extraValues[field.id]
+                        ) ?: stringResource(R.string.session_unknown_value)
                         ReplayValue(
                             label = replayExtraFieldReplayLabel(field),
                             value = value,
@@ -899,6 +988,34 @@ private fun ReplayCurrentSampleCard(
 @Composable
 private fun replayExtraFieldReplayLabel(field: ReplayExtraField): String =
     "${replayExtraFieldSourceLabel(field)} · ${replayExtraFieldLabel(field)}"
+
+@Composable
+private fun replayExtraFieldDisplayValue(
+    sample: SessionTrackingSample,
+    field: ReplayExtraField,
+    fallback: String?
+): String? {
+    val value = replayExtraFieldNumericValue(sample, field)
+    return when (replayExtraFieldDirection(field)) {
+        ReplayExtraFieldDirection.HEEL ->
+            formatRegattaLinkDirectionalMeasurement(
+                valueDeg = value,
+                positiveDirectionLabel =
+                    stringResource(R.string.regattalink_starboard),
+                negativeDirectionLabel =
+                    stringResource(R.string.regattalink_port)
+            )
+        ReplayExtraFieldDirection.PITCH ->
+            formatRegattaLinkDirectionalMeasurement(
+                valueDeg = value,
+                positiveDirectionLabel =
+                    stringResource(R.string.regattalink_bow_up),
+                negativeDirectionLabel =
+                    stringResource(R.string.regattalink_bow_down)
+            )
+        null -> fallback
+    }
+}
 
 @Composable
 private fun replayExtraFieldSourceLabel(field: ReplayExtraField): String {
@@ -969,6 +1086,9 @@ private fun ReplayTrackCanvas(
     selectedIndex: Int,
     colorMetric: AnalysisMetric?,
     colorData: ReplayTrackColorData?,
+    colorMinValue: Double?,
+    colorMaxValue: Double?,
+    onColorLegendClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val selected = samples[selectedIndex]
@@ -1004,6 +1124,7 @@ private fun ReplayTrackCanvas(
 
     Box(
         modifier = modifier
+            .clickable(onClick = onClick)
             .background(
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 shape = MaterialTheme.shapes.medium
@@ -1083,7 +1204,11 @@ private fun ReplayTrackCanvas(
                 val to = point(current) ?: continue
                 val sailedColor =
                     if (colorMetric != null && colorData != null) {
-                        colorData.fractionAt(index)?.let { fraction ->
+                        colorData.fractionAt(
+                            index = index,
+                            minValue = colorMinValue,
+                            maxValue = colorMaxValue
+                        )?.let { fraction ->
                             sampleSessionColor(colorScale, fraction)
                         } ?: missingMetricColor
                     } else {
@@ -1200,13 +1325,15 @@ private fun ReplayTrackCanvas(
 
         if (
             colorMetric != null &&
-            colorData?.minValue != null &&
-            colorData.maxValue != null
+            colorData != null &&
+            colorMinValue != null &&
+            colorMaxValue != null
         ) {
             ReplayTrackColorLegend(
                 metric = colorMetric,
-                minValue = colorData.minValue,
-                maxValue = colorData.maxValue,
+                minValue = colorMinValue,
+                maxValue = colorMaxValue,
+                onClick = onColorLegendClick,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(8.dp)
@@ -1220,6 +1347,7 @@ private fun ReplayTrackColorLegend(
     metric: AnalysisMetric,
     minValue: Double,
     maxValue: Double,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colorScale = sessionColorScale()
@@ -1372,9 +1500,14 @@ internal fun replayActiveFilterCount(
 internal data class ReplayTrackColorData(
     val values: List<Double?>,
     val minValue: Double?,
-    val maxValue: Double?
+    val maxValue: Double?,
+    val hasNegativeValues: Boolean
 ) {
-    fun fractionAt(index: Int): Float? =
+    fun fractionAt(
+        index: Int,
+        minValue: Double? = this.minValue,
+        maxValue: Double? = this.maxValue
+    ): Float? =
         sessionColorFraction(
             value = values.getOrNull(index),
             minValue = minValue,
@@ -1384,16 +1517,24 @@ internal data class ReplayTrackColorData(
 
 internal fun prepareReplayTrackColorData(
     samples: List<PreparedAnalysisSample>,
-    metric: AnalysisMetric
+    metric: AnalysisMetric,
+    useAbsoluteValue: Boolean = false
 ): ReplayTrackColorData {
-    val values = samples.map { sample ->
+    val rawValues = samples.map { sample ->
         metricValue(metric, sample)?.takeIf { it.isFinite() }
     }
-    val observed = values.filterNotNull()
+    val values = rawValues.map {
+        sessionColorValue(it, useAbsoluteValue)
+    }
+    val observed = sessionColorObservedRange(
+        values = rawValues,
+        useAbsoluteValue = useAbsoluteValue
+    )
     return ReplayTrackColorData(
         values = values,
-        minValue = observed.minOrNull(),
-        maxValue = observed.maxOrNull()
+        minValue = observed?.start,
+        maxValue = observed?.endInclusive,
+        hasNegativeValues = sessionColorHasNegativeValue(rawValues)
     )
 }
 
