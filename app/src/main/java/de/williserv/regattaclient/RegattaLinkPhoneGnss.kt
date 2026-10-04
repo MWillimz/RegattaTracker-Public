@@ -104,7 +104,7 @@ internal fun encodeRegattaLinkPhoneGnss(
 
     return ByteBuffer.allocate(REGATTALINK_PHONE_GNSS_FRAME_SIZE)
         .order(ByteOrder.LITTLE_ENDIAN)
-        .put(1)
+        .put(1.toByte())
         .put(validity.toByte())
         .putShort(sampleAgeMs.toShort())
         .putInt(latitudeScaled)
