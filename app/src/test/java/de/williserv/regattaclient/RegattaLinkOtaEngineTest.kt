@@ -52,6 +52,7 @@ class RegattaLinkOtaEngineTest {
         assertEquals(RegattaLinkOtaPhase.SUCCESS, states.last().phase)
         assertEquals(image.size, states.last().committedBytes)
         assertEquals(2, transport.reconnectCandidateCount)
+        assertEquals(listOf(false, true), transport.reconnectAllowOtaOnly)
         assertEquals(listOf("reconnect-1", "tune", "reconnect-2", "tune"), transport.lifecycleEvents)
         assertEquals(1, transport.closeCurrentConnectionCount)
         assertEquals(0, terminalDisconnectCleanupCount)
@@ -240,6 +241,8 @@ class RegattaLinkOtaEngineTest {
         var reconnectCandidateCount = 0
             private set
 
+        val reconnectAllowOtaOnly = mutableListOf<Boolean>()
+
         var writeControlCalls = 0
             private set
 
@@ -376,9 +379,11 @@ class RegattaLinkOtaEngineTest {
 
         override fun reconnectCandidate(
             expectedStableId: String,
-            timeoutMs: Long
+            timeoutMs: Long,
+            allowOtaOnly: Boolean
         ): RegattaLinkDeviceInfo? {
             reconnectCandidateCount += 1
+            reconnectAllowOtaOnly += allowOtaOnly
             lifecycleEvents += "reconnect-$reconnectCandidateCount"
             onReconnectAttempt(reconnectCandidateCount)
             connected = true
