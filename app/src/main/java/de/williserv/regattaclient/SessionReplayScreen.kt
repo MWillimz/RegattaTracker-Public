@@ -1246,8 +1246,16 @@ private fun ReplayTrackCanvas(
                 return transformed(basePoint)
             }
 
-            fun point(sample: SessionTrackingSample): Offset? =
-                projectedPoint(sample.lat, sample.lon)
+            fun point(sample: SessionTrackingSample): Offset? {
+                val activeContextId = mapBackground?.candidate?.key?.raceContextId
+                if (
+                    activeContextId != null &&
+                    sample.raceContextId != activeContextId
+                ) {
+                    return null
+                }
+                return projectedPoint(sample.lat, sample.lon)
+            }
 
             fun coursePoint(point: CourseOverlayGeoPoint): Offset? =
                 projectedPoint(point.lat, point.lon)
