@@ -83,7 +83,7 @@ private enum class ReplayConfigSheet {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SessionReplayScreen(
+internal fun SessionReplayScreen(
     detail: SessionDetailData?,
     replayMaps: Map<ReplayMapContextKey, ReplayMapBackground> = emptyMap(),
     modifier: Modifier = Modifier,
