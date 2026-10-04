@@ -18,14 +18,8 @@ data class RegattaLinkConfigurationState(
     val configWordSupported: Boolean = false,
     val configWord: UInt? = null,
     val configRestartRequired: Boolean = false,
-    val loadPrecisionSupported: Boolean = false,
-    val loadPrecisionX10: Boolean? = null,
-    val nmeaTxSupported: Boolean = false,
-    val nmeaTxEnabled: Boolean? = null,
-    val nmeaTxRestartRequired: Boolean = false,
-    val nmeaAttitudeTxSupported: Boolean = false,
-    val nmeaAttitudeTxEnabled: Boolean? = null,
-    val nmeaAttitudeTxRestartRequired: Boolean = false,
+    val headingTrimSupported: Boolean = false,
+    val headingTrimDeg: Int? = null,
     val nmeaTxRuntimeStatusSupported: Boolean = false,
     val nmeaTxBootSelected: Boolean? = null,
     val nmeaTxActive: Boolean? = null,
@@ -47,7 +41,76 @@ data class RegattaLinkConfigurationState(
     val busy: Boolean = false,
     val error: String = "",
     val userMessage: RegattaLinkUiMessage? = null
-)
+) {
+    val loadPrecisionSupported: Boolean
+        get() = configWordSupported
+
+    val loadPrecisionX10: Boolean?
+        get() = configWord?.let {
+            it and REGATTALINK_CONFIG_LOAD_PRECISION_X10 != 0u
+        }
+
+    val nmeaTxSupported: Boolean
+        get() = configWordSupported
+
+    val nmeaTxEnabled: Boolean?
+        get() = configWord?.let {
+            it and REGATTALINK_CONFIG_TX_MASTER != 0u
+        }
+
+    val nmeaAttitudeTxSupported: Boolean
+        get() = configWordSupported
+
+    val nmeaAttitudeTxEnabled: Boolean?
+        get() = configWord?.let {
+            it and REGATTALINK_CONFIG_TX_IMU != 0u
+        }
+
+    val nmea0183TxEnabled: Boolean?
+        get() = configWord?.let {
+            it and REGATTALINK_CONFIG_TX_NMEA0183 != 0u
+        }
+
+    val phoneGpsTxEnabled: Boolean?
+        get() = configWord?.let {
+            it and REGATTALINK_CONFIG_TX_PHONE_GPS != 0u
+        }
+
+    val compassTxEnabled: Boolean?
+        get() = configWord?.let {
+            it and REGATTALINK_CONFIG_TX_COMPASS != 0u
+        }
+
+    val magBackgroundLearningEnabled: Boolean?
+        get() = configWord?.let {
+            it and REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING != 0u
+        }
+
+    val nmea0183Baud: RegattaLinkNmea0183Baud?
+        get() = configWord?.let(RegattaLinkNmea0183Baud::fromConfigWord)
+
+    val phoneGnssForwardingDesired: Boolean
+        get() =
+            configWord?.let {
+                it and REGATTALINK_CONFIG_TX_MASTER != 0u &&
+                    it and REGATTALINK_CONFIG_TX_PHONE_GPS != 0u
+            } == true
+
+    val nmeaTxRestartRequired: Boolean
+        get() =
+            nmeaTxRuntimeStatusSupported &&
+                nmeaTxEnabled != null &&
+                nmeaTxBootSelected != null &&
+                nmeaTxEnabled != nmeaTxBootSelected
+
+    val nmeaAttitudeTxRestartRequired: Boolean
+        get() {
+            val desired = nmeaAttitudeTxEnabled ?: return false
+            val bootMask = nmeaBootOutputMask ?: return false
+            return nmeaTxRuntimeStatusSupported &&
+                desired != (bootMask and REGATTALINK_TX_OUTPUT_IMU != 0)
+        }
+}
 
 internal fun regattaLinkConfigurationMutationBlocked(
     state: RegattaLinkConfigurationState,
@@ -228,6 +291,27 @@ internal const val REGATTALINK_CONFIG_LOAD_PRECISION_X10: UInt = 0x00000100u
 internal const val REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING: UInt = 0x00000200u
 internal const val REGATTALINK_CONFIG_NMEA0183_BAUD_MASK: UInt = 0x0000c000u
 
+internal enum class RegattaLinkNmea0183Baud(
+    val baudRate: Int,
+    val encodedBits: UInt
+) {
+    BAUD_4800(4_800, 0x00000000u),
+    BAUD_9600(9_600, 0x00004000u),
+    BAUD_19200(19_200, 0x00008000u),
+    BAUD_38400(38_400, 0x0000c000u);
+
+    companion object {
+        fun fromConfigWord(word: UInt): RegattaLinkNmea0183Baud =
+            entries.first {
+                it.encodedBits ==
+                    word and REGATTALINK_CONFIG_NMEA0183_BAUD_MASK
+            }
+
+        fun fromBaudRate(baudRate: Int): RegattaLinkNmea0183Baud? =
+            entries.firstOrNull { it.baudRate == baudRate }
+    }
+}
+
 internal fun parseRegattaLinkConfigWord(raw: ByteArray): UInt {
     require(raw.size == 4) {
         "RegattaLink config word must be exactly four bytes"
@@ -244,6 +328,18 @@ internal fun encodeRegattaLinkConfigWord(value: UInt): ByteArray =
         .putInt(value.toInt())
         .array()
 
+internal fun regattaLinkConfigWordWithMask(
+    current: UInt,
+    mask: UInt,
+    encodedBits: UInt
+): UInt {
+    require(mask != 0u) { "Config mutation mask must not be zero" }
+    require(encodedBits and mask.inv() == 0u) {
+        "Config mutation contains bits outside its mask"
+    }
+    return (current and mask.inv()) or encodedBits
+}
+
 internal fun regattaLinkConfigWordWithBit(
     current: UInt,
     bitMask: UInt,
@@ -252,28 +348,45 @@ internal fun regattaLinkConfigWordWithBit(
     require(bitMask != 0u && (bitMask and (bitMask - 1u)) == 0u) {
         "Config mutation requires exactly one bit"
     }
-    return if (enabled) current or bitMask else current and bitMask.inv()
+    return regattaLinkConfigWordWithMask(
+        current = current,
+        mask = bitMask,
+        encodedBits = bitMask.takeIf { enabled } ?: 0u
+    )
 }
 
 internal fun regattaLinkApplyConfigWord(
     state: RegattaLinkConfigurationState,
     word: UInt
 ): RegattaLinkConfigurationState =
-    regattaLinkReconcileNmeaTxState(
-        state.copy(
-            configWordSupported = true,
-            configWord = word,
-            loadPrecisionSupported = true,
-            loadPrecisionX10 =
-                word and REGATTALINK_CONFIG_LOAD_PRECISION_X10 != 0u,
-            nmeaTxSupported = true,
-            nmeaTxEnabled =
-                word and REGATTALINK_CONFIG_TX_MASTER != 0u,
-            nmeaAttitudeTxSupported = true,
-            nmeaAttitudeTxEnabled =
-                word and REGATTALINK_CONFIG_TX_IMU != 0u
-        )
+    state.copy(
+        configWordSupported = true,
+        configWord = word
     )
+
+internal fun parseRegattaLinkHeadingTrim(raw: ByteArray): Int {
+    require(raw.size == 2) {
+        "RegattaLink heading trim must be exactly two bytes"
+    }
+    val value = ByteBuffer.wrap(raw)
+        .order(ByteOrder.LITTLE_ENDIAN)
+        .short
+        .toInt()
+    require(value in -180..180) {
+        "RegattaLink heading trim must be between -180 and 180 degrees"
+    }
+    return value
+}
+
+internal fun encodeRegattaLinkHeadingTrim(value: Int): ByteArray {
+    require(value in -180..180) {
+        "RegattaLink heading trim must be between -180 and 180 degrees"
+    }
+    return ByteBuffer.allocate(2)
+        .order(ByteOrder.LITTLE_ENDIAN)
+        .putShort(value.toShort())
+        .array()
+}
 
 internal const val REGATTALINK_TX_OUTPUT_IMU = 1 shl 0
 internal const val REGATTALINK_TX_OUTPUT_NMEA0183 = 1 shl 1
@@ -329,24 +442,8 @@ internal fun regattaLinkApplyNmeaTxRuntimeStatus(
 
 internal fun regattaLinkReconcileNmeaTxState(
     state: RegattaLinkConfigurationState
-): RegattaLinkConfigurationState {
-    val runtimeKnown =
-        state.nmeaTxRuntimeStatusSupported &&
-            state.nmeaTxBootSelected != null &&
-            state.nmeaBootOutputMask != null
-    if (!runtimeKnown) return state
+): RegattaLinkConfigurationState = state
 
-    val bootAttitudeSelected =
-        state.nmeaBootOutputMask!! and REGATTALINK_TX_OUTPUT_IMU != 0
-    return state.copy(
-        nmeaTxRestartRequired =
-            state.nmeaTxEnabled != null &&
-                state.nmeaTxEnabled != state.nmeaTxBootSelected,
-        nmeaAttitudeTxRestartRequired =
-            state.nmeaAttitudeTxEnabled != null &&
-                state.nmeaAttitudeTxEnabled != bootAttitudeSelected
-    )
-}
 
 internal fun regattaLinkNmeaRestartRequired(
     state: RegattaLinkConfigurationState
@@ -358,17 +455,12 @@ internal fun regattaLinkNmeaRestartRequired(
 internal fun regattaLinkNmeaAppliedStateUnknown(
     state: RegattaLinkConfigurationState
 ): Boolean {
-    if (!state.nmeaTxSupported && !state.nmeaAttitudeTxSupported) return false
+    if (!state.configWordSupported) return false
     if (!state.nmeaTxRuntimeStatusSupported) return true
-    if (state.nmeaTxSupported && state.nmeaTxBootSelected == null) return true
-    if (
-        state.nmeaAttitudeTxSupported &&
-        state.nmeaBootOutputMask == null
-    ) {
-        return true
-    }
-    return false
+    if (state.nmeaTxBootSelected == null) return true
+    return state.nmeaBootOutputMask == null
 }
+
 
 internal fun parseRegattaLinkPgnInventory(
     raw: ByteArray
