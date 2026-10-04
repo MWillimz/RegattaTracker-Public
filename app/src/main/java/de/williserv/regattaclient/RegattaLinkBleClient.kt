@@ -3813,6 +3813,10 @@ internal class RegattaLinkBleClient(
         connected &&
             establishedConnection &&
             !otaRunning.get() &&
+            !lastConfigurationState.deviceControlBusy &&
+            !lastConfigurationState.restartAwaitingDisconnect &&
+            !lastConfigurationState.factoryResetAwaitingDisconnect &&
+            lastConfigurationState.factoryResetWriteAcceptedRequestId == null &&
             lastConfigurationState.phoneGnssForwardingDesired
 
     private fun schedulePhoneGnssDrain() {
@@ -3956,6 +3960,12 @@ internal class RegattaLinkBleClient(
         opcode: RegattaLinkDeviceControlOpcode,
         value: Int
     ): Boolean {
+        if (
+            opcode == RegattaLinkDeviceControlOpcode.RESTART ||
+            opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET
+        ) {
+            clearPhoneGnssPending()
+        }
         if (
             !lastConfigurationState.deviceControlSupported ||
             otaRunning.get() ||
