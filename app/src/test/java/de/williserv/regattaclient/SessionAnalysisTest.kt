@@ -561,6 +561,61 @@ class SessionAnalysisTest {
     }
 
     @Test
+    fun rawColorRangePreservesExtremesHiddenByAggregation() {
+        val prepared = (0..10).map { index ->
+            PreparedAnalysisSample(
+                timestampMs = index * 1_000L,
+                cogDeg = 90.0,
+                sogMps = 4.0,
+                measurements = mapOf(
+                    "test.heel" to if (index % 2 == 0) -20.0 else 20.0
+                ),
+                sourceIndex = index
+            )
+        }
+        val angle = AnalysisMetric(
+            id = "gps.cog",
+            label = "COG",
+            unit = "deg",
+            source = AnalysisMetricSource.GPS_COG,
+            angleKind = AnalysisAngleKind.COMPASS
+        )
+        val radius = AnalysisMetric(
+            id = "gps.sog",
+            label = "SOG",
+            unit = "m/s",
+            source = AnalysisMetricSource.GPS_SOG
+        )
+        val color = AnalysisMetric(
+            id = "measurement:test.heel",
+            label = "Heel",
+            unit = "deg",
+            source = AnalysisMetricSource.MEASUREMENT,
+            measurementKey = "test.heel"
+        )
+        val metrics = listOf(angle, radius, color).associateBy { it.id }
+
+        val dataset = buildSessionAnalysisDataset(
+            samples = prepared,
+            angleMetric = angle,
+            radiusMetric = radius,
+            colorMetric = color,
+            filters = emptyList(),
+            metricsById = metrics,
+            aggregationWindowMs = ANALYSIS_AGGREGATION_WINDOW_MS
+        )
+        val observed = sessionColorObservedRange(
+            values = prepared.map { metricValue(color, it) },
+            useAbsoluteValue = false
+        )
+
+        assertEquals(0.0, dataset.colorMin!!, 0.0001)
+        assertEquals(0.0, dataset.colorMax!!, 0.0001)
+        assertEquals(-20.0, observed!!.start, 0.0001)
+        assertEquals(20.0, observed.endInclusive, 0.0001)
+    }
+
+    @Test
     fun absoluteColoringTransformsValuesBeforeAggregation() {
         val prepared = (0..10).map { index ->
             PreparedAnalysisSample(
