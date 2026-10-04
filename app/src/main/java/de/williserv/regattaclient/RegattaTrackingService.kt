@@ -907,6 +907,7 @@ class RegattaTrackingService : Service() {
         handler.removeCallbacks(sampleRunnable)
         handler.removeCallbacks(eventPollRunnable)
         handler.removeCallbacks(autoStopAfterFinishRunnable)
+        regattaLinkManager?.stopPhoneGnssForwarding()
         autoStopAfterFinishScheduled = false
 
         if (clearLocalRaceStatus) {
@@ -2159,6 +2160,7 @@ class RegattaTrackingService : Service() {
         }
         handler.removeCallbacks(sampleRunnable)
         handler.removeCallbacks(eventPollRunnable)
+        regattaLinkManager?.stopPhoneGnssForwarding()
 
         try {
             locationManager.removeUpdates(locationListener)
