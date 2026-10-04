@@ -330,6 +330,7 @@ class TrackingDbHelperTest {
         assertTrue(columnExists(db, "tracking_samples", "session_id"))
         assertTrue(columnExists(db, "tracking_samples", "measurements_json"))
         assertTrue(columnExists(db, "tracking_samples", "cog_valid"))
+        assertTrue(columnExists(db, "race_contexts", "context_key"))
         listOf(
             "accel_x",
             "accel_y",
