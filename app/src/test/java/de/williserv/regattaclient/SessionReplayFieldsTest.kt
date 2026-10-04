@@ -124,6 +124,52 @@ class SessionReplayFieldsTest {
     }
 
     @Test
+    fun attitudeFieldsExposeReplayDirectionSemantics() {
+        val sample = sample(
+            measurementsJson = """
+                {
+                  "regattalink.motion.heel_deg": {
+                    "value": -12.0,
+                    "unit": "deg",
+                    "group": "regattalink"
+                  },
+                  "regattalink.motion.pitch_deg": {
+                    "value": 4.0,
+                    "unit": "deg",
+                    "group": "regattalink"
+                  }
+                }
+            """.trimIndent()
+        )
+        val fields = discoverReplayExtraFields(listOf(sample))
+        val heel = fields.single {
+            it.measurementKey == REGATTALINK_MOTION_HEEL_KEY
+        }
+        val pitch = fields.single {
+            it.measurementKey == REGATTALINK_MOTION_PITCH_KEY
+        }
+
+        assertEquals(
+            ReplayExtraFieldDirection.HEEL,
+            replayExtraFieldDirection(heel)
+        )
+        assertEquals(
+            ReplayExtraFieldDirection.PITCH,
+            replayExtraFieldDirection(pitch)
+        )
+        assertEquals(
+            -12.0,
+            replayExtraFieldNumericValue(sample, heel)!!,
+            0.0001
+        )
+        assertEquals(
+            4.0,
+            replayExtraFieldNumericValue(sample, pitch)!!,
+            0.0001
+        )
+    }
+
+    @Test
     fun allSensorsIncludesUnknownUsefulMeasurementButBlacklistsDiagnostics() {
         val sample = sample(
             measurementsJson = """
