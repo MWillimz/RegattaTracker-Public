@@ -2,6 +2,7 @@ package de.williserv.regattaclient
 
 import android.os.SystemClock
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -42,16 +43,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -78,8 +83,9 @@ private enum class ReplayConfigSheet {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SessionReplayScreen(
+internal fun SessionReplayScreen(
     detail: SessionDetailData?,
+    replayMaps: Map<ReplayMapContextKey, ReplayMapBackground> = emptyMap(),
     modifier: Modifier = Modifier,
     extraFieldIds: Set<String> = emptySet(),
     onExtraFieldIdsChange: (Set<String>) -> Unit = {},
@@ -641,6 +647,10 @@ fun SessionReplayScreen(
                 }
             } else {
                 val safeIndex = selectedIndex.coerceIn(0, replaySamples.lastIndex)
+                val replayMapBackground = replayMapBackgroundForSample(
+                    sample = replaySamples[safeIndex],
+                    backgrounds = replayMaps
+                )
                 Row(
                     modifier = Modifier
                         .weight(1f)
@@ -651,6 +661,7 @@ fun SessionReplayScreen(
                         samples = replaySamples,
                         sourceIndices = replaySourceIndices,
                         selectedIndex = safeIndex,
+                        mapBackground = replayMapBackground,
                         colorMetric = colorMetric,
                         colorData = trackColorData,
                         colorMinValue = effectiveColorRange?.start,
@@ -1090,6 +1101,7 @@ private fun ReplayTrackCanvas(
     samples: List<SessionTrackingSample>,
     sourceIndices: List<Int>,
     selectedIndex: Int,
+    mapBackground: ReplayMapBackground?,
     colorMetric: AnalysisMetric?,
     colorData: ReplayTrackColorData?,
     colorMinValue: Double?,
@@ -1123,7 +1135,8 @@ private fun ReplayTrackCanvas(
     var viewport by remember(
         samples.firstOrNull()?.localId,
         samples.lastOrNull()?.localId,
-        samples.size
+        samples.size,
+        mapBackground?.candidate?.key
     ) {
         mutableStateOf(ReplayViewport())
     }
@@ -1134,7 +1147,25 @@ private fun ReplayTrackCanvas(
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 shape = MaterialTheme.shapes.medium
             )
+            .clipToBounds()
     ) {
+        mapBackground?.let { background ->
+            Image(
+                bitmap = background.bitmap.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(4.dp)
+                    .graphicsLayer(
+                        scaleX = viewport.zoom,
+                        scaleY = viewport.zoom,
+                        translationX = viewport.panX,
+                        translationY = viewport.panY
+                    )
+            )
+        }
+
         if (validSamples.isEmpty()) {
             Text(
                 text = stringResource(R.string.session_replay_no_position),
@@ -1162,18 +1193,21 @@ private fun ReplayTrackCanvas(
                     }
                 }
         ) {
-            val geoPoints = buildList {
-                validSamples.forEach { add(OwnShipGeoPoint(it.lat, it.lon)) }
-                coursePoints.forEach { add(OwnShipGeoPoint(it.lat, it.lon)) }
+            val localProjection = if (mapBackground == null) {
+                val geoPoints = buildList {
+                    validSamples.forEach { add(OwnShipGeoPoint(it.lat, it.lon)) }
+                    coursePoints.forEach { add(OwnShipGeoPoint(it.lat, it.lon)) }
+                }
+                ReplayMapProjection.create(
+                    points = geoPoints,
+                    widthPx = size.width,
+                    heightPx = size.height,
+                    paddingFraction = 0.09f,
+                    minPaddingPx = minPaddingPx
+                ) ?: return@Canvas
+            } else {
+                null
             }
-
-            val projection = ReplayMapProjection.create(
-                points = geoPoints,
-                widthPx = size.width,
-                heightPx = size.height,
-                paddingFraction = 0.09f,
-                minPaddingPx = minPaddingPx
-            ) ?: return@Canvas
 
             fun transformed(point: Offset): Offset =
                 replayTransformPoint(
@@ -1183,11 +1217,48 @@ private fun ReplayTrackCanvas(
                     heightPx = size.height
                 )
 
-            fun point(sample: SessionTrackingSample): Offset? =
-                projection.project(sample.lat, sample.lon)?.let(::transformed)
+            fun projectedPoint(lat: Double, lon: Double): Offset? {
+                val background = mapBackground
+                val basePoint = if (background != null) {
+                    val viewport = background.candidate.viewport
+                    val imagePoint = projectToCourseMap(
+                        lat = lat,
+                        lon = lon,
+                        viewport = viewport
+                    ) ?: return null
+                    if (!isPointInsideCourseMap(imagePoint, viewport)) {
+                        return null
+                    }
+                    val fitted = fitCourseMapPoint(
+                        point = imagePoint,
+                        imageWidth = background.bitmap.width,
+                        imageHeight = background.bitmap.height,
+                        containerWidth = size.width.toInt(),
+                        containerHeight = size.height.toInt()
+                    ) ?: return null
+                    Offset(
+                        x = fitted.x.toFloat(),
+                        y = fitted.y.toFloat()
+                    )
+                } else {
+                    localProjection?.project(lat, lon) ?: return null
+                }
+                return transformed(basePoint)
+            }
+
+            fun point(sample: SessionTrackingSample): Offset? {
+                val activeContextId = mapBackground?.candidate?.key?.raceContextId
+                if (
+                    activeContextId != null &&
+                    sample.raceContextId != activeContextId
+                ) {
+                    return null
+                }
+                return projectedPoint(sample.lat, sample.lon)
+            }
 
             fun coursePoint(point: CourseOverlayGeoPoint): Offset? =
-                projection.project(point.lat, point.lon)?.let(::transformed)
+                projectedPoint(point.lat, point.lon)
 
             val sizing = replayCanvasSizing(
                 canvasScalePx = min(size.width, size.height),

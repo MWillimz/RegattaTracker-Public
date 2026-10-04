@@ -103,7 +103,7 @@ class SessionHistoryDbTest {
                 accessContextId = accessContextId,
                 resolvedEventName = "Wednesday Race - Run 1",
                 courseJson = """{"marks":[1]}""",
-                courseMapViewportJson = null
+                courseMapViewportJson = """{"projection":"web_mercator","zoom":12,"left_px":100.0,"top_px":200.0,"width_px":400,"height_px":300,"generation_id":"run-1"}"""
             )
         )
         val run2ContextId = requireNotNull(
@@ -111,7 +111,7 @@ class SessionHistoryDbTest {
                 accessContextId = accessContextId,
                 resolvedEventName = "Wednesday Race - Run 2",
                 courseJson = """{"marks":[1,2]}""",
-                courseMapViewportJson = null
+                courseMapViewportJson = """{"projection":"web_mercator","zoom":13,"left_px":300.0,"top_px":400.0,"width_px":600,"height_px":500,"generation_id":"run-2"}"""
             )
         )
 
@@ -138,6 +138,12 @@ class SessionHistoryDbTest {
         assertEquals(
             listOf("""{"marks":[1]}""", """{"marks":[1,2]}"""),
             samples.map { it.courseJson }
+        )
+        assertEquals(
+            listOf("run-1", "run-2"),
+            samples.map {
+                parseCourseMapViewportJson(it.courseMapViewportJson)?.generationId
+            }
         )
 
         val summary = helper.getTrackingSessionSummaries().single()
