@@ -1750,6 +1750,14 @@ internal class RegattaLinkBleClient(
         }
 
         if (status != BluetoothGatt.GATT_SUCCESS) {
+            if (isRegattaLinkStaleBondSecurityGattStatus(status)) {
+                closeGattWithError(
+                    callbackGatt,
+                    REGATTALINK_STALE_ANDROID_BOND_ERROR,
+                    gattStatus = status
+                )
+                return
+            }
             if (
                 maybeCompleteOtaOnlyReconnect(
                     callbackGatt,
@@ -1887,6 +1895,7 @@ internal class RegattaLinkBleClient(
         gattSchemaExecutor.execute {
             var recoveredInfo: RegattaLinkDeviceInfo? = null
             var failure: String? = null
+            var failureGattStatus: Int? = null
             try {
                 if (gatt !== callbackGatt || !connected) return@execute
                 writeCharacteristicBlockingDirect(
@@ -1913,6 +1922,8 @@ internal class RegattaLinkBleClient(
                 )
             } catch (error: Exception) {
                 failure = error.message ?: "OTA Status validation failed"
+                failureGattStatus =
+                    (error as? RegattaLinkOtaTransportException)?.gattStatus
             }
 
             handler.post {
@@ -1920,10 +1931,17 @@ internal class RegattaLinkBleClient(
 
                 val info = recoveredInfo
                 if (info == null) {
+                    val securityStatus = failureGattStatus
+                        ?.takeIf(::isRegattaLinkStaleBondSecurityGattStatus)
                     closeGattWithError(
                         callbackGatt,
-                        "OTA-only reconnect failed after $deviceInfoFailure: " +
-                            (failure ?: "OTA core is unavailable")
+                        if (securityStatus != null) {
+                            REGATTALINK_STALE_ANDROID_BOND_ERROR
+                        } else {
+                            "OTA-only reconnect failed after $deviceInfoFailure: " +
+                                (failure ?: "OTA core is unavailable")
+                        },
+                        gattStatus = securityStatus
                     )
                     return@post
                 }
@@ -2273,10 +2291,15 @@ internal class RegattaLinkBleClient(
 
         gattSchemaExecutor.execute {
             var failure: String? = null
+            var securityGattStatus: Int? = null
             try {
                 if (gatt !== activeGatt || !connected) return@execute
                 probeCriticalGattLayout(activeGatt, info)
             } catch (error: Exception) {
+                val transportError = error as? RegattaLinkOtaTransportException
+                securityGattStatus = transportError
+                    ?.gattStatus
+                    ?.takeIf(::isRegattaLinkStaleBondSecurityGattStatus)
                 failure = error.message
                     ?: "RegattaLink critical GATT layout validation failed"
             } finally {
@@ -2287,11 +2310,20 @@ internal class RegattaLinkBleClient(
                 if (gatt !== activeGatt || !connected) return@post
 
                 if (failure != null) {
-                    recoverAndroidGattCacheOrFail(
-                        activeGatt,
-                        info,
-                        failure!!
-                    )
+                    val securityStatus = securityGattStatus
+                    if (securityStatus != null) {
+                        closeGattWithError(
+                            activeGatt,
+                            REGATTALINK_STALE_ANDROID_BOND_ERROR,
+                            gattStatus = securityStatus
+                        )
+                    } else {
+                        recoverAndroidGattCacheOrFail(
+                            activeGatt,
+                            info,
+                            failure!!
+                        )
+                    }
                     return@post
                 }
 
@@ -5203,7 +5235,8 @@ internal class RegattaLinkBleClient(
             pending.future.completeExceptionally(
                 RegattaLinkOtaTransportException(
                     "GATT read $uuid failed ($status)",
-                    ambiguous = true
+                    ambiguous = true,
+                    gattStatus = status
                 )
             )
         }
@@ -5233,7 +5266,8 @@ internal class RegattaLinkBleClient(
             pending.future.completeExceptionally(
                 RegattaLinkOtaTransportException(
                     "GATT descriptor write failed ($status)",
-                    ambiguous = true
+                    ambiguous = true,
+                    gattStatus = status
                 )
             )
         }
@@ -5415,7 +5449,17 @@ internal class RegattaLinkBleClient(
         if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
             reconnectFuture?.complete(null)
         } else if (scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT) {
-            retryKnownDeviceReconnect(message)
+            retryKnownDeviceReconnect(
+                if (
+                    gattStatus?.let(
+                        ::isRegattaLinkStaleBondSecurityGattStatus
+                    ) == true
+                ) {
+                    REGATTALINK_STALE_ANDROID_BOND_ERROR
+                } else {
+                    message
+                }
+            )
         } else if (!otaRunning.get()) {
             if (discoveryInProgress) {
                 retryDiscoveryAfterCandidateFailure(
