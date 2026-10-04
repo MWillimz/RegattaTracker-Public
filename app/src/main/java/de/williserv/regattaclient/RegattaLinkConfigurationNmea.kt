@@ -291,7 +291,7 @@ internal const val REGATTALINK_CONFIG_LOAD_PRECISION_X10: UInt = 0x00000100u
 internal const val REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING: UInt = 0x00000200u
 internal const val REGATTALINK_CONFIG_NMEA0183_BAUD_MASK: UInt = 0x0000c000u
 
-internal enum class RegattaLinkNmea0183Baud(
+enum class RegattaLinkNmea0183Baud(
     val baudRate: Int,
     val encodedBits: UInt
 ) {
