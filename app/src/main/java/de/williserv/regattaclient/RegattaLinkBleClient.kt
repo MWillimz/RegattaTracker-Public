@@ -193,6 +193,13 @@ internal class RegattaLinkBleClient(
         }
     }
     private val otaExecutor = Executors.newSingleThreadExecutor()
+    private val phoneGnssPending =
+        AtomicReference<RegattaLinkPhoneGnssSample?>(null)
+    private val phoneGnssDrainScheduled = AtomicBoolean(false)
+    @Volatile private var phoneGnssLastSubmitElapsedMs = 0L
+    private val phoneGnssDrainRunnable = Runnable {
+        otaExecutor.execute(::drainPhoneGnssPending)
+    }
     /*
      * OTA itself can block in reconnectCandidate(). GATT schema reconciliation
      * therefore needs a separate worker so its Device Info write can complete
@@ -1033,6 +1040,7 @@ internal class RegattaLinkBleClient(
     }
 
     override fun startOta(artifact: RegattaLinkFirmwareArtifact) {
+        clearPhoneGnssPending()
         val activeGatt = gatt
         if (
             activeGatt != null &&
@@ -1186,6 +1194,7 @@ internal class RegattaLinkBleClient(
     }
 
     override fun disconnect() {
+        clearPhoneGnssPending()
         val activeGatt = gatt
         if (
             activeGatt != null &&
@@ -2570,6 +2579,7 @@ internal class RegattaLinkBleClient(
         val brightnessCharacteristic = service?.getCharacteristic(LED_BRIGHTNESS_UUID)
         val dampingCharacteristic = service?.getCharacteristic(MOTION_DAMPING_UUID)
         val configWordCharacteristic = service?.getCharacteristic(CONFIG_WORD_UUID)
+        val headingTrimCharacteristic = service?.getCharacteristic(HEADING_TRIM_UUID)
         val nmeaTxRuntimeStatusCharacteristic =
             service?.getCharacteristic(NMEA_TX_RUNTIME_STATUS_UUID)
         val diagnosticLogCharacteristic =
@@ -2582,9 +2592,7 @@ internal class RegattaLinkBleClient(
             ledBrightnessSupported = brightnessCharacteristic != null,
             motionDampingSupported = dampingCharacteristic != null,
             configWordSupported = configWordCharacteristic != null,
-            loadPrecisionSupported = configWordCharacteristic != null,
-            nmeaTxSupported = configWordCharacteristic != null,
-            nmeaAttitudeTxSupported = configWordCharacteristic != null,
+            headingTrimSupported = headingTrimCharacteristic != null,
             nmeaTxRuntimeStatusSupported =
                 nmeaTxRuntimeStatusCharacteristic != null,
             diagnosticLogSupported = diagnosticLogCharacteristic != null,
@@ -2656,6 +2664,27 @@ internal class RegattaLinkBleClient(
         }
 
         if (
+            headingTrimCharacteristic != null &&
+            optionalFeatureWorkAllowed(activeGatt)
+        ) {
+            runCatching {
+                parseRegattaLinkHeadingTrim(
+                    readCharacteristicBlocking(
+                        activeGatt,
+                        headingTrimCharacteristic
+                    )
+                )
+            }.onSuccess { trim ->
+                next = next.copy(headingTrimDeg = trim)
+            }.onFailure { error ->
+                if (errorMessage.isBlank()) {
+                    errorMessage = error.message
+                        ?: "Could not read RegattaLink heading trim"
+                }
+            }
+        }
+
+        if (
             nmeaTxRuntimeStatusCharacteristic != null &&
             optionalFeatureWorkAllowed(activeGatt)
         ) {
@@ -2698,7 +2727,6 @@ internal class RegattaLinkBleClient(
         }
 
         if (gatt === activeGatt && connected) {
-            next = regattaLinkReconcileNmeaTxState(next)
             emitConfiguration(
                 next.copy(
                     userMessage =
@@ -3400,31 +3428,79 @@ internal class RegattaLinkBleClient(
     }
 
     override fun setNmeaTxEnabled(enabled: Boolean): Boolean =
-        setConfigWordBit(
-            bitMask = REGATTALINK_CONFIG_TX_MASTER,
-            enabled = enabled,
+        mutateConfigWord(
+            mask = REGATTALINK_CONFIG_TX_MASTER,
+            encodedBits =
+                REGATTALINK_CONFIG_TX_MASTER.takeIf { enabled } ?: 0u,
             failureText = "Could not change RegattaLink Boat Data TX setting"
         )
 
     override fun setNmeaAttitudeTxEnabled(enabled: Boolean): Boolean =
-        setConfigWordBit(
-            bitMask = REGATTALINK_CONFIG_TX_IMU,
-            enabled = enabled,
-            failureText = "Could not change RegattaLink Boat Data attitude TX setting"
+        mutateConfigWord(
+            mask = REGATTALINK_CONFIG_TX_IMU,
+            encodedBits =
+                REGATTALINK_CONFIG_TX_IMU.takeIf { enabled } ?: 0u,
+            failureText = "Could not change RegattaLink Heel / Trim TX setting"
+        )
+
+    override fun setNmea0183TxEnabled(enabled: Boolean): Boolean =
+        mutateConfigWord(
+            mask = REGATTALINK_CONFIG_TX_NMEA0183,
+            encodedBits =
+                REGATTALINK_CONFIG_TX_NMEA0183.takeIf { enabled } ?: 0u,
+            failureText = "Could not change RegattaLink NMEA 0183 TX setting"
+        )
+
+    override fun setPhoneGpsTxEnabled(enabled: Boolean): Boolean =
+        mutateConfigWord(
+            mask = REGATTALINK_CONFIG_TX_PHONE_GPS,
+            encodedBits =
+                REGATTALINK_CONFIG_TX_PHONE_GPS.takeIf { enabled } ?: 0u,
+            failureText = "Could not change RegattaLink Phone GPS TX setting"
+        )
+
+    override fun setCompassTxEnabled(enabled: Boolean): Boolean =
+        mutateConfigWord(
+            mask = REGATTALINK_CONFIG_TX_COMPASS,
+            encodedBits =
+                REGATTALINK_CONFIG_TX_COMPASS.takeIf { enabled } ?: 0u,
+            failureText = "Could not change RegattaLink compass TX setting"
         )
 
     override fun setLoadPrecisionX10(enabled: Boolean): Boolean =
-        setConfigWordBit(
-            bitMask = REGATTALINK_CONFIG_LOAD_PRECISION_X10,
-            enabled = enabled,
+        mutateConfigWord(
+            mask = REGATTALINK_CONFIG_LOAD_PRECISION_X10,
+            encodedBits =
+                REGATTALINK_CONFIG_LOAD_PRECISION_X10
+                    .takeIf { enabled } ?: 0u,
             failureText = "Could not change RegattaLink load precision"
         )
 
-    private fun setConfigWordBit(
-        bitMask: UInt,
-        enabled: Boolean,
+    override fun setMagBackgroundLearningEnabled(enabled: Boolean): Boolean =
+        mutateConfigWord(
+            mask = REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING,
+            encodedBits =
+                REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING
+                    .takeIf { enabled } ?: 0u,
+            failureText = "Could not change RegattaLink MAG background learning"
+        )
+
+    override fun setNmea0183Baud(baudRate: Int): Boolean {
+        val baud = RegattaLinkNmea0183Baud.fromBaudRate(baudRate)
+            ?: return false
+        return mutateConfigWord(
+            mask = REGATTALINK_CONFIG_NMEA0183_BAUD_MASK,
+            encodedBits = baud.encodedBits,
+            failureText = "Could not change RegattaLink NMEA 0183 baud"
+        )
+    }
+
+    private fun mutateConfigWord(
+        mask: UInt,
+        encodedBits: UInt,
         failureText: String
     ): Boolean {
+        if (encodedBits and mask.inv() != 0u) return false
         if (otaRunning.get() || !isConnected()) return false
 
         val activeGatt = gatt ?: return false
@@ -3436,6 +3512,7 @@ internal class RegattaLinkBleClient(
         }
 
         otaExecutor.execute {
+            var wordBeforeWrite: UInt? = null
             try {
                 if (
                     !optionalFeatureWorkAllowed(activeGatt) ||
@@ -3466,8 +3543,12 @@ internal class RegattaLinkBleClient(
                     val currentWord = parseRegattaLinkConfigWord(
                         readCharacteristicBlocking(activeGatt, characteristic)
                     )
-                    val nextWord =
-                        regattaLinkConfigWordWithBit(currentWord, bitMask, enabled)
+                    wordBeforeWrite = currentWord
+                    val nextWord = regattaLinkConfigWordWithMask(
+                        current = currentWord,
+                        mask = mask,
+                        encodedBits = encodedBits
+                    )
 
                     if (nextWord != currentWord) {
                         writeCharacteristicBlockingDirect(
@@ -3507,6 +3588,13 @@ internal class RegattaLinkBleClient(
                                 regattaLinkApplyConfigWord(current, it)
                             } ?: current
                         authoritative.copy(
+                            configRestartRequired =
+                                authoritative.configRestartRequired ||
+                                    (
+                                        rereadWord != null &&
+                                            wordBeforeWrite != null &&
+                                            rereadWord != wordBeforeWrite
+                                        ),
                             busy = false,
                             userMessage =
                                 RegattaLinkUiMessage.CONFIGURATION_FAILED,
@@ -3519,6 +3607,166 @@ internal class RegattaLinkBleClient(
             }
         }
         return true
+    }
+
+    override fun setHeadingTrimDeg(value: Int): Boolean {
+        if (value !in -180..180) return false
+        if (otaRunning.get() || !isConnected()) return false
+
+        val activeGatt = gatt ?: return false
+        if (
+            configurationMutationBlocked(activeGatt) ||
+            !configurationMutationRunning.compareAndSet(false, true)
+        ) {
+            return false
+        }
+
+        otaExecutor.execute {
+            try {
+                if (
+                    !optionalFeatureWorkAllowed(activeGatt) ||
+                    configurationMutationBlocked(activeGatt)
+                ) {
+                    return@execute
+                }
+                updateConfiguration {
+                    it.copy(busy = true, userMessage = null, error = "")
+                }
+
+                val characteristic = activeGatt
+                    .getService(CONFIG_SERVICE_UUID)
+                    ?.getCharacteristic(HEADING_TRIM_UUID)
+
+                if (characteristic == null) {
+                    updateConfiguration {
+                        it.copy(
+                            busy = false,
+                            userMessage = RegattaLinkUiMessage.CONFIGURATION_FAILED,
+                            error = "RegattaLink heading trim is unavailable"
+                        )
+                    }
+                    return@execute
+                }
+
+                try {
+                    writeCharacteristicBlockingDirect(
+                        activeGatt,
+                        characteristic,
+                        encodeRegattaLinkHeadingTrim(value)
+                    )
+                    updateConfiguration {
+                        it.copy(
+                            headingTrimSupported = true,
+                            headingTrimDeg = value,
+                            busy = false,
+                            userMessage = null,
+                            error = ""
+                        )
+                    }
+                } catch (error: Exception) {
+                    val reread =
+                        if (optionalFeatureWorkAllowed(activeGatt)) {
+                            runCatching {
+                                parseRegattaLinkHeadingTrim(
+                                    readCharacteristicBlocking(
+                                        activeGatt,
+                                        characteristic
+                                    )
+                                )
+                            }.getOrNull()
+                        } else {
+                            null
+                        }
+                    updateConfiguration {
+                        it.copy(
+                            headingTrimDeg = reread ?: it.headingTrimDeg,
+                            busy = false,
+                            userMessage =
+                                RegattaLinkUiMessage.CONFIGURATION_FAILED,
+                            error = error.message
+                                ?: "Could not change RegattaLink heading trim"
+                        )
+                    }
+                }
+            } finally {
+                configurationMutationRunning.set(false)
+            }
+        }
+        return true
+    }
+
+    override fun offerPhoneGnss(sample: RegattaLinkPhoneGnssSample): Boolean {
+        if (!phoneGnssForwardingAllowed()) {
+            clearPhoneGnssPending()
+            return false
+        }
+        phoneGnssPending.set(sample)
+        schedulePhoneGnssDrain()
+        return true
+    }
+
+    private fun phoneGnssForwardingAllowed(): Boolean =
+        connected &&
+            establishedConnection &&
+            !otaRunning.get() &&
+            lastConfigurationState.phoneGnssForwardingDesired
+
+    private fun schedulePhoneGnssDrain() {
+        if (!phoneGnssForwardingAllowed()) return
+        if (!phoneGnssDrainScheduled.compareAndSet(false, true)) return
+
+        val elapsedSinceLast =
+            SystemClock.elapsedRealtime() - phoneGnssLastSubmitElapsedMs
+        val delayMs =
+            (REGATTALINK_PHONE_GNSS_MIN_INTERVAL_MS - elapsedSinceLast)
+                .coerceAtLeast(0L)
+        handler.postDelayed(phoneGnssDrainRunnable, delayMs)
+    }
+
+    private fun drainPhoneGnssPending() {
+        try {
+            if (!phoneGnssForwardingAllowed()) {
+                phoneGnssPending.set(null)
+                return
+            }
+
+            val sample = phoneGnssPending.getAndSet(null) ?: return
+            val activeGatt = gatt ?: return
+            if (!optionalFeatureWorkAllowed(activeGatt)) return
+
+            val characteristic = activeGatt
+                .getService(CONFIG_SERVICE_UUID)
+                ?.getCharacteristic(PHONE_GNSS_INPUT_UUID)
+                ?: return
+            val sendElapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
+            val encoded = encodeRegattaLinkPhoneGnss(
+                sample = sample,
+                sendElapsedRealtimeNanos = sendElapsedRealtimeNanos
+            ) ?: return
+
+            phoneGnssLastSubmitElapsedMs = SystemClock.elapsedRealtime()
+            runCatching {
+                writeCharacteristicBlockingDirect(
+                    activeGatt,
+                    characteristic,
+                    encoded
+                )
+            }.onFailure { error ->
+                Log.w(LOG_TAG, "Phone GNSS write failed", error)
+            }
+        } finally {
+            phoneGnssDrainScheduled.set(false)
+            if (
+                phoneGnssPending.get() != null &&
+                phoneGnssForwardingAllowed()
+            ) {
+                schedulePhoneGnssDrain()
+            }
+        }
+    }
+
+    private fun clearPhoneGnssPending() {
+        phoneGnssPending.set(null)
     }
 
     override fun drainDiagnosticLog(): Boolean {
@@ -5040,6 +5288,7 @@ internal class RegattaLinkBleClient(
     }
 
     private fun closeGatt() {
+        clearPhoneGnssPending()
         handler.removeCallbacks(gattTimeout)
         handler.removeCallbacks(gattSchemaReconcileTimeout)
         clearGattSchemaReconnectState()
@@ -5174,6 +5423,9 @@ internal class RegattaLinkBleClient(
     }
 
     private fun emitConfiguration(state: RegattaLinkConfigurationState) {
+        if (!state.phoneGnssForwardingDesired) {
+            clearPhoneGnssPending()
+        }
         synchronized(configurationLock) {
             lastConfigurationState = state
         }
