@@ -700,10 +700,10 @@
     <string name="regattalink_nmea_runtime_unknown_restart">Der angewendete Boat-Data-TX-Zustand ist mit dieser Firmware nicht verfügbar. RegattaLink neu starten, um die ausgewählten Einstellungen zu synchronisieren.</string>
 
 
-    <string name="regattalink_nmea0183_tx">NMEA 0183 → Boat Data</string>
+    <string name="regattalink_nmea0183_tx">0183-Eingang → Boat Data</string>
     <string name="regattalink_phone_gps_tx">Telefon-GPS → Boat Data</string>
     <string name="regattalink_compass_tx">Kompasskurs → Boat Data</string>
-    <string name="regattalink_nmea0183_baud">NMEA-0183-Baudrate</string>
+    <string name="regattalink_nmea0183_baud">Baudrate des 0183-Eingangs</string>
     <string name="regattalink_applies_after_restart">Die gespeicherte Einstellung wird nach einem RegattaLink-Neustart aktiv.</string>
     <string name="regattalink_boat_data_output_selected_runtime_unknown">Ausgewählt. Der angewendete Zustand ist nicht verfügbar.</string>
     <string name="regattalink_boat_data_output_off_runtime_unknown">Nicht ausgewählt. Der angewendete Zustand ist nicht verfügbar.</string>
