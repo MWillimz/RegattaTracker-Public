@@ -5,6 +5,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import org.json.JSONObject
+import java.security.MessageDigest
 import java.util.Locale
 
 data class TrackingStorageCounts(
@@ -121,7 +122,7 @@ internal fun normalizeAccessContextKey(
 }
 
 class TrackingDbHelper(context: Context) :
-    SQLiteOpenHelper(context, "regatta_tracking.db", null, 13) {
+    SQLiteOpenHelper(context, "regatta_tracking.db", null, 14) {
 
     init {
         setWriteAheadLoggingEnabled(true)
@@ -175,6 +176,9 @@ class TrackingDbHelper(context: Context) :
         }
         if (oldVersion < 13 && newVersion >= 13) {
             migrateToVersion13(db)
+        }
+        if (oldVersion < 14 && newVersion >= 14) {
+            migrateToVersion14(db)
         }
     }
 
@@ -280,12 +284,33 @@ class TrackingDbHelper(context: Context) :
         val normalizedName = resolvedEventName.trim()
         if (normalizedName.isBlank()) return null
 
+        val normalizedCourseJson = courseJson?.takeIf { it.isNotBlank() }
+        val normalizedViewportJson = courseMapViewportJson?.takeIf { it.isNotBlank() }
         val db = writableDatabase
+
+        /*
+         * Sampling can start before the first /event response. Reuse the most
+         * recent version if one exists; otherwise create one immutable empty
+         * placeholder that later snapshots will supersede rather than mutate.
+         */
+        if (normalizedCourseJson == null && normalizedViewportJson == null) {
+            findLatestRaceContextId(
+                db = db,
+                accessContextId = accessContextId,
+                resolvedEventName = normalizedName
+            )?.let { return it }
+        }
+
+        val contextKey = raceContextVersionKey(
+            courseJson = normalizedCourseJson,
+            courseMapViewportJson = normalizedViewportJson
+        )
         val insertValues = ContentValues().apply {
             put("access_context_id", accessContextId)
             put("resolved_event_name", normalizedName)
-            putNullableString("course_json", courseJson)
-            putNullableString("course_map_viewport_json", courseMapViewportJson)
+            putNullableString("course_json", normalizedCourseJson)
+            putNullableString("course_map_viewport_json", normalizedViewportJson)
+            put("context_key", contextKey)
         }
         db.insertWithOnConflict(
             "race_contexts",
@@ -294,28 +319,12 @@ class TrackingDbHelper(context: Context) :
             SQLiteDatabase.CONFLICT_IGNORE
         )
 
-        val raceContextId = findRaceContextId(
+        return findRaceContextId(
             db = db,
             accessContextId = accessContextId,
-            resolvedEventName = normalizedName
-        ) ?: return null
-
-        val updateValues = ContentValues().apply {
-            courseJson?.takeIf { it.isNotBlank() }?.let { put("course_json", it) }
-            courseMapViewportJson
-                ?.takeIf { it.isNotBlank() }
-                ?.let { put("course_map_viewport_json", it) }
-        }
-        if (updateValues.size() > 0) {
-            db.update(
-                "race_contexts",
-                updateValues,
-                "id = ?",
-                arrayOf(raceContextId.toString())
-            )
-        }
-
-        return raceContextId
+            resolvedEventName = normalizedName,
+            contextKey = contextKey
+        )
     }
 
     fun createTrackingSession(
@@ -502,7 +511,10 @@ class TrackingDbHelper(context: Context) :
                 samples.race_context_id,
                 race_contexts.resolved_event_name,
                 race_contexts.course_json,
-                race_contexts.course_map_viewport_json,
+                CASE
+                    WHEN race_contexts.context_key LIKE 'legacy:%' THEN NULL
+                    ELSE race_contexts.course_map_viewport_json
+                END,
                 samples.cog_valid
             FROM tracking_samples AS samples
             LEFT JOIN race_contexts
@@ -1256,6 +1268,41 @@ class TrackingDbHelper(context: Context) :
         }
     }
 
+    private fun migrateToVersion14(db: SQLiteDatabase) {
+        if (!tableExists(db, "race_contexts")) {
+            createRaceContextsTable(db)
+            return
+        }
+        if (columnExists(db, "race_contexts", "context_key")) {
+            return
+        }
+
+        db.execSQL("DROP TABLE IF EXISTS race_contexts_v14")
+        createRaceContextsTable(db, tableName = "race_contexts_v14")
+        db.execSQL(
+            """
+            INSERT INTO race_contexts_v14 (
+                id,
+                access_context_id,
+                resolved_event_name,
+                course_json,
+                course_map_viewport_json,
+                context_key
+            )
+            SELECT
+                id,
+                access_context_id,
+                resolved_event_name,
+                course_json,
+                course_map_viewport_json,
+                'legacy:' || id
+            FROM race_contexts
+            """.trimIndent()
+        )
+        db.execSQL("DROP TABLE race_contexts")
+        db.execSQL("ALTER TABLE race_contexts_v14 RENAME TO race_contexts")
+    }
+
     private fun migrateToVersion10(db: SQLiteDatabase) {
         createRaceContextsTable(db)
 
@@ -1275,13 +1322,15 @@ class TrackingDbHelper(context: Context) :
                     access_context_id,
                     resolved_event_name,
                     course_json,
-                    course_map_viewport_json
+                    course_map_viewport_json,
+                    context_key
                 )
                 SELECT
                     access_context_id,
                     resolved_event_name,
                     course_json,
-                    course_map_viewport_json
+                    course_map_viewport_json,
+                    'migrated-session:' || id
                 FROM tracking_sessions
                 WHERE mode = 'race'
                   AND access_context_id IS NOT NULL
@@ -1298,6 +1347,8 @@ class TrackingDbHelper(context: Context) :
                     INNER JOIN race_contexts
                         ON race_contexts.access_context_id = tracking_sessions.access_context_id
                        AND race_contexts.resolved_event_name = tracking_sessions.resolved_event_name
+                       AND race_contexts.context_key =
+                           'migrated-session:' || tracking_sessions.id
                     WHERE tracking_sessions.id = tracking_samples.session_id
                     LIMIT 1
                 )
@@ -1344,16 +1395,22 @@ class TrackingDbHelper(context: Context) :
         )
     }
 
-    private fun createRaceContextsTable(db: SQLiteDatabase) {
+    private fun createRaceContextsTable(
+        db: SQLiteDatabase,
+        tableName: String = "race_contexts"
+    ) {
+        require(tableName == "race_contexts" || tableName == "race_contexts_v14")
+
         db.execSQL(
             """
-            CREATE TABLE IF NOT EXISTS race_contexts (
+            CREATE TABLE IF NOT EXISTS $tableName (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 access_context_id INTEGER NOT NULL,
                 resolved_event_name TEXT NOT NULL,
                 course_json TEXT,
                 course_map_viewport_json TEXT,
-                UNIQUE(access_context_id, resolved_event_name)
+                context_key TEXT NOT NULL,
+                UNIQUE(access_context_id, resolved_event_name, context_key)
             )
             """.trimIndent()
         )
@@ -1476,6 +1533,27 @@ class TrackingDbHelper(context: Context) :
     private fun findRaceContextId(
         db: SQLiteDatabase,
         accessContextId: Long,
+        resolvedEventName: String,
+        contextKey: String
+    ): Long? {
+        db.rawQuery(
+            """
+            SELECT id
+            FROM race_contexts
+            WHERE access_context_id = ?
+              AND resolved_event_name = ?
+              AND context_key = ?
+            LIMIT 1
+            """.trimIndent(),
+            arrayOf(accessContextId.toString(), resolvedEventName, contextKey)
+        ).use { cursor ->
+            return if (cursor.moveToFirst()) cursor.getLong(0) else null
+        }
+    }
+
+    private fun findLatestRaceContextId(
+        db: SQLiteDatabase,
+        accessContextId: Long,
         resolvedEventName: String
     ): Long? {
         db.rawQuery(
@@ -1484,11 +1562,35 @@ class TrackingDbHelper(context: Context) :
             FROM race_contexts
             WHERE access_context_id = ?
               AND resolved_event_name = ?
+            ORDER BY id DESC
             LIMIT 1
             """.trimIndent(),
             arrayOf(accessContextId.toString(), resolvedEventName)
         ).use { cursor ->
             return if (cursor.moveToFirst()) cursor.getLong(0) else null
+        }
+    }
+
+    private fun raceContextVersionKey(
+        courseJson: String?,
+        courseMapViewportJson: String?
+    ): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(
+                buildString {
+                    append(courseJson.orEmpty())
+                    append('\u0000')
+                    append(courseMapViewportJson.orEmpty())
+                }.toByteArray(Charsets.UTF_8)
+            )
+
+        val hex = "0123456789abcdef"
+        return buildString(digest.size * 2) {
+            digest.forEach { byte ->
+                val value = byte.toInt() and 0xff
+                append(hex[value ushr 4])
+                append(hex[value and 0x0f])
+            }
         }
     }
 

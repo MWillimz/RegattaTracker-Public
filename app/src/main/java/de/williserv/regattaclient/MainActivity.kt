@@ -323,6 +323,8 @@ class MainActivity : ComponentActivity() {
     private val selectedSessionId = mutableStateOf<Long?>(null)
     private val sessionDetail = mutableStateOf<SessionDetailData?>(null)
     private val sessionDetailLoading = mutableStateOf(false)
+    private val sessionReplayMaps =
+        mutableStateOf<Map<ReplayMapContextKey, ReplayMapBackground>>(emptyMap())
     private val selectedReplayFieldIds = mutableStateOf<Set<String>>(emptySet())
     private var sessionLoadGeneration = 0L
 
@@ -692,6 +694,7 @@ class MainActivity : ComponentActivity() {
                             onSessionClick = { sessionId ->
                                 selectedSessionId.value = sessionId
                                 sessionDetail.value = null
+                                sessionReplayMaps.value = emptyMap()
                                 selectedReplayFieldIds.value = emptySet()
                                 currentScreen.value = Screen.SESSION_DETAIL
                                 loadSessionDetail(sessionId)
@@ -715,6 +718,7 @@ class MainActivity : ComponentActivity() {
 
                         Screen.SESSION_REPLAY -> SessionReplayScreen(
                             detail = sessionDetail.value,
+                            replayMaps = sessionReplayMaps.value,
                             modifier = Modifier.padding(innerPadding),
                             extraFieldIds = selectedReplayFieldIds.value,
                             onExtraFieldIdsChange = {
@@ -4025,6 +4029,7 @@ class MainActivity : ComponentActivity() {
                     selectedSessionId.value = null
                     sessionDetail.value = null
                     sessionDetailLoading.value = false
+                    sessionReplayMaps.value = emptyMap()
                     selectedReplayFieldIds.value = emptySet()
                 }
                 if (deleted) {
@@ -4045,6 +4050,7 @@ class MainActivity : ComponentActivity() {
         sessionSummaries.value = emptyList()
         selectedSessionId.value = null
         sessionDetail.value = null
+        sessionReplayMaps.value = emptyMap()
         selectedReplayFieldIds.value = emptySet()
         requestStorageCountsRefresh(force = true)
         lastCsvLine.value = getString(R.string.no_csv_line_yet)
@@ -4074,45 +4080,65 @@ class MainActivity : ComponentActivity() {
     private fun loadSessionDetail(sessionId: Long) {
         val generation = ++sessionLoadGeneration
         sessionDetailLoading.value = true
+        sessionReplayMaps.value = emptyMap()
 
         thread(name = "regatta-session-detail") {
-            val detail = runCatching {
-                val session = db.getTrackingSession(sessionId) ?: return@runCatching null
-                val samples = db.getTrackingSamplesForSession(sessionId)
-                val resolvedEventNames = samples
-                    .mapNotNull { sample ->
-                        sample.resolvedEventName?.takeIf { it.isNotBlank() }
-                    }
-                    .distinct()
-                val accessIdentifier = session.accessContextId
-                    ?.let(db::getAccessContext)
-                    ?.accessIdentifier
-                val eventIdentifier = when (resolvedEventNames.size) {
-                    1 -> resolvedEventNames.single()
-                    else -> session.resolvedEventName
-                        ?.takeIf { it.isNotBlank() && resolvedEventNames.isEmpty() }
-                        ?: accessIdentifier
-                }
-                val summary = TrackingSessionSummary(
-                    id = session.id,
-                    startedAt = session.startedAt,
-                    endedAt = session.endedAt,
-                    mode = session.mode,
-                    accessContextId = session.accessContextId,
-                    displayName = session.displayName,
-                    eventIdentifier = eventIdentifier,
-                    sampleCount = samples.size.toLong()
-                )
-                SessionDetailData(
-                    session = summary,
-                    statistics = calculateSessionStatistics(
-                        session = session,
-                        samples = samples
-                    ),
-                    samples = samples,
-                    replayFields = discoverReplayExtraFields(samples)
-                )
+            val session = runCatching {
+                db.getTrackingSession(sessionId)
             }.getOrNull()
+
+            val samples = if (session != null) {
+                runCatching {
+                    db.getTrackingSamplesForSession(sessionId)
+                }.getOrNull()
+            } else {
+                null
+            }
+
+            val accessContext = session
+                ?.accessContextId
+                ?.let { accessContextId ->
+                    runCatching {
+                        db.getAccessContext(accessContextId)
+                    }.getOrNull()
+                }
+
+            val detail = if (session != null && samples != null) {
+                runCatching {
+                    val resolvedEventNames = samples
+                        .mapNotNull { sample ->
+                            sample.resolvedEventName?.takeIf { it.isNotBlank() }
+                        }
+                        .distinct()
+                    val eventIdentifier = when (resolvedEventNames.size) {
+                        1 -> resolvedEventNames.single()
+                        else -> session.resolvedEventName
+                            ?.takeIf { it.isNotBlank() && resolvedEventNames.isEmpty() }
+                            ?: accessContext?.accessIdentifier
+                    }
+                    val summary = TrackingSessionSummary(
+                        id = session.id,
+                        startedAt = session.startedAt,
+                        endedAt = session.endedAt,
+                        mode = session.mode,
+                        accessContextId = session.accessContextId,
+                        displayName = session.displayName,
+                        eventIdentifier = eventIdentifier,
+                        sampleCount = samples.size.toLong()
+                    )
+                    SessionDetailData(
+                        session = summary,
+                        statistics = calculateSessionStatistics(
+                            session = session,
+                            samples = samples
+                        ),
+                        samples = samples,
+                        replayFields = discoverReplayExtraFields(samples)
+                    )
+                }.getOrNull()
+            } else {
+                null
+            }
 
             if (!asyncLifetime.isActive()) return@thread
             runOnUiThread {
@@ -4125,6 +4151,62 @@ class MainActivity : ComponentActivity() {
                 }
                 sessionDetail.value = detail
                 sessionDetailLoading.value = false
+            }
+
+            if (detail == null || session == null || samples == null || accessContext == null) {
+                return@thread
+            }
+
+            val candidates = replayMapCandidates(
+                session = session,
+                samples = samples
+            )
+
+            candidates.forEach { candidate ->
+                if (
+                    !asyncLifetime.isActive() ||
+                    generation != sessionLoadGeneration ||
+                    selectedSessionId.value != sessionId
+                ) {
+                    return@thread
+                }
+
+                val result = loadCourseMapBitmapBlocking(
+                    mapImageUrl = buildCourseMapImageUrl(
+                        baseUrl = accessContext.serverUrl,
+                        eventName = candidate.key.resolvedEventName,
+                        generationId = candidate.viewport.generationId
+                    ),
+                    apiVersion = RegattaTrackingService.API_VERSION,
+                    sharedSecret = accessContext.accessSecret
+                )
+                val bitmap = result.bitmap ?: return@forEach
+                if (
+                    !courseMapBitmapMatchesViewport(
+                        bitmapWidth = bitmap.width,
+                        bitmapHeight = bitmap.height,
+                        viewport = candidate.viewport
+                    )
+                ) {
+                    return@forEach
+                }
+
+                val background = ReplayMapBackground(
+                    candidate = candidate,
+                    bitmap = bitmap
+                )
+
+                runOnUiThread {
+                    if (
+                        !asyncLifetime.isActive() ||
+                        generation != sessionLoadGeneration ||
+                        selectedSessionId.value != sessionId
+                    ) {
+                        return@runOnUiThread
+                    }
+                    sessionReplayMaps.value =
+                        sessionReplayMaps.value + (candidate.key to background)
+                }
             }
         }
     }

@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.location.Location
@@ -54,7 +53,6 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLDecoder
 
@@ -663,58 +661,31 @@ private suspend fun loadMapBitmap(
     apiVersion: String,
     sharedSecret: String
 ): MapLoadResult {
-    return withContext(Dispatchers.IO) {
-        var connection: HttpURLConnection? = null
-
-        try {
-            connection = URL(mapImageUrl).openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 5000
-            connection.readTimeout = 5000
-            connection.setRequestProperty("Accept", "image/png")
-            connection.setRequestProperty("x-shared-secret", sharedSecret)
-            connection.setRequestProperty("x-api-version", apiVersion)
-
-            val responseCode = connection.responseCode
-
-            if (responseCode !in 200..299) {
-                val errorBody = connection.errorStream
-                    ?.bufferedReader()
-                    ?.use { it.readText() }
-                    ?: ""
-
-                return@withContext MapLoadResult(
-                    bitmap = null,
-                    error = context.getString(R.string.map_error_code, responseCode, errorBody.take(160)),
-                    statusCode = responseCode
-                )
-            }
-
-            val bitmap = connection.inputStream.use { inputStream ->
-                BitmapFactory.decodeStream(inputStream)
-            }
-
-            if (bitmap == null) {
-                MapLoadResult(
-                    bitmap = null,
-                    error = context.getString(R.string.map_invalid_png),
-                    statusCode = responseCode
-                )
-            } else {
-                MapLoadResult(
-                    bitmap = bitmap,
-                    error = null,
-                    statusCode = responseCode
-                )
-            }
-        } catch (e: Exception) {
-            MapLoadResult(
-                bitmap = null,
-                error = context.getString(R.string.map_load_failed, e.message ?: ""),
-                statusCode = null
-            )
-        } finally {
-            connection?.disconnect()
-        }
+    val result = withContext(Dispatchers.IO) {
+        loadCourseMapBitmapBlocking(
+            mapImageUrl = mapImageUrl,
+            apiVersion = apiVersion,
+            sharedSecret = sharedSecret
+        )
     }
+
+    val error = when {
+        result.bitmap != null -> null
+        result.invalidPng -> context.getString(R.string.map_invalid_png)
+        result.statusCode != null -> context.getString(
+            R.string.map_error_code,
+            result.statusCode,
+            result.errorBody.take(160)
+        )
+        else -> context.getString(
+            R.string.map_load_failed,
+            result.exceptionMessage.orEmpty()
+        )
+    }
+
+    return MapLoadResult(
+        bitmap = result.bitmap,
+        error = error,
+        statusCode = result.statusCode
+    )
 }
