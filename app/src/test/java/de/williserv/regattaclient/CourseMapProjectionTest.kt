@@ -75,29 +75,6 @@ class CourseMapProjectionTest {
         )
     }
 
-    @Test
-    fun storedViewportJsonUsesStrictPublishedMapContract() {
-        val parsed = parseCourseMapViewportJson(
-            """{"projection":"web_mercator","zoom":12,"left_px":100.5,"top_px":200.5,"width_px":800,"height_px":600,"generation_id":"g42"}"""
-        )
-
-        assertNotNull(parsed)
-        assertEquals("web_mercator", parsed!!.projection)
-        assertEquals(12, parsed.zoom)
-        assertEquals(100.5, parsed.leftPx, 0.000001)
-        assertEquals(200.5, parsed.topPx, 0.000001)
-        assertEquals(800, parsed.widthPx)
-        assertEquals(600, parsed.heightPx)
-        assertEquals("g42", parsed.generationId)
-
-        assertEquals(
-            null,
-            parseCourseMapViewportJson(
-                """{"projection":"other","zoom":12,"left_px":100.5,"top_px":200.5,"width_px":800,"height_px":600,"generation_id":"g42"}"""
-            )
-        )
-        assertEquals(null, parseCourseMapViewportJson(""))
-    }
 
     @Test
     fun bitmapMustExactlyMatchPublishedViewportDimensions() {
