@@ -154,6 +154,48 @@ class SessionHistoryDbTest {
     }
 
     @Test
+    fun preSnapshotRaceContext_isReusableAndSupersededByFirstSnapshot() {
+        val helper = TrackingDbHelper(context)
+        val accessContextId = requireNotNull(
+            helper.getOrCreateAccessContext(
+                serverUrl = "https://raceoffice.example.org",
+                accessIdentifier = "Wednesday Race",
+                accessSecret = "secret-value"
+            )
+        )
+
+        val placeholderId = requireNotNull(
+            helper.getOrCreateRaceContext(
+                accessContextId = accessContextId,
+                resolvedEventName = "Wednesday Race - Run 1",
+                courseJson = null,
+                courseMapViewportJson = null
+            )
+        )
+        assertEquals(
+            placeholderId,
+            helper.getOrCreateRaceContext(
+                accessContextId = accessContextId,
+                resolvedEventName = "Wednesday Race - Run 1",
+                courseJson = null,
+                courseMapViewportJson = null
+            )
+        )
+
+        val snapshotId = requireNotNull(
+            helper.getOrCreateRaceContext(
+                accessContextId = accessContextId,
+                resolvedEventName = "Wednesday Race - Run 1",
+                courseJson = """{"marks":[1]}""",
+                courseMapViewportJson = """{"projection":"web_mercator","zoom":12,"left_px":100.0,"top_px":200.0,"width_px":400,"height_px":300,"generation_id":"g1"}"""
+            )
+        )
+        assertTrue(snapshotId != placeholderId)
+
+        helper.close()
+    }
+
+    @Test
     fun sameResolvedRun_keepsHistoricalMapGenerationPerSample() {
         val helper = TrackingDbHelper(context)
         val accessContextId = requireNotNull(
