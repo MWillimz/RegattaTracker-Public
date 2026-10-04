@@ -87,6 +87,26 @@ class SessionReplayTest {
     }
 
     @Test
+    fun activeFilterCount_countsTimeRangesNumericAndStateFilters() {
+        assertEquals(
+            0,
+            replayActiveFilterCount(
+                timeFilterActive = false,
+                rangeFilterCount = 0,
+                sampleFilterCount = 0
+            )
+        )
+        assertEquals(
+            4,
+            replayActiveFilterCount(
+                timeFilterActive = true,
+                rangeFilterCount = 1,
+                sampleFilterCount = 2
+            )
+        )
+    }
+
+    @Test
     fun replayViewport_clampsZoomAndPanToVisibleBounds() {
         val zoomed = updateReplayViewport(
             viewport = ReplayViewport(),
