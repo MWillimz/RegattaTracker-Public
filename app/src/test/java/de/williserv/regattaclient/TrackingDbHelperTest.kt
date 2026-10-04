@@ -622,6 +622,7 @@ class TrackingDbHelperTest {
         assertEquals(111L, sessionSample.localId)
         assertEquals(31L, sessionSample.raceContextId)
         assertEquals("Legacy Run", sessionSample.resolvedEventName)
+        assertNull(sessionSample.courseMapViewportJson)
         assertNull(sessionSample.cogValid)
         assertEquals(
             """{"regattalink.fast.roll_deg":{"value":12.3,"group":"regattalink"}}""",
