@@ -330,6 +330,7 @@ class TrackingDbHelperTest {
         assertTrue(columnExists(db, "tracking_samples", "session_id"))
         assertTrue(columnExists(db, "tracking_samples", "measurements_json"))
         assertTrue(columnExists(db, "tracking_samples", "cog_valid"))
+        assertTrue(columnExists(db, "race_contexts", "context_key"))
         listOf(
             "accel_x",
             "accel_y",
@@ -621,6 +622,7 @@ class TrackingDbHelperTest {
         assertEquals(111L, sessionSample.localId)
         assertEquals(31L, sessionSample.raceContextId)
         assertEquals("Legacy Run", sessionSample.resolvedEventName)
+        assertNull(sessionSample.courseMapViewportJson)
         assertNull(sessionSample.cogValid)
         assertEquals(
             """{"regattalink.fast.roll_deg":{"value":12.3,"group":"regattalink"}}""",

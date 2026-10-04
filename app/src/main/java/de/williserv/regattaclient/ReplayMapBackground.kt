@@ -49,7 +49,7 @@ internal fun replayMapCandidates(
         )
     }
 
-    if (candidates.isEmpty()) {
+    if (candidates.isEmpty() && samples.none { it.raceContextId != null }) {
         val eventName = session.resolvedEventName
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
@@ -93,13 +93,6 @@ internal fun replayMapBackgroundForSample(
 ): ReplayMapBackground? {
     replayMapContextKey(sample)?.let { key ->
         backgrounds[key]?.let { return it }
-    }
-
-    sample.raceContextId?.let { contextId ->
-        backgrounds.entries
-            .firstOrNull { it.key.raceContextId == contextId }
-            ?.value
-            ?.let { return it }
     }
 
     return if (sample.raceContextId == null && backgrounds.size == 1) {
