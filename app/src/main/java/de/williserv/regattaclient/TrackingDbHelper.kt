@@ -289,16 +289,16 @@ class TrackingDbHelper(context: Context) :
         val db = writableDatabase
 
         /*
-         * Calls without snapshot data are lookup-only. This is used while
-         * sampling if the service has restored the resolved event name before
-         * a fresh /event snapshot has been applied.
+         * Sampling can start before the first /event response. Reuse the most
+         * recent version if one exists; otherwise create one immutable empty
+         * placeholder that later snapshots will supersede rather than mutate.
          */
         if (normalizedCourseJson == null && normalizedViewportJson == null) {
-            return findLatestRaceContextId(
+            findLatestRaceContextId(
                 db = db,
                 accessContextId = accessContextId,
                 resolvedEventName = normalizedName
-            )
+            )?.let { return it }
         }
 
         val contextKey = raceContextVersionKey(
