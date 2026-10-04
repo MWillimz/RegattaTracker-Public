@@ -95,13 +95,6 @@ internal fun replayMapBackgroundForSample(
         backgrounds[key]?.let { return it }
     }
 
-    sample.raceContextId?.let { contextId ->
-        backgrounds.entries
-            .firstOrNull { it.key.raceContextId == contextId }
-            ?.value
-            ?.let { return it }
-    }
-
     return if (sample.raceContextId == null && backgrounds.size == 1) {
         backgrounds.values.single()
     } else {
