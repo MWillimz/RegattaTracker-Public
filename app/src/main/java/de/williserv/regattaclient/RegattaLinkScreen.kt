@@ -847,11 +847,11 @@ private fun RegattaLinkNmeaSetupSheet(
                     configurationState.nmeaTxActive != null
             val nmeaAttitudeBootSelected =
                 configurationState.nmeaBootOutputMask?.let {
-                    it and REGATTALINK_NMEA_TX_OUTPUT_ATTITUDE != 0
+                    it and REGATTALINK_TX_OUTPUT_IMU != 0
                 }
             val nmeaAttitudeRuntimeActive =
                 configurationState.nmeaActiveOutputMask?.let {
-                    it and REGATTALINK_NMEA_TX_OUTPUT_ATTITUDE != 0
+                    it and REGATTALINK_TX_OUTPUT_IMU != 0
                 }
 
             if (connected && configurationState.nmeaTxSupported) {
