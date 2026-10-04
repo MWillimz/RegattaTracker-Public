@@ -3765,6 +3765,10 @@ internal class RegattaLinkBleClient(
         }
     }
 
+    override fun clearPhoneGnss() {
+        clearPhoneGnssPending()
+    }
+
     private fun clearPhoneGnssPending() {
         phoneGnssPending.set(null)
     }
