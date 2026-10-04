@@ -53,6 +53,7 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.net.URL
 import java.net.URLDecoder
 
 internal enum class CourseOverlayKind {
