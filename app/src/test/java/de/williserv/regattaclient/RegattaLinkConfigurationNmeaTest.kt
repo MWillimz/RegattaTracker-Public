@@ -160,6 +160,85 @@ class RegattaLinkConfigurationNmeaTest {
     }
 
     @Test
+    fun configWordDecodesAllAssignedV2ControlsAndBaud() {
+        val word =
+            REGATTALINK_CONFIG_TX_MASTER or
+                REGATTALINK_CONFIG_TX_IMU or
+                REGATTALINK_CONFIG_TX_NMEA0183 or
+                REGATTALINK_CONFIG_TX_PHONE_GPS or
+                REGATTALINK_CONFIG_TX_COMPASS or
+                REGATTALINK_CONFIG_LOAD_PRECISION_X10 or
+                REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING or
+                RegattaLinkNmea0183Baud.BAUD_38400.encodedBits
+        val state = regattaLinkApplyConfigWord(
+            RegattaLinkConfigurationState(),
+            word
+        )
+
+        assertEquals(true, state.nmeaTxEnabled)
+        assertEquals(true, state.nmeaAttitudeTxEnabled)
+        assertEquals(true, state.nmea0183TxEnabled)
+        assertEquals(true, state.phoneGpsTxEnabled)
+        assertEquals(true, state.compassTxEnabled)
+        assertEquals(true, state.loadPrecisionX10)
+        assertEquals(true, state.magBackgroundLearningEnabled)
+        assertEquals(
+            RegattaLinkNmea0183Baud.BAUD_38400,
+            state.nmea0183Baud
+        )
+        assertTrue(state.phoneGnssForwardingDesired)
+    }
+
+    @Test
+    fun baudEncodingUsesOnlyBits14And15AndPreservesEverythingElse() {
+        val original = 0xa5a53fffu
+        RegattaLinkNmea0183Baud.entries.forEach { baud ->
+            val changed = regattaLinkConfigWordWithMask(
+                current = original,
+                mask = REGATTALINK_CONFIG_NMEA0183_BAUD_MASK,
+                encodedBits = baud.encodedBits
+            )
+            assertEquals(
+                original and REGATTALINK_CONFIG_NMEA0183_BAUD_MASK.inv(),
+                changed and REGATTALINK_CONFIG_NMEA0183_BAUD_MASK.inv()
+            )
+            assertEquals(baud, RegattaLinkNmea0183Baud.fromConfigWord(changed))
+        }
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun configMaskRejectsBitsOutsideRequestedField() {
+        regattaLinkConfigWordWithMask(
+            current = 0u,
+            mask = REGATTALINK_CONFIG_TX_MASTER,
+            encodedBits = REGATTALINK_CONFIG_TX_PHONE_GPS
+        )
+    }
+
+    @Test
+    fun headingTrimRoundTripsSignedLittleEndianBoundaries() {
+        listOf(-180, 0, 180).forEach { value ->
+            val encoded = encodeRegattaLinkHeadingTrim(value)
+            assertEquals(2, encoded.size)
+            assertEquals(value, parseRegattaLinkHeadingTrim(encoded))
+        }
+        assertArrayEquals(
+            byteArrayOf(0x4c, 0xff.toByte()),
+            encodeRegattaLinkHeadingTrim(-180)
+        )
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun headingTrimRejectsOutOfRangeWrite() {
+        encodeRegattaLinkHeadingTrim(181)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun headingTrimRejectsWrongLength() {
+        parseRegattaLinkHeadingTrim(byteArrayOf(0))
+    }
+
+    @Test
     fun configDirtyStateMakesExistingRestartActionAvailable() {
         assertFalse(regattaLinkNmeaRestartRequired(RegattaLinkConfigurationState()))
         assertTrue(
