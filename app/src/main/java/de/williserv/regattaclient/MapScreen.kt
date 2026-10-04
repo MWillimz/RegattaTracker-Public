@@ -671,12 +671,12 @@ private suspend fun loadMapBitmap(
 
     val error = when {
         result.bitmap != null -> null
+        result.invalidPng -> context.getString(R.string.map_invalid_png)
         result.statusCode != null -> context.getString(
             R.string.map_error_code,
             result.statusCode,
             result.errorBody.take(160)
         )
-        result.invalidPng -> context.getString(R.string.map_invalid_png)
         else -> context.getString(
             R.string.map_load_failed,
             result.exceptionMessage.orEmpty()
