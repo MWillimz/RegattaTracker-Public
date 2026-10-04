@@ -71,47 +71,47 @@ internal class RegattaLinkBleClient(
 ) : RegattaLinkOtaTransport, RegattaLinkConnectionClient {
     companion object {
         val CONFIG_SERVICE_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710001")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720010")
         val EXTENSION_SERVICE_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710030")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720030")
         val DEVICE_NAME_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710002")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720011")
         val DEVICE_INFO_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710003")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720012")
         val NMEA_PGN_INVENTORY_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710004")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720013")
         val NMEA_RAW_CAN_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710005")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720014")
         val LED_BRIGHTNESS_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710006")
-        val DIAGNOSTIC_LOG_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710007")
-        val DEVICE_CONTROL_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710008")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720015")
         val MOTION_DAMPING_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710009")
-        val LOAD_PRECISION_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b71000a")
-        val NMEA_TX_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b71000b")
-        val NMEA_ATTITUDE_TX_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b71000c")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720016")
+        val CONFIG_WORD_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720017")
+        val HEADING_TRIM_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720018")
+        val DIAGNOSTIC_LOG_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720019")
+        val DEVICE_CONTROL_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b72001a")
         val NMEA_TX_RUNTIME_STATUS_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b71000d")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b72001b")
+        val PHONE_GNSS_INPUT_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b72001c")
         val TELEMETRY_SERVICE_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710020")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720020")
         val TELEMETRY_FAST_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710021")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720021")
         val TELEMETRY_SUMMARY_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710022")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720022")
         val TELEMETRY_CALIBRATION_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710023")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720023")
         val TELEMETRY_BOAT_STATE_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710024")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720024")
         val TELEMETRY_MOTION_ONE_HZ_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710025")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720025")
         val TELEMETRY_LOAD_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710026")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720026")
 
         internal val NORMAL_TELEMETRY_UUIDS: Set<UUID> =
             setOf(TELEMETRY_MOTION_ONE_HZ_UUID)
@@ -1564,7 +1564,7 @@ internal class RegattaLinkBleClient(
         timeoutMs: Long = SCAN_TIMEOUT_MS
     ) {
         val filterBuilder = ScanFilter.Builder()
-            .setServiceUuid(ParcelUuid(CONFIG_SERVICE_UUID))
+            .setServiceUuid(ParcelUuid(REGATTALINK_OTA_SERVICE_UUID))
         if (deviceAddress != null) {
             filterBuilder.setDeviceAddress(deviceAddress)
         }
@@ -2403,12 +2403,6 @@ internal class RegattaLinkBleClient(
         gattSchemaRefreshRequestRunning.set(false)
     }
 
-    private fun regattaLinkExtensionService(
-        activeGatt: BluetoothGatt
-    ): BluetoothGattService? =
-        activeGatt.getService(EXTENSION_SERVICE_UUID)
-            ?: activeGatt.getService(CONFIG_SERVICE_UUID)
-
     private fun optionalFeatureWorkAllowed(activeGatt: BluetoothGatt): Boolean =
         gatt === activeGatt &&
             connected &&
@@ -2440,30 +2434,25 @@ internal class RegattaLinkBleClient(
         if (!optionalFeatureWorkAllowed(activeGatt)) return
 
         val service = activeGatt.getService(CONFIG_SERVICE_UUID)
-        val extensionService = regattaLinkExtensionService(activeGatt)
         val nameCharacteristic = service?.getCharacteristic(DEVICE_NAME_UUID)
         val brightnessCharacteristic = service?.getCharacteristic(LED_BRIGHTNESS_UUID)
         val dampingCharacteristic = service?.getCharacteristic(MOTION_DAMPING_UUID)
-        val loadPrecisionCharacteristic =
-            service?.getCharacteristic(LOAD_PRECISION_UUID)
-        val nmeaTxCharacteristic =
-            extensionService?.getCharacteristic(NMEA_TX_UUID)
-        val nmeaAttitudeTxCharacteristic =
-            extensionService?.getCharacteristic(NMEA_ATTITUDE_TX_UUID)
+        val configWordCharacteristic = service?.getCharacteristic(CONFIG_WORD_UUID)
         val nmeaTxRuntimeStatusCharacteristic =
-            extensionService?.getCharacteristic(NMEA_TX_RUNTIME_STATUS_UUID)
+            service?.getCharacteristic(NMEA_TX_RUNTIME_STATUS_UUID)
         val diagnosticLogCharacteristic =
-            extensionService?.getCharacteristic(DIAGNOSTIC_LOG_UUID)
+            service?.getCharacteristic(DIAGNOSTIC_LOG_UUID)
         val deviceControlCharacteristic =
-            extensionService?.getCharacteristic(DEVICE_CONTROL_UUID)
+            service?.getCharacteristic(DEVICE_CONTROL_UUID)
 
         var next = RegattaLinkConfigurationState(
             deviceNameSupported = nameCharacteristic != null,
             ledBrightnessSupported = brightnessCharacteristic != null,
             motionDampingSupported = dampingCharacteristic != null,
-            loadPrecisionSupported = loadPrecisionCharacteristic != null,
-            nmeaTxSupported = nmeaTxCharacteristic != null,
-            nmeaAttitudeTxSupported = nmeaAttitudeTxCharacteristic != null,
+            configWordSupported = configWordCharacteristic != null,
+            loadPrecisionSupported = configWordCharacteristic != null,
+            nmeaTxSupported = configWordCharacteristic != null,
+            nmeaAttitudeTxSupported = configWordCharacteristic != null,
             nmeaTxRuntimeStatusSupported =
                 nmeaTxRuntimeStatusCharacteristic != null,
             diagnosticLogSupported = diagnosticLogCharacteristic != null,
@@ -2514,64 +2503,22 @@ internal class RegattaLinkBleClient(
         }
 
         if (
-            loadPrecisionCharacteristic != null &&
+            configWordCharacteristic != null &&
             optionalFeatureWorkAllowed(activeGatt)
         ) {
             runCatching {
-                parseRegattaLinkLoadPrecision(
+                parseRegattaLinkConfigWord(
                     readCharacteristicBlocking(
                         activeGatt,
-                        loadPrecisionCharacteristic
+                        configWordCharacteristic
                     )
                 )
-            }.onSuccess { x10 ->
-                next = next.copy(loadPrecisionX10 = x10)
+            }.onSuccess { word ->
+                next = regattaLinkApplyConfigWord(next, word)
             }.onFailure { error ->
                 if (errorMessage.isBlank()) {
                     errorMessage = error.message
-                        ?: "Could not read RegattaLink load precision"
-                }
-            }
-        }
-
-        if (
-            nmeaTxCharacteristic != null &&
-            optionalFeatureWorkAllowed(activeGatt)
-        ) {
-            runCatching {
-                parseRegattaLinkNmeaTxEnabled(
-                    readCharacteristicBlocking(
-                        activeGatt,
-                        nmeaTxCharacteristic
-                    )
-                )
-            }.onSuccess { enabled ->
-                next = next.copy(nmeaTxEnabled = enabled)
-            }.onFailure { error ->
-                if (errorMessage.isBlank()) {
-                    errorMessage = error.message
-                        ?: "Could not read RegattaLink Boat Data TX setting"
-                }
-            }
-        }
-
-        if (
-            nmeaAttitudeTxCharacteristic != null &&
-            optionalFeatureWorkAllowed(activeGatt)
-        ) {
-            runCatching {
-                parseRegattaLinkNmeaAttitudeTxEnabled(
-                    readCharacteristicBlocking(
-                        activeGatt,
-                        nmeaAttitudeTxCharacteristic
-                    )
-                )
-            }.onSuccess { enabled ->
-                next = next.copy(nmeaAttitudeTxEnabled = enabled)
-            }.onFailure { error ->
-                if (errorMessage.isBlank()) {
-                    errorMessage = error.message
-                        ?: "Could not read RegattaLink Boat Data attitude TX setting"
+                        ?: "Could not read RegattaLink config word"
                 }
             }
         }
@@ -3320,32 +3267,31 @@ internal class RegattaLinkBleClient(
         return true
     }
 
-    private enum class NmeaTxSetting(
-        val uuid: UUID,
-        val unavailableText: String,
-        val failureText: String
-    ) {
-        MASTER(
-            NMEA_TX_UUID,
-            "RegattaLink Boat Data TX setting is unavailable",
-            "Could not change RegattaLink Boat Data TX setting"
-        ),
-        ATTITUDE(
-            NMEA_ATTITUDE_TX_UUID,
-            "RegattaLink Boat Data attitude TX setting is unavailable",
-            "Could not change RegattaLink Boat Data attitude TX setting"
-        )
-    }
-
     override fun setNmeaTxEnabled(enabled: Boolean): Boolean =
-        setNmeaTxSetting(NmeaTxSetting.MASTER, enabled)
+        setConfigWordBit(
+            bitMask = REGATTALINK_CONFIG_TX_MASTER,
+            enabled = enabled,
+            failureText = "Could not change RegattaLink Boat Data TX setting"
+        )
 
     override fun setNmeaAttitudeTxEnabled(enabled: Boolean): Boolean =
-        setNmeaTxSetting(NmeaTxSetting.ATTITUDE, enabled)
+        setConfigWordBit(
+            bitMask = REGATTALINK_CONFIG_TX_IMU,
+            enabled = enabled,
+            failureText = "Could not change RegattaLink Boat Data attitude TX setting"
+        )
 
-    private fun setNmeaTxSetting(
-        setting: NmeaTxSetting,
-        enabled: Boolean
+    override fun setLoadPrecisionX10(enabled: Boolean): Boolean =
+        setConfigWordBit(
+            bitMask = REGATTALINK_CONFIG_LOAD_PRECISION_X10,
+            enabled = enabled,
+            failureText = "Could not change RegattaLink load precision"
+        )
+
+    private fun setConfigWordBit(
+        bitMask: UInt,
+        enabled: Boolean,
+        failureText: String
     ): Boolean {
         if (otaRunning.get() || !isConnected()) return false
 
@@ -3368,132 +3314,52 @@ internal class RegattaLinkBleClient(
                 updateConfiguration {
                     it.copy(busy = true, userMessage = null, error = "")
                 }
-                try {
-                    val characteristic = regattaLinkExtensionService(activeGatt)
-                        ?.getCharacteristic(setting.uuid)
-                        ?: throw RegattaLinkOtaTransportException(
-                            setting.unavailableText,
-                            ambiguous = false
-                        )
-                    writeCharacteristicBlockingDirect(
-                        activeGatt,
-                        characteristic,
-                        byteArrayOf(if (enabled) 1 else 0)
-                    )
-                    updateConfiguration { current ->
-                        regattaLinkNmeaSelectionAfterWriteSuccess(
-                            state = current,
-                            attitudeSelector =
-                                setting == NmeaTxSetting.ATTITUDE,
-                            enabled = enabled
-                        ).copy(
-                            busy = false,
-                            userMessage = null,
-                            error = ""
-                        )
-                    }
-                } catch (error: Exception) {
-                    val reread =
-                        if (optionalFeatureWorkAllowed(activeGatt)) {
-                            runCatching {
-                                val characteristic =
-                                    regattaLinkExtensionService(activeGatt)
-                                        ?.getCharacteristic(setting.uuid)
-                                        ?: return@runCatching null
-                                when (setting) {
-                                    NmeaTxSetting.MASTER ->
-                                        parseRegattaLinkNmeaTxEnabled(
-                                            readCharacteristicBlocking(
-                                                activeGatt,
-                                                characteristic
-                                            )
-                                        )
-                                    NmeaTxSetting.ATTITUDE ->
-                                        parseRegattaLinkNmeaAttitudeTxEnabled(
-                                            readCharacteristicBlocking(
-                                                activeGatt,
-                                                characteristic
-                                            )
-                                        )
-                                }
-                            }.getOrNull()
-                        } else {
-                            null
-                        }
-                    updateConfiguration { current ->
-                        regattaLinkNmeaSelectionAfterWriteFailure(
-                            state = current,
-                            attitudeSelector =
-                                setting == NmeaTxSetting.ATTITUDE,
-                            rereadValue = reread
-                        ).copy(
-                            busy = false,
-                            userMessage =
-                                RegattaLinkUiMessage.CONFIGURATION_FAILED,
-                            error = error.message ?: setting.failureText
-                        )
-                    }
-                }
-            } finally {
-                configurationMutationRunning.set(false)
-            }
-        }
-        return true
-    }
 
-    override fun setLoadPrecisionX10(enabled: Boolean): Boolean {
-        if (otaRunning.get() || !isConnected()) return false
+                val characteristic = activeGatt
+                    .getService(CONFIG_SERVICE_UUID)
+                    ?.getCharacteristic(CONFIG_WORD_UUID)
 
-        val activeGatt = gatt ?: return false
-        if (
-            configurationMutationBlocked(activeGatt) ||
-            !configurationMutationRunning.compareAndSet(false, true)
-        ) {
-            return false
-        }
-
-        otaExecutor.execute {
-            try {
-                if (
-                    !optionalFeatureWorkAllowed(activeGatt) ||
-                    configurationMutationBlocked(activeGatt)
-                ) {
-                    return@execute
-                }
-                updateConfiguration {
-                    it.copy(busy = true, userMessage = null, error = "")
-                }
-                try {
-                    val characteristic = activeGatt
-                        .getService(CONFIG_SERVICE_UUID)
-                        ?.getCharacteristic(LOAD_PRECISION_UUID)
-                        ?: throw RegattaLinkOtaTransportException(
-                            "RegattaLink load precision setting is unavailable",
-                            ambiguous = false
-                        )
-                    writeCharacteristicBlockingDirect(
-                        activeGatt,
-                        characteristic,
-                        byteArrayOf(if (enabled) 1 else 0)
-                    )
+                if (characteristic == null) {
                     updateConfiguration {
                         it.copy(
-                            loadPrecisionSupported = true,
-                            loadPrecisionX10 = enabled,
+                            busy = false,
+                            userMessage = RegattaLinkUiMessage.CONFIGURATION_FAILED,
+                            error = "RegattaLink config word is unavailable"
+                        )
+                    }
+                    return@execute
+                }
+
+                try {
+                    val currentWord = parseRegattaLinkConfigWord(
+                        readCharacteristicBlocking(activeGatt, characteristic)
+                    )
+                    val nextWord =
+                        regattaLinkConfigWordWithBit(currentWord, bitMask, enabled)
+
+                    if (nextWord != currentWord) {
+                        writeCharacteristicBlockingDirect(
+                            activeGatt,
+                            characteristic,
+                            encodeRegattaLinkConfigWord(nextWord)
+                        )
+                    }
+
+                    updateConfiguration { current ->
+                        regattaLinkApplyConfigWord(current, nextWord).copy(
+                            configRestartRequired =
+                                current.configRestartRequired ||
+                                    nextWord != currentWord,
                             busy = false,
                             userMessage = null,
                             error = ""
                         )
                     }
                 } catch (error: Exception) {
-                    val reread =
+                    val rereadWord =
                         if (optionalFeatureWorkAllowed(activeGatt)) {
                             runCatching {
-                                val characteristic = activeGatt
-                                    .getService(CONFIG_SERVICE_UUID)
-                                    ?.getCharacteristic(LOAD_PRECISION_UUID)
-                                    ?: return@runCatching null
-                                parseRegattaLinkLoadPrecision(
+                                parseRegattaLinkConfigWord(
                                     readCharacteristicBlocking(
                                         activeGatt,
                                         characteristic
@@ -3503,15 +3369,16 @@ internal class RegattaLinkBleClient(
                         } else {
                             null
                         }
-                    updateConfiguration {
-                        it.copy(
-                            loadPrecisionX10 =
-                                reread ?: it.loadPrecisionX10,
+                    updateConfiguration { current ->
+                        val authoritative =
+                            rereadWord?.let {
+                                regattaLinkApplyConfigWord(current, it)
+                            } ?: current
+                        authoritative.copy(
                             busy = false,
                             userMessage =
                                 RegattaLinkUiMessage.CONFIGURATION_FAILED,
-                            error = error.message
-                                ?: "Could not change RegattaLink load precision"
+                            error = error.message ?: failureText
                         )
                     }
                 }
@@ -3562,7 +3429,7 @@ internal class RegattaLinkBleClient(
             val entries = mutableListOf<RegattaLinkDiagnosticLogEntry>()
             var errorMessage = ""
             try {
-                val characteristic = regattaLinkExtensionService(activeGatt)
+                val characteristic = activeGatt.getService(CONFIG_SERVICE_UUID)
                     ?.getCharacteristic(DIAGNOSTIC_LOG_UUID)
                     ?: throw RegattaLinkOtaTransportException(
                         "RegattaLink diagnostic log is unavailable",
@@ -3645,7 +3512,7 @@ internal class RegattaLinkBleClient(
             var factoryResetFinalizationDeadline: Long? = null
             var factoryResetWriteAccepted = false
             try {
-                val characteristic = regattaLinkExtensionService(activeGatt)
+                val characteristic = activeGatt.getService(CONFIG_SERVICE_UUID)
                     ?.getCharacteristic(DEVICE_CONTROL_UUID)
                     ?: throw RegattaLinkOtaTransportException(
                         "RegattaLink Device Control is unavailable",
