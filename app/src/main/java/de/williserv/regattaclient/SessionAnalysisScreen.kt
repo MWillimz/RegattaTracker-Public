@@ -3,6 +3,7 @@ package de.williserv.regattaclient
 import android.graphics.Paint
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -241,11 +242,57 @@ fun SessionAnalysisScreen(
                     capabilities.colorMetrics.firstOrNull { it.id == selected }
                 }
 
+            var colorUseAbsoluteValue by rememberSaveable(
+                detail.session.id,
+                colorMetric?.id
+            ) {
+                mutableStateOf(false)
+            }
+            var selectedColorRange by remember(
+                detail.session.id,
+                colorMetric?.id
+            ) {
+                mutableStateOf<ClosedFloatingPointRange<Float>?>(null)
+            }
+            var colorScaleEditorOpen by rememberSaveable(
+                detail.session.id,
+                colorMetric?.id
+            ) {
+                mutableStateOf(false)
+            }
+
+            val colorFilteredSamples = remember(
+                timeFilteredSamples,
+                activeFilters,
+                metricsById
+            ) {
+                applyAnalysisRangeFilters(
+                    samples = timeFilteredSamples,
+                    filters = activeFilters,
+                    metricsById = metricsById
+                )
+            }
+            val colorRawValues = remember(
+                colorFilteredSamples,
+                colorMetric
+            ) {
+                if (colorMetric == null) {
+                    emptyList()
+                } else {
+                    colorFilteredSamples.map { sample ->
+                        metricValue(colorMetric, sample)
+                    }
+                }
+            }
+            val colorHasNegativeValues =
+                sessionColorHasNegativeValue(colorRawValues)
+
             val dataset = remember(
                 timeFilteredSamples,
                 angleMetric,
                 radiusMetric,
                 colorMetric,
+                colorUseAbsoluteValue,
                 activeFilters
             ) {
                 buildSessionAnalysisDataset(
@@ -255,9 +302,32 @@ fun SessionAnalysisScreen(
                     colorMetric = colorMetric,
                     filters = activeFilters,
                     metricsById = metricsById,
+                    colorUseAbsoluteValue = colorUseAbsoluteValue,
                     aggregationWindowMs = ANALYSIS_AGGREGATION_WINDOW_MS
                 )
             }
+
+            val colorObservedRange =
+                if (dataset.colorMin != null && dataset.colorMax != null) {
+                    dataset.colorMin..dataset.colorMax
+                } else {
+                    null
+                }
+
+            LaunchedEffect(colorObservedRange) {
+                selectedColorRange = clampSessionColorRange(
+                    selectedRange = selectedColorRange,
+                    observedRange = colorObservedRange
+                )
+                if (colorObservedRange == null) {
+                    colorScaleEditorOpen = false
+                }
+            }
+
+            val effectiveColorRange = effectiveSessionColorRange(
+                selectedRange = selectedColorRange,
+                observedRange = colorObservedRange
+            )
 
             LazyColumn(
                 modifier = Modifier.weight(1f),
@@ -269,6 +339,11 @@ fun SessionAnalysisScreen(
                         angleMetric = angleMetric,
                         radiusMetric = radiusMetric,
                         colorMetric = colorMetric,
+                        colorMinValue = effectiveColorRange?.start,
+                        colorMaxValue = effectiveColorRange?.endInclusive,
+                        onColorLegendClick = {
+                            colorScaleEditorOpen = true
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(1f)
@@ -307,15 +382,18 @@ fun SessionAnalysisScreen(
                     )
                 }
 
-                if (colorMetric != null &&
-                    dataset.colorMin != null &&
-                    dataset.colorMax != null
+                if (
+                    colorMetric != null &&
+                    effectiveColorRange != null
                 ) {
                     item {
                         AnalysisColorLegend(
                             metric = colorMetric,
-                            minValue = dataset.colorMin,
-                            maxValue = dataset.colorMax
+                            minValue = effectiveColorRange.start,
+                            maxValue = effectiveColorRange.endInclusive,
+                            onClick = {
+                                colorScaleEditorOpen = true
+                            }
                         )
                     }
                 }
@@ -403,6 +481,34 @@ fun SessionAnalysisScreen(
                         fontSize = 12.sp
                     )
                 }
+            }
+
+            if (
+                colorScaleEditorOpen &&
+                colorMetric != null &&
+                colorObservedRange != null
+            ) {
+                SessionColorScaleEditorSheet(
+                    metricDisplayName = analysisMetricDisplayName(colorMetric),
+                    unit = colorMetric.unit,
+                    observedRange = colorObservedRange,
+                    selectedRange = selectedColorRange,
+                    hasNegativeValues = colorHasNegativeValues,
+                    useAbsoluteValue = colorUseAbsoluteValue,
+                    onRangeChange = {
+                        selectedColorRange = it
+                    },
+                    onAbsoluteValueChange = {
+                        colorUseAbsoluteValue = it
+                        selectedColorRange = null
+                    },
+                    onResetRange = {
+                        selectedColorRange = null
+                    },
+                    onDismiss = {
+                        colorScaleEditorOpen = false
+                    }
+                )
             }
         }
 
@@ -811,6 +917,9 @@ private fun SessionPolarPlot(
     angleMetric: AnalysisMetric,
     radiusMetric: AnalysisMetric,
     colorMetric: AnalysisMetric?,
+    colorMinValue: Double?,
+    colorMaxValue: Double?,
+    onColorLegendClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val gridColor = MaterialTheme.colorScheme.outlineVariant
@@ -907,13 +1016,13 @@ private fun SessionPolarPlot(
                     val color = if (
                         colorMetric != null &&
                         point.colorValue != null &&
-                        dataset.colorMin != null &&
-                        dataset.colorMax != null
+                        colorMinValue != null &&
+                        colorMaxValue != null
                     ) {
                         val t = sessionColorFraction(
                             value = point.colorValue,
-                            minValue = dataset.colorMin,
-                            maxValue = dataset.colorMax
+                            minValue = colorMinValue,
+                            maxValue = colorMaxValue
                         ) ?: 0.5f
                         sampleSessionColor(colorScale, t)
                     } else if (colorMetric != null) {
@@ -940,13 +1049,14 @@ private fun SessionPolarPlot(
 
             if (
                 colorMetric != null &&
-                dataset.colorMin != null &&
-                dataset.colorMax != null
+                colorMinValue != null &&
+                colorMaxValue != null
             ) {
                 PlotColorLegend(
                     metric = colorMetric,
-                    minValue = dataset.colorMin,
-                    maxValue = dataset.colorMax,
+                    minValue = colorMinValue,
+                    maxValue = colorMaxValue,
+                    onClick = onColorLegendClick,
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(8.dp)
@@ -968,12 +1078,14 @@ private fun PlotColorLegend(
     metric: AnalysisMetric,
     minValue: Double,
     maxValue: Double,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colorScale = sessionColorScale()
 
     Column(
         modifier = modifier
+            .clickable(onClick = onClick)
             .background(
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
                 shape = RoundedCornerShape(6.dp)
@@ -1017,11 +1129,16 @@ private fun PlotColorLegend(
 private fun AnalysisColorLegend(
     metric: AnalysisMetric,
     minValue: Double,
-    maxValue: Double
+    maxValue: Double,
+    onClick: () -> Unit
 ) {
     val colorScale = sessionColorScale()
 
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    ) {
         Text(
             text = stringResource(
                 R.string.session_analysis_color_legend,
