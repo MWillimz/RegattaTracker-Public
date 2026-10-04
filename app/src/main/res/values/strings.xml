@@ -434,6 +434,11 @@
     <string name="session_analysis_imu_attitude_limit">Maximum heel/pitch change: %1$s °/s</string>
     <string name="session_analysis_recovery_seconds">Exclude for %1$d s afterwards</string>
     <string name="session_analysis_color_legend">Color: %1$s</string>
+    <string name="session_color_scale_title">Color scale</string>
+    <string name="session_color_scale_observed">Observed: %1$s–%2$s %3$s</string>
+    <string name="session_color_scale_range">Color range: %1$s–%2$s %3$s</string>
+    <string name="session_color_scale_absolute">Absolute value</string>
+    <string name="session_color_scale_reset">Reset range</string>
     <string name="session_analysis_points">%1$d visible points</string>
     <string name="session_replay_button">Replay</string>
     <string name="session_replay_title">Session replay</string>

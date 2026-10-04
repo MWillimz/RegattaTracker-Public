@@ -561,6 +561,183 @@ class SessionAnalysisTest {
     }
 
     @Test
+    fun rawColorRangePreservesExtremesHiddenByAggregation() {
+        val prepared = (0..10).map { index ->
+            PreparedAnalysisSample(
+                timestampMs = index * 1_000L,
+                cogDeg = 90.0,
+                sogMps = 4.0,
+                measurements = mapOf(
+                    "test.heel" to if (index % 2 == 0) -20.0 else 20.0
+                ),
+                sourceIndex = index
+            )
+        }
+        val angle = AnalysisMetric(
+            id = "gps.cog",
+            label = "COG",
+            unit = "deg",
+            source = AnalysisMetricSource.GPS_COG,
+            angleKind = AnalysisAngleKind.COMPASS
+        )
+        val radius = AnalysisMetric(
+            id = "gps.sog",
+            label = "SOG",
+            unit = "m/s",
+            source = AnalysisMetricSource.GPS_SOG
+        )
+        val color = AnalysisMetric(
+            id = "measurement:test.heel",
+            label = "Heel",
+            unit = "deg",
+            source = AnalysisMetricSource.MEASUREMENT,
+            measurementKey = "test.heel"
+        )
+        val metrics = listOf(angle, radius, color).associateBy { it.id }
+
+        val dataset = buildSessionAnalysisDataset(
+            samples = prepared,
+            angleMetric = angle,
+            radiusMetric = radius,
+            colorMetric = color,
+            filters = emptyList(),
+            metricsById = metrics,
+            aggregationWindowMs = ANALYSIS_AGGREGATION_WINDOW_MS
+        )
+        val observed = sessionColorObservedRange(
+            values = analysisEligibleColorValues(
+                samples = prepared,
+                angleMetric = angle,
+                radiusMetric = radius,
+                colorMetric = color
+            ),
+            useAbsoluteValue = false
+        )
+
+        assertEquals(0.0, dataset.colorMin!!, 0.0001)
+        assertEquals(0.0, dataset.colorMax!!, 0.0001)
+        assertEquals(-20.0, observed!!.start, 0.0001)
+        assertEquals(20.0, observed.endInclusive, 0.0001)
+    }
+
+    @Test
+    fun colorRangeExcludesSamplesThatCannotProducePlotPoints() {
+        val angle = AnalysisMetric(
+            id = "measurement:test.angle",
+            label = "Angle",
+            unit = "deg",
+            source = AnalysisMetricSource.MEASUREMENT,
+            measurementKey = "test.angle",
+            angleKind = AnalysisAngleKind.RELATIVE
+        )
+        val radius = AnalysisMetric(
+            id = "measurement:test.radius",
+            label = "Radius",
+            unit = "kn",
+            source = AnalysisMetricSource.MEASUREMENT,
+            measurementKey = "test.radius"
+        )
+        val color = AnalysisMetric(
+            id = "measurement:test.color",
+            label = "Color",
+            unit = "deg",
+            source = AnalysisMetricSource.MEASUREMENT,
+            measurementKey = "test.color"
+        )
+        val prepared = listOf(
+            PreparedAnalysisSample(
+                timestampMs = 0L,
+                cogDeg = 0.0,
+                sogMps = 0.0,
+                measurements = mapOf(
+                    "test.angle" to 45.0,
+                    "test.radius" to 2.0,
+                    "test.color" to 5.0
+                ),
+                sourceIndex = 0
+            ),
+            PreparedAnalysisSample(
+                timestampMs = 1_000L,
+                cogDeg = 0.0,
+                sogMps = 0.0,
+                measurements = mapOf(
+                    "test.radius" to 2.0,
+                    "test.color" to -100.0
+                ),
+                sourceIndex = 1
+            )
+        )
+
+        val values = analysisEligibleColorValues(
+            samples = prepared,
+            angleMetric = angle,
+            radiusMetric = radius,
+            colorMetric = color
+        )
+        val observed = sessionColorObservedRange(
+            values = values,
+            useAbsoluteValue = false
+        )
+
+        assertEquals(listOf(5.0), values)
+        assertEquals(5.0, observed!!.start, 0.0001)
+        assertEquals(5.0, observed.endInclusive, 0.0001)
+        assertFalse(sessionColorHasNegativeValue(values))
+    }
+
+    @Test
+    fun absoluteColoringTransformsValuesBeforeAggregation() {
+        val prepared = (0..10).map { index ->
+            PreparedAnalysisSample(
+                timestampMs = index * 1_000L,
+                cogDeg = 90.0,
+                sogMps = 4.0,
+                measurements = mapOf(
+                    "test.heel" to if (index % 2 == 0) -20.0 else 20.0
+                ),
+                sourceIndex = index
+            )
+        }
+        val angle = AnalysisMetric(
+            id = "gps.cog",
+            label = "COG",
+            unit = "deg",
+            source = AnalysisMetricSource.GPS_COG,
+            angleKind = AnalysisAngleKind.COMPASS
+        )
+        val radius = AnalysisMetric(
+            id = "gps.sog",
+            label = "SOG",
+            unit = "m/s",
+            source = AnalysisMetricSource.GPS_SOG
+        )
+        val color = AnalysisMetric(
+            id = "measurement:test.heel",
+            label = "Heel",
+            unit = "deg",
+            source = AnalysisMetricSource.MEASUREMENT,
+            measurementKey = "test.heel"
+        )
+        val metrics = listOf(angle, radius, color).associateBy { it.id }
+
+        val dataset = buildSessionAnalysisDataset(
+            samples = prepared,
+            angleMetric = angle,
+            radiusMetric = radius,
+            colorMetric = color,
+            filters = emptyList(),
+            metricsById = metrics,
+            colorUseAbsoluteValue = true,
+            aggregationWindowMs = ANALYSIS_AGGREGATION_WINDOW_MS
+        )
+
+        assertEquals(1, dataset.points.size)
+        assertEquals(20.0, dataset.points.single().colorValue!!, 0.0001)
+        assertEquals(20.0, dataset.colorMin!!, 0.0001)
+        assertEquals(20.0, dataset.colorMax!!, 0.0001)
+    }
+
+    @Test
     fun tenSecondAggregationUsesOnlyCompleteContinuousSegments() {
         val prepared = (0..20).map { index ->
             PreparedAnalysisSample(

@@ -392,6 +392,11 @@
     <string name="session_analysis_imu_attitude_limit">Variation maximale gîte/tangage : %1$s °/s</string>
     <string name="session_analysis_recovery_seconds">Exclure pendant %1$d s ensuite</string>
     <string name="session_analysis_color_legend">Couleur : %1$s</string>
+    <string name="session_color_scale_title">Échelle de couleurs</string>
+    <string name="session_color_scale_observed">Observé : %1$s–%2$s %3$s</string>
+    <string name="session_color_scale_range">Plage de couleurs : %1$s–%2$s %3$s</string>
+    <string name="session_color_scale_absolute">Valeur absolue</string>
+    <string name="session_color_scale_reset">Réinitialiser la plage</string>
     <string name="session_analysis_points">%1$d points visibles</string>
     <string name="session_replay_button">Replay</string>
     <string name="session_replay_title">Replay de la session</string>

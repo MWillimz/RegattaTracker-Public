@@ -838,6 +838,42 @@ private data class EligibleAnalysisPoint(
     val colorValue: Double?
 )
 
+private fun analysisPlotCoordinates(
+    sample: PreparedAnalysisSample,
+    angleMetric: AnalysisMetric,
+    radiusMetric: AnalysisMetric
+): Pair<Double, Double>? {
+    val angleKind = angleMetric.angleKind ?: return null
+    val rawAngle = metricValue(angleMetric, sample) ?: return null
+    val angle = normalizeAnalysisAngle(rawAngle, angleKind)
+    if (!angle.isFinite()) return null
+
+    val radius = metricValue(radiusMetric, sample) ?: return null
+    if (!radius.isFinite() || radius < 0.0) return null
+
+    return angle to radius
+}
+
+internal fun analysisEligibleColorValues(
+    samples: List<PreparedAnalysisSample>,
+    angleMetric: AnalysisMetric,
+    radiusMetric: AnalysisMetric,
+    colorMetric: AnalysisMetric
+): List<Double> =
+    samples.mapNotNull { sample ->
+        if (
+            analysisPlotCoordinates(
+                sample = sample,
+                angleMetric = angleMetric,
+                radiusMetric = radiusMetric
+            ) == null
+        ) {
+            null
+        } else {
+            metricValue(colorMetric, sample)?.takeIf { it.isFinite() }
+        }
+    }
+
 internal fun buildSessionAnalysisDataset(
     samples: List<PreparedAnalysisSample>,
     angleMetric: AnalysisMetric,
@@ -845,6 +881,7 @@ internal fun buildSessionAnalysisDataset(
     colorMetric: AnalysisMetric?,
     filters: List<AnalysisRangeFilter>,
     metricsById: Map<String, AnalysisMetric>,
+    colorUseAbsoluteValue: Boolean = false,
     aggregationWindowMs: Long = 0L
 ): SessionAnalysisDataset {
     val kind = angleMetric.angleKind
@@ -855,20 +892,23 @@ internal fun buildSessionAnalysisDataset(
     )
     val eligible = buildList {
         filteredSamples.forEach { sample ->
-            val rawAngle = metricValue(angleMetric, sample) ?: return@forEach
-            val angleKind = kind ?: return@forEach
-            val angle = normalizeAnalysisAngle(rawAngle, angleKind)
-            if (!angle.isFinite()) return@forEach
+            val coordinates = analysisPlotCoordinates(
+                sample = sample,
+                angleMetric = angleMetric,
+                radiusMetric = radiusMetric
+            ) ?: return@forEach
 
-            val radius = metricValue(radiusMetric, sample) ?: return@forEach
-            if (!radius.isFinite() || radius < 0.0) return@forEach
-
-            val color = colorMetric?.let { metricValue(it, sample) }
+            val color = colorMetric?.let {
+                sessionColorValue(
+                    value = metricValue(it, sample),
+                    useAbsoluteValue = colorUseAbsoluteValue
+                )
+            }
             add(
                 EligibleAnalysisPoint(
                     sample = sample,
-                    angleDeg = angle,
-                    radius = radius,
+                    angleDeg = coordinates.first,
+                    radius = coordinates.second,
                     colorValue = color?.takeIf { it.isFinite() }
                 )
             )

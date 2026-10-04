@@ -8,6 +8,11 @@ enum class ReplayExtraFieldSource {
     MEASUREMENT
 }
 
+internal enum class ReplayExtraFieldDirection {
+    HEEL,
+    PITCH
+}
+
 data class ReplayExtraField(
     val id: String,
     val source: ReplayExtraFieldSource,
@@ -112,12 +117,27 @@ internal fun replayExtraFieldValue(
     field: ReplayExtraField
 ): String? = replayExtraFieldValue(field, sample)
 
+internal fun replayExtraFieldNumericValue(
+    sample: SessionTrackingSample,
+    field: ReplayExtraField
+): Double? {
+    val key = field.measurementKey ?: return null
+    return sessionNumericMeasurementValue(sample, key)
+}
+
+internal fun replayExtraFieldDirection(
+    field: ReplayExtraField
+): ReplayExtraFieldDirection? = when (field.measurementKey) {
+    REGATTALINK_MOTION_HEEL_KEY -> ReplayExtraFieldDirection.HEEL
+    REGATTALINK_MOTION_PITCH_KEY -> ReplayExtraFieldDirection.PITCH
+    else -> null
+}
+
 private fun replayExtraFieldValue(
     field: ReplayExtraField,
     sample: SessionTrackingSample
 ): String? {
-    val key = field.measurementKey ?: return null
-    val number = sessionNumericMeasurementValue(sample, key) ?: return null
+    val number = replayExtraFieldNumericValue(sample, field) ?: return null
     val formatted = formatReplayNumber(
         number,
         decimalsForMeasurement(number),
