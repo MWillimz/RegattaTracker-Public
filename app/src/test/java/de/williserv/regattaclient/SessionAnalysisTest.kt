@@ -561,6 +561,58 @@ class SessionAnalysisTest {
     }
 
     @Test
+    fun absoluteColoringTransformsValuesBeforeAggregation() {
+        val prepared = (0..10).map { index ->
+            PreparedAnalysisSample(
+                timestampMs = index * 1_000L,
+                cogDeg = 90.0,
+                sogMps = 4.0,
+                measurements = mapOf(
+                    "test.heel" to if (index % 2 == 0) -20.0 else 20.0
+                ),
+                sourceIndex = index
+            )
+        }
+        val angle = AnalysisMetric(
+            id = "gps.cog",
+            label = "COG",
+            unit = "deg",
+            source = AnalysisMetricSource.GPS_COG,
+            angleKind = AnalysisAngleKind.COMPASS
+        )
+        val radius = AnalysisMetric(
+            id = "gps.sog",
+            label = "SOG",
+            unit = "m/s",
+            source = AnalysisMetricSource.GPS_SOG
+        )
+        val color = AnalysisMetric(
+            id = "measurement:test.heel",
+            label = "Heel",
+            unit = "deg",
+            source = AnalysisMetricSource.MEASUREMENT,
+            measurementKey = "test.heel"
+        )
+        val metrics = listOf(angle, radius, color).associateBy { it.id }
+
+        val dataset = buildSessionAnalysisDataset(
+            samples = prepared,
+            angleMetric = angle,
+            radiusMetric = radius,
+            colorMetric = color,
+            filters = emptyList(),
+            metricsById = metrics,
+            colorUseAbsoluteValue = true,
+            aggregationWindowMs = ANALYSIS_AGGREGATION_WINDOW_MS
+        )
+
+        assertEquals(1, dataset.points.size)
+        assertEquals(20.0, dataset.points.single().colorValue!!, 0.0001)
+        assertEquals(20.0, dataset.colorMin!!, 0.0001)
+        assertEquals(20.0, dataset.colorMax!!, 0.0001)
+    }
+
+    @Test
     fun tenSecondAggregationUsesOnlyCompleteContinuousSegments() {
         val prepared = (0..20).map { index ->
             PreparedAnalysisSample(

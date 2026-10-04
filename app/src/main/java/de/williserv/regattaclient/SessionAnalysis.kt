@@ -845,6 +845,7 @@ internal fun buildSessionAnalysisDataset(
     colorMetric: AnalysisMetric?,
     filters: List<AnalysisRangeFilter>,
     metricsById: Map<String, AnalysisMetric>,
+    colorUseAbsoluteValue: Boolean = false,
     aggregationWindowMs: Long = 0L
 ): SessionAnalysisDataset {
     val kind = angleMetric.angleKind
@@ -863,7 +864,12 @@ internal fun buildSessionAnalysisDataset(
             val radius = metricValue(radiusMetric, sample) ?: return@forEach
             if (!radius.isFinite() || radius < 0.0) return@forEach
 
-            val color = colorMetric?.let { metricValue(it, sample) }
+            val color = colorMetric?.let {
+                sessionColorValue(
+                    value = metricValue(it, sample),
+                    useAbsoluteValue = colorUseAbsoluteValue
+                )
+            }
             add(
                 EligibleAnalysisPoint(
                     sample = sample,

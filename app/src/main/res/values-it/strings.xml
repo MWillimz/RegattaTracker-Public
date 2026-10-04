@@ -392,6 +392,11 @@
     <string name="session_analysis_imu_attitude_limit">Variazione massima sbandamento/beccheggio: %1$s °/s</string>
     <string name="session_analysis_recovery_seconds">Escludi per %1$d s dopo</string>
     <string name="session_analysis_color_legend">Colore: %1$s</string>
+    <string name="session_color_scale_title">Scala colori</string>
+    <string name="session_color_scale_observed">Osservato: %1$s–%2$s %3$s</string>
+    <string name="session_color_scale_range">Intervallo colori: %1$s–%2$s %3$s</string>
+    <string name="session_color_scale_absolute">Valore assoluto</string>
+    <string name="session_color_scale_reset">Reimposta intervallo</string>
     <string name="session_analysis_points">%1$d punti visibili</string>
     <string name="session_replay_button">Replay</string>
     <string name="session_replay_title">Replay sessione</string>
