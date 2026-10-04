@@ -14,6 +14,28 @@ import org.robolectric.annotation.Config
 class ReplayMapBackgroundTest {
 
     @Test
+    fun storedViewportJsonUsesStrictPublishedMapContract() {
+        val parsed = parseCourseMapViewportJson(
+            """{"projection":"web_mercator","zoom":12,"left_px":100.5,"top_px":200.5,"width_px":800,"height_px":600,"generation_id":"g42"}"""
+        )
+
+        assertEquals("web_mercator", parsed?.projection)
+        assertEquals(12, parsed?.zoom)
+        assertEquals(100.5, parsed?.leftPx ?: Double.NaN, 0.000001)
+        assertEquals(200.5, parsed?.topPx ?: Double.NaN, 0.000001)
+        assertEquals(800, parsed?.widthPx)
+        assertEquals(600, parsed?.heightPx)
+        assertEquals("g42", parsed?.generationId)
+
+        assertNull(
+            parseCourseMapViewportJson(
+                """{"projection":"other","zoom":12,"left_px":100.5,"top_px":200.5,"width_px":800,"height_px":600,"generation_id":"g42"}"""
+            )
+        )
+        assertNull(parseCourseMapViewportJson(""))
+    }
+
+    @Test
     fun manualSessionHasNoMapCandidates() {
         val session = session(mode = "manual", accessContextId = null)
 
