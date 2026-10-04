@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
@@ -26,7 +25,9 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -54,6 +55,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.text.DateFormat
@@ -67,6 +69,12 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 
+private enum class ReplayConfigSheet {
+    VALUES,
+    FILTERS
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SessionReplayScreen(
     detail: SessionDetailData?,
@@ -88,8 +96,8 @@ fun SessionReplayScreen(
     var playbackSpeed by rememberSaveable(detail?.session?.id) {
         mutableIntStateOf(1)
     }
-    var fieldsExpanded by rememberSaveable(detail?.session?.id) {
-        mutableStateOf(false)
+    var configSheet by rememberSaveable(detail?.session?.id) {
+        mutableStateOf<ReplayConfigSheet?>(null)
     }
     var colorMetricId by rememberSaveable(detail?.session?.id) {
         mutableStateOf<String?>(null)
@@ -99,9 +107,6 @@ fun SessionReplayScreen(
     }
     var activeTimeRange by remember(detail?.session?.id) {
         mutableStateOf<ClosedFloatingPointRange<Float>?>(null)
-    }
-    var filtersExpanded by rememberSaveable(detail?.session?.id) {
-        mutableStateOf(false)
     }
     var allFiltersExpanded by rememberSaveable(detail?.session?.id) {
         mutableStateOf(false)
@@ -385,24 +390,47 @@ fun SessionReplayScreen(
                 )
             }
 
-            if (detail.replayFields.isNotEmpty()) {
-                TextButton(
-                    onClick = { fieldsExpanded = !fieldsExpanded }
-                ) {
-                    Text(
-                        if (fieldsExpanded) {
-                            stringResource(R.string.session_replay_fields_hide_config)
-                        } else {
-                            stringResource(R.string.session_replay_fields_show_config)
-                        }
-                    )
+            val activeFilterCount = replayActiveFilterCount(
+                timeFilterActive = activeTimeRange != null,
+                rangeFilterCount = activeFilters.size,
+                sampleFilterCount = sampleFilters.size
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (detail.replayFields.isNotEmpty()) {
+                    TextButton(
+                        onClick = { configSheet = ReplayConfigSheet.VALUES },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = stringResource(
+                                R.string.session_replay_fields_show_config
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
 
-                if (fieldsExpanded) {
-                    ReplayFieldConfiguration(
-                        fields = detail.replayFields,
-                        selectedIds = extraFieldIds,
-                        onSelectionChange = onExtraFieldIdsChange
+                TextButton(
+                    onClick = { configSheet = ReplayConfigSheet.FILTERS },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    val filtersLabel =
+                        stringResource(R.string.session_analysis_filters)
+                    val label = if (activeFilterCount > 0) {
+                        "$filtersLabel · $activeFilterCount " +
+                            stringResource(R.string.status_active)
+                    } else {
+                        filtersLabel
+                    }
+                    Text(
+                        text = label,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -415,74 +443,99 @@ fun SessionReplayScreen(
                 }
             )
 
-            TextButton(
-                onClick = { filtersExpanded = !filtersExpanded }
-            ) {
-                Text(
-                    if (filtersExpanded) {
-                        stringResource(R.string.session_analysis_hide_filters)
-                    } else {
-                        stringResource(R.string.session_analysis_show_filters)
-                    }
-                )
-            }
-
-            if (filtersExpanded) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .heightIn(max = 280.dp)
-                            .verticalScroll(rememberScrollState())
-                            .padding(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+            when (configSheet) {
+                ReplayConfigSheet.VALUES -> {
+                    ModalBottomSheet(
+                        onDismissRequest = { configSheet = null }
                     ) {
-                        AnalysisTimeFilterRow(
-                            samples = preparedAnalysis,
-                            activeRange = activeTimeRange,
-                            onActiveRangeChange = { activeTimeRange = it }
-                        )
-                        AnalysisStateFilters(
-                            gpsAvailable = capabilities.gpsManeuverFilterAvailable,
-                            gpsEnabled = gpsManeuverFilterEnabled,
-                            onGpsEnabledChange = {
-                                gpsManeuverFilterEnabled = it
-                            },
-                            gpsThresholdDeg = gpsManeuverThresholdDeg,
-                            onGpsThresholdChange = {
-                                gpsManeuverThresholdDeg = it
-                            },
-                            gpsRecoverySeconds = gpsManeuverRecoverySeconds,
-                            onGpsRecoveryChange = {
-                                gpsManeuverRecoverySeconds = it
-                            },
-                            imuAvailable = capabilities.imuStabilityFilterAvailable,
-                            imuEnabled = imuStabilityFilterEnabled,
-                            onImuEnabledChange = {
-                                imuStabilityFilterEnabled = it
-                            },
-                            imuMaxAttitudeRateDps = imuMaxAttitudeRateDps,
-                            onImuMaxAttitudeRateChange = {
-                                imuMaxAttitudeRateDps = it
-                            },
-                            imuRecoverySeconds = imuRecoverySeconds,
-                            onImuRecoveryChange = {
-                                imuRecoverySeconds = it
-                            }
-                        )
-                        AnalysisFilters(
-                            metrics = capabilities.filterMetrics,
-                            preparedSamples = timeFilteredSamples,
-                            activeRanges = activeFilterRanges,
-                            allExpanded = allFiltersExpanded,
-                            onAllExpandedChange = { allFiltersExpanded = it }
-                        )
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 24.dp)
+                                .padding(bottom = 24.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            ReplayFieldConfiguration(
+                                fields = detail.replayFields,
+                                selectedIds = extraFieldIds,
+                                onSelectionChange = onExtraFieldIdsChange
+                            )
+                        }
                     }
                 }
+
+                ReplayConfigSheet.FILTERS -> {
+                    ModalBottomSheet(
+                        onDismissRequest = { configSheet = null }
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 24.dp)
+                                .padding(bottom = 24.dp)
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = stringResource(
+                                    R.string.session_analysis_filters
+                                ),
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            AnalysisTimeFilterRow(
+                                samples = preparedAnalysis,
+                                activeRange = activeTimeRange,
+                                onActiveRangeChange = {
+                                    activeTimeRange = it
+                                }
+                            )
+                            AnalysisStateFilters(
+                                gpsAvailable =
+                                    capabilities.gpsManeuverFilterAvailable,
+                                gpsEnabled = gpsManeuverFilterEnabled,
+                                onGpsEnabledChange = {
+                                    gpsManeuverFilterEnabled = it
+                                },
+                                gpsThresholdDeg = gpsManeuverThresholdDeg,
+                                onGpsThresholdChange = {
+                                    gpsManeuverThresholdDeg = it
+                                },
+                                gpsRecoverySeconds =
+                                    gpsManeuverRecoverySeconds,
+                                onGpsRecoveryChange = {
+                                    gpsManeuverRecoverySeconds = it
+                                },
+                                imuAvailable =
+                                    capabilities.imuStabilityFilterAvailable,
+                                imuEnabled = imuStabilityFilterEnabled,
+                                onImuEnabledChange = {
+                                    imuStabilityFilterEnabled = it
+                                },
+                                imuMaxAttitudeRateDps =
+                                    imuMaxAttitudeRateDps,
+                                onImuMaxAttitudeRateChange = {
+                                    imuMaxAttitudeRateDps = it
+                                },
+                                imuRecoverySeconds = imuRecoverySeconds,
+                                onImuRecoveryChange = {
+                                    imuRecoverySeconds = it
+                                }
+                            )
+                            AnalysisFilters(
+                                metrics = capabilities.filterMetrics,
+                                preparedSamples = timeFilteredSamples,
+                                activeRanges = activeFilterRanges,
+                                allExpanded = allFiltersExpanded,
+                                onAllExpandedChange = {
+                                    allFiltersExpanded = it
+                                }
+                            )
+                        }
+                    }
+                }
+
+                null -> Unit
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -650,30 +703,62 @@ private fun ReplayFieldConfiguration(
     val recommended = fields.filter { it.recommended }
     val additional = fields.filterNot { it.recommended }
 
-    Card(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .heightIn(max = 220.dp)
-                .verticalScroll(rememberScrollState())
-                .padding(10.dp)
-        ) {
-            Text(
-                text = stringResource(R.string.session_replay_fields_title),
-                fontWeight = FontWeight.SemiBold
-            )
+        Text(
+            text = stringResource(R.string.session_replay_fields_title),
+            fontSize = 22.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = stringResource(R.string.session_replay_fields_hint),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.sp
+        )
 
-            if (recommended.isNotEmpty()) {
-                Text(
-                    text = stringResource(R.string.session_replay_fields_recommended),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 12.sp
+        if (recommended.isNotEmpty()) {
+            Text(
+                text = stringResource(R.string.session_replay_fields_recommended),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp
+            )
+            recommended.forEach { field ->
+                ReplayFieldConfigRow(
+                    field = field,
+                    checked = field.id in selectedIds,
+                    onCheckedChange = { checked ->
+                        onSelectionChange(
+                            if (checked) {
+                                selectedIds + field.id
+                            } else {
+                                selectedIds - field.id
+                            }
+                        )
+                    }
                 )
-                recommended.forEach { field ->
+            }
+        }
+
+        if (additional.isNotEmpty()) {
+            TextButton(
+                onClick = { allExpanded = !allExpanded }
+            ) {
+                Text(
+                    if (allExpanded) {
+                        stringResource(R.string.session_replay_fields_hide_all)
+                    } else {
+                        stringResource(
+                            R.string.session_replay_fields_show_all,
+                            additional.size
+                        )
+                    }
+                )
+            }
+
+            if (allExpanded) {
+                additional.forEach { field ->
                     ReplayFieldConfigRow(
                         field = field,
                         checked = field.id in selectedIds,
@@ -689,41 +774,6 @@ private fun ReplayFieldConfiguration(
                     )
                 }
             }
-
-            if (additional.isNotEmpty()) {
-                TextButton(
-                    onClick = { allExpanded = !allExpanded }
-                ) {
-                    Text(
-                        if (allExpanded) {
-                            stringResource(R.string.session_replay_fields_hide_all)
-                        } else {
-                            stringResource(
-                                R.string.session_replay_fields_show_all,
-                                additional.size
-                            )
-                        }
-                    )
-                }
-
-                if (allExpanded) {
-                    additional.forEach { field ->
-                        ReplayFieldConfigRow(
-                            field = field,
-                            checked = field.id in selectedIds,
-                            onCheckedChange = { checked ->
-                                onSelectionChange(
-                                    if (checked) {
-                                        selectedIds + field.id
-                                    } else {
-                                        selectedIds - field.id
-                                    }
-                                )
-                            }
-                        )
-                    }
-                }
-            }
         }
     }
 }
@@ -734,18 +784,7 @@ private fun ReplayFieldConfigRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
-    val source = field.measurementGroup
-        ?.takeIf { it.isNotBlank() }
-        ?.let { group ->
-            when {
-                group.equals("regattalink", ignoreCase = true) ->
-                    "RegattaLink"
-                group.equals("nmea", ignoreCase = true) ->
-                    stringResource(R.string.regattalink_nmea_title)
-                else -> group
-            }
-        }
-        ?: stringResource(R.string.session_replay_field_source_measurements)
+    val source = replayExtraFieldSourceLabel(field)
     val fieldLabel = replayExtraFieldLabel(field)
     val label = field.unit?.let { "$fieldLabel ($it)" } ?: fieldLabel
 
@@ -858,18 +897,21 @@ private fun ReplayCurrentSampleCard(
 }
 
 @Composable
-private fun replayExtraFieldReplayLabel(field: ReplayExtraField): String {
-    val source = field.measurementGroup
-        ?.takeIf { it.isNotBlank() }
-        ?.let { group ->
-            if (group.equals("regattalink", ignoreCase = true)) {
-                "RegattaLink"
-            } else {
-                group
-            }
-        }
-        ?: stringResource(R.string.session_replay_field_source_measurements)
-    return "$source · ${replayExtraFieldLabel(field)}"
+private fun replayExtraFieldReplayLabel(field: ReplayExtraField): String =
+    "${replayExtraFieldSourceLabel(field)} · ${replayExtraFieldLabel(field)}"
+
+@Composable
+private fun replayExtraFieldSourceLabel(field: ReplayExtraField): String {
+    val group = field.measurementGroup?.takeIf { it.isNotBlank() }
+    return when {
+        group == null ->
+            stringResource(R.string.session_replay_field_source_measurements)
+        group.equals("regattalink", ignoreCase = true) ->
+            "RegattaLink"
+        group.equals("nmea", ignoreCase = true) ->
+            stringResource(R.string.regattalink_nmea_title)
+        else -> group
+    }
 }
 
 @Composable
@@ -1317,6 +1359,15 @@ private fun ReplayTimeline(
         }
     }
 }
+
+internal fun replayActiveFilterCount(
+    timeFilterActive: Boolean,
+    rangeFilterCount: Int,
+    sampleFilterCount: Int
+): Int =
+    (if (timeFilterActive) 1 else 0) +
+        rangeFilterCount +
+        sampleFilterCount
 
 internal data class ReplayTrackColorData(
     val values: List<Double?>,
