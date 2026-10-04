@@ -298,6 +298,7 @@ internal class RegattaLinkBleClient(
     private var reconnectFuture: CompletableFuture<RegattaLinkDeviceInfo?>? = null
     @Volatile private var otaReconnectAllowOtaOnly = false
     @Volatile private var otaReconnectExpectedStableId: String? = null
+    @Volatile private var otaOnlyPostBootConnection = false
     private var selectedDeviceAddress: String? = null
     private val attemptedDiscoveryAddresses = mutableSetOf<String>()
     private var discoveryInProgress = false
@@ -1107,6 +1108,7 @@ internal class RegattaLinkBleClient(
         }
 
         otaCancelled.set(false)
+        otaOnlyPostBootConnection = false
         otaProgressQueue.clear()
         otaDataTransportError.set(null)
         deferredTerminalOtaState.set(null)
@@ -1122,6 +1124,15 @@ internal class RegattaLinkBleClient(
                     onTerminalDisconnect = ::invalidateTerminalOtaConnection
                 ).run()
             } finally {
+                val reconnectAfterOtaOnlySuccess =
+                    otaOnlyPostBootConnection &&
+                        lastOtaState.phase == RegattaLinkOtaPhase.SUCCESS
+
+                if (reconnectAfterOtaOnlySuccess) {
+                    closeGatt()
+                    invalidateTerminalOtaConnection()
+                }
+
                 otaRunning.set(false)
                 otaCancelled.set(false)
                 scanPurpose = ScanPurpose.NORMAL
@@ -1140,6 +1151,11 @@ internal class RegattaLinkBleClient(
                 }
 
                 flushDeferredTerminalOtaState()
+
+                if (reconnectAfterOtaOnlySuccess) {
+                    handler.post { onUnexpectedDisconnect() }
+                }
+                otaOnlyPostBootConnection = false
             }
         }
     }
@@ -1917,6 +1933,7 @@ internal class RegattaLinkBleClient(
                 connectionSetupComplete = true
                 establishedConnection = true
                 selectedDeviceAddress = callbackGatt.device.address
+                otaOnlyPostBootConnection = true
                 reconnectFuture?.complete(info)
             }
         }
