@@ -169,6 +169,7 @@ fun RegattaLinkScreen(
     onSetCompassTxEnabled: (Boolean) -> Unit = {},
     onSetNmea0183Baud: (Int) -> Unit = {},
     onSetMagBackgroundLearningEnabled: (Boolean) -> Unit = {},
+    onSetSubsystemEnabled: (RegattaLinkSubsystem, Boolean) -> Unit = { _, _ -> },
     onSetHeadingTrimDeg: (Int) -> Unit = {},
     onSetLoadSensorAlias: (String, String) -> Unit = { _, _ -> },
     onDrainDiagnosticLog: () -> Unit,
@@ -369,6 +370,7 @@ fun RegattaLinkScreen(
                     nameDialogOpen = true
                 },
                 onSetLedBrightness = onSetLedBrightness,
+                onSetSubsystemEnabled = onSetSubsystemEnabled,
                 onDrainDiagnosticLog = onDrainDiagnosticLog,
                 onReadRawFrames = onReadRawFrames,
                 onStartRawCapture = onStartRawCapture,
@@ -1502,6 +1504,7 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
     otaActive: Boolean,
     onChangeName: () -> Unit,
     onSetLedBrightness: (Int) -> Unit,
+    onSetSubsystemEnabled: (RegattaLinkSubsystem, Boolean) -> Unit,
     onDrainDiagnosticLog: () -> Unit,
     onReadRawFrames: () -> Unit,
     onStartRawCapture: () -> Unit,
