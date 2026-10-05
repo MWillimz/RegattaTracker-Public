@@ -89,6 +89,21 @@ data class RegattaLinkConfigurationState(
     val nmea0183Baud: RegattaLinkNmea0183Baud?
         get() = configWord?.let(RegattaLinkNmea0183Baud::fromConfigWord)
 
+    val imuAvailable: Boolean?
+        get() = subsystemAvailable(RegattaLinkSubsystem.IMU)
+
+    val magAvailable: Boolean?
+        get() = subsystemAvailable(RegattaLinkSubsystem.MAG)
+
+    val boatDataAvailable: Boolean?
+        get() = subsystemAvailable(RegattaLinkSubsystem.BOAT_DATA)
+
+    val nmea0183Available: Boolean?
+        get() = subsystemAvailable(RegattaLinkSubsystem.NMEA0183_RX)
+
+    fun subsystemAvailable(subsystem: RegattaLinkSubsystem): Boolean? =
+        configWord?.let { it and subsystem.configBit != 0u }
+
     val phoneGnssForwardingDesired: Boolean
         get() =
             configWord?.let {
@@ -290,6 +305,20 @@ internal const val REGATTALINK_CONFIG_TX_LOAD: UInt = 0x00000020u
 internal const val REGATTALINK_CONFIG_LOAD_PRECISION_X10: UInt = 0x00000100u
 internal const val REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING: UInt = 0x00000200u
 internal const val REGATTALINK_CONFIG_NMEA0183_BAUD_MASK: UInt = 0x0000c000u
+internal const val REGATTALINK_CONFIG_SUBSYSTEM_IMU: UInt = 0x00010000u
+internal const val REGATTALINK_CONFIG_SUBSYSTEM_MAG: UInt = 0x00020000u
+internal const val REGATTALINK_CONFIG_SUBSYSTEM_CAN: UInt = 0x00040000u
+internal const val REGATTALINK_CONFIG_SUBSYSTEM_NMEA0183_RX: UInt = 0x00080000u
+internal const val REGATTALINK_CONFIG_SUBSYSTEM_MASK: UInt = 0x000f0000u
+
+enum class RegattaLinkSubsystem(
+    val configBit: UInt
+) {
+    IMU(REGATTALINK_CONFIG_SUBSYSTEM_IMU),
+    MAG(REGATTALINK_CONFIG_SUBSYSTEM_MAG),
+    BOAT_DATA(REGATTALINK_CONFIG_SUBSYSTEM_CAN),
+    NMEA0183_RX(REGATTALINK_CONFIG_SUBSYSTEM_NMEA0183_RX)
+}
 
 enum class RegattaLinkNmea0183Baud(
     val baudRate: Int,
