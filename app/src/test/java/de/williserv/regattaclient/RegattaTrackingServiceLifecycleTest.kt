@@ -1,5 +1,6 @@
 package de.williserv.regattaclient
 
+import android.Manifest
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -211,6 +212,9 @@ class RegattaTrackingServiceLifecycleTest {
 
     @Test
     fun `start during stop handoff re-arms sampling schedules`() {
+        shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
         val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
         val service = controller.get()
         val helper = getField<TrackingDbHelper>(service, "db")
