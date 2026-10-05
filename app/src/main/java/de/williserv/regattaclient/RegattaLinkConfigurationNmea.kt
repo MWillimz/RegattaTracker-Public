@@ -132,6 +132,15 @@ data class RegattaLinkConfigurationState(
             REGATTALINK_CONFIG_SESSION_NMEA0183
         )
 
+    /*
+     * Raw current-session bit used by the explicit next-boot enable switches.
+     * Unlike the feature-gating helpers above, all-zero is intentionally
+     * represented as false so a disabled/unavailable subsystem can be switched
+     * back on.
+     */
+    fun subsystemSessionBit(subsystem: RegattaLinkSubsystem): Boolean? =
+        configWord?.let { it and subsystem.configBit != 0u }
+
     val nmeaTxRestartRequired: Boolean
         get() =
             nmeaTxRuntimeStatusSupported &&
@@ -332,6 +341,15 @@ internal const val REGATTALINK_CONFIG_SESSION_CAN: UInt = 0x00040000u
 internal const val REGATTALINK_CONFIG_SESSION_NMEA0183: UInt = 0x00080000u
 internal const val REGATTALINK_CONFIG_SESSION_SUBSYSTEM_MASK: UInt =
     0x000f0000u
+
+enum class RegattaLinkSubsystem(
+    val configBit: UInt
+) {
+    IMU(REGATTALINK_CONFIG_SESSION_IMU),
+    MAG(REGATTALINK_CONFIG_SESSION_MAG),
+    BOAT_DATA(REGATTALINK_CONFIG_SESSION_CAN),
+    NMEA0183_RX(REGATTALINK_CONFIG_SESSION_NMEA0183)
+}
 
 internal fun regattaLinkSubsystemSessionAvailable(
     configWord: UInt?,
