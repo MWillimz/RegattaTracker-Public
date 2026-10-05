@@ -2311,18 +2311,46 @@ internal class RegattaLinkBleClient(
 
                 if (failure != null) {
                     val securityStatus = securityGattStatus
-                    if (securityStatus != null) {
-                        closeGattWithError(
-                            activeGatt,
-                            REGATTALINK_STALE_ANDROID_BOND_ERROR,
-                            gattStatus = securityStatus
+                    when (
+                        regattaLinkGattCoreFailureAction(
+                            otaReconnect =
+                                scanPurpose == ScanPurpose.OTA_RECONNECT,
+                            allowOtaOnly = otaReconnectAllowOtaOnly,
+                            securityFailure = securityStatus != null
                         )
-                    } else {
-                        recoverAndroidGattCacheOrFail(
-                            activeGatt,
-                            info,
-                            failure!!
-                        )
+                    ) {
+                        RegattaLinkGattCoreFailureAction.SECURITY_FAILURE -> {
+                            closeGattWithError(
+                                activeGatt,
+                                REGATTALINK_STALE_ANDROID_BOND_ERROR,
+                                gattStatus = securityStatus
+                            )
+                        }
+
+                        RegattaLinkGattCoreFailureAction.OTA_ONLY_RECOVERY -> {
+                            if (
+                                maybeCompleteOtaOnlyReconnect(
+                                    activeGatt,
+                                    failure!!
+                                )
+                            ) {
+                                finishGattSchemaReconciliation()
+                                return@post
+                            }
+                            recoverAndroidGattCacheOrFail(
+                                activeGatt,
+                                info,
+                                failure!!
+                            )
+                        }
+
+                        RegattaLinkGattCoreFailureAction.CACHE_RECOVERY -> {
+                            recoverAndroidGattCacheOrFail(
+                                activeGatt,
+                                info,
+                                failure!!
+                            )
+                        }
                     }
                     return@post
                 }
