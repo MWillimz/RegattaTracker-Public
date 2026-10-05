@@ -579,6 +579,12 @@
     <string name="regattalink_setup_nmea">Configura TX</string>
     <string name="regattalink_advanced_diagnostics">Avanzate / Diagnostica</string>
     <string name="regattalink_device_settings">Impostazioni dispositivo</string>
+    <string name="regattalink_subsystems">Sottosistemi hardware</string>
+    <string name="regattalink_subsystems_session_help">Gli interruttori mostrano la disponibilità per questo avvio. Le modifiche vengono salvate per il prossimo riavvio.</string>
+    <string name="regattalink_subsystem_imu">IMU</string>
+    <string name="regattalink_subsystem_mag">Bussola integrata</string>
+    <string name="regattalink_subsystem_boat_data">Boat Data / CAN</string>
+    <string name="regattalink_subsystem_nmea0183">Ingresso NMEA 0183</string>
     <string name="regattalink_technical_details">Dettagli tecnici</string>
     <string name="regattalink_diagnostics_title">Diagnostica</string>
     <string name="regattalink_live_orientation">Orientamento in tempo reale</string>
