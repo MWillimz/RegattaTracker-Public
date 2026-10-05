@@ -584,7 +584,7 @@
     <string name="regattalink_subsystem_imu">IMU</string>
     <string name="regattalink_subsystem_mag">Bordkompass</string>
     <string name="regattalink_subsystem_boat_data">Boat Data / CAN</string>
-    <string name="regattalink_subsystem_nmea0183">NMEA-0183-Eingang</string>
+    <string name="regattalink_subsystem_nmea0183">0183-Eingang</string>
     <string name="regattalink_technical_details">Technische Details</string>
     <string name="regattalink_diagnostics_title">Diagnose</string>
     <string name="regattalink_live_orientation">Live-Lage</string>
