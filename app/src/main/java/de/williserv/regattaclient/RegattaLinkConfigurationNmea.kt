@@ -96,18 +96,6 @@ data class RegattaLinkConfigurationState(
                     it and REGATTALINK_CONFIG_TX_PHONE_GPS != 0u
             } == true
 
-    /*
-     * Session availability was added to schema-16 firmware after the original
-     * v2 rollout. An all-zero high-nibble is therefore ambiguous with older
-     * firmware that returned reserved zeros. Treat that one case as unknown so
-     * an app update does not hide working controls on older firmware.
-     */
-    val subsystemSessionAvailabilityKnown: Boolean
-        get() =
-            configWord?.let {
-                it and REGATTALINK_CONFIG_SESSION_SUBSYSTEM_MASK != 0u
-            } == true
-
     val imuSessionAvailable: Boolean?
         get() = regattaLinkSubsystemSessionAvailable(
             configWord,
@@ -134,9 +122,7 @@ data class RegattaLinkConfigurationState(
 
     /*
      * Raw current-session bit used by the explicit next-boot enable switches.
-     * Unlike the feature-gating helpers above, all-zero is intentionally
-     * represented as false so a disabled/unavailable subsystem can be switched
-     * back on.
+     * Session bits are interpreted literally; an unset bit means unavailable.
      */
     fun subsystemSessionBit(subsystem: RegattaLinkSubsystem): Boolean? =
         configWord?.let { it and subsystem.configBit != 0u }
@@ -363,11 +349,7 @@ internal fun regattaLinkSubsystemSessionAvailable(
     ) { "Unknown RegattaLink subsystem session bit" }
 
     val word = configWord ?: return null
-    val sessionMask = word and REGATTALINK_CONFIG_SESSION_SUBSYSTEM_MASK
-    if (sessionMask == 0u) {
-        return null
-    }
-    return sessionMask and bit != 0u
+    return word and bit != 0u
 }
 
 enum class RegattaLinkNmea0183Baud(

@@ -197,7 +197,6 @@ class RegattaLinkConfigurationNmeaTest {
                 REGATTALINK_CONFIG_SESSION_CAN
         )
 
-        assertTrue(state.subsystemSessionAvailabilityKnown)
         assertEquals(true, state.imuSessionAvailable)
         assertEquals(false, state.magSessionAvailable)
         assertEquals(true, state.canSessionAvailable)
@@ -205,17 +204,29 @@ class RegattaLinkConfigurationNmeaTest {
     }
 
     @Test
-    fun allZeroSessionNibbleStaysUnknownForOlderSchema16Firmware() {
+    fun allZeroSessionNibbleMeansNoSubsystemsAvailable() {
         val state = regattaLinkApplyConfigWord(
             RegattaLinkConfigurationState(),
             REGATTALINK_CONFIG_TX_MASTER
         )
 
-        assertFalse(state.subsystemSessionAvailabilityKnown)
-        assertNull(state.imuSessionAvailable)
-        assertNull(state.magSessionAvailable)
-        assertNull(state.canSessionAvailable)
-        assertNull(state.nmea0183SessionAvailable)
+        assertEquals(false, state.imuSessionAvailable)
+        assertEquals(false, state.magSessionAvailable)
+        assertEquals(false, state.canSessionAvailable)
+        assertEquals(false, state.nmea0183SessionAvailable)
+    }
+
+    @Test
+    fun fullSessionNibbleMeansAllSubsystemsAvailable() {
+        val state = regattaLinkApplyConfigWord(
+            RegattaLinkConfigurationState(),
+            REGATTALINK_CONFIG_SESSION_SUBSYSTEM_MASK
+        )
+
+        assertEquals(true, state.imuSessionAvailable)
+        assertEquals(true, state.magSessionAvailable)
+        assertEquals(true, state.canSessionAvailable)
+        assertEquals(true, state.nmea0183SessionAvailable)
     }
 
     @Test
@@ -252,13 +263,16 @@ class RegattaLinkConfigurationNmeaTest {
     }
 
     @Test
-    fun explicitSubsystemSwitchStillSeesAllZeroAsOffForReenable() {
+    fun explicitSubsystemSwitchSeesAllZeroAsUnavailableAndOff() {
         val state = regattaLinkApplyConfigWord(
             RegattaLinkConfigurationState(),
             0u
         )
 
-        assertNull(state.imuSessionAvailable)
+        assertEquals(false, state.imuSessionAvailable)
+        assertEquals(false, state.magSessionAvailable)
+        assertEquals(false, state.canSessionAvailable)
+        assertEquals(false, state.nmea0183SessionAvailable)
         assertEquals(false, state.subsystemSessionBit(RegattaLinkSubsystem.IMU))
         assertEquals(false, state.subsystemSessionBit(RegattaLinkSubsystem.MAG))
         assertEquals(false, state.subsystemSessionBit(RegattaLinkSubsystem.BOAT_DATA))
