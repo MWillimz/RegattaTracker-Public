@@ -249,6 +249,49 @@ class RegattaLinkConfigurationNmeaTest {
     }
 
     @Test
+    fun reconnectStillRequiresRestartWhenPhoneGpsDesiredDiffersFromBootMask() {
+        val state = RegattaLinkConfigurationState(
+            configWordSupported = true,
+            configWord =
+                REGATTALINK_CONFIG_TX_MASTER or
+                    REGATTALINK_CONFIG_TX_PHONE_GPS,
+            configRestartRequired = false,
+            nmeaTxRuntimeStatusSupported = true,
+            nmeaTxBootSelected = true,
+            nmeaBootOutputMask = 0,
+            nmeaActiveOutputMask = 0
+        )
+
+        assertTrue(regattaLinkNmeaRestartRequired(state))
+    }
+
+    @Test
+    fun reconnectDetectsEveryAssignedOutputSelectorDifference() {
+        val cases = listOf(
+            REGATTALINK_CONFIG_TX_IMU to REGATTALINK_TX_OUTPUT_IMU,
+            REGATTALINK_CONFIG_TX_NMEA0183 to REGATTALINK_TX_OUTPUT_NMEA0183,
+            REGATTALINK_CONFIG_TX_PHONE_GPS to REGATTALINK_TX_OUTPUT_PHONE_GPS,
+            REGATTALINK_CONFIG_TX_COMPASS to REGATTALINK_TX_OUTPUT_COMPASS
+        )
+
+        cases.forEach { (configBit, runtimeBit) ->
+            val pending = RegattaLinkConfigurationState(
+                configWordSupported = true,
+                configWord = configBit,
+                nmeaTxRuntimeStatusSupported = true,
+                nmeaTxBootSelected = false,
+                nmeaBootOutputMask = 0
+            )
+            assertTrue(regattaLinkNmeaRestartRequired(pending))
+
+            val applied = pending.copy(
+                nmeaBootOutputMask = runtimeBit
+            )
+            assertFalse(regattaLinkNmeaRestartRequired(applied))
+        }
+    }
+
+    @Test
     fun parsesRuntimeStatusV2AndPreservesFutureOutputBits() {
         val parsed = parseRegattaLinkNmeaTxRuntimeStatus(
             byteArrayOf(
