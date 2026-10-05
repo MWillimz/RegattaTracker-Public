@@ -6,6 +6,7 @@ import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.location.Location
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -113,6 +114,14 @@ internal interface RegattaLinkConnectionClient {
     fun setLoadPrecisionX10(enabled: Boolean): Boolean = false
     fun setNmeaTxEnabled(enabled: Boolean): Boolean = false
     fun setNmeaAttitudeTxEnabled(enabled: Boolean): Boolean = false
+    fun setNmea0183TxEnabled(enabled: Boolean): Boolean = false
+    fun setPhoneGpsTxEnabled(enabled: Boolean): Boolean = false
+    fun setCompassTxEnabled(enabled: Boolean): Boolean = false
+    fun setNmea0183Baud(baudRate: Int): Boolean = false
+    fun setMagBackgroundLearningEnabled(enabled: Boolean): Boolean = false
+    fun setHeadingTrimDeg(value: Int): Boolean = false
+    fun offerPhoneGnss(sample: RegattaLinkPhoneGnssSample): Boolean = false
+    fun clearPhoneGnss() = Unit
     fun drainDiagnosticLog(): Boolean = false
     fun executeDeviceControl(
         opcode: RegattaLinkDeviceControlOpcode,
@@ -436,6 +445,75 @@ internal class RegattaLinkConnectionManager(
             return false
         }
         return client.setNmeaAttitudeTxEnabled(enabled)
+    }
+
+    fun setNmea0183TxEnabled(enabled: Boolean): Boolean =
+        withConfigMutationAllowed {
+            client.setNmea0183TxEnabled(enabled)
+        }
+
+    fun setPhoneGpsTxEnabled(enabled: Boolean): Boolean =
+        withConfigMutationAllowed {
+            client.setPhoneGpsTxEnabled(enabled)
+        }
+
+    fun setCompassTxEnabled(enabled: Boolean): Boolean =
+        withConfigMutationAllowed {
+            client.setCompassTxEnabled(enabled)
+        }
+
+    fun setNmea0183Baud(baudRate: Int): Boolean {
+        if (RegattaLinkNmea0183Baud.fromBaudRate(baudRate) == null) {
+            return false
+        }
+        return withConfigMutationAllowed {
+            client.setNmea0183Baud(baudRate)
+        }
+    }
+
+    fun setMagBackgroundLearningEnabled(enabled: Boolean): Boolean =
+        withConfigMutationAllowed {
+            client.setMagBackgroundLearningEnabled(enabled)
+        }
+
+    fun setHeadingTrimDeg(value: Int): Boolean {
+        if (value !in -180..180) return false
+        return withConfigMutationAllowed {
+            client.setHeadingTrimDeg(value)
+        }
+    }
+
+    fun isPhoneGnssForwardingEnabled(): Boolean =
+        regattaLinkPhoneGnssForwardingGate(
+            connected =
+                connectionState.status == RegattaLinkConnectionStatus.CONNECTED,
+            otaActive = otaState.isActive,
+            configWord = configurationState.configWord
+        )
+
+    fun offerPhoneGnss(location: Location): Boolean {
+        if (!isPhoneGnssForwardingEnabled()) return false
+        return client.offerPhoneGnss(regattaLinkPhoneGnssSample(location))
+    }
+
+    fun stopPhoneGnssForwarding() {
+        client.clearPhoneGnss()
+    }
+
+    private inline fun withConfigMutationAllowed(
+        action: () -> Boolean
+    ): Boolean {
+        if (
+            otaState.isActive ||
+            rawCaptureState.isActive ||
+            regattaLinkConfigurationMutationBlocked(
+                state = configurationState,
+                factoryResetOwned = factoryResetPending
+            )
+        ) {
+            return false
+        }
+        return action()
     }
 
     fun setLoadSensorAlias(identityKey: String, alias: String): Boolean {

@@ -699,6 +699,24 @@
     <string name="regattalink_nmea_attitude_tx_inactive">Seleccionado para este arranque, pero la salida PGN 127257 no está habilitada en tiempo de ejecución.</string>
     <string name="regattalink_nmea_runtime_unknown_restart">El estado TX de Boat Data aplicado no está disponible con este firmware. Reinicia RegattaLink para sincronizar los ajustes seleccionados.</string>
 
+
+    <string name="regattalink_nmea0183_tx">Entrada 0183 → Boat Data</string>
+    <string name="regattalink_phone_gps_tx">GPS del teléfono → Boat Data</string>
+    <string name="regattalink_compass_tx">Rumbo de compás → Boat Data</string>
+    <string name="regattalink_nmea0183_baud">Baudios de la entrada 0183</string>
+    <string name="regattalink_applies_after_restart">El ajuste guardado se aplica después de reiniciar RegattaLink.</string>
+    <string name="regattalink_boat_data_output_selected_runtime_unknown">Seleccionado. El estado aplicado no está disponible.</string>
+    <string name="regattalink_boat_data_output_off_runtime_unknown">No seleccionado. El estado aplicado no está disponible.</string>
+    <string name="regattalink_boat_data_output_restart_required">Guardado. Reinicia RegattaLink para aplicar el cambio.</string>
+    <string name="regattalink_boat_data_output_active">Activo</string>
+    <string name="regattalink_boat_data_output_selected_inactive">Seleccionado para este arranque, pero no activo en ejecución.</string>
+    <string name="regattalink_boat_data_output_off">Desactivado</string>
+    <string name="regattalink_mag_background_learning">Aprendizaje de calibración MAG en segundo plano</string>
+    <string name="regattalink_heading_trim">Ajuste del rumbo de compás</string>
+    <string name="regattalink_heading_trim_value">%1$d°</string>
+    <string name="regattalink_heading_trim_immediate">Se aplica inmediatamente y solo al compás local de a bordo.</string>
+    <string name="regattalink_config_restart_required">Reinicia RegattaLink para aplicar los cambios de configuración guardados.</string>
+
     <string name="session_metric_cog">COG</string>
     <string name="session_metric_sog">SOG</string>
     <string name="session_metric_mag">MAG</string>

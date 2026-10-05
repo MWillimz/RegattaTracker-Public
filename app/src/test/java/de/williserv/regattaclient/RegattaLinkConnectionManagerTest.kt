@@ -863,10 +863,8 @@ class RegattaLinkConnectionManagerTest {
     fun nmeaTxConfigurationRoutesThroughManagerAndRespectsMutationOwnership() {
         fakeClient.emitConfiguration(
             RegattaLinkConfigurationState(
-                nmeaTxSupported = true,
-                nmeaTxEnabled = false,
-                nmeaAttitudeTxSupported = true,
-                nmeaAttitudeTxEnabled = false
+                configWordSupported = true,
+                configWord = 0u
             )
         )
 

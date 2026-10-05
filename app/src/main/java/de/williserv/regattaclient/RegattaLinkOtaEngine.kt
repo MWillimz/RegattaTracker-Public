@@ -36,7 +36,11 @@ internal interface RegattaLinkOtaTransport {
     fun pollProgress(timeoutMs: Long): RegattaLinkOtaProgress?
     fun consumeDataTransportError(): String?
     fun closeCurrentConnection()
-    fun reconnectCandidate(expectedStableId: String, timeoutMs: Long): RegattaLinkDeviceInfo?
+    fun reconnectCandidate(
+        expectedStableId: String,
+        timeoutMs: Long,
+        allowOtaOnly: Boolean = false
+    ): RegattaLinkDeviceInfo?
 }
 
 internal class RegattaLinkOtaCancelledException : Exception()
@@ -273,7 +277,8 @@ internal class RegattaLinkOtaEngine(
             checkCancelled()
             val freshInfo = transport.reconnectCandidate(
                 expectedStableId = initialDeviceInfo.stableId,
-                timeoutMs = PRE_TRANSFER_RECONNECT_SLICE_MS
+                timeoutMs = PRE_TRANSFER_RECONNECT_SLICE_MS,
+                allowOtaOnly = false
             )
             checkCancelled()
 
@@ -846,7 +851,8 @@ internal class RegattaLinkOtaEngine(
             val remaining = deadline - nowMs()
             val info = transport.reconnectCandidate(
                 expectedStableId,
-                min(POST_BOOT_CANDIDATE_TIMEOUT_MS, remaining)
+                min(POST_BOOT_CANDIDATE_TIMEOUT_MS, remaining),
+                allowOtaOnly = true
             )
             if (info == null) {
                 lastObservation =
