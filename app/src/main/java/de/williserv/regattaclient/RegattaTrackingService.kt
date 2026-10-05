@@ -905,6 +905,7 @@ class RegattaTrackingService : Service() {
         accessContextId = null
 
         handler.removeCallbacks(sampleRunnable)
+        activeSampleIntervalMs = 0L
         handler.removeCallbacks(eventPollRunnable)
         handler.removeCallbacks(autoStopAfterFinishRunnable)
         regattaLinkManager?.stopPhoneGnssForwarding()
@@ -921,6 +922,7 @@ class RegattaTrackingService : Service() {
             locationManager.removeUpdates(locationListener)
         } catch (_: Exception) {
         }
+        activeLocationIntervalMs = 0L
 
         thread(name = "regatta-telemetry-shutdown-handoff") {
             val operation = try {
