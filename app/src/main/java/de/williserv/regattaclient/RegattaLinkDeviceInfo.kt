@@ -7,6 +7,7 @@ internal const val REGATTALINK_DEVICE_INFO_SIZE = 32
 internal const val REGATTALINK_PROTOCOL_MAJOR = 1
 internal const val REGATTALINK_PRODUCT_ID = 1
 internal const val REGATTALINK_PROFILE_ID = 1
+internal const val REGATTALINK_GATT_V2_MIN_SCHEMA = 16
 
 private const val CAP_OTA_AVAILABLE: UInt = 0x00000002u
 private const val CAP_SIGNATURE_VERIFICATION: UInt = 0x00000004u
@@ -97,6 +98,9 @@ internal fun validateRegattaLinkDeviceInfo(info: RegattaLinkDeviceInfo): String?
     }
     if (info.profileId != REGATTALINK_PROFILE_ID) {
         return "Unsupported RegattaLink hardware profile ${info.profileId}"
+    }
+    if (info.gattSchemaVersion < REGATTALINK_GATT_V2_MIN_SCHEMA) {
+        return "Unsupported legacy RegattaLink GATT schema ${info.gattSchemaVersion}; v2 requires schema 16 or newer"
     }
     return null
 }

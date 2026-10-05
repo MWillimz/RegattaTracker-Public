@@ -7,13 +7,13 @@ import java.util.UUID
 import kotlin.math.min
 
 internal val REGATTALINK_OTA_SERVICE_UUID: UUID =
-    UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710010")
+    UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720001")
 internal val REGATTALINK_OTA_CONTROL_UUID: UUID =
-    UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710011")
+    UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720002")
 internal val REGATTALINK_OTA_DATA_UUID: UUID =
-    UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710012")
+    UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720003")
 internal val REGATTALINK_OTA_STATUS_UUID: UUID =
-    UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710013")
+    UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720004")
 
 internal const val REGATTALINK_OTA_METADATA_SIZE = 48
 internal const val REGATTALINK_OTA_STATUS_SIZE = 44

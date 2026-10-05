@@ -849,6 +849,25 @@ class MainActivity : ComponentActivity() {
                             onSetNmeaAttitudeTxEnabled = { enabled ->
                                 regattaLinkManager.setNmeaAttitudeTxEnabled(enabled)
                             },
+                            onSetNmea0183TxEnabled = { enabled ->
+                                regattaLinkManager.setNmea0183TxEnabled(enabled)
+                            },
+                            onSetPhoneGpsTxEnabled = { enabled ->
+                                regattaLinkManager.setPhoneGpsTxEnabled(enabled)
+                            },
+                            onSetCompassTxEnabled = { enabled ->
+                                regattaLinkManager.setCompassTxEnabled(enabled)
+                            },
+                            onSetNmea0183Baud = { baudRate ->
+                                regattaLinkManager.setNmea0183Baud(baudRate)
+                            },
+                            onSetMagBackgroundLearningEnabled = { enabled ->
+                                regattaLinkManager
+                                    .setMagBackgroundLearningEnabled(enabled)
+                            },
+                            onSetHeadingTrimDeg = { value ->
+                                regattaLinkManager.setHeadingTrimDeg(value)
+                            },
                             onSetLoadSensorAlias = { identityKey, alias ->
                                 regattaLinkManager.setLoadSensorAlias(
                                     identityKey,

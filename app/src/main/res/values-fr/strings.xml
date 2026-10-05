@@ -699,6 +699,24 @@
     <string name="regattalink_nmea_attitude_tx_inactive">Sélectionné pour ce démarrage, mais la sortie PGN 127257 n’est pas activée en exécution.</string>
     <string name="regattalink_nmea_runtime_unknown_restart">L’état TX Boat Data appliqué n’est pas disponible avec ce firmware. Redémarrez RegattaLink pour synchroniser les réglages sélectionnés.</string>
 
+
+    <string name="regattalink_nmea0183_tx">Entrée 0183 → Boat Data</string>
+    <string name="regattalink_phone_gps_tx">GPS du téléphone → Boat Data</string>
+    <string name="regattalink_compass_tx">Cap compas → Boat Data</string>
+    <string name="regattalink_nmea0183_baud">Débit de l’entrée 0183</string>
+    <string name="regattalink_applies_after_restart">Le réglage enregistré s’applique après le redémarrage de RegattaLink.</string>
+    <string name="regattalink_boat_data_output_selected_runtime_unknown">Sélectionné. L’état appliqué n’est pas disponible.</string>
+    <string name="regattalink_boat_data_output_off_runtime_unknown">Non sélectionné. L’état appliqué n’est pas disponible.</string>
+    <string name="regattalink_boat_data_output_restart_required">Enregistré. Redémarrez RegattaLink pour appliquer la modification.</string>
+    <string name="regattalink_boat_data_output_active">Actif</string>
+    <string name="regattalink_boat_data_output_selected_inactive">Sélectionné pour ce démarrage, mais inactif à l’exécution.</string>
+    <string name="regattalink_boat_data_output_off">Désactivé</string>
+    <string name="regattalink_mag_background_learning">Apprentissage de l’étalonnage MAG en arrière-plan</string>
+    <string name="regattalink_heading_trim">Correction du cap compas</string>
+    <string name="regattalink_heading_trim_value">%1$d°</string>
+    <string name="regattalink_heading_trim_immediate">S’applique immédiatement et uniquement au compas local embarqué.</string>
+    <string name="regattalink_config_restart_required">Redémarrez RegattaLink pour appliquer les modifications de configuration enregistrées.</string>
+
     <string name="session_metric_cog">COG</string>
     <string name="session_metric_sog">SOG</string>
     <string name="session_metric_mag">MAG</string>

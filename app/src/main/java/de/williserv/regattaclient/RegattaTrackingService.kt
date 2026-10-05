@@ -155,6 +155,7 @@ class RegattaTrackingService : Service() {
 
     private lateinit var db: TrackingDbHelper
     private lateinit var locationManager: LocationManager
+    private var regattaLinkManager: RegattaLinkConnectionManager? = null
 
     private val handler = Handler(Looper.getMainLooper())
     private val localStatusPrefsName = "regatta_local_status"
@@ -216,7 +217,8 @@ class RegattaTrackingService : Service() {
     private var currentTargetDistanceM: Double? = null
 
     private var samplingBand: SamplingDistanceBand? = null
-    private var activeLocationIntervalMs = 1_000L
+    private var activeLocationIntervalMs = 0L
+    private var activeSampleIntervalMs = 0L
 
     private var sequenceId = 0L
     private var lastLocation: Location? = null
@@ -238,12 +240,27 @@ class RegattaTrackingService : Service() {
 
     private var courseShortened = false
 
+    private val regattaLinkListener = object : RegattaLinkConnectionListener {
+        override fun onConnectionStateChanged(state: RegattaLinkClientState) {
+            refreshLocationSamplingFromRegattaLinkState()
+        }
+
+        override fun onOtaStateChanged(state: RegattaLinkOtaUiState) {
+            refreshLocationSamplingFromRegattaLinkState()
+        }
+
+        override fun onConfigurationStateChanged(
+            state: RegattaLinkConfigurationState
+        ) {
+            refreshLocationSamplingFromRegattaLinkState()
+        }
+    }
+
     private val locationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
             lastLocation = location
-            if (!manualRecording) {
-                refreshLocationSampling(location)
-            }
+            regattaLinkManager?.offerPhoneGnss(location)
+            refreshLocationSampling(location)
         }
     }
 
@@ -285,6 +302,9 @@ class RegattaTrackingService : Service() {
 
         db = TrackingDbHelper(this)
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        regattaLinkManager =
+            (application as? RegattaApplication)?.regattaLinkConnectionManager
+        regattaLinkManager?.addListener(regattaLinkListener)
 
         createNotificationChannel()
     }
@@ -816,7 +836,6 @@ class RegattaTrackingService : Service() {
             pollEvent()
         }
 
-        scheduleNextSample(currentSamplingIntervalMs())
         if (!manualRecording) {
             handler.postDelayed(eventPollRunnable, 10_000L)
             publishLocalRaceStatus()
@@ -826,14 +845,35 @@ class RegattaTrackingService : Service() {
     }
 
     private fun reconfigureSamplingSchedule() {
-        val intervalMs = currentSamplingIntervalMs()
-        requestLocationUpdatesForInterval(intervalMs)
-        scheduleNextSample(intervalMs)
+        if (!serviceRunning) return
+        val decision = currentSamplingDecision()
+        val persistenceIntervalMs = decision.intervalMs
+        val locationIntervalMs = regattaLinkLocationRequestIntervalMs(
+            persistenceIntervalMs = persistenceIntervalMs,
+            phoneGnssForwarding =
+                regattaLinkManager?.isPhoneGnssForwardingEnabled() == true
+        )
+
+        if (locationIntervalMs != activeLocationIntervalMs) {
+            requestLocationUpdatesForInterval(locationIntervalMs)
+        }
+        if (persistenceIntervalMs != activeSampleIntervalMs) {
+            scheduleNextSample(persistenceIntervalMs)
+        }
     }
 
     private fun scheduleNextSample(intervalMs: Long) {
         handler.removeCallbacks(sampleRunnable)
+        activeSampleIntervalMs = intervalMs
         handler.postDelayed(sampleRunnable, intervalMs)
+    }
+
+    private fun refreshLocationSamplingFromRegattaLinkState() {
+        handler.post {
+            if (serviceRunning) {
+                refreshLocationSampling(null)
+            }
+        }
     }
 
     private fun persistTrackingStoppedState() {
@@ -867,6 +907,7 @@ class RegattaTrackingService : Service() {
         handler.removeCallbacks(sampleRunnable)
         handler.removeCallbacks(eventPollRunnable)
         handler.removeCallbacks(autoStopAfterFinishRunnable)
+        regattaLinkManager?.stopPhoneGnssForwarding()
         autoStopAfterFinishScheduled = false
 
         if (clearLocalRaceStatus) {
@@ -949,7 +990,7 @@ class RegattaTrackingService : Service() {
     }
 
     private fun startLocationUpdates() {
-        requestLocationUpdatesForInterval(currentSamplingIntervalMs())
+        reconfigureSamplingSchedule()
 
         val permissionGranted = ContextCompat.checkSelfPermission(
             this,
@@ -962,9 +1003,9 @@ class RegattaTrackingService : Service() {
             val cachedLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
             if (cachedLocation != null) {
                 lastLocation = cachedLocation
-                if (!manualRecording) {
-                    refreshLocationSampling(cachedLocation)
-                }
+                // Cached location is only local sampling context. It is never
+                // offered as a fresh Phone GNSS observation.
+                refreshLocationSampling(cachedLocation)
             }
         } catch (_: SecurityException) {
         } catch (_: Exception) {
@@ -1001,17 +1042,13 @@ class RegattaTrackingService : Service() {
     }
 
     private fun refreshLocationSampling(location: Location?) {
-        if (!serviceRunning || manualRecording) return
+        if (!serviceRunning) return
 
         if (location != null) {
             lastLocation = location
         }
 
-        val nextIntervalMs = currentSamplingIntervalMs()
-        if (nextIntervalMs != activeLocationIntervalMs) {
-            requestLocationUpdatesForInterval(nextIntervalMs)
-            scheduleNextSample(nextIntervalMs)
-        }
+        reconfigureSamplingSchedule()
     }
 
     private fun requestLocationUpdatesForInterval(intervalMs: Long) {
@@ -2123,11 +2160,14 @@ class RegattaTrackingService : Service() {
         }
         handler.removeCallbacks(sampleRunnable)
         handler.removeCallbacks(eventPollRunnable)
+        regattaLinkManager?.stopPhoneGnssForwarding()
 
         try {
             locationManager.removeUpdates(locationListener)
         } catch (_: Exception) {
         }
+        regattaLinkManager?.removeListener(regattaLinkListener)
+        regattaLinkManager = null
 
         super.onDestroy()
     }

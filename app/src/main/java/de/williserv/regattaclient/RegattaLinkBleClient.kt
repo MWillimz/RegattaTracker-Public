@@ -71,47 +71,47 @@ internal class RegattaLinkBleClient(
 ) : RegattaLinkOtaTransport, RegattaLinkConnectionClient {
     companion object {
         val CONFIG_SERVICE_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710001")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720010")
         val EXTENSION_SERVICE_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710030")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720030")
         val DEVICE_NAME_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710002")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720011")
         val DEVICE_INFO_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710003")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720012")
         val NMEA_PGN_INVENTORY_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710004")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720013")
         val NMEA_RAW_CAN_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710005")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720014")
         val LED_BRIGHTNESS_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710006")
-        val DIAGNOSTIC_LOG_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710007")
-        val DEVICE_CONTROL_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710008")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720015")
         val MOTION_DAMPING_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710009")
-        val LOAD_PRECISION_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b71000a")
-        val NMEA_TX_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b71000b")
-        val NMEA_ATTITUDE_TX_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b71000c")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720016")
+        val CONFIG_WORD_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720017")
+        val HEADING_TRIM_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720018")
+        val DIAGNOSTIC_LOG_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720019")
+        val DEVICE_CONTROL_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b72001a")
         val NMEA_TX_RUNTIME_STATUS_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b71000d")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b72001b")
+        val PHONE_GNSS_INPUT_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b72001c")
         val TELEMETRY_SERVICE_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710020")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720020")
         val TELEMETRY_FAST_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710021")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720021")
         val TELEMETRY_SUMMARY_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710022")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720022")
         val TELEMETRY_CALIBRATION_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710023")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720023")
         val TELEMETRY_BOAT_STATE_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710024")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720024")
         val TELEMETRY_MOTION_ONE_HZ_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710025")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720025")
         val TELEMETRY_LOAD_UUID: UUID =
-            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b710026")
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720026")
 
         internal val NORMAL_TELEMETRY_UUIDS: Set<UUID> =
             setOf(TELEMETRY_MOTION_ONE_HZ_UUID)
@@ -193,6 +193,13 @@ internal class RegattaLinkBleClient(
         }
     }
     private val otaExecutor = Executors.newSingleThreadExecutor()
+    private val phoneGnssPending =
+        AtomicReference<RegattaLinkPhoneGnssSample?>(null)
+    private val phoneGnssDrainScheduled = AtomicBoolean(false)
+    @Volatile private var phoneGnssLastSubmitElapsedMs = 0L
+    private val phoneGnssDrainRunnable = Runnable {
+        otaExecutor.execute(::drainPhoneGnssPending)
+    }
     /*
      * OTA itself can block in reconnectCandidate(). GATT schema reconciliation
      * therefore needs a separate worker so its Device Info write can complete
@@ -200,15 +207,6 @@ internal class RegattaLinkBleClient(
      */
     private val gattSchemaExecutor = Executors.newSingleThreadExecutor()
     private val gattSchemaStore = RegattaLinkGattSchemaStore(appContext)
-    /*
-     * Schema 0 is legacy/unspecified and therefore cannot be trusted across an
-     * app restart. Keep its acceptance process-local only. This is still enough
-     * for OTA: once the initial connection observed Service Changed and
-     * rediscovered, the mandatory fresh pre-transfer reconnect may reuse that
-     * now-correct Android ATT cache within the same process.
-     */
-    private val legacyGattSchemaAcceptedThisProcess =
-        ConcurrentHashMap.newKeySet<String>()
     /*
      * A persisted generation is only a hint. Every app process proves that the
      * actually cached Android handles work before trusting it. This catches the
@@ -296,6 +294,9 @@ internal class RegattaLinkBleClient(
     @Volatile private var gattSchemaReconnectRefreshKey: String? = null
     @Volatile private var gattSchemaReconnectRefreshReason: String? = null
     private var reconnectFuture: CompletableFuture<RegattaLinkDeviceInfo?>? = null
+    @Volatile private var otaReconnectAllowOtaOnly = false
+    @Volatile private var otaReconnectExpectedStableId: String? = null
+    @Volatile private var otaOnlyPostBootConnection = false
     private var selectedDeviceAddress: String? = null
     private val attemptedDiscoveryAddresses = mutableSetOf<String>()
     private var discoveryInProgress = false
@@ -751,6 +752,14 @@ internal class RegattaLinkBleClient(
                 service?.getCharacteristic(DEVICE_INFO_UUID)
 
             if (characteristic == null) {
+                if (
+                    maybeCompleteOtaOnlyReconnect(
+                        callbackGatt,
+                        "RegattaLink Device Info is unavailable"
+                    )
+                ) {
+                    return
+                }
                 closeGattWithError(
                     callbackGatt,
                     "RegattaLink Device Info is unavailable"
@@ -1022,6 +1031,7 @@ internal class RegattaLinkBleClient(
     }
 
     override fun startOta(artifact: RegattaLinkFirmwareArtifact) {
+        clearPhoneGnssPending()
         val activeGatt = gatt
         if (
             activeGatt != null &&
@@ -1097,6 +1107,7 @@ internal class RegattaLinkBleClient(
         }
 
         otaCancelled.set(false)
+        otaOnlyPostBootConnection = false
         otaProgressQueue.clear()
         otaDataTransportError.set(null)
         deferredTerminalOtaState.set(null)
@@ -1112,6 +1123,15 @@ internal class RegattaLinkBleClient(
                     onTerminalDisconnect = ::invalidateTerminalOtaConnection
                 ).run()
             } finally {
+                val reconnectAfterOtaOnlySuccess =
+                    otaOnlyPostBootConnection &&
+                        lastOtaState.phase == RegattaLinkOtaPhase.SUCCESS
+
+                if (reconnectAfterOtaOnlySuccess) {
+                    closeGatt()
+                    invalidateTerminalOtaConnection()
+                }
+
                 otaRunning.set(false)
                 otaCancelled.set(false)
                 scanPurpose = ScanPurpose.NORMAL
@@ -1130,6 +1150,11 @@ internal class RegattaLinkBleClient(
                 }
 
                 flushDeferredTerminalOtaState()
+
+                if (reconnectAfterOtaOnlySuccess) {
+                    handler.post { onUnexpectedDisconnect() }
+                }
+                otaOnlyPostBootConnection = false
             }
         }
     }
@@ -1160,6 +1185,7 @@ internal class RegattaLinkBleClient(
     }
 
     override fun disconnect() {
+        clearPhoneGnssPending()
         val activeGatt = gatt
         if (
             activeGatt != null &&
@@ -1564,7 +1590,7 @@ internal class RegattaLinkBleClient(
         timeoutMs: Long = SCAN_TIMEOUT_MS
     ) {
         val filterBuilder = ScanFilter.Builder()
-            .setServiceUuid(ParcelUuid(CONFIG_SERVICE_UUID))
+            .setServiceUuid(ParcelUuid(REGATTALINK_OTA_SERVICE_UUID))
         if (deviceAddress != null) {
             filterBuilder.setDeviceAddress(deviceAddress)
         }
@@ -1724,6 +1750,22 @@ internal class RegattaLinkBleClient(
         }
 
         if (status != BluetoothGatt.GATT_SUCCESS) {
+            if (isRegattaLinkStaleBondSecurityGattStatus(status)) {
+                closeGattWithError(
+                    callbackGatt,
+                    REGATTALINK_STALE_ANDROID_BOND_ERROR,
+                    gattStatus = status
+                )
+                return
+            }
+            if (
+                maybeCompleteOtaOnlyReconnect(
+                    callbackGatt,
+                    "RegattaLink Device Info read failed ($status)"
+                )
+            ) {
+                return
+            }
             closeGattWithError(
                 callbackGatt,
                 "RegattaLink Device Info read failed ($status)",
@@ -1732,9 +1774,17 @@ internal class RegattaLinkBleClient(
             return
         }
 
-        val info = runCatching {
+        val info = try {
             parseRegattaLinkDeviceInfo(value)
-        }.getOrElse { error ->
+        } catch (error: Exception) {
+            if (
+                maybeCompleteOtaOnlyReconnect(
+                    callbackGatt,
+                    error.message ?: "Invalid RegattaLink Device Info"
+                )
+            ) {
+                return
+            }
             closeGattWithError(
                 callbackGatt,
                 error.message ?: "Invalid RegattaLink Device Info"
@@ -1744,6 +1794,14 @@ internal class RegattaLinkBleClient(
 
         val validationError = validateRegattaLinkDeviceInfo(info)
         if (validationError != null) {
+            if (
+                maybeCompleteOtaOnlyReconnect(
+                    callbackGatt,
+                    validationError
+                )
+            ) {
+                return
+            }
             closeGattWithError(callbackGatt, validationError)
             return
         }
@@ -1759,11 +1817,10 @@ internal class RegattaLinkBleClient(
             validatingAfterLocalCacheRefresh ||
                 validatingAfterServiceChangedReconnect
         val acceptedSchemaVersion =
-            when {
-                validatingAfterForcedRediscovery -> info.gattSchemaVersion
-                info.gattSchemaVersion == 0 &&
-                    legacyGattSchemaAcceptedThisProcess.contains(info.stableId) -> 0
-                else -> gattSchemaStore.acceptedVersion(info.stableId)
+            if (validatingAfterForcedRediscovery) {
+                info.gattSchemaVersion
+            } else {
+                gattSchemaStore.acceptedVersion(info.stableId)
             }
         val schemaDecision = regattaLinkGattSchemaDecision(
             reportedVersion = info.gattSchemaVersion,
@@ -1806,6 +1863,98 @@ internal class RegattaLinkBleClient(
 
         finishGattSchemaReconciliation()
         completeConnectionAfterDeviceInfo(callbackGatt, info)
+    }
+
+    private fun maybeCompleteOtaOnlyReconnect(
+        callbackGatt: BluetoothGatt,
+        deviceInfoFailure: String
+    ): Boolean {
+        if (
+            scanPurpose != ScanPurpose.OTA_RECONNECT ||
+            !otaReconnectAllowOtaOnly
+        ) {
+            return false
+        }
+
+        val expectedStableId = otaReconnectExpectedStableId ?: return false
+        val otaService = callbackGatt.getService(REGATTALINK_OTA_SERVICE_UUID)
+            ?: return false
+        val controlCharacteristic =
+            otaService.getCharacteristic(REGATTALINK_OTA_CONTROL_UUID)
+                ?: return false
+        val statusCharacteristic =
+            otaService.getCharacteristic(REGATTALINK_OTA_STATUS_UUID)
+                ?: return false
+
+        deviceInfoReadInProgress = false
+        emitForDevice(
+            callbackGatt.device,
+            RegattaLinkConnectionStatus.DISCOVERING
+        )
+
+        gattSchemaExecutor.execute {
+            var recoveredInfo: RegattaLinkDeviceInfo? = null
+            var failure: String? = null
+            var failureGattStatus: Int? = null
+            try {
+                if (gatt !== callbackGatt || !connected) return@execute
+                writeCharacteristicBlockingDirect(
+                    callbackGatt,
+                    controlCharacteristic,
+                    encodeRegattaLinkOtaSnapshot()
+                )
+                val status = parseRegattaLinkOtaStatus(
+                    readCharacteristicBlocking(
+                        callbackGatt,
+                        statusCharacteristic
+                    )
+                )
+                recoveredInfo = RegattaLinkDeviceInfo(
+                    protocolMajor = REGATTALINK_PROTOCOL_MAJOR,
+                    protocolMinor = 0,
+                    capabilities = 0u,
+                    stableId = expectedStableId,
+                    productId = REGATTALINK_PRODUCT_ID,
+                    profileId = REGATTALINK_PROFILE_ID,
+                    runningBuild = status.runningBuild,
+                    otaSlotSize = 0u,
+                    maxInflightBlocks = 0
+                )
+            } catch (error: Exception) {
+                failure = error.message ?: "OTA Status validation failed"
+                failureGattStatus =
+                    (error as? RegattaLinkOtaTransportException)?.gattStatus
+            }
+
+            handler.post {
+                if (gatt !== callbackGatt || !connected) return@post
+
+                val info = recoveredInfo
+                if (info == null) {
+                    val securityStatus = failureGattStatus
+                        ?.takeIf(::isRegattaLinkStaleBondSecurityGattStatus)
+                    closeGattWithError(
+                        callbackGatt,
+                        if (securityStatus != null) {
+                            REGATTALINK_STALE_ANDROID_BOND_ERROR
+                        } else {
+                            "OTA-only reconnect failed after $deviceInfoFailure: " +
+                                (failure ?: "OTA core is unavailable")
+                        },
+                        gattStatus = securityStatus
+                    )
+                    return@post
+                }
+
+                handler.removeCallbacks(gattTimeout)
+                connectionSetupComplete = true
+                establishedConnection = true
+                selectedDeviceAddress = callbackGatt.device.address
+                otaOnlyPostBootConnection = true
+                reconnectFuture?.complete(info)
+            }
+        }
+        return true
     }
 
     private fun completeConnectionAfterDeviceInfo(
@@ -2142,10 +2291,15 @@ internal class RegattaLinkBleClient(
 
         gattSchemaExecutor.execute {
             var failure: String? = null
+            var securityGattStatus: Int? = null
             try {
                 if (gatt !== activeGatt || !connected) return@execute
                 probeCriticalGattLayout(activeGatt, info)
             } catch (error: Exception) {
+                val transportError = error as? RegattaLinkOtaTransportException
+                securityGattStatus = transportError
+                    ?.gattStatus
+                    ?.takeIf(::isRegattaLinkStaleBondSecurityGattStatus)
                 failure = error.message
                     ?: "RegattaLink critical GATT layout validation failed"
             } finally {
@@ -2156,11 +2310,20 @@ internal class RegattaLinkBleClient(
                 if (gatt !== activeGatt || !connected) return@post
 
                 if (failure != null) {
-                    recoverAndroidGattCacheOrFail(
-                        activeGatt,
-                        info,
-                        failure!!
-                    )
+                    val securityStatus = securityGattStatus
+                    if (securityStatus != null) {
+                        closeGattWithError(
+                            activeGatt,
+                            REGATTALINK_STALE_ANDROID_BOND_ERROR,
+                            gattStatus = securityStatus
+                        )
+                    } else {
+                        recoverAndroidGattCacheOrFail(
+                            activeGatt,
+                            info,
+                            failure!!
+                        )
+                    }
                     return@post
                 }
 
@@ -2168,14 +2331,10 @@ internal class RegattaLinkBleClient(
                 verifiedGattSchemaThisProcess += key
                 gattCacheRefreshPendingValidation.remove(key)
                 gattServiceChangedReconnectPendingValidation.remove(key)
-                if (info.gattSchemaVersion == 0) {
-                    legacyGattSchemaAcceptedThisProcess += info.stableId
-                } else {
-                    gattSchemaStore.accept(
-                        info.stableId,
-                        info.gattSchemaVersion
-                    )
-                }
+                gattSchemaStore.accept(
+                    info.stableId,
+                    info.gattSchemaVersion
+                )
 
                 finishGattSchemaReconciliation()
                 completeConnectionAfterDeviceInfo(activeGatt, info)
@@ -2183,10 +2342,97 @@ internal class RegattaLinkBleClient(
         }
     }
 
+    private fun requireRegattaLinkV2FrozenCore(
+        activeGatt: BluetoothGatt
+    ) {
+        fun requireService(
+            uuid: UUID,
+            label: String
+        ): BluetoothGattService {
+            val matches = activeGatt.services.filter { it.uuid == uuid }
+            if (matches.size != 1) {
+                throw RegattaLinkOtaTransportException(
+                    "RegattaLink v2 $label service count is ${matches.size}, expected 1",
+                    ambiguous = false
+                )
+            }
+            return matches.single()
+        }
+
+        fun requireCharacteristic(
+            service: BluetoothGattService,
+            uuid: UUID,
+            label: String
+        ) {
+            val matches = service.characteristics.filter { it.uuid == uuid }
+            if (matches.size != 1) {
+                throw RegattaLinkOtaTransportException(
+                    "RegattaLink v2 $label characteristic count is " +
+                        "${matches.size}, expected 1",
+                    ambiguous = false
+                )
+            }
+        }
+
+        val otaService = requireService(
+            REGATTALINK_OTA_SERVICE_UUID,
+            "OTA"
+        )
+        listOf(
+            REGATTALINK_OTA_CONTROL_UUID to "OTA Control 0002",
+            REGATTALINK_OTA_DATA_UUID to "OTA Data 0003",
+            REGATTALINK_OTA_STATUS_UUID to "OTA Status 0004"
+        ).forEach { (uuid, label) ->
+            requireCharacteristic(otaService, uuid, label)
+        }
+
+        val configService = requireService(
+            CONFIG_SERVICE_UUID,
+            "Config/Control"
+        )
+        listOf(
+            DEVICE_NAME_UUID to "Device Name 0011",
+            DEVICE_INFO_UUID to "Device Info 0012",
+            NMEA_PGN_INVENTORY_UUID to "Boat Data PGN Inventory 0013",
+            NMEA_RAW_CAN_UUID to "Boat Data Raw FIFO 0014",
+            LED_BRIGHTNESS_UUID to "LED Brightness 0015",
+            MOTION_DAMPING_UUID to "Heel/Pitch Damping 0016",
+            CONFIG_WORD_UUID to "Config Word 0017",
+            HEADING_TRIM_UUID to "Heading Trim 0018",
+            DIAGNOSTIC_LOG_UUID to "Diagnostic Log 0019",
+            DEVICE_CONTROL_UUID to "Device Control 001A",
+            NMEA_TX_RUNTIME_STATUS_UUID to "TX Runtime Status 001B",
+            PHONE_GNSS_INPUT_UUID to "Phone GNSS Input 001C"
+        ).forEach { (uuid, label) ->
+            requireCharacteristic(configService, uuid, label)
+        }
+
+        val telemetryService = requireService(
+            TELEMETRY_SERVICE_UUID,
+            "Telemetry"
+        )
+        listOf(
+            TELEMETRY_FAST_UUID to "Fast Motion 0021",
+            TELEMETRY_SUMMARY_UUID to "Motion Summary 0022",
+            TELEMETRY_CALIBRATION_UUID to "IMU Diagnostics 0023",
+            TELEMETRY_BOAT_STATE_UUID to "Boat State 0024",
+            TELEMETRY_MOTION_ONE_HZ_UUID to "Motion 1 Hz 0025",
+            TELEMETRY_LOAD_UUID to "Load Telemetry 0026"
+        ).forEach { (uuid, label) ->
+            requireCharacteristic(telemetryService, uuid, label)
+        }
+
+        requireService(
+            EXTENSION_SERVICE_UUID,
+            "Extension"
+        )
+    }
+
     private fun probeCriticalGattLayout(
         activeGatt: BluetoothGatt,
         info: RegattaLinkDeviceInfo
     ) {
+        requireRegattaLinkV2FrozenCore(activeGatt)
         var provedCriticalLayout = false
 
         if (info.otaAvailable) {
@@ -2349,7 +2595,6 @@ internal class RegattaLinkBleClient(
         val key = gattSchemaKey(info)
         handler.removeCallbacks(gattSchemaReconcileTimeout)
         gattSchemaStore.clear(info.stableId)
-        legacyGattSchemaAcceptedThisProcess.remove(info.stableId)
         verifiedGattSchemaThisProcess.remove(key)
         gattServiceChangedReconnectPendingValidation.remove(key)
 
@@ -2403,12 +2648,6 @@ internal class RegattaLinkBleClient(
         gattSchemaRefreshRequestRunning.set(false)
     }
 
-    private fun regattaLinkExtensionService(
-        activeGatt: BluetoothGatt
-    ): BluetoothGattService? =
-        activeGatt.getService(EXTENSION_SERVICE_UUID)
-            ?: activeGatt.getService(CONFIG_SERVICE_UUID)
-
     private fun optionalFeatureWorkAllowed(activeGatt: BluetoothGatt): Boolean =
         gatt === activeGatt &&
             connected &&
@@ -2440,30 +2679,24 @@ internal class RegattaLinkBleClient(
         if (!optionalFeatureWorkAllowed(activeGatt)) return
 
         val service = activeGatt.getService(CONFIG_SERVICE_UUID)
-        val extensionService = regattaLinkExtensionService(activeGatt)
         val nameCharacteristic = service?.getCharacteristic(DEVICE_NAME_UUID)
         val brightnessCharacteristic = service?.getCharacteristic(LED_BRIGHTNESS_UUID)
         val dampingCharacteristic = service?.getCharacteristic(MOTION_DAMPING_UUID)
-        val loadPrecisionCharacteristic =
-            service?.getCharacteristic(LOAD_PRECISION_UUID)
-        val nmeaTxCharacteristic =
-            extensionService?.getCharacteristic(NMEA_TX_UUID)
-        val nmeaAttitudeTxCharacteristic =
-            extensionService?.getCharacteristic(NMEA_ATTITUDE_TX_UUID)
+        val configWordCharacteristic = service?.getCharacteristic(CONFIG_WORD_UUID)
+        val headingTrimCharacteristic = service?.getCharacteristic(HEADING_TRIM_UUID)
         val nmeaTxRuntimeStatusCharacteristic =
-            extensionService?.getCharacteristic(NMEA_TX_RUNTIME_STATUS_UUID)
+            service?.getCharacteristic(NMEA_TX_RUNTIME_STATUS_UUID)
         val diagnosticLogCharacteristic =
-            extensionService?.getCharacteristic(DIAGNOSTIC_LOG_UUID)
+            service?.getCharacteristic(DIAGNOSTIC_LOG_UUID)
         val deviceControlCharacteristic =
-            extensionService?.getCharacteristic(DEVICE_CONTROL_UUID)
+            service?.getCharacteristic(DEVICE_CONTROL_UUID)
 
         var next = RegattaLinkConfigurationState(
             deviceNameSupported = nameCharacteristic != null,
             ledBrightnessSupported = brightnessCharacteristic != null,
             motionDampingSupported = dampingCharacteristic != null,
-            loadPrecisionSupported = loadPrecisionCharacteristic != null,
-            nmeaTxSupported = nmeaTxCharacteristic != null,
-            nmeaAttitudeTxSupported = nmeaAttitudeTxCharacteristic != null,
+            configWordSupported = configWordCharacteristic != null,
+            headingTrimSupported = headingTrimCharacteristic != null,
             nmeaTxRuntimeStatusSupported =
                 nmeaTxRuntimeStatusCharacteristic != null,
             diagnosticLogSupported = diagnosticLogCharacteristic != null,
@@ -2514,64 +2747,43 @@ internal class RegattaLinkBleClient(
         }
 
         if (
-            loadPrecisionCharacteristic != null &&
+            configWordCharacteristic != null &&
             optionalFeatureWorkAllowed(activeGatt)
         ) {
             runCatching {
-                parseRegattaLinkLoadPrecision(
+                parseRegattaLinkConfigWord(
                     readCharacteristicBlocking(
                         activeGatt,
-                        loadPrecisionCharacteristic
+                        configWordCharacteristic
                     )
                 )
-            }.onSuccess { x10 ->
-                next = next.copy(loadPrecisionX10 = x10)
+            }.onSuccess { word ->
+                next = regattaLinkApplyConfigWord(next, word)
             }.onFailure { error ->
                 if (errorMessage.isBlank()) {
                     errorMessage = error.message
-                        ?: "Could not read RegattaLink load precision"
+                        ?: "Could not read RegattaLink config word"
                 }
             }
         }
 
         if (
-            nmeaTxCharacteristic != null &&
+            headingTrimCharacteristic != null &&
             optionalFeatureWorkAllowed(activeGatt)
         ) {
             runCatching {
-                parseRegattaLinkNmeaTxEnabled(
+                parseRegattaLinkHeadingTrim(
                     readCharacteristicBlocking(
                         activeGatt,
-                        nmeaTxCharacteristic
+                        headingTrimCharacteristic
                     )
                 )
-            }.onSuccess { enabled ->
-                next = next.copy(nmeaTxEnabled = enabled)
+            }.onSuccess { trim ->
+                next = next.copy(headingTrimDeg = trim)
             }.onFailure { error ->
                 if (errorMessage.isBlank()) {
                     errorMessage = error.message
-                        ?: "Could not read RegattaLink Boat Data TX setting"
-                }
-            }
-        }
-
-        if (
-            nmeaAttitudeTxCharacteristic != null &&
-            optionalFeatureWorkAllowed(activeGatt)
-        ) {
-            runCatching {
-                parseRegattaLinkNmeaAttitudeTxEnabled(
-                    readCharacteristicBlocking(
-                        activeGatt,
-                        nmeaAttitudeTxCharacteristic
-                    )
-                )
-            }.onSuccess { enabled ->
-                next = next.copy(nmeaAttitudeTxEnabled = enabled)
-            }.onFailure { error ->
-                if (errorMessage.isBlank()) {
-                    errorMessage = error.message
-                        ?: "Could not read RegattaLink Boat Data attitude TX setting"
+                        ?: "Could not read RegattaLink heading trim"
                 }
             }
         }
@@ -2619,7 +2831,6 @@ internal class RegattaLinkBleClient(
         }
 
         if (gatt === activeGatt && connected) {
-            next = regattaLinkReconcileNmeaTxState(next)
             emitConfiguration(
                 next.copy(
                     userMessage =
@@ -3320,33 +3531,80 @@ internal class RegattaLinkBleClient(
         return true
     }
 
-    private enum class NmeaTxSetting(
-        val uuid: UUID,
-        val unavailableText: String,
-        val failureText: String
-    ) {
-        MASTER(
-            NMEA_TX_UUID,
-            "RegattaLink Boat Data TX setting is unavailable",
-            "Could not change RegattaLink Boat Data TX setting"
-        ),
-        ATTITUDE(
-            NMEA_ATTITUDE_TX_UUID,
-            "RegattaLink Boat Data attitude TX setting is unavailable",
-            "Could not change RegattaLink Boat Data attitude TX setting"
+    override fun setNmeaTxEnabled(enabled: Boolean): Boolean =
+        mutateConfigWord(
+            mask = REGATTALINK_CONFIG_TX_MASTER,
+            encodedBits =
+                REGATTALINK_CONFIG_TX_MASTER.takeIf { enabled } ?: 0u,
+            failureText = "Could not change RegattaLink Boat Data TX setting"
+        )
+
+    override fun setNmeaAttitudeTxEnabled(enabled: Boolean): Boolean =
+        mutateConfigWord(
+            mask = REGATTALINK_CONFIG_TX_IMU,
+            encodedBits =
+                REGATTALINK_CONFIG_TX_IMU.takeIf { enabled } ?: 0u,
+            failureText = "Could not change RegattaLink Heel / Trim TX setting"
+        )
+
+    override fun setNmea0183TxEnabled(enabled: Boolean): Boolean =
+        mutateConfigWord(
+            mask = REGATTALINK_CONFIG_TX_NMEA0183,
+            encodedBits =
+                REGATTALINK_CONFIG_TX_NMEA0183.takeIf { enabled } ?: 0u,
+            failureText = "Could not change RegattaLink NMEA 0183 TX setting"
+        )
+
+    override fun setPhoneGpsTxEnabled(enabled: Boolean): Boolean =
+        mutateConfigWord(
+            mask = REGATTALINK_CONFIG_TX_PHONE_GPS,
+            encodedBits =
+                REGATTALINK_CONFIG_TX_PHONE_GPS.takeIf { enabled } ?: 0u,
+            failureText = "Could not change RegattaLink Phone GPS TX setting"
+        )
+
+    override fun setCompassTxEnabled(enabled: Boolean): Boolean =
+        mutateConfigWord(
+            mask = REGATTALINK_CONFIG_TX_COMPASS,
+            encodedBits =
+                REGATTALINK_CONFIG_TX_COMPASS.takeIf { enabled } ?: 0u,
+            failureText = "Could not change RegattaLink compass TX setting"
+        )
+
+    override fun setLoadPrecisionX10(enabled: Boolean): Boolean =
+        mutateConfigWord(
+            mask = REGATTALINK_CONFIG_LOAD_PRECISION_X10,
+            encodedBits =
+                REGATTALINK_CONFIG_LOAD_PRECISION_X10
+                    .takeIf { enabled } ?: 0u,
+            failureText = "Could not change RegattaLink load precision"
+        )
+
+    override fun setMagBackgroundLearningEnabled(enabled: Boolean): Boolean =
+        mutateConfigWord(
+            mask = REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING,
+            encodedBits =
+                REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING
+                    .takeIf { enabled } ?: 0u,
+            failureText = "Could not change RegattaLink MAG background learning"
+        )
+
+    override fun setNmea0183Baud(baudRate: Int): Boolean {
+        val baud = RegattaLinkNmea0183Baud.fromBaudRate(baudRate)
+            ?: return false
+        return mutateConfigWord(
+            mask = REGATTALINK_CONFIG_NMEA0183_BAUD_MASK,
+            encodedBits = baud.encodedBits,
+            failureText = "Could not change RegattaLink NMEA 0183 baud"
         )
     }
 
-    override fun setNmeaTxEnabled(enabled: Boolean): Boolean =
-        setNmeaTxSetting(NmeaTxSetting.MASTER, enabled)
-
-    override fun setNmeaAttitudeTxEnabled(enabled: Boolean): Boolean =
-        setNmeaTxSetting(NmeaTxSetting.ATTITUDE, enabled)
-
-    private fun setNmeaTxSetting(
-        setting: NmeaTxSetting,
-        enabled: Boolean
+    private fun mutateConfigWord(
+        mask: UInt,
+        encodedBits: UInt,
+        failureText: String
     ): Boolean {
+        if (encodedBits and mask.inv() != 0u) return false
         if (otaRunning.get() || !isConnected()) return false
 
         val activeGatt = gatt ?: return false
@@ -3358,6 +3616,7 @@ internal class RegattaLinkBleClient(
         }
 
         otaExecutor.execute {
+            var wordBeforeWrite: UInt? = null
             try {
                 if (
                     !optionalFeatureWorkAllowed(activeGatt) ||
@@ -3368,69 +3627,82 @@ internal class RegattaLinkBleClient(
                 updateConfiguration {
                     it.copy(busy = true, userMessage = null, error = "")
                 }
-                try {
-                    val characteristic = regattaLinkExtensionService(activeGatt)
-                        ?.getCharacteristic(setting.uuid)
-                        ?: throw RegattaLinkOtaTransportException(
-                            setting.unavailableText,
-                            ambiguous = false
+
+                val characteristic = activeGatt
+                    .getService(CONFIG_SERVICE_UUID)
+                    ?.getCharacteristic(CONFIG_WORD_UUID)
+
+                if (characteristic == null) {
+                    updateConfiguration {
+                        it.copy(
+                            busy = false,
+                            userMessage = RegattaLinkUiMessage.CONFIGURATION_FAILED,
+                            error = "RegattaLink config word is unavailable"
                         )
-                    writeCharacteristicBlockingDirect(
-                        activeGatt,
-                        characteristic,
-                        byteArrayOf(if (enabled) 1 else 0)
+                    }
+                    return@execute
+                }
+
+                try {
+                    val currentWord = parseRegattaLinkConfigWord(
+                        readCharacteristicBlocking(activeGatt, characteristic)
                     )
+                    wordBeforeWrite = currentWord
+                    val nextWord = regattaLinkConfigWordWithMask(
+                        current = currentWord,
+                        mask = mask,
+                        encodedBits = encodedBits
+                    )
+
+                    if (nextWord != currentWord) {
+                        writeCharacteristicBlockingDirect(
+                            activeGatt,
+                            characteristic,
+                            encodeRegattaLinkConfigWord(nextWord)
+                        )
+                    }
+
                     updateConfiguration { current ->
-                        regattaLinkNmeaSelectionAfterWriteSuccess(
-                            state = current,
-                            attitudeSelector =
-                                setting == NmeaTxSetting.ATTITUDE,
-                            enabled = enabled
-                        ).copy(
+                        regattaLinkApplyConfigWord(current, nextWord).copy(
+                            configRestartRequired =
+                                current.configRestartRequired ||
+                                    nextWord != currentWord,
                             busy = false,
                             userMessage = null,
                             error = ""
                         )
                     }
                 } catch (error: Exception) {
-                    val reread =
+                    val rereadWord =
                         if (optionalFeatureWorkAllowed(activeGatt)) {
                             runCatching {
-                                val characteristic =
-                                    regattaLinkExtensionService(activeGatt)
-                                        ?.getCharacteristic(setting.uuid)
-                                        ?: return@runCatching null
-                                when (setting) {
-                                    NmeaTxSetting.MASTER ->
-                                        parseRegattaLinkNmeaTxEnabled(
-                                            readCharacteristicBlocking(
-                                                activeGatt,
-                                                characteristic
-                                            )
-                                        )
-                                    NmeaTxSetting.ATTITUDE ->
-                                        parseRegattaLinkNmeaAttitudeTxEnabled(
-                                            readCharacteristicBlocking(
-                                                activeGatt,
-                                                characteristic
-                                            )
-                                        )
-                                }
+                                parseRegattaLinkConfigWord(
+                                    readCharacteristicBlocking(
+                                        activeGatt,
+                                        characteristic
+                                    )
+                                )
                             }.getOrNull()
                         } else {
                             null
                         }
                     updateConfiguration { current ->
-                        regattaLinkNmeaSelectionAfterWriteFailure(
-                            state = current,
-                            attitudeSelector =
-                                setting == NmeaTxSetting.ATTITUDE,
-                            rereadValue = reread
-                        ).copy(
+                        val authoritative =
+                            rereadWord?.let {
+                                regattaLinkApplyConfigWord(current, it)
+                            } ?: current
+                        authoritative.copy(
+                            configRestartRequired =
+                                authoritative.configRestartRequired ||
+                                    (
+                                        rereadWord != null &&
+                                            wordBeforeWrite != null &&
+                                            rereadWord != wordBeforeWrite
+                                        ),
                             busy = false,
                             userMessage =
                                 RegattaLinkUiMessage.CONFIGURATION_FAILED,
-                            error = error.message ?: setting.failureText
+                            error = error.message ?: failureText
                         )
                     }
                 }
@@ -3441,7 +3713,8 @@ internal class RegattaLinkBleClient(
         return true
     }
 
-    override fun setLoadPrecisionX10(enabled: Boolean): Boolean {
+    override fun setHeadingTrimDeg(value: Int): Boolean {
+        if (value !in -180..180) return false
         if (otaRunning.get() || !isConnected()) return false
 
         val activeGatt = gatt ?: return false
@@ -3463,23 +3736,32 @@ internal class RegattaLinkBleClient(
                 updateConfiguration {
                     it.copy(busy = true, userMessage = null, error = "")
                 }
-                try {
-                    val characteristic = activeGatt
-                        .getService(CONFIG_SERVICE_UUID)
-                        ?.getCharacteristic(LOAD_PRECISION_UUID)
-                        ?: throw RegattaLinkOtaTransportException(
-                            "RegattaLink load precision setting is unavailable",
-                            ambiguous = false
+
+                val characteristic = activeGatt
+                    .getService(CONFIG_SERVICE_UUID)
+                    ?.getCharacteristic(HEADING_TRIM_UUID)
+
+                if (characteristic == null) {
+                    updateConfiguration {
+                        it.copy(
+                            busy = false,
+                            userMessage = RegattaLinkUiMessage.CONFIGURATION_FAILED,
+                            error = "RegattaLink heading trim is unavailable"
                         )
+                    }
+                    return@execute
+                }
+
+                try {
                     writeCharacteristicBlockingDirect(
                         activeGatt,
                         characteristic,
-                        byteArrayOf(if (enabled) 1 else 0)
+                        encodeRegattaLinkHeadingTrim(value)
                     )
                     updateConfiguration {
                         it.copy(
-                            loadPrecisionSupported = true,
-                            loadPrecisionX10 = enabled,
+                            headingTrimSupported = true,
+                            headingTrimDeg = value,
                             busy = false,
                             userMessage = null,
                             error = ""
@@ -3489,11 +3771,7 @@ internal class RegattaLinkBleClient(
                     val reread =
                         if (optionalFeatureWorkAllowed(activeGatt)) {
                             runCatching {
-                                val characteristic = activeGatt
-                                    .getService(CONFIG_SERVICE_UUID)
-                                    ?.getCharacteristic(LOAD_PRECISION_UUID)
-                                    ?: return@runCatching null
-                                parseRegattaLinkLoadPrecision(
+                                parseRegattaLinkHeadingTrim(
                                     readCharacteristicBlocking(
                                         activeGatt,
                                         characteristic
@@ -3505,13 +3783,12 @@ internal class RegattaLinkBleClient(
                         }
                     updateConfiguration {
                         it.copy(
-                            loadPrecisionX10 =
-                                reread ?: it.loadPrecisionX10,
+                            headingTrimDeg = reread ?: it.headingTrimDeg,
                             busy = false,
                             userMessage =
                                 RegattaLinkUiMessage.CONFIGURATION_FAILED,
                             error = error.message
-                                ?: "Could not change RegattaLink load precision"
+                                ?: "Could not change RegattaLink heading trim"
                         )
                     }
                 }
@@ -3520,6 +3797,88 @@ internal class RegattaLinkBleClient(
             }
         }
         return true
+    }
+
+    override fun offerPhoneGnss(sample: RegattaLinkPhoneGnssSample): Boolean {
+        if (!phoneGnssForwardingAllowed()) {
+            clearPhoneGnssPending()
+            return false
+        }
+        phoneGnssPending.set(sample)
+        schedulePhoneGnssDrain()
+        return true
+    }
+
+    private fun phoneGnssForwardingAllowed(): Boolean =
+        connected &&
+            establishedConnection &&
+            !otaRunning.get() &&
+            !lastConfigurationState.deviceControlBusy &&
+            !lastConfigurationState.restartAwaitingDisconnect &&
+            !lastConfigurationState.factoryResetAwaitingDisconnect &&
+            lastConfigurationState.factoryResetWriteAcceptedRequestId == null &&
+            lastConfigurationState.phoneGnssForwardingDesired
+
+    private fun schedulePhoneGnssDrain() {
+        if (!phoneGnssForwardingAllowed()) return
+        if (!phoneGnssDrainScheduled.compareAndSet(false, true)) return
+
+        val elapsedSinceLast =
+            SystemClock.elapsedRealtime() - phoneGnssLastSubmitElapsedMs
+        val delayMs =
+            (REGATTALINK_PHONE_GNSS_MIN_INTERVAL_MS - elapsedSinceLast)
+                .coerceAtLeast(0L)
+        handler.postDelayed(phoneGnssDrainRunnable, delayMs)
+    }
+
+    private fun drainPhoneGnssPending() {
+        try {
+            if (!phoneGnssForwardingAllowed()) {
+                phoneGnssPending.set(null)
+                return
+            }
+
+            val sample = phoneGnssPending.getAndSet(null) ?: return
+            val activeGatt = gatt ?: return
+            if (!optionalFeatureWorkAllowed(activeGatt)) return
+
+            val characteristic = activeGatt
+                .getService(CONFIG_SERVICE_UUID)
+                ?.getCharacteristic(PHONE_GNSS_INPUT_UUID)
+                ?: return
+            val sendElapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
+            val encoded = encodeRegattaLinkPhoneGnss(
+                sample = sample,
+                sendElapsedRealtimeNanos = sendElapsedRealtimeNanos
+            ) ?: return
+
+            phoneGnssLastSubmitElapsedMs = SystemClock.elapsedRealtime()
+            runCatching {
+                writeCharacteristicBlockingDirect(
+                    activeGatt,
+                    characteristic,
+                    encoded
+                )
+            }.onFailure { error ->
+                Log.w(LOG_TAG, "Phone GNSS write failed", error)
+            }
+        } finally {
+            phoneGnssDrainScheduled.set(false)
+            if (
+                phoneGnssPending.get() != null &&
+                phoneGnssForwardingAllowed()
+            ) {
+                schedulePhoneGnssDrain()
+            }
+        }
+    }
+
+    override fun clearPhoneGnss() {
+        clearPhoneGnssPending()
+    }
+
+    private fun clearPhoneGnssPending() {
+        phoneGnssPending.set(null)
     }
 
     override fun drainDiagnosticLog(): Boolean {
@@ -3562,7 +3921,7 @@ internal class RegattaLinkBleClient(
             val entries = mutableListOf<RegattaLinkDiagnosticLogEntry>()
             var errorMessage = ""
             try {
-                val characteristic = regattaLinkExtensionService(activeGatt)
+                val characteristic = activeGatt.getService(CONFIG_SERVICE_UUID)
                     ?.getCharacteristic(DIAGNOSTIC_LOG_UUID)
                     ?: throw RegattaLinkOtaTransportException(
                         "RegattaLink diagnostic log is unavailable",
@@ -3601,6 +3960,12 @@ internal class RegattaLinkBleClient(
         opcode: RegattaLinkDeviceControlOpcode,
         value: Int
     ): Boolean {
+        if (
+            opcode == RegattaLinkDeviceControlOpcode.RESTART ||
+            opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET
+        ) {
+            clearPhoneGnssPending()
+        }
         if (
             !lastConfigurationState.deviceControlSupported ||
             otaRunning.get() ||
@@ -3645,7 +4010,7 @@ internal class RegattaLinkBleClient(
             var factoryResetFinalizationDeadline: Long? = null
             var factoryResetWriteAccepted = false
             try {
-                val characteristic = regattaLinkExtensionService(activeGatt)
+                val characteristic = activeGatt.getService(CONFIG_SERVICE_UUID)
                     ?.getCharacteristic(DEVICE_CONTROL_UUID)
                     ?: throw RegattaLinkOtaTransportException(
                         "RegattaLink Device Control is unavailable",
@@ -4468,7 +4833,8 @@ internal class RegattaLinkBleClient(
 
     override fun reconnectCandidate(
         expectedStableId: String,
-        timeoutMs: Long
+        timeoutMs: Long,
+        allowOtaOnly: Boolean
     ): RegattaLinkDeviceInfo? {
         if (timeoutMs <= 0L) return null
         closeGatt()
@@ -4483,6 +4849,8 @@ internal class RegattaLinkBleClient(
 
         val future = CompletableFuture<RegattaLinkDeviceInfo?>()
         reconnectFuture = future
+        otaReconnectAllowOtaOnly = allowOtaOnly
+        otaReconnectExpectedStableId = expectedStableId
         scanPurpose = ScanPurpose.OTA_RECONNECT
 
         handler.post {
@@ -4511,6 +4879,8 @@ internal class RegattaLinkBleClient(
             null
         } finally {
             reconnectFuture = null
+            otaReconnectAllowOtaOnly = false
+            otaReconnectExpectedStableId = null
             handler.removeCallbacks(scanTimeout)
             scanPurpose = ScanPurpose.NORMAL
         }
@@ -4875,7 +5245,8 @@ internal class RegattaLinkBleClient(
             pending.future.completeExceptionally(
                 RegattaLinkOtaTransportException(
                     "GATT read $uuid failed ($status)",
-                    ambiguous = true
+                    ambiguous = true,
+                    gattStatus = status
                 )
             )
         }
@@ -4905,7 +5276,8 @@ internal class RegattaLinkBleClient(
             pending.future.completeExceptionally(
                 RegattaLinkOtaTransportException(
                     "GATT descriptor write failed ($status)",
-                    ambiguous = true
+                    ambiguous = true,
+                    gattStatus = status
                 )
             )
         }
@@ -5036,6 +5408,7 @@ internal class RegattaLinkBleClient(
     }
 
     private fun closeGatt() {
+        clearPhoneGnssPending()
         handler.removeCallbacks(gattTimeout)
         handler.removeCallbacks(gattSchemaReconcileTimeout)
         clearGattSchemaReconnectState()
@@ -5086,7 +5459,17 @@ internal class RegattaLinkBleClient(
         if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
             reconnectFuture?.complete(null)
         } else if (scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT) {
-            retryKnownDeviceReconnect(message)
+            retryKnownDeviceReconnect(
+                if (
+                    gattStatus?.let(
+                        ::isRegattaLinkStaleBondSecurityGattStatus
+                    ) == true
+                ) {
+                    REGATTALINK_STALE_ANDROID_BOND_ERROR
+                } else {
+                    message
+                }
+            )
         } else if (!otaRunning.get()) {
             if (discoveryInProgress) {
                 retryDiscoveryAfterCandidateFailure(
@@ -5170,6 +5553,9 @@ internal class RegattaLinkBleClient(
     }
 
     private fun emitConfiguration(state: RegattaLinkConfigurationState) {
+        if (!state.phoneGnssForwardingDesired) {
+            clearPhoneGnssPending()
+        }
         synchronized(configurationLock) {
             lastConfigurationState = state
         }
