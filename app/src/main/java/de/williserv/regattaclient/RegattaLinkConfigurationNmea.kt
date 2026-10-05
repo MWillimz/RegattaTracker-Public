@@ -445,12 +445,44 @@ internal fun regattaLinkReconcileNmeaTxState(
 ): RegattaLinkConfigurationState = state
 
 
+private fun regattaLinkOutputRestartRequired(
+    state: RegattaLinkConfigurationState,
+    configBit: UInt,
+    runtimeBit: Int
+): Boolean {
+    if (!state.nmeaTxRuntimeStatusSupported) return false
+    val desiredWord = state.configWord ?: return false
+    val bootMask = state.nmeaBootOutputMask ?: return false
+    val desired = desiredWord and configBit != 0u
+    val bootSelected = bootMask and runtimeBit != 0
+    return desired != bootSelected
+}
+
 internal fun regattaLinkNmeaRestartRequired(
     state: RegattaLinkConfigurationState
 ): Boolean =
     state.configRestartRequired ||
         state.nmeaTxRestartRequired ||
-        state.nmeaAttitudeTxRestartRequired
+        regattaLinkOutputRestartRequired(
+            state,
+            REGATTALINK_CONFIG_TX_IMU,
+            REGATTALINK_TX_OUTPUT_IMU
+        ) ||
+        regattaLinkOutputRestartRequired(
+            state,
+            REGATTALINK_CONFIG_TX_NMEA0183,
+            REGATTALINK_TX_OUTPUT_NMEA0183
+        ) ||
+        regattaLinkOutputRestartRequired(
+            state,
+            REGATTALINK_CONFIG_TX_PHONE_GPS,
+            REGATTALINK_TX_OUTPUT_PHONE_GPS
+        ) ||
+        regattaLinkOutputRestartRequired(
+            state,
+            REGATTALINK_CONFIG_TX_COMPASS,
+            REGATTALINK_TX_OUTPUT_COMPASS
+        )
 
 internal fun regattaLinkNmeaAppliedStateUnknown(
     state: RegattaLinkConfigurationState
