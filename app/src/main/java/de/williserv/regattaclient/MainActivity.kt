@@ -547,12 +547,21 @@ class MainActivity : ComponentActivity() {
             regattaLinkPhoneGpsRelayStore.isEnabled()
         regattaLinkManager.addListener(regattaLinkListener)
         regattaLinkManager.requestForegroundStartupReconnectIfPermitted()
-        if (regattaLinkPhoneGpsRelayEnabled.value) {
-            syncRegattaLinkPhoneGpsRelayService(enabled = true)
-        }
         loadBoatSetup()
         loadRaceSetup()
         loadAppState()
+
+        val appStatePrefs =
+            getSharedPreferences(appStatePrefsName, Context.MODE_PRIVATE)
+        val persistedTrackingRequested =
+            appStatePrefs.getBoolean("in_race", false) ||
+                appStatePrefs.getBoolean("manual_tracking", false)
+        if (
+            regattaLinkPhoneGpsRelayEnabled.value &&
+            !persistedTrackingRequested
+        ) {
+            syncRegattaLinkPhoneGpsRelayService(enabled = true)
+        }
         refreshRetirementReportedState()
 
         requestStorageCountsRefresh(force = true)
