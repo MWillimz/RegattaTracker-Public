@@ -584,7 +584,7 @@
     <string name="regattalink_subsystem_imu">IMU</string>
     <string name="regattalink_subsystem_mag">Bussola integrata</string>
     <string name="regattalink_subsystem_boat_data">Boat Data / CAN</string>
-    <string name="regattalink_subsystem_nmea0183">Ingresso NMEA 0183</string>
+    <string name="regattalink_subsystem_nmea0183">Ingresso 0183</string>
     <string name="regattalink_technical_details">Dettagli tecnici</string>
     <string name="regattalink_diagnostics_title">Diagnostica</string>
     <string name="regattalink_live_orientation">Orientamento in tempo reale</string>
