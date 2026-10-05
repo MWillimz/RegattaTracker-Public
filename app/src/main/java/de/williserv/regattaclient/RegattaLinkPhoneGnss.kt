@@ -139,14 +139,22 @@ internal fun encodeRegattaLinkPhoneGnss(
 
 internal fun regattaLinkPhoneGnssForwardingGate(
     connected: Boolean,
+    transportReady: Boolean,
     otaActive: Boolean,
-    configWord: UInt?
-): Boolean =
-    connected &&
+    configurationState: RegattaLinkConfigurationState
+): Boolean {
+    val configWord = configurationState.configWord ?: return false
+    return connected &&
+        transportReady &&
         !otaActive &&
-        configWord != null &&
+        !configurationState.deviceControlBusy &&
+        !configurationState.restartAwaitingDisconnect &&
+        !configurationState.factoryResetAwaitingDisconnect &&
+        configurationState.factoryResetWriteAcceptedRequestId == null &&
+        configWord and REGATTALINK_CONFIG_SESSION_CAN != 0u &&
         configWord and REGATTALINK_CONFIG_TX_MASTER != 0u &&
         configWord and REGATTALINK_CONFIG_TX_PHONE_GPS != 0u
+}
 
 internal fun regattaLinkLocationRequestIntervalMs(
     persistenceIntervalMs: Long,
