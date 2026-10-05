@@ -281,10 +281,14 @@ fun RegattaLinkScreen(
         nmeaSetupOpen,
         nmeaState.pgnInventorySupported,
         nmeaState.pgnInventoryLoading,
+        configurationState.canSessionAvailable,
         otaState.isActive,
         state.deviceAddress
     ) {
-        if (!nmeaSetupOpen) {
+        if (
+            !nmeaSetupOpen ||
+            configurationState.canSessionAvailable == false
+        ) {
             pgnInventoryAutoRefreshRequested = false
             return@LaunchedEffect
         }
@@ -430,7 +434,19 @@ fun RegattaLinkScreen(
                     expanded = settingsMenuExpanded,
                     onDismissRequest = { settingsMenuExpanded = false }
                 ) {
-                    regattaLinkSetupMenuItems.forEach { menuItem ->
+                    regattaLinkSetupMenuItems
+                        .filter { menuItem ->
+                            when (menuItem.destination) {
+                                RegattaLinkSetupDestination.IMU ->
+                                    configurationState.imuSessionAvailable != false ||
+                                        configurationState.magSessionAvailable != false
+                                RegattaLinkSetupDestination.NMEA ->
+                                    configurationState.canSessionAvailable != false ||
+                                        configurationState.nmea0183SessionAvailable != false
+                                else -> true
+                            }
+                        }
+                        .forEach { menuItem ->
                         DropdownMenuItem(
                             text = {
                                 Text(stringResource(menuItem.labelResId))
@@ -890,15 +906,13 @@ private fun RegattaLinkNmeaSetupSheet(
     onRefreshPgnInventory: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val canAvailable = configurationState.canSessionAvailable != false
+    val nmea0183Available =
+        configurationState.nmea0183SessionAvailable != false
+    val imuAvailable = configurationState.imuSessionAvailable != false
+    val magAvailable = configurationState.magSessionAvailable != false
     val nmeaAvailable =
-        connected &&
-            (
-                nmeaState.boatStateSupported ||
-                    nmeaState.pgnInventorySupported ||
-                    nmeaState.loadSupported ||
-                    configurationState.nmeaTxSupported ||
-                    configurationState.nmeaAttitudeTxSupported
-                )
+        connected && (canAvailable || nmea0183Available)
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -945,7 +959,11 @@ private fun RegattaLinkNmeaSetupSheet(
                     it and REGATTALINK_TX_OUTPUT_IMU != 0
                 }
 
-            if (connected && configurationState.nmeaTxSupported) {
+            if (
+                connected &&
+                canAvailable &&
+                configurationState.nmeaTxSupported
+            ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1008,7 +1026,12 @@ private fun RegattaLinkNmeaSetupSheet(
                 }
             }
 
-            if (connected && configurationState.configWordSupported) {
+            if (
+                connected &&
+                canAvailable &&
+                nmea0183Available &&
+                configurationState.configWordSupported
+            ) {
                 RegattaLinkBoatDataSelectorRow(
                     title = stringResource(
                         R.string.regattalink_nmea0183_tx
@@ -1022,7 +1045,12 @@ private fun RegattaLinkNmeaSetupSheet(
                 )
             }
 
-            if (connected && configurationState.nmeaAttitudeTxSupported) {
+            if (
+                connected &&
+                canAvailable &&
+                imuAvailable &&
+                configurationState.nmeaAttitudeTxSupported
+            ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1086,7 +1114,12 @@ private fun RegattaLinkNmeaSetupSheet(
                 }
             }
 
-            if (connected && configurationState.configWordSupported) {
+            if (
+                connected &&
+                canAvailable &&
+                magAvailable &&
+                configurationState.configWordSupported
+            ) {
                 RegattaLinkBoatDataSelectorRow(
                     title = stringResource(
                         R.string.regattalink_compass_tx
@@ -1098,6 +1131,13 @@ private fun RegattaLinkNmeaSetupSheet(
                     enabled = configEnabled,
                     onCheckedChange = onSetCompassTxEnabled
                 )
+            }
+
+            if (
+                connected &&
+                canAvailable &&
+                configurationState.configWordSupported
+            ) {
                 RegattaLinkBoatDataSelectorRow(
                     title = stringResource(
                         R.string.regattalink_phone_gps_tx
@@ -1111,34 +1151,40 @@ private fun RegattaLinkNmeaSetupSheet(
                 )
             }
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 16.dp, top = 14.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(
-                            R.string.regattalink_phone_gps_relay
-                        ),
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = stringResource(
-                            R.string.regattalink_phone_gps_relay_hint
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+            if (canAvailable) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, top = 14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(
+                                R.string.regattalink_phone_gps_relay
+                            ),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.regattalink_phone_gps_relay_hint
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = phoneGpsRelayEnabled,
+                        onCheckedChange = onSetPhoneGpsRelayEnabled
                     )
                 }
-                Switch(
-                    checked = phoneGpsRelayEnabled,
-                    onCheckedChange = onSetPhoneGpsRelayEnabled
-                )
             }
 
-            if (connected && configurationState.configWordSupported) {
+            if (
+                connected &&
+                nmea0183Available &&
+                configurationState.configWordSupported
+            ) {
                 var baudMenuExpanded by remember {
                     mutableStateOf(false)
                 }
@@ -1276,6 +1322,7 @@ private fun RegattaLinkNmeaSetupSheet(
 
             if (
                 connected &&
+                canAvailable &&
                 configurationState.loadPrecisionSupported
             ) {
                 Row(
@@ -1312,7 +1359,7 @@ private fun RegattaLinkNmeaSetupSheet(
                 }
             }
 
-            if (connected && nmeaState.loadSupported) {
+            if (connected && canAvailable && nmeaState.loadSupported) {
                 Text(
                     text = stringResource(
                         R.string.regattalink_load_sensors
@@ -1463,7 +1510,11 @@ private fun RegattaLinkNmeaSetupSheet(
                 }
             }
 
-            if (connected && nmeaState.pgnInventorySupported) {
+            if (
+                connected &&
+                canAvailable &&
+                nmeaState.pgnInventorySupported
+            ) {
                 Text(
                     text = stringResource(R.string.regattalink_pgns_seen),
                     fontSize = 18.sp,
@@ -1748,7 +1799,10 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
                 )
             }
 
-            if (nmeaState.rawCanSupported) {
+            if (
+                nmeaState.rawCanSupported &&
+                configurationState.canSessionAvailable != false
+            ) {
                 Text(
                     text = stringResource(
                         R.string.regattalink_raw_capture_title
@@ -2432,6 +2486,8 @@ private fun RegattaLinkImuSetupSheet(
     onAdjust: (RegattaLinkDeviceControlOpcode, Int) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val imuAvailable = configurationState.imuSessionAvailable != false
+    val magAvailable = configurationState.magSessionAvailable != false
     var dampingDraft by remember(configurationState.motionDampingSeconds) {
         mutableStateOf((configurationState.motionDampingSeconds ?: 3).toFloat())
     }
@@ -2440,7 +2496,8 @@ private fun RegattaLinkImuSetupSheet(
         REGATTALINK_MOTION_ONE_HZ_STALE_MS
     )
     val liveMotion = telemetryState.motionOneHz.takeIf {
-        telemetryState.supported &&
+        imuAvailable &&
+            telemetryState.supported &&
             !telemetryState.pausedForOta &&
             !motionIsStale
     }
@@ -2474,7 +2531,7 @@ private fun RegattaLinkImuSetupSheet(
             )
 
             val liveStatusText = when {
-                !telemetryState.supported ->
+                !imuAvailable || !telemetryState.supported ->
                     stringResource(R.string.regattalink_unavailable)
                 telemetryState.pausedForOta ->
                     stringResource(R.string.regattalink_telemetry_paused_ota)
@@ -2493,6 +2550,7 @@ private fun RegattaLinkImuSetupSheet(
             }
 
             if (
+                imuAvailable &&
                 configurationState.motionDampingSupported &&
                 configurationState.motionDampingSeconds != null
             ) {
@@ -2541,6 +2599,7 @@ private fun RegattaLinkImuSetupSheet(
             }
 
             if (
+                magAvailable &&
                 configurationState.configWordSupported &&
                 configurationState.magBackgroundLearningEnabled != null
             ) {
@@ -2613,6 +2672,7 @@ private fun RegattaLinkImuSetupSheet(
                 )
             }
 
+            if (imuAvailable) {
             Text(
                 text = stringResource(R.string.regattalink_set_upright),
                 fontSize = 18.sp,
@@ -2680,7 +2740,10 @@ private fun RegattaLinkImuSetupSheet(
             }
 
 
+            }
+
             if (
+                magAvailable &&
                 configurationState.headingTrimSupported &&
                 configurationState.headingTrimDeg != null
             ) {
