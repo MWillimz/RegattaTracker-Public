@@ -190,6 +190,112 @@ class RegattaLinkConfigurationNmeaTest {
     }
 
     @Test
+    fun decodesSubsystemSessionAvailabilityFromConfigWord() {
+        val state = regattaLinkApplyConfigWord(
+            RegattaLinkConfigurationState(),
+            REGATTALINK_CONFIG_SESSION_IMU or
+                REGATTALINK_CONFIG_SESSION_CAN
+        )
+
+        assertTrue(state.subsystemSessionAvailabilityKnown)
+        assertEquals(true, state.imuSessionAvailable)
+        assertEquals(false, state.magSessionAvailable)
+        assertEquals(true, state.canSessionAvailable)
+        assertEquals(false, state.nmea0183SessionAvailable)
+    }
+
+    @Test
+    fun allZeroSessionNibbleStaysUnknownForOlderSchema16Firmware() {
+        val state = regattaLinkApplyConfigWord(
+            RegattaLinkConfigurationState(),
+            REGATTALINK_CONFIG_TX_MASTER
+        )
+
+        assertFalse(state.subsystemSessionAvailabilityKnown)
+        assertNull(state.imuSessionAvailable)
+        assertNull(state.magSessionAvailable)
+        assertNull(state.canSessionAvailable)
+        assertNull(state.nmea0183SessionAvailable)
+    }
+
+    @Test
+    fun configMutationsPreserveSubsystemSessionReadbackBits() {
+        val original =
+            REGATTALINK_CONFIG_SESSION_IMU or
+                REGATTALINK_CONFIG_SESSION_CAN or
+                REGATTALINK_CONFIG_TX_NMEA0183
+
+        val changed = regattaLinkConfigWordWithBit(
+            original,
+            REGATTALINK_CONFIG_TX_MASTER,
+            true
+        )
+
+        assertEquals(
+            original and REGATTALINK_CONFIG_SESSION_SUBSYSTEM_MASK,
+            changed and REGATTALINK_CONFIG_SESSION_SUBSYSTEM_MASK
+        )
+    }
+
+    @Test
+    fun subsystemBitAssignmentsMatchRegattaLink285Contract() {
+        assertEquals(0x00010000u, RegattaLinkSubsystem.IMU.configBit)
+        assertEquals(0x00020000u, RegattaLinkSubsystem.MAG.configBit)
+        assertEquals(0x00040000u, RegattaLinkSubsystem.BOAT_DATA.configBit)
+        assertEquals(0x00080000u, RegattaLinkSubsystem.NMEA0183_RX.configBit)
+        assertEquals(
+            REGATTALINK_CONFIG_SESSION_SUBSYSTEM_MASK,
+            RegattaLinkSubsystem.entries.fold(0u) { mask, subsystem ->
+                mask or subsystem.configBit
+            }
+        )
+    }
+
+    @Test
+    fun explicitSubsystemSwitchStillSeesAllZeroAsOffForReenable() {
+        val state = regattaLinkApplyConfigWord(
+            RegattaLinkConfigurationState(),
+            0u
+        )
+
+        assertNull(state.imuSessionAvailable)
+        assertEquals(false, state.subsystemSessionBit(RegattaLinkSubsystem.IMU))
+        assertEquals(false, state.subsystemSessionBit(RegattaLinkSubsystem.MAG))
+        assertEquals(false, state.subsystemSessionBit(RegattaLinkSubsystem.BOAT_DATA))
+        assertEquals(false, state.subsystemSessionBit(RegattaLinkSubsystem.NMEA0183_RX))
+    }
+
+    @Test
+    fun subsystemMutationChangesOnlyRequestedSessionBit() {
+        val original =
+            0xa5a00000u or
+                REGATTALINK_CONFIG_SESSION_IMU or
+                REGATTALINK_CONFIG_SESSION_CAN or
+                REGATTALINK_CONFIG_TX_MASTER
+
+        RegattaLinkSubsystem.entries.forEach { subsystem ->
+            val enabled = regattaLinkConfigWordWithBit(
+                original,
+                subsystem.configBit,
+                true
+            )
+            val disabled = regattaLinkConfigWordWithBit(
+                original,
+                subsystem.configBit,
+                false
+            )
+            assertEquals(
+                original and subsystem.configBit.inv(),
+                enabled and subsystem.configBit.inv()
+            )
+            assertEquals(
+                original and subsystem.configBit.inv(),
+                disabled and subsystem.configBit.inv()
+            )
+        }
+    }
+
+    @Test
     fun baudEncodingUsesOnlyBits14And15AndPreservesEverythingElse() {
         val original = 0xa5a53fffu
         RegattaLinkNmea0183Baud.entries.forEach { baud ->

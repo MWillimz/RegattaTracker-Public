@@ -96,6 +96,51 @@ data class RegattaLinkConfigurationState(
                     it and REGATTALINK_CONFIG_TX_PHONE_GPS != 0u
             } == true
 
+    /*
+     * Session availability was added to schema-16 firmware after the original
+     * v2 rollout. An all-zero high-nibble is therefore ambiguous with older
+     * firmware that returned reserved zeros. Treat that one case as unknown so
+     * an app update does not hide working controls on older firmware.
+     */
+    val subsystemSessionAvailabilityKnown: Boolean
+        get() =
+            configWord?.let {
+                it and REGATTALINK_CONFIG_SESSION_SUBSYSTEM_MASK != 0u
+            } == true
+
+    val imuSessionAvailable: Boolean?
+        get() = regattaLinkSubsystemSessionAvailable(
+            configWord,
+            REGATTALINK_CONFIG_SESSION_IMU
+        )
+
+    val magSessionAvailable: Boolean?
+        get() = regattaLinkSubsystemSessionAvailable(
+            configWord,
+            REGATTALINK_CONFIG_SESSION_MAG
+        )
+
+    val canSessionAvailable: Boolean?
+        get() = regattaLinkSubsystemSessionAvailable(
+            configWord,
+            REGATTALINK_CONFIG_SESSION_CAN
+        )
+
+    val nmea0183SessionAvailable: Boolean?
+        get() = regattaLinkSubsystemSessionAvailable(
+            configWord,
+            REGATTALINK_CONFIG_SESSION_NMEA0183
+        )
+
+    /*
+     * Raw current-session bit used by the explicit next-boot enable switches.
+     * Unlike the feature-gating helpers above, all-zero is intentionally
+     * represented as false so a disabled/unavailable subsystem can be switched
+     * back on.
+     */
+    fun subsystemSessionBit(subsystem: RegattaLinkSubsystem): Boolean? =
+        configWord?.let { it and subsystem.configBit != 0u }
+
     val nmeaTxRestartRequired: Boolean
         get() =
             nmeaTxRuntimeStatusSupported &&
@@ -290,6 +335,40 @@ internal const val REGATTALINK_CONFIG_TX_LOAD: UInt = 0x00000020u
 internal const val REGATTALINK_CONFIG_LOAD_PRECISION_X10: UInt = 0x00000100u
 internal const val REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING: UInt = 0x00000200u
 internal const val REGATTALINK_CONFIG_NMEA0183_BAUD_MASK: UInt = 0x0000c000u
+internal const val REGATTALINK_CONFIG_SESSION_IMU: UInt = 0x00010000u
+internal const val REGATTALINK_CONFIG_SESSION_MAG: UInt = 0x00020000u
+internal const val REGATTALINK_CONFIG_SESSION_CAN: UInt = 0x00040000u
+internal const val REGATTALINK_CONFIG_SESSION_NMEA0183: UInt = 0x00080000u
+internal const val REGATTALINK_CONFIG_SESSION_SUBSYSTEM_MASK: UInt =
+    0x000f0000u
+
+enum class RegattaLinkSubsystem(
+    val configBit: UInt
+) {
+    IMU(REGATTALINK_CONFIG_SESSION_IMU),
+    MAG(REGATTALINK_CONFIG_SESSION_MAG),
+    BOAT_DATA(REGATTALINK_CONFIG_SESSION_CAN),
+    NMEA0183_RX(REGATTALINK_CONFIG_SESSION_NMEA0183)
+}
+
+internal fun regattaLinkSubsystemSessionAvailable(
+    configWord: UInt?,
+    bit: UInt
+): Boolean? {
+    require(
+        bit == REGATTALINK_CONFIG_SESSION_IMU ||
+            bit == REGATTALINK_CONFIG_SESSION_MAG ||
+            bit == REGATTALINK_CONFIG_SESSION_CAN ||
+            bit == REGATTALINK_CONFIG_SESSION_NMEA0183
+    ) { "Unknown RegattaLink subsystem session bit" }
+
+    val word = configWord ?: return null
+    val sessionMask = word and REGATTALINK_CONFIG_SESSION_SUBSYSTEM_MASK
+    if (sessionMask == 0u) {
+        return null
+    }
+    return sessionMask and bit != 0u
+}
 
 enum class RegattaLinkNmea0183Baud(
     val baudRate: Int,

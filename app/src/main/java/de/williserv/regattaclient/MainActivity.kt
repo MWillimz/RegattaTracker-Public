@@ -887,6 +887,10 @@ class MainActivity : ComponentActivity() {
                                 regattaLinkManager
                                     .setMagBackgroundLearningEnabled(enabled)
                             },
+                            onSetSubsystemEnabled = { subsystem, enabled ->
+                                regattaLinkManager
+                                    .setSubsystemEnabled(subsystem, enabled)
+                            },
                             onSetHeadingTrimDeg = { value ->
                                 regattaLinkManager.setHeadingTrimDeg(value)
                             },
