@@ -2,6 +2,7 @@ package de.williserv.regattaclient
 
 import android.Manifest
 import android.content.Context
+import android.location.Location
 import android.os.Looper
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -1383,6 +1384,72 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun phoneGnssForwardingStopsForCanAndRuntimeBlocksAndRecovers() {
+        val enabledWord =
+            REGATTALINK_CONFIG_TX_MASTER or
+                REGATTALINK_CONFIG_TX_PHONE_GPS or
+                REGATTALINK_CONFIG_SESSION_CAN
+        val ready = RegattaLinkConfigurationState(
+            configWordSupported = true,
+            configWord = enabledWord
+        )
+        val location = Location("gps").apply {
+            latitude = 53.0
+            longitude = 10.0
+            elapsedRealtimeNanos = 1_000_000_000L
+        }
+
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED
+            )
+        )
+        fakeClient.emitConfiguration(ready)
+
+        assertTrue(manager.isPhoneGnssForwardingEnabled())
+        assertTrue(manager.offerPhoneGnss(location))
+        assertEquals(1, fakeClient.phoneGnssOfferCalls)
+
+        fakeClient.emitConfiguration(
+            ready.copy(
+                configWord =
+                    REGATTALINK_CONFIG_TX_MASTER or
+                        REGATTALINK_CONFIG_TX_PHONE_GPS
+            )
+        )
+        assertFalse(manager.isPhoneGnssForwardingEnabled())
+        assertFalse(manager.offerPhoneGnss(location))
+        assertEquals(1, fakeClient.phoneGnssOfferCalls)
+
+        listOf(
+            ready.copy(deviceControlBusy = true),
+            ready.copy(restartAwaitingDisconnect = true),
+            ready.copy(factoryResetAwaitingDisconnect = true),
+            ready.copy(factoryResetWriteAcceptedRequestId = 23u)
+        ).forEach { blocked ->
+            fakeClient.emitConfiguration(blocked)
+            assertFalse(manager.isPhoneGnssForwardingEnabled())
+            assertFalse(manager.offerPhoneGnss(location))
+            assertEquals(1, fakeClient.phoneGnssOfferCalls)
+        }
+
+        fakeClient.emitConfiguration(ready)
+        fakeClient.emitOta(
+            RegattaLinkOtaUiState(
+                phase = RegattaLinkOtaPhase.TRANSFERRING
+            )
+        )
+        assertFalse(manager.isPhoneGnssForwardingEnabled())
+        assertFalse(manager.offerPhoneGnss(location))
+        assertEquals(1, fakeClient.phoneGnssOfferCalls)
+
+        fakeClient.emitOta(RegattaLinkOtaUiState())
+        assertTrue(manager.isPhoneGnssForwardingEnabled())
+        assertTrue(manager.offerPhoneGnss(location))
+        assertEquals(2, fakeClient.phoneGnssOfferCalls)
+    }
+
+    @Test
     fun newlyAttachedListenerReceivesCurrentManagerState() {
         fakeClient.emitConnection(
             RegattaLinkClientState(
@@ -1440,6 +1507,7 @@ class RegattaLinkConnectionManagerTest {
         var deviceControlCalls = 0
         var refreshPgnCalls = 0
         var rawReadCalls = 0
+        var phoneGnssOfferCalls = 0
         var captureStartCalls = 0
         var captureRecordingStarted: (() -> Unit)? = null
         var captureFrame: ((RegattaLinkRawCanFrame) -> Unit)? = null
@@ -1532,6 +1600,13 @@ class RegattaLinkConnectionManagerTest {
 
         override fun readRawCanFrames(): Boolean {
             rawReadCalls += 1
+            return true
+        }
+
+        override fun offerPhoneGnss(
+            sample: RegattaLinkPhoneGnssSample
+        ): Boolean {
+            phoneGnssOfferCalls += 1
             return true
         }
 
