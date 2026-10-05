@@ -370,7 +370,7 @@ class RegattaTrackingService : Service() {
                     .putBoolean("manual_tracking", manualRecording)
                     .apply()
                 if (!startConfirmedTrackingService(allowPersistedSessionRestore = false)) {
-                    return if (phoneGpsRelayEnabled()) {
+                    return if (phoneGpsRelayCanRun()) {
                         START_STICKY
                     } else {
                         START_NOT_STICKY
@@ -389,7 +389,7 @@ class RegattaTrackingService : Service() {
                 stopTrackingService(
                     clearLocalRaceStatus = explicitRaceLeave && !preserveLocalRaceStatus
                 )
-                return if (phoneGpsRelayEnabled()) {
+                return if (phoneGpsRelayCanRun()) {
                     START_STICKY
                 } else {
                     START_NOT_STICKY
@@ -398,7 +398,7 @@ class RegattaTrackingService : Service() {
 
             ACTION_SYNC_PHONE_GPS_RELAY -> {
                 syncPhoneGpsRelayMode()
-                return if (serviceRunning || phoneGpsRelayEnabled()) {
+                return if (serviceRunning || phoneGpsRelayCanRun()) {
                     START_STICKY
                 } else {
                     START_NOT_STICKY
@@ -578,7 +578,7 @@ class RegattaTrackingService : Service() {
             TrackingServiceRuntimeState.markStopped()
         }
 
-        if (phoneGpsRelayEnabled()) {
+        if (phoneGpsRelayCanRun()) {
             syncPhoneGpsRelayMode()
             return START_STICKY
         }
@@ -598,7 +598,7 @@ class RegattaTrackingService : Service() {
                 finishActiveTrackingSession()
                 TrackingServiceRuntimeState.markStopped()
                 persistTrackingStoppedState()
-                if (phoneGpsRelayEnabled()) {
+                if (phoneGpsRelayCanRun()) {
                     syncPhoneGpsRelayMode()
                 } else {
                     stopForegroundCompat()
@@ -923,14 +923,18 @@ class RegattaTrackingService : Service() {
         handler.post {
             if (serviceRunning) {
                 refreshLocationSampling(null)
-            } else if (phoneGpsRelayEnabled()) {
+            } else if (phoneGpsRelayCanRun()) {
                 refreshPhoneGpsRelayOnly()
             }
         }
     }
 
-    private fun phoneGpsRelayEnabled(): Boolean =
-        phoneGpsRelayStore.isEnabled()
+    private fun phoneGpsRelayCanRun(): Boolean =
+        phoneGpsRelayStore.isEnabled() &&
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
 
     private fun syncPhoneGpsRelayMode() {
         if (serviceRunning) {
@@ -939,7 +943,7 @@ class RegattaTrackingService : Service() {
             return
         }
 
-        if (!phoneGpsRelayEnabled()) {
+        if (!phoneGpsRelayCanRun()) {
             regattaLinkManager?.stopPhoneGnssForwarding()
             stopLocationUpdates()
 
@@ -966,7 +970,7 @@ class RegattaTrackingService : Service() {
     }
 
     private fun refreshPhoneGpsRelayOnly() {
-        if (serviceRunning || !phoneGpsRelayEnabled()) return
+        if (serviceRunning || !phoneGpsRelayCanRun()) return
 
         val forwarding =
             regattaLinkManager?.isPhoneGnssForwardingEnabled() == true
@@ -1053,7 +1057,7 @@ class RegattaTrackingService : Service() {
                 .commit()
         }
 
-        if (phoneGpsRelayEnabled()) {
+        if (phoneGpsRelayCanRun()) {
             refreshPhoneGpsRelayOnly()
         } else {
             regattaLinkManager?.stopPhoneGnssForwarding()
@@ -1118,7 +1122,7 @@ class RegattaTrackingService : Service() {
 
         stopHandoffInProgress = false
 
-        if (phoneGpsRelayEnabled()) {
+        if (phoneGpsRelayCanRun()) {
             syncPhoneGpsRelayMode()
             return
         }

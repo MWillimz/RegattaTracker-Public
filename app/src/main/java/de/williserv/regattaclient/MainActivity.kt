@@ -80,6 +80,13 @@ private enum class PendingRegattaLinkPermissionAction {
 
 internal const val STORAGE_COUNTS_REFRESH_INTERVAL_MS = 10_000L
 
+internal fun shouldStartPhoneGpsRelayService(
+    enabled: Boolean,
+    trackingRequested: Boolean,
+    locationPermissionGranted: Boolean
+): Boolean =
+    enabled && !trackingRequested && locationPermissionGranted
+
 internal class StorageCountRefreshGate(
     private val minIntervalMs: Long
 ) {
@@ -442,6 +449,7 @@ class MainActivity : ComponentActivity() {
 
             if (locationGranted) {
                 startGpsDisplayUpdates()
+                syncPersistedPhoneGpsRelayIfPermitted()
             } else {
                 statusText.value = getString(R.string.gps_permission_denied)
             }
@@ -556,12 +564,9 @@ class MainActivity : ComponentActivity() {
         val persistedTrackingRequested =
             appStatePrefs.getBoolean("in_race", false) ||
                 appStatePrefs.getBoolean("manual_tracking", false)
-        if (
-            regattaLinkPhoneGpsRelayEnabled.value &&
-            !persistedTrackingRequested
-        ) {
-            syncRegattaLinkPhoneGpsRelayService(enabled = true)
-        }
+        syncPersistedPhoneGpsRelayIfPermitted(
+            trackingRequested = persistedTrackingRequested
+        )
         refreshRetirementReportedState()
 
         requestStorageCountsRefresh(force = true)
@@ -3666,10 +3671,44 @@ class MainActivity : ComponentActivity() {
         stopRegattaForegroundService()
     }
 
+    private fun hasFineLocationPermission(): Boolean =
+        ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+    private fun syncPersistedPhoneGpsRelayIfPermitted(
+        trackingRequested: Boolean = inRace.value || manualTracking.value
+    ) {
+        if (
+            !shouldStartPhoneGpsRelayService(
+                enabled = regattaLinkPhoneGpsRelayEnabled.value,
+                trackingRequested = trackingRequested,
+                locationPermissionGranted = hasFineLocationPermission()
+            )
+        ) {
+            return
+        }
+
+        syncRegattaLinkPhoneGpsRelayService(enabled = true)
+    }
+
     private fun setRegattaLinkPhoneGpsRelayEnabled(enabled: Boolean) {
         regattaLinkPhoneGpsRelayStore.setEnabled(enabled)
         regattaLinkPhoneGpsRelayEnabled.value = enabled
-        syncRegattaLinkPhoneGpsRelayService(enabled)
+
+        if (!enabled) {
+            syncRegattaLinkPhoneGpsRelayService(enabled = false)
+            return
+        }
+
+        if (hasFineLocationPermission()) {
+            syncRegattaLinkPhoneGpsRelayService(enabled = true)
+        } else {
+            permissionLauncher.launch(
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+            )
+        }
     }
 
     private fun syncRegattaLinkPhoneGpsRelayService(enabled: Boolean) {
@@ -4408,10 +4447,9 @@ class MainActivity : ComponentActivity() {
 
         if (::regattaLinkPhoneGpsRelayStore.isInitialized) {
             val enabled = regattaLinkPhoneGpsRelayStore.isEnabled()
-            val changed = regattaLinkPhoneGpsRelayEnabled.value != enabled
             regattaLinkPhoneGpsRelayEnabled.value = enabled
-            if (enabled && changed) {
-                syncRegattaLinkPhoneGpsRelayService(enabled = true)
+            if (enabled) {
+                syncPersistedPhoneGpsRelayIfPermitted()
             }
         }
     }
