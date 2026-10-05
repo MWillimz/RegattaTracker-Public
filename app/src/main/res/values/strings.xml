@@ -622,6 +622,12 @@
     <string name="regattalink_setup_nmea">Setup TX</string>
     <string name="regattalink_advanced_diagnostics">Advanced / Diagnostics</string>
     <string name="regattalink_device_settings">Device settings</string>
+    <string name="regattalink_subsystems">Hardware subsystems</string>
+    <string name="regattalink_subsystems_session_help">Switches show availability for this boot. Changes are saved for the next restart.</string>
+    <string name="regattalink_subsystem_imu">IMU</string>
+    <string name="regattalink_subsystem_mag">Onboard compass</string>
+    <string name="regattalink_subsystem_boat_data">Boat Data / CAN</string>
+    <string name="regattalink_subsystem_nmea0183">NMEA 0183 input</string>
     <string name="regattalink_technical_details">Technical details</string>
     <string name="regattalink_diagnostics_title">Diagnostics</string>
     <string name="regattalink_live_orientation">Live orientation</string>
