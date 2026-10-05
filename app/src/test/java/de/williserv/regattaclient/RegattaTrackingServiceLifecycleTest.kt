@@ -35,6 +35,7 @@ class RegattaTrackingServiceLifecycleTest {
         clearTrackingPrefs()
         clearLocalStatusPrefs()
         clearStickyRestartPrefs()
+        RegattaLinkPhoneGpsRelayStore(context).setEnabled(false)
         TrackingServiceRuntimeState.markStopped()
         TelemetryUploadScheduler.resetLiveWakeupCoalescing()
         shadowOf(Looper.getMainLooper()).idle()
@@ -47,6 +48,7 @@ class RegattaTrackingServiceLifecycleTest {
         clearTrackingPrefs()
         clearLocalStatusPrefs()
         clearStickyRestartPrefs()
+        RegattaLinkPhoneGpsRelayStore(context).setEnabled(false)
         TrackingServiceRuntimeState.markStopped()
     }
 
@@ -318,6 +320,50 @@ class RegattaTrackingServiceLifecycleTest {
         assertEquals(Service.START_NOT_STICKY, service.onStartCommand(null, 0, 1))
         assertFalse(getField<Boolean>(service, "serviceRunning"))
 
+        controller.destroy()
+    }
+
+    @Test
+    fun `phone GPS relay starts without tracking state or samples`() {
+        RegattaLinkPhoneGpsRelayStore(context).setEnabled(true)
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+        val helper = getField<TrackingDbHelper>(service, "db")
+        val intent = Intent(context, RegattaTrackingService::class.java).apply {
+            action = RegattaTrackingService.ACTION_SYNC_PHONE_GPS_RELAY
+        }
+
+        assertEquals(Service.START_STICKY, service.onStartCommand(intent, 0, 1))
+        assertFalse(getField<Boolean>(service, "serviceRunning"))
+        assertFalse(TrackingServiceRuntimeState.isActive())
+        assertNull(getField<Long?>(service, "activeSessionId"))
+        assertFalse(getField<Boolean>(service, "eventPollRunning"))
+        assertEquals(0L, getField<Long>(service, "activeSampleIntervalMs"))
+        assertEquals(0L, helper.countSamples())
+
+        RegattaLinkPhoneGpsRelayStore(context).setEnabled(false)
+        service.onStartCommand(intent, 0, 2)
+        controller.destroy()
+        helper.close()
+    }
+
+    @Test
+    fun `sticky restart restores phone GPS relay without restoring tracking`() {
+        RegattaLinkPhoneGpsRelayStore(context).setEnabled(true)
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+
+        assertEquals(Service.START_STICKY, service.onStartCommand(null, 0, 1))
+        assertFalse(getField<Boolean>(service, "serviceRunning"))
+        assertFalse(TrackingServiceRuntimeState.isActive())
+        assertNull(getField<Long?>(service, "activeSessionId"))
+        assertFalse(getField<Boolean>(service, "eventPollRunning"))
+
+        RegattaLinkPhoneGpsRelayStore(context).setEnabled(false)
+        val syncIntent = Intent(context, RegattaTrackingService::class.java).apply {
+            action = RegattaTrackingService.ACTION_SYNC_PHONE_GPS_RELAY
+        }
+        service.onStartCommand(syncIntent, 0, 2)
         controller.destroy()
     }
 
