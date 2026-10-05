@@ -171,6 +171,7 @@ fun RegattaLinkScreen(
     onSetPhoneGpsRelayEnabled: (Boolean) -> Unit = {},
     onSetNmea0183Baud: (Int) -> Unit = {},
     onSetMagBackgroundLearningEnabled: (Boolean) -> Unit = {},
+    onSetSubsystemEnabled: (RegattaLinkSubsystem, Boolean) -> Unit = { _, _ -> },
     onSetHeadingTrimDeg: (Int) -> Unit = {},
     onSetLoadSensorAlias: (String, String) -> Unit = { _, _ -> },
     onDrainDiagnosticLog: () -> Unit,
@@ -377,6 +378,10 @@ fun RegattaLinkScreen(
                     nameDialogOpen = true
                 },
                 onSetLedBrightness = onSetLedBrightness,
+                onSetSubsystemEnabled = onSetSubsystemEnabled,
+                onRestart = {
+                    onDeviceControl(RegattaLinkDeviceControlOpcode.RESTART, 0)
+                },
                 onDrainDiagnosticLog = onDrainDiagnosticLog,
                 onReadRawFrames = onReadRawFrames,
                 onStartRawCapture = onStartRawCapture,
@@ -1591,6 +1596,8 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
     otaActive: Boolean,
     onChangeName: () -> Unit,
     onSetLedBrightness: (Int) -> Unit,
+    onSetSubsystemEnabled: (RegattaLinkSubsystem, Boolean) -> Unit,
+    onRestart: () -> Unit,
     onDrainDiagnosticLog: () -> Unit,
     onReadRawFrames: () -> Unit,
     onStartRawCapture: () -> Unit,
@@ -1707,6 +1714,98 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
                     modifier = Modifier.padding(top = 6.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+
+            if (
+                connected &&
+                configurationState.configWordSupported &&
+                configurationState.configWord != null
+            ) {
+                Text(
+                    text = stringResource(R.string.regattalink_subsystems),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 18.dp)
+                )
+                Text(
+                    text = stringResource(
+                        R.string.regattalink_subsystems_session_help
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+
+                val subsystemRows = listOf(
+                    RegattaLinkSubsystem.IMU to
+                        stringResource(R.string.regattalink_subsystem_imu),
+                    RegattaLinkSubsystem.MAG to
+                        stringResource(R.string.regattalink_subsystem_mag),
+                    RegattaLinkSubsystem.BOAT_DATA to
+                        stringResource(R.string.regattalink_subsystem_boat_data),
+                    RegattaLinkSubsystem.NMEA0183_RX to
+                        stringResource(R.string.regattalink_subsystem_nmea0183)
+                )
+                subsystemRows.forEach { (subsystem, label) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = label,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Switch(
+                            checked =
+                                configurationState
+                                    .subsystemSessionBit(subsystem) == true,
+                            onCheckedChange = { enabled ->
+                                onSetSubsystemEnabled(subsystem, enabled)
+                            },
+                            enabled = configEnabled
+                        )
+                    }
+                }
+
+                if (
+                    configurationState.configRestartRequired ||
+                    configurationState.restartAwaitingDisconnect
+                ) {
+                    Text(
+                        text = if (
+                            configurationState.restartAwaitingDisconnect
+                        ) {
+                            stringResource(R.string.regattalink_restarting)
+                        } else {
+                            stringResource(
+                                R.string.regattalink_applies_after_restart
+                            )
+                        },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    Button(
+                        onClick = onRestart,
+                        enabled =
+                            configEnabled &&
+                                configurationState.deviceControlSupported &&
+                                configurationState.configRestartRequired &&
+                                !configurationState.restartAwaitingDisconnect,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                    ) {
+                        Text(
+                            if (configurationState.restartAwaitingDisconnect) {
+                                stringResource(R.string.regattalink_restarting)
+                            } else {
+                                stringResource(R.string.regattalink_restart)
+                            }
+                        )
+                    }
+                }
             }
 
             Text(
