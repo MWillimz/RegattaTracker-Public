@@ -499,8 +499,9 @@ internal class RegattaLinkConnectionManager(
         regattaLinkPhoneGnssForwardingGate(
             connected =
                 connectionState.status == RegattaLinkConnectionStatus.CONNECTED,
+            transportReady = true,
             otaActive = otaState.isActive,
-            configWord = configurationState.configWord
+            configurationState = configurationState
         )
 
     fun offerPhoneGnss(location: Location): Boolean {
