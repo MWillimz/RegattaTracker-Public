@@ -306,7 +306,9 @@ fun RegattaLinkScreen(
         if (
             shouldAutoRefreshPgnInventory(
                 detailsExpanded = nmeaSetupOpen,
-                inventorySupported = nmeaState.pgnInventorySupported,
+                inventorySupported =
+                    nmeaState.pgnInventorySupported &&
+                        configurationState.boatDataAvailable != false,
                 inventoryEmpty = nmeaState.pgnInventory.isEmpty(),
                 inventoryLoading = nmeaState.pgnInventoryLoading,
                 otaActive = otaState.isActive,
@@ -2621,7 +2623,9 @@ private fun RegattaLinkImuSetupSheet(
                     },
                     valueRange = 1f..10f,
                     steps = 8,
-                    enabled = configEnabled
+                    enabled =
+                        configEnabled &&
+                            configurationState.imuAvailable != false
                 )
             }
 
