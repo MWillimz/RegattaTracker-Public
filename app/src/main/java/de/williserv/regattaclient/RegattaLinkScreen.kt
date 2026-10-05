@@ -2397,9 +2397,6 @@ private fun RegattaLinkImuSetupSheet(
     var dampingDraft by remember(configurationState.motionDampingSeconds) {
         mutableStateOf((configurationState.motionDampingSeconds ?: 3).toFloat())
     }
-    var headingTrimDraft by remember(configurationState.headingTrimDeg) {
-        mutableStateOf((configurationState.headingTrimDeg ?: 0).toFloat())
-    }
     val motionIsStale = rememberTelemetryStale(
         telemetryState.motionOneHzReceivedAtElapsedMs,
         REGATTALINK_MOTION_ONE_HZ_STALE_MS
@@ -2541,55 +2538,6 @@ private fun RegattaLinkImuSetupSheet(
             }
 
             if (
-                configurationState.headingTrimSupported &&
-                configurationState.headingTrimDeg != null
-            ) {
-                val shownHeadingTrim = headingTrimDraft
-                    .roundToInt()
-                    .coerceIn(-180, 180)
-                Text(
-                    text = stringResource(
-                        R.string.regattalink_heading_trim
-                    ),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(top = 22.dp)
-                )
-                Text(
-                    text = stringResource(
-                        R.string.regattalink_heading_trim_value,
-                        shownHeadingTrim
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-                Slider(
-                    value = headingTrimDraft.coerceIn(-180f, 180f),
-                    onValueChange = { headingTrimDraft = it },
-                    onValueChangeFinished = {
-                        val requested = headingTrimDraft
-                            .roundToInt()
-                            .coerceIn(-180, 180)
-                        headingTrimDraft =
-                            (configurationState.headingTrimDeg ?: requested)
-                                .toFloat()
-                        if (requested != configurationState.headingTrimDeg) {
-                            onSetHeadingTrimDeg(requested)
-                        }
-                    },
-                    valueRange = -180f..180f,
-                    steps = 359,
-                    enabled = configEnabled
-                )
-                Text(
-                    text = stringResource(
-                        R.string.regattalink_heading_trim_immediate
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            if (
                 configurationState.configRestartRequired ||
                 configurationState.restartAwaitingDisconnect
             ) {
@@ -2690,6 +2638,65 @@ private fun RegattaLinkImuSetupSheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 14.dp)
+                )
+            }
+
+
+            if (
+                configurationState.headingTrimSupported &&
+                configurationState.headingTrimDeg != null
+            ) {
+                val headingTrim = configurationState.headingTrimDeg
+                    .coerceIn(-180, 180)
+                Text(
+                    text = stringResource(R.string.regattalink_heading_trim),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 22.dp)
+                )
+                Text(
+                    text = stringResource(
+                        R.string.regattalink_heading_trim_value,
+                        headingTrim
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    RegattaLinkOrientationActionButton(
+                        text = "−1°",
+                        contentDescription =
+                            stringResource(R.string.regattalink_heading_trim) +
+                                " −1°",
+                        enabled = configEnabled && headingTrim > -180,
+                        onClick = {
+                            onSetHeadingTrimDeg(headingTrim - 1)
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                    RegattaLinkOrientationActionButton(
+                        text = "+1°",
+                        contentDescription =
+                            stringResource(R.string.regattalink_heading_trim) +
+                                " +1°",
+                        enabled = configEnabled && headingTrim < 180,
+                        onClick = {
+                            onSetHeadingTrimDeg(headingTrim + 1)
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Text(
+                    text = stringResource(
+                        R.string.regattalink_heading_trim_immediate
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
                 )
             }
 
