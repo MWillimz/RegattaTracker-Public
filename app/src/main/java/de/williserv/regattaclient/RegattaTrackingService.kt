@@ -370,7 +370,11 @@ class RegattaTrackingService : Service() {
                     .putBoolean("manual_tracking", manualRecording)
                     .apply()
                 if (!startConfirmedTrackingService(allowPersistedSessionRestore = false)) {
-                    return START_NOT_STICKY
+                    return if (phoneGpsRelayEnabled()) {
+                        START_STICKY
+                    } else {
+                        START_NOT_STICKY
+                    }
                 }
                 return START_STICKY
             }
@@ -385,7 +389,11 @@ class RegattaTrackingService : Service() {
                 stopTrackingService(
                     clearLocalRaceStatus = explicitRaceLeave && !preserveLocalRaceStatus
                 )
-                return START_NOT_STICKY
+                return if (phoneGpsRelayEnabled()) {
+                    START_STICKY
+                } else {
+                    START_NOT_STICKY
+                }
             }
 
             ACTION_SYNC_PHONE_GPS_RELAY -> {
@@ -590,8 +598,12 @@ class RegattaTrackingService : Service() {
                 finishActiveTrackingSession()
                 TrackingServiceRuntimeState.markStopped()
                 persistTrackingStoppedState()
-                stopForegroundCompat()
-                stopSelf()
+                if (phoneGpsRelayEnabled()) {
+                    syncPhoneGpsRelayMode()
+                } else {
+                    stopForegroundCompat()
+                    stopSelf()
+                }
                 return false
             }
 
