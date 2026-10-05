@@ -5,6 +5,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.location.Location
+import android.location.LocationManager
 import android.os.Handler
 import android.os.Looper
 import org.junit.After
@@ -27,6 +28,7 @@ import java.util.concurrent.TimeUnit
 class RegattaTrackingServiceLifecycleTest {
 
     private lateinit var context: Context
+    private var originalRegattaLinkManager: RegattaLinkConnectionManager? = null
 
     @Before
     fun setUp() {
@@ -35,6 +37,7 @@ class RegattaTrackingServiceLifecycleTest {
         clearTrackingPrefs()
         clearLocalStatusPrefs()
         clearStickyRestartPrefs()
+        RegattaLinkPhoneGpsRelayStore(context).setEnabled(false)
         TrackingServiceRuntimeState.markStopped()
         TelemetryUploadScheduler.resetLiveWakeupCoalescing()
         shadowOf(Looper.getMainLooper()).idle()
@@ -42,11 +45,17 @@ class RegattaTrackingServiceLifecycleTest {
 
     @After
     fun tearDown() {
+        originalRegattaLinkManager?.let { original ->
+            val application = context.applicationContext as RegattaApplication
+            setField(application, "regattaLinkConnectionManager", original)
+        }
+        originalRegattaLinkManager = null
         shadowOf(Looper.getMainLooper()).idle()
         context.deleteDatabase(DB_NAME)
         clearTrackingPrefs()
         clearLocalStatusPrefs()
         clearStickyRestartPrefs()
+        RegattaLinkPhoneGpsRelayStore(context).setEnabled(false)
         TrackingServiceRuntimeState.markStopped()
     }
 
@@ -322,6 +331,358 @@ class RegattaTrackingServiceLifecycleTest {
     }
 
     @Test
+    fun `activity startup relay gate requires permission and no tracking`() {
+        assertFalse(
+            shouldStartPhoneGpsRelayService(
+                enabled = true,
+                trackingRequested = false,
+                locationPermissionGranted = false
+            )
+        )
+        assertFalse(
+            shouldStartPhoneGpsRelayService(
+                enabled = true,
+                trackingRequested = true,
+                locationPermissionGranted = true
+            )
+        )
+        assertFalse(
+            shouldStartPhoneGpsRelayService(
+                enabled = false,
+                trackingRequested = false,
+                locationPermissionGranted = true
+            )
+        )
+        assertTrue(
+            shouldStartPhoneGpsRelayService(
+                enabled = true,
+                trackingRequested = false,
+                locationPermissionGranted = true
+            )
+        )
+    }
+
+    @Test
+    fun `phone GPS relay remains persisted until location permission is granted`() {
+        shadowOf(RuntimeEnvironment.getApplication()).denyPermissions(
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
+        val relayStore = RegattaLinkPhoneGpsRelayStore(context)
+        relayStore.setEnabled(true)
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+        val intent = Intent(context, RegattaTrackingService::class.java).apply {
+            action = RegattaTrackingService.ACTION_SYNC_PHONE_GPS_RELAY
+        }
+
+        assertEquals(Service.START_NOT_STICKY, service.onStartCommand(intent, 0, 1))
+        assertTrue(relayStore.isEnabled())
+        assertFalse(getField<Boolean>(service, "serviceRunning"))
+        assertFalse(TrackingServiceRuntimeState.isActive())
+
+        shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
+
+        assertEquals(Service.START_STICKY, service.onStartCommand(intent, 0, 2))
+        assertTrue(relayStore.isEnabled())
+        assertFalse(getField<Boolean>(service, "serviceRunning"))
+
+        relayStore.setEnabled(false)
+        service.onStartCommand(intent, 0, 3)
+        controller.destroy()
+    }
+
+    @Test
+    fun `sticky restart does not restore phone GPS relay without location permission`() {
+        shadowOf(RuntimeEnvironment.getApplication()).denyPermissions(
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
+        val relayStore = RegattaLinkPhoneGpsRelayStore(context)
+        relayStore.setEnabled(true)
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+
+        assertEquals(Service.START_NOT_STICKY, service.onStartCommand(null, 0, 1))
+        assertTrue(relayStore.isEnabled())
+        assertFalse(getField<Boolean>(service, "serviceRunning"))
+        assertFalse(TrackingServiceRuntimeState.isActive())
+        assertNull(getField<Long?>(service, "activeSessionId"))
+
+        controller.destroy()
+    }
+
+    @Test
+    fun `phone GPS relay starts without tracking state or samples`() {
+        shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
+        RegattaLinkPhoneGpsRelayStore(context).setEnabled(true)
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+        val helper = getField<TrackingDbHelper>(service, "db")
+        val intent = Intent(context, RegattaTrackingService::class.java).apply {
+            action = RegattaTrackingService.ACTION_SYNC_PHONE_GPS_RELAY
+        }
+
+        assertEquals(Service.START_STICKY, service.onStartCommand(intent, 0, 1))
+        assertFalse(getField<Boolean>(service, "serviceRunning"))
+        assertFalse(TrackingServiceRuntimeState.isActive())
+        assertNull(getField<Long?>(service, "activeSessionId"))
+        assertFalse(getField<Boolean>(service, "eventPollRunning"))
+        assertEquals(0L, getField<Long>(service, "activeSampleIntervalMs"))
+        assertEquals(0L, helper.countSamples())
+
+        RegattaLinkPhoneGpsRelayStore(context).setEnabled(false)
+        service.onStartCommand(intent, 0, 2)
+        controller.destroy()
+        helper.close()
+    }
+
+    @Test
+    fun `sticky restart restores phone GPS relay without restoring tracking`() {
+        shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
+        RegattaLinkPhoneGpsRelayStore(context).setEnabled(true)
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+
+        assertEquals(Service.START_STICKY, service.onStartCommand(null, 0, 1))
+        assertFalse(getField<Boolean>(service, "serviceRunning"))
+        assertFalse(TrackingServiceRuntimeState.isActive())
+        assertNull(getField<Long?>(service, "activeSessionId"))
+        assertFalse(getField<Boolean>(service, "eventPollRunning"))
+
+        RegattaLinkPhoneGpsRelayStore(context).setEnabled(false)
+        val syncIntent = Intent(context, RegattaTrackingService::class.java).apply {
+            action = RegattaTrackingService.ACTION_SYNC_PHONE_GPS_RELAY
+        }
+        service.onStartCommand(syncIntent, 0, 2)
+        controller.destroy()
+    }
+
+    @Test
+    fun `relay only forwards one GPS observation without tracking artifacts`() {
+        grantLocationPermission()
+        RegattaLinkPhoneGpsRelayStore(context).setEnabled(true)
+        val relayClient = installReadyRelayTestManager()
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+        val helper = getField<TrackingDbHelper>(service, "db")
+
+        assertEquals(
+            Service.START_STICKY,
+            service.onStartCommand(phoneGpsRelaySyncIntent(), 0, 1)
+        )
+        assertEquals(
+            REGATTALINK_PHONE_GNSS_MIN_INTERVAL_MS,
+            getField<Long>(service, "activeLocationIntervalMs")
+        )
+
+        simulateGpsLocation()
+
+        assertEquals(1, relayClient.phoneGnssOfferCount)
+        assertFalse(TrackingServiceRuntimeState.isActive())
+        assertNull(getField<Long?>(service, "activeSessionId"))
+        assertFalse(getField<Boolean>(service, "eventPollRunning"))
+        assertEquals(0L, getField<Long>(service, "activeSampleIntervalMs"))
+        assertTrue(helper.getTrackingSessionSummaries().isEmpty())
+        assertEquals(0L, helper.countSamples())
+        assertEquals(0L, helper.countUploadablePendingSamples())
+
+        RegattaLinkPhoneGpsRelayStore(context).setEnabled(false)
+        service.onStartCommand(phoneGpsRelaySyncIntent(), 0, 2)
+        controller.destroy()
+        helper.close()
+    }
+
+    @Test
+    fun `relay only hands off to manual tracking without duplicate GPS forwarding`() {
+        grantLocationPermission()
+        RegattaLinkPhoneGpsRelayStore(context).setEnabled(true)
+        val relayClient = installReadyRelayTestManager()
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+        val helper = getField<TrackingDbHelper>(service, "db")
+
+        service.onStartCommand(phoneGpsRelaySyncIntent(), 0, 1)
+
+        assertEquals(
+            Service.START_STICKY,
+            service.onStartCommand(manualTrackingStartIntent(), 0, 2)
+        )
+        assertTrue(TrackingServiceRuntimeState.isActive())
+        val sessionId = requireNotNull(getField<Long?>(service, "activeSessionId"))
+        assertEquals("manual", helper.getTrackingSession(sessionId)?.mode)
+
+        simulateGpsLocation()
+
+        assertEquals(1, relayClient.phoneGnssOfferCount)
+        assertEquals(
+            REGATTALINK_PHONE_GNSS_MIN_INTERVAL_MS,
+            getField<Long>(service, "activeLocationIntervalMs")
+        )
+
+        setField(service, "serviceRunning", false)
+        controller.destroy()
+        helper.close()
+    }
+
+    @Test
+    fun `relay only hands off to race tracking without duplicate GPS forwarding`() {
+        grantLocationPermission()
+        RegattaLinkPhoneGpsRelayStore(context).setEnabled(true)
+        val relayClient = installReadyRelayTestManager()
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+        val helper = getField<TrackingDbHelper>(service, "db")
+
+        service.onStartCommand(phoneGpsRelaySyncIntent(), 0, 1)
+        assertFalse(getField<Boolean>(service, "eventPollRunning"))
+
+        // Keep this lifecycle test local; event polling itself is covered separately.
+        setField(service, "eventPollRunning", true)
+        assertEquals(
+            Service.START_STICKY,
+            service.onStartCommand(raceTrackingStartIntent(), 0, 2)
+        )
+        assertTrue(TrackingServiceRuntimeState.isActive())
+        val sessionId = requireNotNull(getField<Long?>(service, "activeSessionId"))
+        assertEquals("race", helper.getTrackingSession(sessionId)?.mode)
+
+        simulateGpsLocation()
+
+        assertEquals(1, relayClient.phoneGnssOfferCount)
+        assertEquals(
+            REGATTALINK_PHONE_GNSS_MIN_INTERVAL_MS,
+            getField<Long>(service, "activeLocationIntervalMs")
+        )
+
+        setField(service, "serviceRunning", false)
+        controller.destroy()
+        helper.close()
+    }
+
+    @Test
+    fun `tracking stop falls back to relay only when persistent relay stays enabled`() {
+        grantLocationPermission()
+        RegattaLinkPhoneGpsRelayStore(context).setEnabled(true)
+        val relayClient = installReadyRelayTestManager()
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+        val helper = getField<TrackingDbHelper>(service, "db")
+
+        service.onStartCommand(phoneGpsRelaySyncIntent(), 0, 1)
+        service.onStartCommand(manualTrackingStartIntent(), 0, 2)
+        val sessionId = requireNotNull(getField<Long?>(service, "activeSessionId"))
+        assertTrue(TrackingServiceRuntimeState.isActive())
+
+        assertEquals(
+            Service.START_STICKY,
+            service.onStartCommand(trackingStopIntent(), 0, 3)
+        )
+        assertFalse(TrackingServiceRuntimeState.isActive())
+        assertFalse(getField<Boolean>(service, "serviceRunning"))
+        assertNull(getField<Long?>(service, "activeSessionId"))
+        assertTrue(helper.getTrackingSession(sessionId)?.endedAt != null)
+        assertEquals(0L, getField<Long>(service, "activeSampleIntervalMs"))
+        assertFalse(getField<Boolean>(service, "eventPollRunning"))
+        assertEquals(
+            REGATTALINK_PHONE_GNSS_MIN_INTERVAL_MS,
+            getField<Long>(service, "activeLocationIntervalMs")
+        )
+
+        simulateGpsLocation()
+
+        assertEquals(1, relayClient.phoneGnssOfferCount)
+        assertEquals(0L, helper.countSamples())
+        assertEquals(0L, helper.countUploadablePendingSamples())
+
+        RegattaLinkPhoneGpsRelayStore(context).setEnabled(false)
+        service.onStartCommand(phoneGpsRelaySyncIntent(), 0, 4)
+        controller.destroy()
+        helper.close()
+    }
+
+    @Test
+    fun `disabling persistent relay during tracking keeps tracking forwarding but no relay continuation`() {
+        grantLocationPermission()
+        RegattaLinkPhoneGpsRelayStore(context).setEnabled(true)
+        val relayClient = installReadyRelayTestManager()
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+
+        service.onStartCommand(phoneGpsRelaySyncIntent(), 0, 1)
+        service.onStartCommand(manualTrackingStartIntent(), 0, 2)
+
+        assertEquals(
+            Service.START_STICKY,
+            service.onStartCommand(phoneGpsRelayDisableIntent(), 0, 3)
+        )
+        assertFalse(RegattaLinkPhoneGpsRelayStore(context).isEnabled())
+        assertTrue(TrackingServiceRuntimeState.isActive())
+        assertTrue(getField<Boolean>(service, "serviceRunning"))
+
+        simulateGpsLocation()
+        assertEquals(1, relayClient.phoneGnssOfferCount)
+
+        assertEquals(
+            Service.START_NOT_STICKY,
+            service.onStartCommand(trackingStopIntent(), 0, 4)
+        )
+        assertFalse(TrackingServiceRuntimeState.isActive())
+        assertEquals(0L, getField<Long>(service, "activeLocationIntervalMs"))
+
+        simulateGpsLocation(latitude = 53.1)
+
+        assertEquals(1, relayClient.phoneGnssOfferCount)
+
+        controller.destroy()
+    }
+
+    @Test
+    fun `relay only pauses GPS work when CAN disappears and resumes when it returns`() {
+        grantLocationPermission()
+        RegattaLinkPhoneGpsRelayStore(context).setEnabled(true)
+        val relayClient = installReadyRelayTestManager()
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+
+        service.onStartCommand(phoneGpsRelaySyncIntent(), 0, 1)
+        assertEquals(
+            REGATTALINK_PHONE_GNSS_MIN_INTERVAL_MS,
+            getField<Long>(service, "activeLocationIntervalMs")
+        )
+
+        relayClient.emitConfiguration(
+            relayConfiguration(
+                includeCan = false
+            )
+        )
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(0L, getField<Long>(service, "activeLocationIntervalMs"))
+        simulateGpsLocation()
+        assertEquals(0, relayClient.phoneGnssOfferCount)
+
+        relayClient.emitConfiguration(relayConfiguration(includeCan = true))
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(
+            REGATTALINK_PHONE_GNSS_MIN_INTERVAL_MS,
+            getField<Long>(service, "activeLocationIntervalMs")
+        )
+        simulateGpsLocation(latitude = 53.2)
+
+        assertEquals(1, relayClient.phoneGnssOfferCount)
+
+        RegattaLinkPhoneGpsRelayStore(context).setEnabled(false)
+        service.onStartCommand(phoneGpsRelaySyncIntent(), 0, 2)
+        controller.destroy()
+    }
+
+    @Test
     fun `sticky restart restores manual tracking and current boat setup`() {
         seedBoatSetup()
         seedAppState(inRace = false, manualTracking = true)
@@ -573,6 +934,154 @@ class RegattaTrackingServiceLifecycleTest {
 
         controller.destroy()
         helper.close()
+    }
+
+    private fun grantLocationPermission() {
+        shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
+    }
+
+    private fun phoneGpsRelaySyncIntent(): Intent =
+        Intent(context, RegattaTrackingService::class.java).apply {
+            action = RegattaTrackingService.ACTION_SYNC_PHONE_GPS_RELAY
+        }
+
+    private fun phoneGpsRelayDisableIntent(): Intent =
+        Intent(context, RegattaTrackingService::class.java).apply {
+            action = RegattaTrackingService.ACTION_DISABLE_PHONE_GPS_RELAY
+        }
+
+    private fun manualTrackingStartIntent(): Intent =
+        Intent(context, RegattaTrackingService::class.java).apply {
+            action = RegattaTrackingService.ACTION_START
+            putExtra(RegattaTrackingService.EXTRA_MANUAL_RECORDING, true)
+        }
+
+    private fun raceTrackingStartIntent(): Intent =
+        Intent(context, RegattaTrackingService::class.java).apply {
+            action = RegattaTrackingService.ACTION_START
+            putExtra(
+                RegattaTrackingService.EXTRA_SERVER_URL,
+                "https://raceoffice.example.org"
+            )
+            putExtra(RegattaTrackingService.EXTRA_EVENT_NAME, "Event A")
+            putExtra(RegattaTrackingService.EXTRA_SHARED_SECRET, "secret")
+            putExtra(RegattaTrackingService.EXTRA_RESOLVED_EVENT_NAME, "Race 1")
+            putExtra(RegattaTrackingService.EXTRA_MANUAL_RECORDING, false)
+        }
+
+    private fun trackingStopIntent(): Intent =
+        Intent(context, RegattaTrackingService::class.java).apply {
+            action = RegattaTrackingService.ACTION_STOP
+        }
+
+    private fun relayConfiguration(
+        includeCan: Boolean
+    ): RegattaLinkConfigurationState {
+        var word =
+            REGATTALINK_CONFIG_TX_MASTER or REGATTALINK_CONFIG_TX_PHONE_GPS
+        if (includeCan) {
+            word = word or REGATTALINK_CONFIG_SESSION_CAN
+        }
+        return RegattaLinkConfigurationState(
+            configWordSupported = true,
+            configWord = word
+        )
+    }
+
+    private fun installReadyRelayTestManager(): RelayTestClient {
+        val application = context.applicationContext as RegattaApplication
+        if (originalRegattaLinkManager == null) {
+            originalRegattaLinkManager = application.regattaLinkConnectionManager
+        }
+
+        lateinit var relayClient: RelayTestClient
+        val manager = RegattaLinkConnectionManager(
+            context = context,
+            clientFactory = RegattaLinkConnectionClientFactory {
+                    _,
+                    onStateChanged,
+                    _,
+                    _,
+                    onConfigurationStateChanged,
+                    _,
+                    _,
+                    _ ->
+                RelayTestClient(
+                    onStateChanged = onStateChanged,
+                    onConfigurationStateChanged = onConfigurationStateChanged
+                ).also { relayClient = it }
+            },
+            legacyBondedAddressProvider = { null }
+        )
+        setField(application, "regattaLinkConnectionManager", manager)
+
+        relayClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED
+            )
+        )
+        relayClient.emitConfiguration(relayConfiguration(includeCan = true))
+        shadowOf(Looper.getMainLooper()).idle()
+        return relayClient
+    }
+
+    private fun simulateGpsLocation(
+        latitude: Double = 53.0,
+        longitude: Double = 10.0
+    ) {
+        val locationManager =
+            context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val location = Location(LocationManager.GPS_PROVIDER).apply {
+            this.latitude = latitude
+            this.longitude = longitude
+            accuracy = 3f
+            time = System.currentTimeMillis()
+            elapsedRealtimeNanos = System.nanoTime()
+        }
+        shadowOf(locationManager).simulateLocation(location)
+        shadowOf(Looper.getMainLooper()).idle()
+    }
+
+    private class RelayTestClient(
+        private val onStateChanged: (RegattaLinkClientState) -> Unit,
+        private val onConfigurationStateChanged: (RegattaLinkConfigurationState) -> Unit
+    ) : RegattaLinkConnectionClient {
+        var phoneGnssOfferCount: Int = 0
+            private set
+
+        override fun startKnownDeviceReconnect(
+            deviceAddress: String,
+            expectedStableId: String?,
+            timeoutMs: Long
+        ): Boolean = false
+
+        override fun startDiscovery(): Boolean = false
+        override fun disconnect() = Unit
+        override fun startOta(artifact: RegattaLinkFirmwareArtifact) = Unit
+        override fun cancelOta() = Unit
+        override fun resetOtaState() = Unit
+        override fun setDeviceName(name: String): Boolean = false
+        override fun setLedBrightness(percent: Int): Boolean = false
+        override fun setMotionDamping(seconds: Int): Boolean = false
+        override fun refreshPgnInventory(): Boolean = false
+        override fun readRawCanFrames(): Boolean = false
+
+        override fun offerPhoneGnss(
+            sample: RegattaLinkPhoneGnssSample
+        ): Boolean {
+            phoneGnssOfferCount += 1
+            return true
+        }
+
+        fun emitConnection(state: RegattaLinkClientState) {
+            onStateChanged(state)
+        }
+
+        fun emitConfiguration(state: RegattaLinkConfigurationState) {
+            onConfigurationStateChanged(state)
+        }
     }
 
     private fun courseProgressIntent(passedMarks: Int, raceStarted: Boolean): Intent =

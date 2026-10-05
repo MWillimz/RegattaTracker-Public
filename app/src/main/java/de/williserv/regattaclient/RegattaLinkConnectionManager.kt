@@ -119,6 +119,10 @@ internal interface RegattaLinkConnectionClient {
     fun setCompassTxEnabled(enabled: Boolean): Boolean = false
     fun setNmea0183Baud(baudRate: Int): Boolean = false
     fun setMagBackgroundLearningEnabled(enabled: Boolean): Boolean = false
+    fun setSubsystemEnabled(
+        subsystem: RegattaLinkSubsystem,
+        enabled: Boolean
+    ): Boolean = false
     fun setHeadingTrimDeg(value: Int): Boolean = false
     fun offerPhoneGnss(sample: RegattaLinkPhoneGnssSample): Boolean = false
     fun clearPhoneGnss() = Unit
@@ -476,6 +480,14 @@ internal class RegattaLinkConnectionManager(
             client.setMagBackgroundLearningEnabled(enabled)
         }
 
+    fun setSubsystemEnabled(
+        subsystem: RegattaLinkSubsystem,
+        enabled: Boolean
+    ): Boolean =
+        withConfigMutationAllowed {
+            client.setSubsystemEnabled(subsystem, enabled)
+        }
+
     fun setHeadingTrimDeg(value: Int): Boolean {
         if (value !in -180..180) return false
         return withConfigMutationAllowed {
@@ -487,8 +499,9 @@ internal class RegattaLinkConnectionManager(
         regattaLinkPhoneGnssForwardingGate(
             connected =
                 connectionState.status == RegattaLinkConnectionStatus.CONNECTED,
+            transportReady = true,
             otaActive = otaState.isActive,
-            configWord = configurationState.configWord
+            configurationState = configurationState
         )
 
     fun offerPhoneGnss(location: Location): Boolean {

@@ -3627,10 +3627,22 @@ internal class RegattaLinkBleClient(
         )
     }
 
+    override fun setSubsystemEnabled(
+        subsystem: RegattaLinkSubsystem,
+        enabled: Boolean
+    ): Boolean =
+        mutateConfigWord(
+            mask = subsystem.configBit,
+            encodedBits = subsystem.configBit.takeIf { enabled } ?: 0u,
+            failureText = "Could not change RegattaLink subsystem setting",
+            rereadAfterWrite = true
+        )
+
     private fun mutateConfigWord(
         mask: UInt,
         encodedBits: UInt,
-        failureText: String
+        failureText: String,
+        rereadAfterWrite: Boolean = false
     ): Boolean {
         if (encodedBits and mask.inv() != 0u) return false
         if (otaRunning.get() || !isConnected()) return false
@@ -3690,8 +3702,30 @@ internal class RegattaLinkBleClient(
                         )
                     }
 
+                    /*
+                     * Bits 16..19 read back current-session availability, not
+                     * the desired next-boot subsystem state. Re-read after an
+                     * explicit subsystem write so the UI keeps showing the
+                     * running session and only the restart-required state
+                     * reflects the pending change.
+                     */
+                    val confirmedWord =
+                        if (rereadAfterWrite && nextWord != currentWord) {
+                            parseRegattaLinkConfigWord(
+                                readCharacteristicBlocking(
+                                    activeGatt,
+                                    characteristic
+                                )
+                            )
+                        } else {
+                            nextWord
+                        }
+
                     updateConfiguration { current ->
-                        regattaLinkApplyConfigWord(current, nextWord).copy(
+                        regattaLinkApplyConfigWord(
+                            current,
+                            confirmedWord
+                        ).copy(
                             configRestartRequired =
                                 current.configRestartRequired ||
                                     nextWord != currentWord,
@@ -3838,14 +3872,12 @@ internal class RegattaLinkBleClient(
     }
 
     private fun phoneGnssForwardingAllowed(): Boolean =
-        connected &&
-            establishedConnection &&
-            !otaRunning.get() &&
-            !lastConfigurationState.deviceControlBusy &&
-            !lastConfigurationState.restartAwaitingDisconnect &&
-            !lastConfigurationState.factoryResetAwaitingDisconnect &&
-            lastConfigurationState.factoryResetWriteAcceptedRequestId == null &&
-            lastConfigurationState.phoneGnssForwardingDesired
+        regattaLinkPhoneGnssForwardingGate(
+            connected = connected,
+            transportReady = establishedConnection,
+            otaActive = otaRunning.get(),
+            configurationState = lastConfigurationState
+        )
 
     private fun schedulePhoneGnssDrain() {
         if (!phoneGnssForwardingAllowed()) return

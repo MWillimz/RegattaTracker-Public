@@ -132,21 +132,81 @@ class RegattaLinkPhoneGnssTest {
     }
 
     @Test
-    fun forwardingGateRequiresMasterPhoneSelectorConnectionAndNoOta() {
-        val enabled =
-            REGATTALINK_CONFIG_TX_MASTER or REGATTALINK_CONFIG_TX_PHONE_GPS
+    fun forwardingGateRequiresCanTxSelectorsAndUnblockedRuntime() {
+        val enabledWord =
+            REGATTALINK_CONFIG_TX_MASTER or
+                REGATTALINK_CONFIG_TX_PHONE_GPS or
+                REGATTALINK_CONFIG_SESSION_CAN
+        val ready = RegattaLinkConfigurationState(
+            configWordSupported = true,
+            configWord = enabledWord
+        )
 
-        assertTrue(regattaLinkPhoneGnssForwardingGate(true, false, enabled))
-        assertFalse(
+        assertTrue(
             regattaLinkPhoneGnssForwardingGate(
-                true,
-                false,
-                REGATTALINK_CONFIG_TX_PHONE_GPS
+                connected = true,
+                transportReady = true,
+                otaActive = false,
+                configurationState = ready
             )
         )
-        assertFalse(regattaLinkPhoneGnssForwardingGate(false, false, enabled))
-        assertFalse(regattaLinkPhoneGnssForwardingGate(true, true, enabled))
-        assertFalse(regattaLinkPhoneGnssForwardingGate(true, false, null))
+
+        listOf(
+            ready.copy(
+                configWord =
+                    REGATTALINK_CONFIG_TX_MASTER or
+                        REGATTALINK_CONFIG_TX_PHONE_GPS
+            ),
+            ready.copy(
+                configWord =
+                    REGATTALINK_CONFIG_TX_PHONE_GPS or
+                        REGATTALINK_CONFIG_SESSION_CAN
+            ),
+            ready.copy(
+                configWord =
+                    REGATTALINK_CONFIG_TX_MASTER or
+                        REGATTALINK_CONFIG_SESSION_CAN
+            ),
+            ready.copy(deviceControlBusy = true),
+            ready.copy(restartAwaitingDisconnect = true),
+            ready.copy(factoryResetAwaitingDisconnect = true),
+            ready.copy(factoryResetWriteAcceptedRequestId = 7u),
+            ready.copy(configWord = null)
+        ).forEach { blocked ->
+            assertFalse(
+                regattaLinkPhoneGnssForwardingGate(
+                    connected = true,
+                    transportReady = true,
+                    otaActive = false,
+                    configurationState = blocked
+                )
+            )
+        }
+
+        assertFalse(
+            regattaLinkPhoneGnssForwardingGate(
+                connected = false,
+                transportReady = true,
+                otaActive = false,
+                configurationState = ready
+            )
+        )
+        assertFalse(
+            regattaLinkPhoneGnssForwardingGate(
+                connected = true,
+                transportReady = false,
+                otaActive = false,
+                configurationState = ready
+            )
+        )
+        assertFalse(
+            regattaLinkPhoneGnssForwardingGate(
+                connected = true,
+                transportReady = true,
+                otaActive = true,
+                configurationState = ready
+            )
+        )
     }
 
     @Test

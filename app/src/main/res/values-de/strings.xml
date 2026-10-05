@@ -576,9 +576,15 @@
     <string name="regattalink_settings_title">Einstellungen</string>
     <string name="regattalink_setup">Einrichten</string>
     <string name="regattalink_setup_imu">IMU einrichten</string>
-    <string name="regattalink_setup_nmea">Boat Data einrichten</string>
+    <string name="regattalink_setup_nmea">TX einrichten</string>
     <string name="regattalink_advanced_diagnostics">Erweitert / Diagnose</string>
     <string name="regattalink_device_settings">Geräteeinstellungen</string>
+    <string name="regattalink_subsystems">Hardware-Subsysteme</string>
+    <string name="regattalink_subsystems_session_help">Die Schalter zeigen die Verfügbarkeit für diesen Start. Änderungen werden für den nächsten Neustart gespeichert.</string>
+    <string name="regattalink_subsystem_imu">IMU</string>
+    <string name="regattalink_subsystem_mag">Bordkompass</string>
+    <string name="regattalink_subsystem_boat_data">Boat Data / CAN</string>
+    <string name="regattalink_subsystem_nmea0183">0183-Eingang</string>
     <string name="regattalink_technical_details">Technische Details</string>
     <string name="regattalink_diagnostics_title">Diagnose</string>
     <string name="regattalink_live_orientation">Live-Lage</string>
@@ -675,11 +681,11 @@
     <string name="regattalink_load_not_subscribed">Benachrichtigungen der Lastsensoren sind nicht verfügbar.</string>
     <string name="regattalink_load_listen_only">Nur-Empfang: Eine stabile Lastsensor-Identität ist nach einem Neustart möglicherweise nicht verfügbar. Sensoren werden als Load 0, Load 1 usw. angezeigt; die Live-Lastwerte sind davon nicht betroffen.</string>
     <string name="regattalink_load_alias">Optionaler Name</string>
-    <string name="regattalink_nmea_tx_title">Boat-Data-Übertragung</string>
+    <string name="regattalink_nmea_tx_title">TX aktivieren</string>
     <string name="regattalink_nmea_tx_receive_only">Nur Empfang. RegattaLink sendet keine Boat Data.</string>
     <string name="regattalink_nmea_tx_enabled">Übertragung erlaubt. Standardmäßiger Boat-Data-Verwaltungsverkehr kann gesendet werden.</string>
     <string name="regattalink_nmea_tx_state_unavailable">Status konnte nicht von RegattaLink gelesen werden.</string>
-    <string name="regattalink_nmea_attitude_tx">Krängung / Trimm</string>
+    <string name="regattalink_nmea_attitude_tx">Krängung / Trimm weiterleiten</string>
     <string name="regattalink_nmea_attitude_tx_enabled">Lokale RegattaLink-IMU Pitch/Roll · PGN 127257 · 5 Hz</string>
     <string name="regattalink_nmea_attitude_tx_disabled">PGN-127257-Ausgabe deaktiviert.</string>
     <string name="regattalink_nmea_attitude_tx_master_off">Ausgewählt, aber solange die Boat-Data-Übertragung aus ist, ist keine Anwendungsübertragung aktiv.</string>
@@ -700,9 +706,15 @@
     <string name="regattalink_nmea_runtime_unknown_restart">Der angewendete Boat-Data-TX-Zustand ist mit dieser Firmware nicht verfügbar. RegattaLink neu starten, um die ausgewählten Einstellungen zu synchronisieren.</string>
 
 
-    <string name="regattalink_nmea0183_tx">0183-Eingang → Boat Data</string>
-    <string name="regattalink_phone_gps_tx">Telefon-GPS → Boat Data</string>
-    <string name="regattalink_compass_tx">Kompasskurs → Boat Data</string>
+    <string name="regattalink_nmea0183_tx">0183 weiterleiten</string>
+    <string name="regattalink_phone_gps_tx">Telefon-GPS weiterleiten</string>
+    <string name="regattalink_compass_tx">Kurs weiterleiten</string>
+    <string name="regattalink_phone_gps_relay">Telefon-GPS ohne Tracking weiterleiten</string>
+    <string name="regattalink_phone_gps_relay_hint">Leitet Telefon-GPS auch weiter, wenn Regatta- oder manuelles Tracking gestoppt ist.</string>
+    <string name="regattalink_phone_gps_relay_notification_title">Telefon-GPS-Weiterleitung</string>
+    <string name="regattalink_phone_gps_relay_active">Telefon-GPS wird an RegattaLink weitergeleitet</string>
+    <string name="regattalink_phone_gps_relay_waiting">Telefon-GPS-Weiterleitung ist an · wartet auf RegattaLink</string>
+    <string name="regattalink_phone_gps_relay_stop">Weiterleitung stoppen</string>
     <string name="regattalink_nmea0183_baud">Baudrate des 0183-Eingangs</string>
     <string name="regattalink_applies_after_restart">Die gespeicherte Einstellung wird nach einem RegattaLink-Neustart aktiv.</string>
     <string name="regattalink_boat_data_output_selected_runtime_unknown">Ausgewählt. Der angewendete Zustand ist nicht verfügbar.</string>

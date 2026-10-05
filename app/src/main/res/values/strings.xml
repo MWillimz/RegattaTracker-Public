@@ -619,9 +619,15 @@
     <string name="regattalink_settings_title">Settings</string>
     <string name="regattalink_setup">Setup</string>
     <string name="regattalink_setup_imu">Setup IMU</string>
-    <string name="regattalink_setup_nmea">Setup Boat Data</string>
+    <string name="regattalink_setup_nmea">Setup TX</string>
     <string name="regattalink_advanced_diagnostics">Advanced / Diagnostics</string>
     <string name="regattalink_device_settings">Device settings</string>
+    <string name="regattalink_subsystems">Hardware subsystems</string>
+    <string name="regattalink_subsystems_session_help">Switches show availability for this boot. Changes are saved for the next restart.</string>
+    <string name="regattalink_subsystem_imu">IMU</string>
+    <string name="regattalink_subsystem_mag">Onboard compass</string>
+    <string name="regattalink_subsystem_boat_data">Boat Data / CAN</string>
+    <string name="regattalink_subsystem_nmea0183">0183 input</string>
     <string name="regattalink_technical_details">Technical details</string>
     <string name="regattalink_diagnostics_title">Diagnostics</string>
     <string name="regattalink_live_orientation">Live orientation</string>
@@ -718,11 +724,11 @@
     <string name="regattalink_load_not_subscribed">Load sensor notifications are unavailable.</string>
     <string name="regattalink_load_listen_only">Listen-only mode: stable load-sensor identity may be unavailable after restart. Sensors are shown as Load 0, Load 1, etc.; live load values are unaffected.</string>
     <string name="regattalink_load_alias">Optional name</string>
-    <string name="regattalink_nmea_tx_title">Boat Data transmission</string>
+    <string name="regattalink_nmea_tx_title">Enable TX</string>
     <string name="regattalink_nmea_tx_receive_only">Receive only. RegattaLink does not transmit Boat Data.</string>
     <string name="regattalink_nmea_tx_enabled">Transmission permitted. Standard Boat Data management traffic may be sent.</string>
     <string name="regattalink_nmea_tx_state_unavailable">State could not be read from RegattaLink.</string>
-    <string name="regattalink_nmea_attitude_tx">Heel / Trim</string>
+    <string name="regattalink_nmea_attitude_tx">Forward Heel / Trim</string>
     <string name="regattalink_nmea_attitude_tx_enabled">Local RegattaLink IMU Pitch/Roll · PGN 127257 · 5 Hz</string>
     <string name="regattalink_nmea_attitude_tx_disabled">PGN 127257 output disabled.</string>
     <string name="regattalink_nmea_attitude_tx_master_off">Selected, but no application transmission is active while Boat Data transmission is off.</string>
@@ -743,9 +749,15 @@
     <string name="regattalink_nmea_runtime_unknown_restart">Applied Boat Data TX state is unavailable on this firmware. Restart RegattaLink to synchronize the selected settings.</string>
 
 
-    <string name="regattalink_nmea0183_tx">0183 input → Boat Data</string>
-    <string name="regattalink_phone_gps_tx">Phone GPS → Boat Data</string>
-    <string name="regattalink_compass_tx">Compass Heading → Boat Data</string>
+    <string name="regattalink_nmea0183_tx">Forward 0183</string>
+    <string name="regattalink_phone_gps_tx">Forward Phone GPS</string>
+    <string name="regattalink_compass_tx">Forward Heading</string>
+    <string name="regattalink_phone_gps_relay">Forward Phone GPS without tracking</string>
+    <string name="regattalink_phone_gps_relay_hint">Keeps phone GPS forwarding active even when race or manual tracking is stopped.</string>
+    <string name="regattalink_phone_gps_relay_notification_title">Phone GPS forwarding</string>
+    <string name="regattalink_phone_gps_relay_active">Forwarding Phone GPS to RegattaLink</string>
+    <string name="regattalink_phone_gps_relay_waiting">Phone GPS forwarding is on · waiting for RegattaLink</string>
+    <string name="regattalink_phone_gps_relay_stop">Stop forwarding</string>
     <string name="regattalink_nmea0183_baud">0183 input baud</string>
     <string name="regattalink_applies_after_restart">Saved setting applies after RegattaLink restart.</string>
     <string name="regattalink_boat_data_output_selected_runtime_unknown">Selected. Applied state is unavailable.</string>

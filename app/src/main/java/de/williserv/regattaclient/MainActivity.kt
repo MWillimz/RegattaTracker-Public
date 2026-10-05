@@ -80,6 +80,13 @@ private enum class PendingRegattaLinkPermissionAction {
 
 internal const val STORAGE_COUNTS_REFRESH_INTERVAL_MS = 10_000L
 
+internal fun shouldStartPhoneGpsRelayService(
+    enabled: Boolean,
+    trackingRequested: Boolean,
+    locationPermissionGranted: Boolean
+): Boolean =
+    enabled && !trackingRequested && locationPermissionGranted
+
 internal class StorageCountRefreshGate(
     private val minIntervalMs: Long
 ) {
@@ -150,6 +157,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var raceLegalAcceptanceStore: RaceLegalAcceptanceStore
     private lateinit var locationManager: LocationManager
     private lateinit var regattaLinkManager: RegattaLinkConnectionManager
+    private lateinit var regattaLinkPhoneGpsRelayStore: RegattaLinkPhoneGpsRelayStore
+    private val regattaLinkPhoneGpsRelayEnabled = mutableStateOf(false)
     private val regattaLinkState = mutableStateOf(RegattaLinkClientState())
     private val regattaLinkFirmwareClient = RegattaLinkFirmwareClient()
     private val regattaLinkFirmwareState = mutableStateOf(RegattaLinkFirmwareUiState())
@@ -440,6 +449,7 @@ class MainActivity : ComponentActivity() {
 
             if (locationGranted) {
                 startGpsDisplayUpdates()
+                syncPersistedPhoneGpsRelayIfPermitted()
             } else {
                 statusText.value = getString(R.string.gps_permission_denied)
             }
@@ -540,11 +550,23 @@ class MainActivity : ComponentActivity() {
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
         regattaLinkManager =
             (application as RegattaApplication).regattaLinkConnectionManager
+        regattaLinkPhoneGpsRelayStore = RegattaLinkPhoneGpsRelayStore(this)
+        regattaLinkPhoneGpsRelayEnabled.value =
+            regattaLinkPhoneGpsRelayStore.isEnabled()
         regattaLinkManager.addListener(regattaLinkListener)
         regattaLinkManager.requestForegroundStartupReconnectIfPermitted()
         loadBoatSetup()
         loadRaceSetup()
         loadAppState()
+
+        val appStatePrefs =
+            getSharedPreferences(appStatePrefsName, Context.MODE_PRIVATE)
+        val persistedTrackingRequested =
+            appStatePrefs.getBoolean("in_race", false) ||
+                appStatePrefs.getBoolean("manual_tracking", false)
+        syncPersistedPhoneGpsRelayIfPermitted(
+            trackingRequested = persistedTrackingRequested
+        )
         refreshRetirementReportedState()
 
         requestStorageCountsRefresh(force = true)
@@ -823,6 +845,8 @@ class MainActivity : ComponentActivity() {
                                 selectedRegattaLinkFirmwareManifest() != null &&
                                     regattaLinkFirmwareState.value.status ==
                                     RegattaLinkFirmwareStatus.READY,
+                            phoneGpsRelayEnabled =
+                                regattaLinkPhoneGpsRelayEnabled.value,
                             modifier = Modifier.padding(innerPadding),
                             onSearch = ::startRegattaLinkConnection,
                             onCheckFirmware = ::loadRegattaLinkFirmware,
@@ -858,12 +882,19 @@ class MainActivity : ComponentActivity() {
                             onSetCompassTxEnabled = { enabled ->
                                 regattaLinkManager.setCompassTxEnabled(enabled)
                             },
+                            onSetPhoneGpsRelayEnabled = { enabled ->
+                                setRegattaLinkPhoneGpsRelayEnabled(enabled)
+                            },
                             onSetNmea0183Baud = { baudRate ->
                                 regattaLinkManager.setNmea0183Baud(baudRate)
                             },
                             onSetMagBackgroundLearningEnabled = { enabled ->
                                 regattaLinkManager
                                     .setMagBackgroundLearningEnabled(enabled)
+                            },
+                            onSetSubsystemEnabled = { subsystem, enabled ->
+                                regattaLinkManager
+                                    .setSubsystemEnabled(subsystem, enabled)
                             },
                             onSetHeadingTrimDeg = { value ->
                                 regattaLinkManager.setHeadingTrimDeg(value)
@@ -3640,6 +3671,58 @@ class MainActivity : ComponentActivity() {
         stopRegattaForegroundService()
     }
 
+    private fun hasFineLocationPermission(): Boolean =
+        ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+    private fun syncPersistedPhoneGpsRelayIfPermitted(
+        trackingRequested: Boolean = inRace.value || manualTracking.value
+    ) {
+        if (
+            !shouldStartPhoneGpsRelayService(
+                enabled = regattaLinkPhoneGpsRelayEnabled.value,
+                trackingRequested = trackingRequested,
+                locationPermissionGranted = hasFineLocationPermission()
+            )
+        ) {
+            return
+        }
+
+        syncRegattaLinkPhoneGpsRelayService(enabled = true)
+    }
+
+    private fun setRegattaLinkPhoneGpsRelayEnabled(enabled: Boolean) {
+        regattaLinkPhoneGpsRelayStore.setEnabled(enabled)
+        regattaLinkPhoneGpsRelayEnabled.value = enabled
+
+        if (!enabled) {
+            syncRegattaLinkPhoneGpsRelayService(enabled = false)
+            return
+        }
+
+        if (hasFineLocationPermission()) {
+            syncRegattaLinkPhoneGpsRelayService(enabled = true)
+        } else {
+            permissionLauncher.launch(
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+            )
+        }
+    }
+
+    private fun syncRegattaLinkPhoneGpsRelayService(enabled: Boolean) {
+        val intent = Intent(this, RegattaTrackingService::class.java).apply {
+            action = RegattaTrackingService.ACTION_SYNC_PHONE_GPS_RELAY
+        }
+
+        if (enabled) {
+            ContextCompat.startForegroundService(this, intent)
+        } else {
+            startService(intent)
+        }
+    }
+
     private fun startRegattaForegroundService(manualMode: Boolean) {
         val intent = Intent(this, RegattaTrackingService::class.java).apply {
             action = RegattaTrackingService.ACTION_START
@@ -4357,6 +4440,18 @@ class MainActivity : ComponentActivity() {
             regattaLinkManager.stopRawCanCapture(interrupted = true)
         }
         super.onStop()
+    }
+
+    override fun onResume() {
+        super.onResume()
+
+        if (::regattaLinkPhoneGpsRelayStore.isInitialized) {
+            val enabled = regattaLinkPhoneGpsRelayStore.isEnabled()
+            regattaLinkPhoneGpsRelayEnabled.value = enabled
+            if (enabled) {
+                syncPersistedPhoneGpsRelayIfPermitted()
+            }
+        }
     }
 
     override fun onDestroy() {

@@ -1,5 +1,6 @@
 package de.williserv.regattaclient
 
+import android.content.Context
 import android.location.Location
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -7,6 +8,26 @@ import kotlin.math.roundToInt
 
 internal const val REGATTALINK_PHONE_GNSS_FRAME_SIZE = 20
 internal const val REGATTALINK_PHONE_GNSS_MIN_INTERVAL_MS = 1_000L
+
+internal class RegattaLinkPhoneGpsRelayStore(context: Context) {
+    private val prefs = context.applicationContext.getSharedPreferences(
+        PREFS_NAME,
+        Context.MODE_PRIVATE
+    )
+
+    fun isEnabled(): Boolean = prefs.getBoolean(KEY_ENABLED, false)
+
+    fun setEnabled(enabled: Boolean) {
+        prefs.edit()
+            .putBoolean(KEY_ENABLED, enabled)
+            .apply()
+    }
+
+    private companion object {
+        const val PREFS_NAME = "regattalink_phone_gps_relay"
+        const val KEY_ENABLED = "enabled"
+    }
+}
 
 internal const val REGATTALINK_PHONE_GNSS_VALID_POSITION = 1 shl 0
 internal const val REGATTALINK_PHONE_GNSS_VALID_COG = 1 shl 1
@@ -118,14 +139,22 @@ internal fun encodeRegattaLinkPhoneGnss(
 
 internal fun regattaLinkPhoneGnssForwardingGate(
     connected: Boolean,
+    transportReady: Boolean,
     otaActive: Boolean,
-    configWord: UInt?
-): Boolean =
-    connected &&
+    configurationState: RegattaLinkConfigurationState
+): Boolean {
+    val configWord = configurationState.configWord ?: return false
+    return connected &&
+        transportReady &&
         !otaActive &&
-        configWord != null &&
+        !configurationState.deviceControlBusy &&
+        !configurationState.restartAwaitingDisconnect &&
+        !configurationState.factoryResetAwaitingDisconnect &&
+        configurationState.factoryResetWriteAcceptedRequestId == null &&
+        configWord and REGATTALINK_CONFIG_SESSION_CAN != 0u &&
         configWord and REGATTALINK_CONFIG_TX_MASTER != 0u &&
         configWord and REGATTALINK_CONFIG_TX_PHONE_GPS != 0u
+}
 
 internal fun regattaLinkLocationRequestIntervalMs(
     persistenceIntervalMs: Long,

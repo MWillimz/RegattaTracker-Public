@@ -103,7 +103,11 @@ Wire format is exactly four-byte unsigned little-endian.
 | 9 | MAG background-calibration learning |
 | 10..13 | reserved |
 | 14..15 | NMEA 0183 baud selector |
-| 16..31 | reserved |
+| 16 | IMU current-session availability / next-boot enable request |
+| 17 | onboard MAG current-session availability / next-boot enable request |
+| 18 | CAN / Boat Data current-session availability / next-boot enable request |
+| 19 | NMEA 0183 RX current-session availability / next-boot enable request |
+| 20..31 | reserved |
 
 Baud selector:
 - `00` = 4800
@@ -121,14 +125,30 @@ All `0017` writes are whole-register writes. Tracker must use read-modify-write:
 
 No setting is automatically enabled as a side effect of another setting.
 
-All `0017` changes are persisted immediately but take effect only after RegattaLink restart. Reads expose the desired word; runtime subsystems continue using the boot-applied snapshot.
+Ordinary `0017` settings are persisted immediately but reboot-applied. Bits 16..19
+have special semantics from RegattaLink #285: a read reports **current-session
+availability**, not the next-boot desired state. Firmware stores subsystem enable
+intent separately.
 
-The first Tracker migration step consumes the already-existing UI functionality through this one word:
-- global Boat Data TX from bit 0;
-- Heel/Trim TX from bit 1;
-- Load precision from bit 8.
+For subsystem writes Tracker performs a fresh whole-word RMW and then re-reads
+`0017` after a successful write. The session bit therefore remains unchanged until
+restart while `configRestartRequired` records the pending change. A session bit
+`0` may mean intentionally disabled or initialization failed; writing `1` requests
+enable/retry next boot. Writing an unchanged `0` during an unrelated RMW does not
+mean the subsystem is persistently disabled.
 
-The Tracker exposes all assigned schema-16 selectors/configuration from this same authoritative Config Word.
+Tracker uses these session bits to gate dependent controls:
+- bit16 IMU -> IMU calibration/motion controls and Heel/Trim TX;
+- bit17 MAG -> onboard compass/MAG controls and compass TX;
+- bit18 CAN -> local Boat Data TX, CAN inventory and raw-CAN functions;
+- bit19 NMEA0183 -> 0183 baud/input/forwarding controls.
+
+The four explicit enable/re-enable switches remain reachable under Advanced /
+Diagnostics even when a subsystem is unavailable, so the user can request a retry on
+the next boot. Firmware that predates #285 but already reports schema 16 returned
+bits16..19 as reserved zero; Tracker therefore treats an all-zero session nibble as
+**availability unknown for feature hiding**, while the explicit Advanced switches
+still show the raw session bits. Unknown bits 20..31 remain preserved by every RMW.
 
 ## Runtime TX status 001B v2
 
