@@ -190,6 +190,74 @@ class RegattaLinkConfigurationNmeaTest {
     }
 
     @Test
+    fun configWordDecodesSubsystemSessionAvailabilityBits() {
+        val word =
+            REGATTALINK_CONFIG_SUBSYSTEM_IMU or
+                REGATTALINK_CONFIG_SUBSYSTEM_CAN
+        val state = regattaLinkApplyConfigWord(
+            RegattaLinkConfigurationState(),
+            word
+        )
+
+        assertEquals(true, state.imuAvailable)
+        assertEquals(false, state.magAvailable)
+        assertEquals(true, state.boatDataAvailable)
+        assertEquals(false, state.nmea0183Available)
+        assertEquals(
+            true,
+            state.subsystemAvailable(RegattaLinkSubsystem.IMU)
+        )
+        assertEquals(
+            false,
+            state.subsystemAvailable(RegattaLinkSubsystem.MAG)
+        )
+    }
+
+    @Test
+    fun subsystemMutationChangesOnlyRequestedSessionBit() {
+        val original =
+            0xa5a00000u or
+                REGATTALINK_CONFIG_SUBSYSTEM_IMU or
+                REGATTALINK_CONFIG_SUBSYSTEM_CAN or
+                REGATTALINK_CONFIG_TX_MASTER
+
+        RegattaLinkSubsystem.entries.forEach { subsystem ->
+            val enabled = regattaLinkConfigWordWithBit(
+                original,
+                subsystem.configBit,
+                true
+            )
+            val disabled = regattaLinkConfigWordWithBit(
+                original,
+                subsystem.configBit,
+                false
+            )
+            assertEquals(
+                original and subsystem.configBit.inv(),
+                enabled and subsystem.configBit.inv()
+            )
+            assertEquals(
+                original and subsystem.configBit.inv(),
+                disabled and subsystem.configBit.inv()
+            )
+        }
+    }
+
+    @Test
+    fun subsystemBitAssignmentsMatchRegattaLink285Contract() {
+        assertEquals(0x00010000u, RegattaLinkSubsystem.IMU.configBit)
+        assertEquals(0x00020000u, RegattaLinkSubsystem.MAG.configBit)
+        assertEquals(0x00040000u, RegattaLinkSubsystem.BOAT_DATA.configBit)
+        assertEquals(0x00080000u, RegattaLinkSubsystem.NMEA0183_RX.configBit)
+        assertEquals(
+            0x000f0000u,
+            RegattaLinkSubsystem.entries.fold(0u) { mask, subsystem ->
+                mask or subsystem.configBit
+            }
+        )
+    }
+
+    @Test
     fun baudEncodingUsesOnlyBits14And15AndPreservesEverythingElse() {
         val original = 0xa5a53fffu
         RegattaLinkNmea0183Baud.entries.forEach { baud ->
