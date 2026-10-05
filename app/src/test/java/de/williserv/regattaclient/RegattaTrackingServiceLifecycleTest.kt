@@ -324,7 +324,92 @@ class RegattaTrackingServiceLifecycleTest {
     }
 
     @Test
+    fun `activity startup relay gate requires permission and no tracking`() {
+        assertFalse(
+            shouldStartPhoneGpsRelayService(
+                enabled = true,
+                trackingRequested = false,
+                locationPermissionGranted = false
+            )
+        )
+        assertFalse(
+            shouldStartPhoneGpsRelayService(
+                enabled = true,
+                trackingRequested = true,
+                locationPermissionGranted = true
+            )
+        )
+        assertFalse(
+            shouldStartPhoneGpsRelayService(
+                enabled = false,
+                trackingRequested = false,
+                locationPermissionGranted = true
+            )
+        )
+        assertTrue(
+            shouldStartPhoneGpsRelayService(
+                enabled = true,
+                trackingRequested = false,
+                locationPermissionGranted = true
+            )
+        )
+    }
+
+    @Test
+    fun `phone GPS relay remains persisted until location permission is granted`() {
+        shadowOf(RuntimeEnvironment.getApplication()).denyPermissions(
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
+        val relayStore = RegattaLinkPhoneGpsRelayStore(context)
+        relayStore.setEnabled(true)
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+        val intent = Intent(context, RegattaTrackingService::class.java).apply {
+            action = RegattaTrackingService.ACTION_SYNC_PHONE_GPS_RELAY
+        }
+
+        assertEquals(Service.START_NOT_STICKY, service.onStartCommand(intent, 0, 1))
+        assertTrue(relayStore.isEnabled())
+        assertFalse(getField<Boolean>(service, "serviceRunning"))
+        assertFalse(TrackingServiceRuntimeState.isActive())
+
+        shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
+
+        assertEquals(Service.START_STICKY, service.onStartCommand(intent, 0, 2))
+        assertTrue(relayStore.isEnabled())
+        assertFalse(getField<Boolean>(service, "serviceRunning"))
+
+        relayStore.setEnabled(false)
+        service.onStartCommand(intent, 0, 3)
+        controller.destroy()
+    }
+
+    @Test
+    fun `sticky restart does not restore phone GPS relay without location permission`() {
+        shadowOf(RuntimeEnvironment.getApplication()).denyPermissions(
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
+        val relayStore = RegattaLinkPhoneGpsRelayStore(context)
+        relayStore.setEnabled(true)
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+
+        assertEquals(Service.START_NOT_STICKY, service.onStartCommand(null, 0, 1))
+        assertTrue(relayStore.isEnabled())
+        assertFalse(getField<Boolean>(service, "serviceRunning"))
+        assertFalse(TrackingServiceRuntimeState.isActive())
+        assertNull(getField<Long?>(service, "activeSessionId"))
+
+        controller.destroy()
+    }
+
+    @Test
     fun `phone GPS relay starts without tracking state or samples`() {
+        shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
         RegattaLinkPhoneGpsRelayStore(context).setEnabled(true)
         val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
         val service = controller.get()
@@ -349,6 +434,9 @@ class RegattaTrackingServiceLifecycleTest {
 
     @Test
     fun `sticky restart restores phone GPS relay without restoring tracking`() {
+        shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
         RegattaLinkPhoneGpsRelayStore(context).setEnabled(true)
         val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
         val service = controller.get()
