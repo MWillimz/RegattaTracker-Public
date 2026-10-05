@@ -390,6 +390,9 @@ fun RegattaLinkScreen(
                 },
                 onSetLedBrightness = onSetLedBrightness,
                 onSetSubsystemEnabled = onSetSubsystemEnabled,
+                onRestart = {
+                    onDeviceControl(RegattaLinkDeviceControlOpcode.RESTART, 0)
+                },
                 onDrainDiagnosticLog = onDrainDiagnosticLog,
                 onReadRawFrames = onReadRawFrames,
                 onStartRawCapture = onStartRawCapture,
@@ -1542,6 +1545,7 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
     onChangeName: () -> Unit,
     onSetLedBrightness: (Int) -> Unit,
     onSetSubsystemEnabled: (RegattaLinkSubsystem, Boolean) -> Unit,
+    onRestart: () -> Unit,
     onDrainDiagnosticLog: () -> Unit,
     onReadRawFrames: () -> Unit,
     onStartRawCapture: () -> Unit,
@@ -1724,6 +1728,18 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 8.dp)
                     )
+                    Button(
+                        onClick = onRestart,
+                        enabled =
+                            configEnabled &&
+                                configurationState.deviceControlSupported &&
+                                !configurationState.restartAwaitingDisconnect,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                    ) {
+                        Text(stringResource(R.string.regattalink_restart))
+                    }
                 }
             }
 
