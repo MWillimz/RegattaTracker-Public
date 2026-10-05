@@ -71,6 +71,24 @@ class LocalizationResourcesTest {
     }
 
     @Test
+    fun regattaLinkTxSetup_usesCompactForwardLabels() {
+        val resources = RuntimeEnvironment.getApplication().resources
+
+        assertEquals("Setup TX", resources.getString(R.string.regattalink_setup_nmea))
+        assertEquals("Enable TX", resources.getString(R.string.regattalink_nmea_tx_title))
+        assertEquals("Forward 0183", resources.getString(R.string.regattalink_nmea0183_tx))
+        assertEquals(
+            "Forward Heel / Trim",
+            resources.getString(R.string.regattalink_nmea_attitude_tx)
+        )
+        assertEquals("Forward Heading", resources.getString(R.string.regattalink_compass_tx))
+        assertEquals(
+            "Forward Phone GPS",
+            resources.getString(R.string.regattalink_phone_gps_tx)
+        )
+    }
+
+    @Test
     @Config(qualifiers = "de")
     fun germanLocale_usesGermanResources() {
         val resources = RuntimeEnvironment.getApplication().resources

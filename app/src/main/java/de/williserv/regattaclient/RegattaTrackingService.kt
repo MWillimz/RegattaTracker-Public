@@ -114,6 +114,10 @@ class RegattaTrackingService : Service() {
     companion object {
         const val ACTION_START = "de.williserv.regattaclient.START_TRACKING_SERVICE"
         const val ACTION_STOP = "de.williserv.regattaclient.STOP_TRACKING_SERVICE"
+        const val ACTION_SYNC_PHONE_GPS_RELAY =
+            "de.williserv.regattaclient.SYNC_PHONE_GPS_RELAY"
+        const val ACTION_DISABLE_PHONE_GPS_RELAY =
+            "de.williserv.regattaclient.DISABLE_PHONE_GPS_RELAY"
         const val ACTION_CONTINUE_AFTER_FINISH =
             "de.williserv.regattaclient.CONTINUE_AFTER_FINISH"
 
@@ -121,7 +125,10 @@ class RegattaTrackingService : Service() {
             stopHandoffInProgress: Boolean,
             action: String?
         ): Boolean {
-            return stopHandoffInProgress && action != ACTION_START
+            return stopHandoffInProgress &&
+                action != ACTION_START &&
+                action != ACTION_SYNC_PHONE_GPS_RELAY &&
+                action != ACTION_DISABLE_PHONE_GPS_RELAY
         }
 
         const val EXTRA_SERVER_URL = "server_url"
@@ -155,6 +162,7 @@ class RegattaTrackingService : Service() {
 
     private lateinit var db: TrackingDbHelper
     private lateinit var locationManager: LocationManager
+    private lateinit var phoneGpsRelayStore: RegattaLinkPhoneGpsRelayStore
     private var regattaLinkManager: RegattaLinkConnectionManager? = null
 
     private val handler = Handler(Looper.getMainLooper())
@@ -302,6 +310,7 @@ class RegattaTrackingService : Service() {
 
         db = TrackingDbHelper(this)
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        phoneGpsRelayStore = RegattaLinkPhoneGpsRelayStore(this)
         regattaLinkManager =
             (application as? RegattaApplication)?.regattaLinkConnectionManager
         regattaLinkManager?.addListener(regattaLinkListener)
@@ -361,7 +370,11 @@ class RegattaTrackingService : Service() {
                     .putBoolean("manual_tracking", manualRecording)
                     .apply()
                 if (!startConfirmedTrackingService(allowPersistedSessionRestore = false)) {
-                    return START_NOT_STICKY
+                    return if (phoneGpsRelayEnabled()) {
+                        START_STICKY
+                    } else {
+                        START_NOT_STICKY
+                    }
                 }
                 return START_STICKY
             }
@@ -376,7 +389,26 @@ class RegattaTrackingService : Service() {
                 stopTrackingService(
                     clearLocalRaceStatus = explicitRaceLeave && !preserveLocalRaceStatus
                 )
-                return START_NOT_STICKY
+                return if (phoneGpsRelayEnabled()) {
+                    START_STICKY
+                } else {
+                    START_NOT_STICKY
+                }
+            }
+
+            ACTION_SYNC_PHONE_GPS_RELAY -> {
+                syncPhoneGpsRelayMode()
+                return if (serviceRunning || phoneGpsRelayEnabled()) {
+                    START_STICKY
+                } else {
+                    START_NOT_STICKY
+                }
+            }
+
+            ACTION_DISABLE_PHONE_GPS_RELAY -> {
+                phoneGpsRelayStore.setEnabled(false)
+                syncPhoneGpsRelayMode()
+                return if (serviceRunning) START_STICKY else START_NOT_STICKY
             }
 
             ACTION_CONTINUE_AFTER_FINISH -> {
@@ -522,23 +554,38 @@ class RegattaTrackingService : Service() {
     }
 
     private fun handleStickyRestart(): Int {
-        TrackingServiceRuntimeState.markStarting()
+        val appPrefs = getSharedPreferences("app_state", Context.MODE_PRIVATE)
+        val persistedTracking =
+            appPrefs.getBoolean("in_race", false) ||
+                appPrefs.getBoolean("manual_tracking", false)
 
-        synchronized(eventPollLifecycleLock) {
-            eventPollGeneration += 1
+        if (persistedTracking) {
+            TrackingServiceRuntimeState.markStarting()
+
+            synchronized(eventPollLifecycleLock) {
+                eventPollGeneration += 1
+            }
+
+            if (restoreStickyStartContext()) {
+                if (startConfirmedTrackingService(allowPersistedSessionRestore = true)) {
+                    return START_STICKY
+                }
+            } else {
+                finishActiveTrackingSession()
+                persistTrackingStoppedState()
+            }
+        } else {
+            TrackingServiceRuntimeState.markStopped()
         }
 
-        if (!restoreStickyStartContext()) {
-            finishActiveTrackingSession()
-            persistTrackingStoppedState()
-            stopSelf()
-            return START_NOT_STICKY
+        if (phoneGpsRelayEnabled()) {
+            syncPhoneGpsRelayMode()
+            return START_STICKY
         }
 
-        if (!startConfirmedTrackingService(allowPersistedSessionRestore = true)) {
-            return START_NOT_STICKY
-        }
-        return START_STICKY
+        TrackingServiceRuntimeState.markStopped()
+        stopSelf()
+        return START_NOT_STICKY
     }
 
     private fun startConfirmedTrackingService(
@@ -551,8 +598,12 @@ class RegattaTrackingService : Service() {
                 finishActiveTrackingSession()
                 TrackingServiceRuntimeState.markStopped()
                 persistTrackingStoppedState()
-                stopForegroundCompat()
-                stopSelf()
+                if (phoneGpsRelayEnabled()) {
+                    syncPhoneGpsRelayMode()
+                } else {
+                    stopForegroundCompat()
+                    stopSelf()
+                }
                 return false
             }
 
@@ -872,8 +923,93 @@ class RegattaTrackingService : Service() {
         handler.post {
             if (serviceRunning) {
                 refreshLocationSampling(null)
+            } else if (phoneGpsRelayEnabled()) {
+                refreshPhoneGpsRelayOnly()
             }
         }
+    }
+
+    private fun phoneGpsRelayEnabled(): Boolean =
+        phoneGpsRelayStore.isEnabled()
+
+    private fun syncPhoneGpsRelayMode() {
+        if (serviceRunning) {
+            reconfigureSamplingSchedule()
+            updateNotification()
+            return
+        }
+
+        if (!phoneGpsRelayEnabled()) {
+            regattaLinkManager?.stopPhoneGnssForwarding()
+            stopLocationUpdates()
+
+            if (!stopHandoffInProgress) {
+                stopForegroundCompat()
+                val notificationManager =
+                    getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                notificationManager.cancel(NOTIFICATION_ID)
+                stopSelf()
+            }
+            return
+        }
+
+        TrackingServiceRuntimeState.markStopped()
+        startForeground(
+            NOTIFICATION_ID,
+            buildNotification(
+                message = phoneGpsRelayNotificationMessage(),
+                phoneGpsRelayOnly = true
+            )
+        )
+        regattaLinkManager?.ensureConnectedIfPermitted()
+        refreshPhoneGpsRelayOnly()
+    }
+
+    private fun refreshPhoneGpsRelayOnly() {
+        if (serviceRunning || !phoneGpsRelayEnabled()) return
+
+        val forwarding =
+            regattaLinkManager?.isPhoneGnssForwardingEnabled() == true
+
+        if (forwarding) {
+            if (activeLocationIntervalMs != REGATTALINK_PHONE_GNSS_MIN_INTERVAL_MS) {
+                requestLocationUpdatesForInterval(
+                    REGATTALINK_PHONE_GNSS_MIN_INTERVAL_MS
+                )
+            }
+        } else {
+            regattaLinkManager?.stopPhoneGnssForwarding()
+            stopLocationUpdates()
+        }
+
+        updatePhoneGpsRelayNotification(forwarding)
+    }
+
+    private fun phoneGpsRelayNotificationMessage(
+        forwarding: Boolean =
+            regattaLinkManager?.isPhoneGnssForwardingEnabled() == true
+    ): String =
+        getString(
+            if (forwarding) {
+                R.string.regattalink_phone_gps_relay_active
+            } else {
+                R.string.regattalink_phone_gps_relay_waiting
+            }
+        )
+
+    private fun updatePhoneGpsRelayNotification(
+        forwarding: Boolean =
+            regattaLinkManager?.isPhoneGnssForwardingEnabled() == true
+    ) {
+        val notificationManager =
+            getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.notify(
+            NOTIFICATION_ID,
+            buildNotification(
+                message = phoneGpsRelayNotificationMessage(forwarding),
+                phoneGpsRelayOnly = true
+            )
+        )
     }
 
     private fun persistTrackingStoppedState() {
@@ -908,7 +1044,6 @@ class RegattaTrackingService : Service() {
         activeSampleIntervalMs = 0L
         handler.removeCallbacks(eventPollRunnable)
         handler.removeCallbacks(autoStopAfterFinishRunnable)
-        regattaLinkManager?.stopPhoneGnssForwarding()
         autoStopAfterFinishScheduled = false
 
         if (clearLocalRaceStatus) {
@@ -918,11 +1053,12 @@ class RegattaTrackingService : Service() {
                 .commit()
         }
 
-        try {
-            locationManager.removeUpdates(locationListener)
-        } catch (_: Exception) {
+        if (phoneGpsRelayEnabled()) {
+            refreshPhoneGpsRelayOnly()
+        } else {
+            regattaLinkManager?.stopPhoneGnssForwarding()
+            stopLocationUpdates()
         }
-        activeLocationIntervalMs = 0L
 
         thread(name = "regatta-telemetry-shutdown-handoff") {
             val operation = try {
@@ -981,6 +1117,11 @@ class RegattaTrackingService : Service() {
         }
 
         stopHandoffInProgress = false
+
+        if (phoneGpsRelayEnabled()) {
+            syncPhoneGpsRelayMode()
+            return
+        }
 
         stopForegroundCompat()
 
@@ -1051,6 +1192,14 @@ class RegattaTrackingService : Service() {
         }
 
         reconfigureSamplingSchedule()
+    }
+
+    private fun stopLocationUpdates() {
+        try {
+            locationManager.removeUpdates(locationListener)
+        } catch (_: Exception) {
+        }
+        activeLocationIntervalMs = 0L
     }
 
     private fun requestLocationUpdatesForInterval(intervalMs: Long) {
@@ -2020,9 +2169,16 @@ class RegattaTrackingService : Service() {
         notificationManager.createNotificationChannel(channel)
     }
 
-    private fun buildNotification(message: String): Notification {
+    private fun buildNotification(
+        message: String,
+        phoneGpsRelayOnly: Boolean = false
+    ): Notification {
         val stopIntent = Intent(this, RegattaTrackingService::class.java).apply {
-            action = ACTION_STOP
+            action = if (phoneGpsRelayOnly) {
+                ACTION_DISABLE_PHONE_GPS_RELAY
+            } else {
+                ACTION_STOP
+            }
         }
 
         val stopPendingIntent = PendingIntent.getService(
@@ -2042,14 +2198,28 @@ class RegattaTrackingService : Service() {
         )
 
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setContentTitle(getString(R.string.tracking_notification_title))
+            .setContentTitle(
+                getString(
+                    if (phoneGpsRelayOnly) {
+                        R.string.regattalink_phone_gps_relay_notification_title
+                    } else {
+                        R.string.tracking_notification_title
+                    }
+                )
+            )
             .setContentText(message)
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setOngoing(true)
             .setContentIntent(openAppPendingIntent)
             .addAction(
                 android.R.drawable.ic_menu_close_clear_cancel,
-                getString(R.string.stop),
+                getString(
+                    if (phoneGpsRelayOnly) {
+                        R.string.regattalink_phone_gps_relay_stop
+                    } else {
+                        R.string.stop
+                    }
+                ),
                 stopPendingIntent
             )
             .build()

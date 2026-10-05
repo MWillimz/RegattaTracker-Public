@@ -152,6 +152,7 @@ fun RegattaLinkScreen(
     nmeaState: RegattaLinkNmeaState,
     rawCaptureState: RegattaLinkRawCaptureState,
     installAvailable: Boolean,
+    phoneGpsRelayEnabled: Boolean = false,
     modifier: Modifier = Modifier,
     onSearch: () -> Unit,
     onCheckFirmware: () -> Unit,
@@ -167,6 +168,7 @@ fun RegattaLinkScreen(
     onSetNmea0183TxEnabled: (Boolean) -> Unit = {},
     onSetPhoneGpsTxEnabled: (Boolean) -> Unit = {},
     onSetCompassTxEnabled: (Boolean) -> Unit = {},
+    onSetPhoneGpsRelayEnabled: (Boolean) -> Unit = {},
     onSetNmea0183Baud: (Int) -> Unit = {},
     onSetMagBackgroundLearningEnabled: (Boolean) -> Unit = {},
     onSetHeadingTrimDeg: (Int) -> Unit = {},
@@ -345,6 +347,8 @@ fun RegattaLinkScreen(
                 onSetNmea0183TxEnabled = onSetNmea0183TxEnabled,
                 onSetPhoneGpsTxEnabled = onSetPhoneGpsTxEnabled,
                 onSetCompassTxEnabled = onSetCompassTxEnabled,
+                phoneGpsRelayEnabled = phoneGpsRelayEnabled,
+                onSetPhoneGpsRelayEnabled = onSetPhoneGpsRelayEnabled,
                 onSetNmea0183Baud = onSetNmea0183Baud,
                 onRestart = {
                     onDeviceControl(RegattaLinkDeviceControlOpcode.RESTART, 0)
@@ -878,6 +882,8 @@ private fun RegattaLinkNmeaSetupSheet(
     onSetNmea0183TxEnabled: (Boolean) -> Unit,
     onSetPhoneGpsTxEnabled: (Boolean) -> Unit,
     onSetCompassTxEnabled: (Boolean) -> Unit,
+    phoneGpsRelayEnabled: Boolean,
+    onSetPhoneGpsRelayEnabled: (Boolean) -> Unit,
     onSetNmea0183Baud: (Int) -> Unit,
     onRestart: () -> Unit,
     onSetLoadSensorAlias: (String, String) -> Unit,
@@ -1002,6 +1008,20 @@ private fun RegattaLinkNmeaSetupSheet(
                 }
             }
 
+            if (connected && configurationState.configWordSupported) {
+                RegattaLinkBoatDataSelectorRow(
+                    title = stringResource(
+                        R.string.regattalink_nmea0183_tx
+                    ),
+                    desired = configurationState.nmea0183TxEnabled,
+                    bootMask = configurationState.nmeaBootOutputMask,
+                    activeMask = configurationState.nmeaActiveOutputMask,
+                    runtimeBit = REGATTALINK_TX_OUTPUT_NMEA0183,
+                    enabled = configEnabled,
+                    onCheckedChange = onSetNmea0183TxEnabled
+                )
+            }
+
             if (connected && configurationState.nmeaAttitudeTxSupported) {
                 Row(
                     modifier = Modifier
@@ -1069,14 +1089,14 @@ private fun RegattaLinkNmeaSetupSheet(
             if (connected && configurationState.configWordSupported) {
                 RegattaLinkBoatDataSelectorRow(
                     title = stringResource(
-                        R.string.regattalink_nmea0183_tx
+                        R.string.regattalink_compass_tx
                     ),
-                    desired = configurationState.nmea0183TxEnabled,
+                    desired = configurationState.compassTxEnabled,
                     bootMask = configurationState.nmeaBootOutputMask,
                     activeMask = configurationState.nmeaActiveOutputMask,
-                    runtimeBit = REGATTALINK_TX_OUTPUT_NMEA0183,
+                    runtimeBit = REGATTALINK_TX_OUTPUT_COMPASS,
                     enabled = configEnabled,
-                    onCheckedChange = onSetNmea0183TxEnabled
+                    onCheckedChange = onSetCompassTxEnabled
                 )
                 RegattaLinkBoatDataSelectorRow(
                     title = stringResource(
@@ -1089,18 +1109,36 @@ private fun RegattaLinkNmeaSetupSheet(
                     enabled = configEnabled,
                     onCheckedChange = onSetPhoneGpsTxEnabled
                 )
-                RegattaLinkBoatDataSelectorRow(
-                    title = stringResource(
-                        R.string.regattalink_compass_tx
-                    ),
-                    desired = configurationState.compassTxEnabled,
-                    bootMask = configurationState.nmeaBootOutputMask,
-                    activeMask = configurationState.nmeaActiveOutputMask,
-                    runtimeBit = REGATTALINK_TX_OUTPUT_COMPASS,
-                    enabled = configEnabled,
-                    onCheckedChange = onSetCompassTxEnabled
-                )
+            }
 
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, top = 14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(
+                            R.string.regattalink_phone_gps_relay
+                        ),
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.regattalink_phone_gps_relay_hint
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = phoneGpsRelayEnabled,
+                    onCheckedChange = onSetPhoneGpsRelayEnabled
+                )
+            }
+
+            if (connected && configurationState.configWordSupported) {
                 var baudMenuExpanded by remember {
                     mutableStateOf(false)
                 }

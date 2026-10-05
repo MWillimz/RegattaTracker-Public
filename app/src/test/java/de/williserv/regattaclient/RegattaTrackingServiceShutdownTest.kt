@@ -40,6 +40,18 @@ class RegattaTrackingServiceShutdownTest {
         )
         assertFalse(
             RegattaTrackingService.shouldIgnoreCommandDuringStopHandoff(
+                stopHandoffInProgress = true,
+                action = RegattaTrackingService.ACTION_SYNC_PHONE_GPS_RELAY
+            )
+        )
+        assertFalse(
+            RegattaTrackingService.shouldIgnoreCommandDuringStopHandoff(
+                stopHandoffInProgress = true,
+                action = RegattaTrackingService.ACTION_DISABLE_PHONE_GPS_RELAY
+            )
+        )
+        assertFalse(
+            RegattaTrackingService.shouldIgnoreCommandDuringStopHandoff(
                 stopHandoffInProgress = false,
                 action = RegattaTrackingService.ACTION_STOP
             )
