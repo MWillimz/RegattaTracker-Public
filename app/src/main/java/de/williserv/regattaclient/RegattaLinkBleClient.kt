@@ -3872,14 +3872,12 @@ internal class RegattaLinkBleClient(
     }
 
     private fun phoneGnssForwardingAllowed(): Boolean =
-        connected &&
-            establishedConnection &&
-            !otaRunning.get() &&
-            !lastConfigurationState.deviceControlBusy &&
-            !lastConfigurationState.restartAwaitingDisconnect &&
-            !lastConfigurationState.factoryResetAwaitingDisconnect &&
-            lastConfigurationState.factoryResetWriteAcceptedRequestId == null &&
-            lastConfigurationState.phoneGnssForwardingDesired
+        regattaLinkPhoneGnssForwardingGate(
+            connected = connected,
+            transportReady = establishedConnection,
+            otaActive = otaRunning.get(),
+            configurationState = lastConfigurationState
+        )
 
     private fun schedulePhoneGnssDrain() {
         if (!phoneGnssForwardingAllowed()) return
