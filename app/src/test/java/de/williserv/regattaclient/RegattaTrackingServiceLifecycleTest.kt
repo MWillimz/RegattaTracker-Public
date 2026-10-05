@@ -210,6 +210,41 @@ class RegattaTrackingServiceLifecycleTest {
     }
 
     @Test
+    fun `start during stop handoff re-arms sampling schedules`() {
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+        val helper = getField<TrackingDbHelper>(service, "db")
+        val looper = shadowOf(Looper.getMainLooper())
+
+        val startIntent = Intent(context, RegattaTrackingService::class.java).apply {
+            action = RegattaTrackingService.ACTION_START
+            putExtra(RegattaTrackingService.EXTRA_MANUAL_RECORDING, true)
+        }
+        val stopIntent = Intent(context, RegattaTrackingService::class.java).apply {
+            action = RegattaTrackingService.ACTION_STOP
+        }
+
+        assertEquals(Service.START_STICKY, service.onStartCommand(startIntent, 0, 1))
+        assertEquals(1_000L, getField<Long>(service, "activeSampleIntervalMs"))
+        assertEquals(1_000L, getField<Long>(service, "activeLocationIntervalMs"))
+
+        assertEquals(Service.START_NOT_STICKY, service.onStartCommand(stopIntent, 0, 2))
+        assertEquals(0L, getField<Long>(service, "activeSampleIntervalMs"))
+        assertEquals(0L, getField<Long>(service, "activeLocationIntervalMs"))
+
+        assertEquals(Service.START_STICKY, service.onStartCommand(startIntent, 0, 3))
+        assertEquals(1_000L, getField<Long>(service, "activeSampleIntervalMs"))
+        assertEquals(1_000L, getField<Long>(service, "activeLocationIntervalMs"))
+
+        looper.idleFor(1, TimeUnit.SECONDS)
+        assertEquals(1L, helper.countSamples())
+
+        setField(service, "serviceRunning", false)
+        controller.destroy()
+        helper.close()
+    }
+
+    @Test
     fun `explicit race start clears stale persisted manual mode`() {
         seedAppState(inRace = true, manualTracking = true)
 
