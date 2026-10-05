@@ -217,6 +217,21 @@ fun RegattaLinkScreen(
     val firmwareSetupOpen =
         activeSetupDestination == RegattaLinkSetupDestination.FIRMWARE
     val displayedName = configurationState.deviceName.ifBlank { state.deviceName }
+    val showImuSetup =
+        configurationState.configWord == null ||
+            configurationState.imuAvailable == true ||
+            configurationState.magAvailable == true
+    val showNmeaSetup =
+        configurationState.configWord == null ||
+            configurationState.boatDataAvailable == true ||
+            configurationState.nmea0183Available == true
+    val visibleSetupMenuItems = regattaLinkSetupMenuItems.filter { item ->
+        when (item.destination) {
+            RegattaLinkSetupDestination.IMU -> showImuSetup
+            RegattaLinkSetupDestination.NMEA -> showNmeaSetup
+            else -> true
+        }
+    }
     val configEnabled =
         connected &&
             !otaState.isActive &&
@@ -310,8 +325,12 @@ fun RegattaLinkScreen(
                 telemetryState = telemetryState,
                 configurationState = configurationState,
                 boatFramePresentation = boatFramePresentation,
-                controlsEnabled = orientationControlsEnabled,
-                setUprightEnabled = deviceControlEnabled,
+                controlsEnabled =
+                    orientationControlsEnabled &&
+                        configurationState.imuAvailable != false,
+                setUprightEnabled =
+                    deviceControlEnabled &&
+                        configurationState.imuAvailable != false,
                 configEnabled = configEnabled,
                 deviceControlBusy = configurationState.deviceControlBusy,
                 deviceControlError = configurationState.deviceControlError,
@@ -428,7 +447,7 @@ fun RegattaLinkScreen(
                     expanded = settingsMenuExpanded,
                     onDismissRequest = { settingsMenuExpanded = false }
                 ) {
-                    regattaLinkSetupMenuItems.forEach { menuItem ->
+                    visibleSetupMenuItems.forEach { menuItem ->
                         DropdownMenuItem(
                             text = {
                                 Text(stringResource(menuItem.labelResId))
@@ -941,7 +960,11 @@ private fun RegattaLinkNmeaSetupSheet(
                     it and REGATTALINK_TX_OUTPUT_IMU != 0
                 }
 
-            if (connected && configurationState.nmeaTxSupported) {
+            if (
+                connected &&
+                configurationState.nmeaTxSupported &&
+                configurationState.boatDataAvailable != false
+            ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1004,7 +1027,12 @@ private fun RegattaLinkNmeaSetupSheet(
                 }
             }
 
-            if (connected && configurationState.nmeaAttitudeTxSupported) {
+            if (
+                connected &&
+                configurationState.nmeaAttitudeTxSupported &&
+                configurationState.boatDataAvailable != false &&
+                configurationState.imuAvailable != false
+            ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1077,7 +1105,10 @@ private fun RegattaLinkNmeaSetupSheet(
                     bootMask = configurationState.nmeaBootOutputMask,
                     activeMask = configurationState.nmeaActiveOutputMask,
                     runtimeBit = REGATTALINK_TX_OUTPUT_NMEA0183,
-                    enabled = configEnabled,
+                    enabled =
+                        configEnabled &&
+                            configurationState.boatDataAvailable != false &&
+                            configurationState.nmea0183Available != false,
                     onCheckedChange = onSetNmea0183TxEnabled
                 )
                 RegattaLinkBoatDataSelectorRow(
@@ -1088,7 +1119,9 @@ private fun RegattaLinkNmeaSetupSheet(
                     bootMask = configurationState.nmeaBootOutputMask,
                     activeMask = configurationState.nmeaActiveOutputMask,
                     runtimeBit = REGATTALINK_TX_OUTPUT_PHONE_GPS,
-                    enabled = configEnabled,
+                    enabled =
+                        configEnabled &&
+                            configurationState.boatDataAvailable != false,
                     onCheckedChange = onSetPhoneGpsTxEnabled
                 )
                 RegattaLinkBoatDataSelectorRow(
@@ -1099,7 +1132,10 @@ private fun RegattaLinkNmeaSetupSheet(
                     bootMask = configurationState.nmeaBootOutputMask,
                     activeMask = configurationState.nmeaActiveOutputMask,
                     runtimeBit = REGATTALINK_TX_OUTPUT_COMPASS,
-                    enabled = configEnabled,
+                    enabled =
+                        configEnabled &&
+                            configurationState.boatDataAvailable != false &&
+                            configurationState.magAvailable != false,
                     onCheckedChange = onSetCompassTxEnabled
                 )
 
@@ -1132,6 +1168,7 @@ private fun RegattaLinkNmeaSetupSheet(
                             onClick = { baudMenuExpanded = true },
                             enabled =
                                 configEnabled &&
+                                    configurationState.nmea0183Available != false &&
                                     configurationState.nmea0183Baud != null
                         ) {
                             Text(
@@ -1621,6 +1658,73 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
                     modifier = Modifier.padding(top = 6.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+
+            if (
+                connected &&
+                configurationState.configWordSupported &&
+                configurationState.configWord != null
+            ) {
+                Text(
+                    text = stringResource(
+                        R.string.regattalink_subsystems
+                    ),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 18.dp)
+                )
+                Text(
+                    text = stringResource(
+                        R.string.regattalink_subsystems_session_help
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+
+                val subsystemRows = listOf(
+                    RegattaLinkSubsystem.IMU to
+                        stringResource(R.string.regattalink_subsystem_imu),
+                    RegattaLinkSubsystem.MAG to
+                        stringResource(R.string.regattalink_subsystem_mag),
+                    RegattaLinkSubsystem.BOAT_DATA to
+                        stringResource(R.string.regattalink_subsystem_boat_data),
+                    RegattaLinkSubsystem.NMEA0183_RX to
+                        stringResource(R.string.regattalink_subsystem_nmea0183)
+                )
+                subsystemRows.forEach { (subsystem, label) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp),
+                        horizontalArrangement =
+                            Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = label,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Switch(
+                            checked =
+                                configurationState
+                                    .subsystemAvailable(subsystem) == true,
+                            onCheckedChange = { enabled ->
+                                onSetSubsystemEnabled(subsystem, enabled)
+                            },
+                            enabled = configEnabled
+                        )
+                    }
+                }
+
+                if (configurationState.configRestartRequired) {
+                    Text(
+                        text = stringResource(
+                            R.string.regattalink_applies_after_restart
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
             }
 
             Text(
@@ -2507,7 +2611,8 @@ private fun RegattaLinkImuSetupSheet(
 
             if (
                 configurationState.configWordSupported &&
-                configurationState.magBackgroundLearningEnabled != null
+                configurationState.magBackgroundLearningEnabled != null &&
+                configurationState.magAvailable != false
             ) {
                 Row(
                     modifier = Modifier
@@ -2647,7 +2752,8 @@ private fun RegattaLinkImuSetupSheet(
 
             if (
                 configurationState.headingTrimSupported &&
-                configurationState.headingTrimDeg != null
+                configurationState.headingTrimDeg != null &&
+                configurationState.magAvailable != false
             ) {
                 val headingTrim = configurationState.headingTrimDeg
                     .coerceIn(-180, 180)
