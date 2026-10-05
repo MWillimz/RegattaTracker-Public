@@ -7,6 +7,50 @@ import org.junit.Test
 class RegattaLinkGattSchemaTest {
 
     @Test
+    fun otaPostBootCoreFailureCanUseOtaOnlyRecovery() {
+        assertTrue(
+            regattaLinkGattCoreFailureAction(
+                otaReconnect = true,
+                allowOtaOnly = true,
+                securityFailure = false
+            ) == RegattaLinkGattCoreFailureAction.OTA_ONLY_RECOVERY
+        )
+    }
+
+    @Test
+    fun ordinaryConnectionCoreFailureStillUsesCacheRecovery() {
+        assertTrue(
+            regattaLinkGattCoreFailureAction(
+                otaReconnect = false,
+                allowOtaOnly = true,
+                securityFailure = false
+            ) == RegattaLinkGattCoreFailureAction.CACHE_RECOVERY
+        )
+    }
+
+    @Test
+    fun otaCoreFailureWithoutExplicitRecoveryPermissionUsesCacheRecovery() {
+        assertTrue(
+            regattaLinkGattCoreFailureAction(
+                otaReconnect = true,
+                allowOtaOnly = false,
+                securityFailure = false
+            ) == RegattaLinkGattCoreFailureAction.CACHE_RECOVERY
+        )
+    }
+
+    @Test
+    fun securityFailureNeverFallsBackToOtaOnlyRecovery() {
+        assertTrue(
+            regattaLinkGattCoreFailureAction(
+                otaReconnect = true,
+                allowOtaOnly = true,
+                securityFailure = true
+            ) == RegattaLinkGattCoreFailureAction.SECURITY_FAILURE
+        )
+    }
+
+    @Test
     fun cacheRefreshRequiresConfirmedGattDisconnect() {
         assertTrue(
             regattaLinkGattReconnectAction(
