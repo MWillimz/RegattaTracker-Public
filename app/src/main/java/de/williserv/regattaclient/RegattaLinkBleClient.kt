@@ -3627,10 +3627,22 @@ internal class RegattaLinkBleClient(
         )
     }
 
+    override fun setSubsystemEnabled(
+        subsystem: RegattaLinkSubsystem,
+        enabled: Boolean
+    ): Boolean =
+        mutateConfigWord(
+            mask = subsystem.configBit,
+            encodedBits = subsystem.configBit.takeIf { enabled } ?: 0u,
+            failureText = "Could not change RegattaLink subsystem setting",
+            rereadAfterWrite = true
+        )
+
     private fun mutateConfigWord(
         mask: UInt,
         encodedBits: UInt,
-        failureText: String
+        failureText: String,
+        rereadAfterWrite: Boolean = false
     ): Boolean {
         if (encodedBits and mask.inv() != 0u) return false
         if (otaRunning.get() || !isConnected()) return false
@@ -3690,8 +3702,29 @@ internal class RegattaLinkBleClient(
                         )
                     }
 
+                    /*
+                     * #285 subsystem bits read back current-session
+                     * availability, not next-boot desired state. Re-read after
+                     * a successful subsystem write so the UI does not pretend
+                     * the running subsystem changed before restart.
+                     */
+                    val confirmedWord =
+                        if (rereadAfterWrite && nextWord != currentWord) {
+                            parseRegattaLinkConfigWord(
+                                readCharacteristicBlocking(
+                                    activeGatt,
+                                    characteristic
+                                )
+                            )
+                        } else {
+                            nextWord
+                        }
+
                     updateConfiguration { current ->
-                        regattaLinkApplyConfigWord(current, nextWord).copy(
+                        regattaLinkApplyConfigWord(
+                            current,
+                            confirmedWord
+                        ).copy(
                             configRestartRequired =
                                 current.configRestartRequired ||
                                     nextWord != currentWord,
