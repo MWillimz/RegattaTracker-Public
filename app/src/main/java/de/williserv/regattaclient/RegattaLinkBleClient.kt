@@ -50,9 +50,9 @@ data class RegattaLinkClientState(
     val deviceName: String = "",
     val deviceAddress: String = "",
     val deviceInfo: RegattaLinkDeviceInfo? = null,
-    val phoneGnssTransportReady: Boolean = false,
     val error: String = "",
-    val userMessage: RegattaLinkUiMessage? = null
+    val userMessage: RegattaLinkUiMessage? = null,
+    val phoneGnssTransportReady: Boolean = false
 )
 
 @SuppressLint(
