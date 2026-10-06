@@ -5633,9 +5633,13 @@ internal class RegattaLinkBleClient(
     }
 
     private fun resetConnectionTransportState() {
-        handler.removeCallbacks(phoneGnssDrainRunnable)
+        /*
+         * Do not reset phoneGnssDrainScheduled here. A previously posted or
+         * in-flight drain owns that flag and clears it in its finally block.
+         * Clearing it from the disconnect path could schedule two drains after
+         * a fast reconnect. Dropping the pending sample is sufficient.
+         */
         phoneGnssPending.set(null)
-        phoneGnssDrainScheduled.set(false)
         mtu = 23
         mtuRequestAttempted.set(false)
     }
