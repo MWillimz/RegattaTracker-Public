@@ -310,6 +310,107 @@ class RegattaLinkConfigurationNmeaTest {
     }
 
     @Test
+    fun txSelectionMaskContainsOnlyUserFacingTxSelectors() {
+        assertEquals(
+            REGATTALINK_CONFIG_TX_MASTER or
+                REGATTALINK_CONFIG_TX_IMU or
+                REGATTALINK_CONFIG_TX_NMEA0183 or
+                REGATTALINK_CONFIG_TX_PHONE_GPS or
+                REGATTALINK_CONFIG_TX_COMPASS,
+            REGATTALINK_CONFIG_TX_SELECTION_MASK
+        )
+        assertEquals(
+            0u,
+            REGATTALINK_CONFIG_TX_SELECTION_MASK and
+                REGATTALINK_CONFIG_TX_LOAD
+        )
+    }
+
+    @Test
+    fun groupedTxSelectionPreservesUnownedConfigBits() {
+        val original =
+            0xa5a00000u or
+                REGATTALINK_CONFIG_TX_LOAD or
+                REGATTALINK_CONFIG_LOAD_PRECISION_X10 or
+                REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING or
+                RegattaLinkNmea0183Baud.BAUD_38400.encodedBits
+        val draft =
+            REGATTALINK_CONFIG_TX_MASTER or
+                REGATTALINK_CONFIG_TX_IMU or
+                REGATTALINK_CONFIG_TX_COMPASS
+
+        val changed = regattaLinkConfigWordWithMask(
+            current = original,
+            mask = REGATTALINK_CONFIG_TX_SELECTION_MASK,
+            encodedBits = draft
+        )
+
+        assertEquals(
+            original and REGATTALINK_CONFIG_TX_SELECTION_MASK.inv(),
+            changed and REGATTALINK_CONFIG_TX_SELECTION_MASK.inv()
+        )
+        assertEquals(draft, changed and REGATTALINK_CONFIG_TX_SELECTION_MASK)
+    }
+
+    @Test
+    fun groupedSubsystemSelectionPreservesEveryOtherConfigBit() {
+        val original =
+            0xa5a00000u or
+                REGATTALINK_CONFIG_SESSION_IMU or
+                REGATTALINK_CONFIG_SESSION_CAN or
+                REGATTALINK_CONFIG_TX_MASTER or
+                REGATTALINK_CONFIG_TX_LOAD or
+                REGATTALINK_CONFIG_LOAD_PRECISION_X10
+        val draft =
+            REGATTALINK_CONFIG_SESSION_MAG or
+                REGATTALINK_CONFIG_SESSION_NMEA0183
+
+        val changed = regattaLinkConfigWordWithMask(
+            current = original,
+            mask = REGATTALINK_CONFIG_SESSION_SUBSYSTEM_MASK,
+            encodedBits = draft
+        )
+
+        assertEquals(
+            original and REGATTALINK_CONFIG_SESSION_SUBSYSTEM_MASK.inv(),
+            changed and REGATTALINK_CONFIG_SESSION_SUBSYSTEM_MASK.inv()
+        )
+        assertEquals(
+            draft,
+            changed and REGATTALINK_CONFIG_SESSION_SUBSYSTEM_MASK
+        )
+    }
+
+    @Test
+    fun configDraftHelpersKeepPendingSelectionSeparateFromBaseline() {
+        val baseline =
+            REGATTALINK_CONFIG_TX_MASTER or
+                REGATTALINK_CONFIG_TX_PHONE_GPS
+        val draft = regattaLinkConfigDraftWithBit(
+            baseline,
+            REGATTALINK_CONFIG_TX_PHONE_GPS,
+            false
+        )
+
+        assertEquals(true, regattaLinkConfigDraftBit(baseline, REGATTALINK_CONFIG_TX_PHONE_GPS))
+        assertEquals(false, regattaLinkConfigDraftBit(draft, REGATTALINK_CONFIG_TX_PHONE_GPS))
+        assertTrue(
+            regattaLinkConfigDraftBitChanged(
+                baseline,
+                draft,
+                REGATTALINK_CONFIG_TX_PHONE_GPS
+            )
+        )
+        assertFalse(
+            regattaLinkConfigDraftBitChanged(
+                baseline,
+                draft,
+                REGATTALINK_CONFIG_TX_MASTER
+            )
+        )
+    }
+
+    @Test
     fun baudEncodingUsesOnlyBits14And15AndPreservesEverythingElse() {
         val original = 0xa5a53fffu
         RegattaLinkNmea0183Baud.entries.forEach { baud ->
