@@ -234,7 +234,7 @@ internal class RegattaLinkBleClient(
     @Volatile
     override var mtu: Int = 23
         private set
-    @Volatile private var mtuRequestAttempted = false
+    private val mtuRequestAttempted = AtomicBoolean(false)
 
     private val pendingGattLock = Any()
     private var pendingGattOperation: PendingGattOperation? = null
@@ -5094,8 +5094,8 @@ internal class RegattaLinkBleClient(
     }
 
     private fun requestConnectionMtuBestEffort(activeGatt: BluetoothGatt) {
-        if (gatt !== activeGatt || !connected || mtuRequestAttempted) return
-        mtuRequestAttempted = true
+        if (gatt !== activeGatt || !connected) return
+        if (!mtuRequestAttempted.compareAndSet(false, true)) return
 
         if (mtu >= REQUESTED_GATT_MTU) {
             publishPhoneGnssTransportReadinessIfChanged()
@@ -5625,7 +5625,7 @@ internal class RegattaLinkBleClient(
         phoneGnssPending.set(null)
         phoneGnssDrainScheduled.set(false)
         mtu = 23
-        mtuRequestAttempted = false
+        mtuRequestAttempted.set(false)
     }
 
     private fun publishPhoneGnssTransportReadinessIfChanged() {
