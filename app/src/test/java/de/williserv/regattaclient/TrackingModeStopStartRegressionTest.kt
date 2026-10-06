@@ -166,7 +166,7 @@ class TrackingModeStopStartRegressionTest {
 
         assertEquals(Service.START_STICKY, service.onStartCommand(null, 0, 1))
         assertTrue(getField<Boolean>(service, "raceStarted"))
-        assertEquals(987_654L, getField<Long?>(service, "localStartTimestampMillis"))
+        assertEquals(987_654L, getField<Long>(service, "localStartTimestampMillis"))
 
         setField(service, "serviceRunning", false)
         controller.destroy()
