@@ -625,6 +625,7 @@ class MainActivity : ComponentActivity() {
                             retirementReported = retirementReported.value,
                             retirementStatusText = retirementStatusText.value,
                             raceDataReady = raceDataReady.value,
+                            dailyReentryEnabled = dailyReentryEnabled.value,
                             raceRegistered = raceRegistered.value,
                             localRaceFinished = localRaceFinished,
                             dtlText = dtlText.value,
@@ -1576,6 +1577,8 @@ class MainActivity : ComponentActivity() {
             .remove("series_run_name")
             .remove("series_occurrence_no")
             .remove("series_planned_race_count")
+            .remove("race_scoring_mode")
+            .remove("daily_reentry_enabled")
             .putBoolean("race_data_ready", false)
             .apply()
     }
