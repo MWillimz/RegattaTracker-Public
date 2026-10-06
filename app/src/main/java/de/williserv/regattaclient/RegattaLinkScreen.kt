@@ -940,6 +940,16 @@ private fun RegattaLinkNmeaSetupSheet(
         txBaseline != null &&
             txDraft != null &&
             txBaseline != txDraft
+    val txMasterDraft =
+        regattaLinkConfigDraftBit(txDraft, REGATTALINK_CONFIG_TX_MASTER)
+    val txAttitudeDraft =
+        regattaLinkConfigDraftBit(txDraft, REGATTALINK_CONFIG_TX_IMU)
+    val tx0183Draft =
+        regattaLinkConfigDraftBit(txDraft, REGATTALINK_CONFIG_TX_NMEA0183)
+    val txPhoneGpsDraft =
+        regattaLinkConfigDraftBit(txDraft, REGATTALINK_CONFIG_TX_PHONE_GPS)
+    val txCompassDraft =
+        regattaLinkConfigDraftBit(txDraft, REGATTALINK_CONFIG_TX_COMPASS)
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -991,6 +1001,12 @@ private fun RegattaLinkNmeaSetupSheet(
                 canAvailable &&
                 configurationState.nmeaTxSupported
             ) {
+                val masterDraftChanged =
+                    regattaLinkConfigDraftBitChanged(
+                        txBaseline,
+                        txDraft,
+                        REGATTALINK_CONFIG_TX_MASTER
+                    )
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1007,9 +1023,17 @@ private fun RegattaLinkNmeaSetupSheet(
                         )
                         Text(
                             text = when {
-                                configurationState.nmeaTxEnabled == null ->
+                                txMasterDraft == null ->
                                     stringResource(
                                         R.string.regattalink_nmea_tx_state_unavailable
+                                    )
+                                masterDraftChanged ->
+                                    stringResource(
+                                        if (txMasterDraft) {
+                                            R.string.regattalink_config_draft_enable
+                                        } else {
+                                            R.string.regattalink_config_draft_disable
+                                        }
                                     )
                                 !nmeaRuntimeKnown ->
                                     stringResource(
@@ -1044,11 +1068,15 @@ private fun RegattaLinkNmeaSetupSheet(
                         )
                     }
                     Switch(
-                        checked = configurationState.nmeaTxEnabled == true,
-                        onCheckedChange = onSetNmeaTxEnabled,
-                        enabled =
-                            configEnabled &&
-                                configurationState.nmeaTxEnabled != null
+                        checked = txMasterDraft == true,
+                        onCheckedChange = { enabled ->
+                            txDraft = regattaLinkConfigDraftWithBit(
+                                txDraft,
+                                REGATTALINK_CONFIG_TX_MASTER,
+                                enabled
+                            )
+                        },
+                        enabled = configEnabled && txMasterDraft != null
                     )
                 }
             }
@@ -1064,11 +1092,23 @@ private fun RegattaLinkNmeaSetupSheet(
                         R.string.regattalink_nmea0183_tx
                     ),
                     desired = configurationState.nmea0183TxEnabled,
+                    draft = tx0183Draft,
+                    draftChanged = regattaLinkConfigDraftBitChanged(
+                        txBaseline,
+                        txDraft,
+                        REGATTALINK_CONFIG_TX_NMEA0183
+                    ),
                     bootMask = configurationState.nmeaBootOutputMask,
                     activeMask = configurationState.nmeaActiveOutputMask,
                     runtimeBit = REGATTALINK_TX_OUTPUT_NMEA0183,
                     enabled = configEnabled,
-                    onCheckedChange = onSetNmea0183TxEnabled
+                    onCheckedChange = { enabled ->
+                        txDraft = regattaLinkConfigDraftWithBit(
+                            txDraft,
+                            REGATTALINK_CONFIG_TX_NMEA0183,
+                            enabled
+                        )
+                    }
                 )
             }
 
@@ -1078,6 +1118,12 @@ private fun RegattaLinkNmeaSetupSheet(
                 imuAvailable &&
                 configurationState.nmeaAttitudeTxSupported
             ) {
+                val attitudeDraftChanged =
+                    regattaLinkConfigDraftBitChanged(
+                        txBaseline,
+                        txDraft,
+                        REGATTALINK_CONFIG_TX_IMU
+                    )
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1094,9 +1140,17 @@ private fun RegattaLinkNmeaSetupSheet(
                         )
                         Text(
                             text = when {
-                                configurationState.nmeaAttitudeTxEnabled == null ->
+                                txAttitudeDraft == null ->
                                     stringResource(
                                         R.string.regattalink_nmea_tx_state_unavailable
+                                    )
+                                attitudeDraftChanged ->
+                                    stringResource(
+                                        if (txAttitudeDraft) {
+                                            R.string.regattalink_config_draft_enable
+                                        } else {
+                                            R.string.regattalink_config_draft_disable
+                                        }
                                     )
                                 nmeaAttitudeBootSelected == null ||
                                     nmeaAttitudeRuntimeActive == null ->
@@ -1132,11 +1186,15 @@ private fun RegattaLinkNmeaSetupSheet(
                         )
                     }
                     Switch(
-                        checked = configurationState.nmeaAttitudeTxEnabled == true,
-                        onCheckedChange = onSetNmeaAttitudeTxEnabled,
-                        enabled =
-                            configEnabled &&
-                                configurationState.nmeaAttitudeTxEnabled != null
+                        checked = txAttitudeDraft == true,
+                        onCheckedChange = { enabled ->
+                            txDraft = regattaLinkConfigDraftWithBit(
+                                txDraft,
+                                REGATTALINK_CONFIG_TX_IMU,
+                                enabled
+                            )
+                        },
+                        enabled = configEnabled && txAttitudeDraft != null
                     )
                 }
             }
@@ -1152,11 +1210,23 @@ private fun RegattaLinkNmeaSetupSheet(
                         R.string.regattalink_compass_tx
                     ),
                     desired = configurationState.compassTxEnabled,
+                    draft = txCompassDraft,
+                    draftChanged = regattaLinkConfigDraftBitChanged(
+                        txBaseline,
+                        txDraft,
+                        REGATTALINK_CONFIG_TX_COMPASS
+                    ),
                     bootMask = configurationState.nmeaBootOutputMask,
                     activeMask = configurationState.nmeaActiveOutputMask,
                     runtimeBit = REGATTALINK_TX_OUTPUT_COMPASS,
                     enabled = configEnabled,
-                    onCheckedChange = onSetCompassTxEnabled
+                    onCheckedChange = { enabled ->
+                        txDraft = regattaLinkConfigDraftWithBit(
+                            txDraft,
+                            REGATTALINK_CONFIG_TX_COMPASS,
+                            enabled
+                        )
+                    }
                 )
             }
 
@@ -1170,11 +1240,23 @@ private fun RegattaLinkNmeaSetupSheet(
                         R.string.regattalink_phone_gps_tx
                     ),
                     desired = configurationState.phoneGpsTxEnabled,
+                    draft = txPhoneGpsDraft,
+                    draftChanged = regattaLinkConfigDraftBitChanged(
+                        txBaseline,
+                        txDraft,
+                        REGATTALINK_CONFIG_TX_PHONE_GPS
+                    ),
                     bootMask = configurationState.nmeaBootOutputMask,
                     activeMask = configurationState.nmeaActiveOutputMask,
                     runtimeBit = REGATTALINK_TX_OUTPUT_PHONE_GPS,
                     enabled = configEnabled,
-                    onCheckedChange = onSetPhoneGpsTxEnabled
+                    onCheckedChange = { enabled ->
+                        txDraft = regattaLinkConfigDraftWithBit(
+                            txDraft,
+                            REGATTALINK_CONFIG_TX_PHONE_GPS,
+                            enabled
+                        )
+                    }
                 )
             }
 
