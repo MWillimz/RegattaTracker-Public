@@ -135,6 +135,7 @@ internal interface RegattaLinkConnectionClient {
         opcode: RegattaLinkDeviceControlOpcode,
         value: Int
     ): Boolean = false
+    fun setImuRawPreviewEnabled(enabled: Boolean): Boolean = false
     fun refreshPgnInventory(): Boolean
     fun readRawCanFrames(): Boolean
 
@@ -643,6 +644,17 @@ internal class RegattaLinkConnectionManager(
             )
         }
         return accepted
+    }
+
+    fun setImuRawPreviewEnabled(enabled: Boolean): Boolean {
+        if (
+            otaState.isActive ||
+            rawCaptureState.isActive ||
+            configurationState.diagnosticLogLoading
+        ) {
+            return false
+        }
+        return client.setImuRawPreviewEnabled(enabled)
     }
 
     fun refreshPgnInventory(): Boolean {
