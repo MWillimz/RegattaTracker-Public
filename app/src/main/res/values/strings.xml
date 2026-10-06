@@ -763,7 +763,7 @@
     <string name="regattalink_config_draft_enable">Will be enabled after Apply &amp; restart.</string>
     <string name="regattalink_config_draft_disable">Will be disabled after Apply &amp; restart.</string>
     <string name="regattalink_config_draft_restart">Changes are ready to apply. RegattaLink will restart.</string>
-    <string name="regattalink_apply_restart">Apply &amp; restart.</string>
+    <string name="regattalink_apply_restart">Apply &amp; restart</string>
     <string name="regattalink_boat_data_output_selected_runtime_unknown">Selected. Applied state is unavailable.</string>
     <string name="regattalink_boat_data_output_off_runtime_unknown">Not selected. Applied state is unavailable.</string>
     <string name="regattalink_boat_data_output_restart_required">Saved. Restart RegattaLink to apply.</string>
