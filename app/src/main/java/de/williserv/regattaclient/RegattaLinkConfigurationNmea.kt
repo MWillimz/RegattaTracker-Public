@@ -318,6 +318,7 @@ internal const val REGATTALINK_CONFIG_TX_NMEA0183: UInt = 0x00000004u
 internal const val REGATTALINK_CONFIG_TX_PHONE_GPS: UInt = 0x00000008u
 internal const val REGATTALINK_CONFIG_TX_COMPASS: UInt = 0x00000010u
 internal const val REGATTALINK_CONFIG_TX_LOAD: UInt = 0x00000020u
+internal const val REGATTALINK_CONFIG_TX_SELECTION_MASK: UInt = 0x0000001fu
 internal const val REGATTALINK_CONFIG_LOAD_PRECISION_X10: UInt = 0x00000100u
 internal const val REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING: UInt = 0x00000200u
 internal const val REGATTALINK_CONFIG_NMEA0183_BAUD_MASK: UInt = 0x0000c000u
@@ -415,6 +416,34 @@ internal fun regattaLinkConfigWordWithBit(
         encodedBits = bitMask.takeIf { enabled } ?: 0u
     )
 }
+
+internal fun regattaLinkConfigDraftBit(
+    draft: UInt?,
+    bitMask: UInt
+): Boolean? =
+    draft?.let { it and bitMask != 0u }
+
+internal fun regattaLinkConfigDraftWithBit(
+    draft: UInt?,
+    bitMask: UInt,
+    enabled: Boolean
+): UInt? =
+    draft?.let {
+        regattaLinkConfigWordWithBit(
+            current = it,
+            bitMask = bitMask,
+            enabled = enabled
+        )
+    }
+
+internal fun regattaLinkConfigDraftBitChanged(
+    baseline: UInt?,
+    draft: UInt?,
+    bitMask: UInt
+): Boolean =
+    baseline != null &&
+        draft != null &&
+        ((baseline xor draft) and bitMask) != 0u
 
 internal fun regattaLinkApplyConfigWord(
     state: RegattaLinkConfigurationState,

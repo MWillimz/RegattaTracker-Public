@@ -587,7 +587,7 @@
     <string name="regattalink_advanced_diagnostics">Avancé / Diagnostic</string>
     <string name="regattalink_device_settings">Paramètres de l’appareil</string>
     <string name="regattalink_subsystems">Sous-systèmes matériels</string>
-    <string name="regattalink_subsystems_session_help">Les interrupteurs indiquent la disponibilité pour ce démarrage. Les modifications sont enregistrées pour le prochain redémarrage.</string>
+    <string name="regattalink_subsystems_session_help">Sélectionnez les sous-systèmes matériels à activer après le redémarrage.</string>
     <string name="regattalink_subsystem_imu">IMU</string>
     <string name="regattalink_subsystem_mag">Compas intégré</string>
     <string name="regattalink_subsystem_boat_data">Boat Data / CAN</string>
@@ -724,6 +724,10 @@
     <string name="regattalink_phone_gps_relay_stop">Arrêter la transmission</string>
     <string name="regattalink_nmea0183_baud">Débit de l’entrée 0183</string>
     <string name="regattalink_applies_after_restart">Le réglage enregistré s’applique après le redémarrage de RegattaLink.</string>
+    <string name="regattalink_config_draft_enable">Sera activé après Appliquer et redémarrer.</string>
+    <string name="regattalink_config_draft_disable">Sera désactivé après Appliquer et redémarrer.</string>
+    <string name="regattalink_config_draft_restart">Les modifications sont prêtes à être appliquées. RegattaLink va redémarrer.</string>
+    <string name="regattalink_apply_restart">Appliquer et redémarrer</string>
     <string name="regattalink_boat_data_output_selected_runtime_unknown">Sélectionné. L’état appliqué n’est pas disponible.</string>
     <string name="regattalink_boat_data_output_off_runtime_unknown">Non sélectionné. L’état appliqué n’est pas disponible.</string>
     <string name="regattalink_boat_data_output_restart_required">Enregistré. Redémarrez RegattaLink pour appliquer la modification.</string>

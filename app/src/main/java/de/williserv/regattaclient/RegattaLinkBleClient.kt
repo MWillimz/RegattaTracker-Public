@@ -3638,11 +3638,24 @@ internal class RegattaLinkBleClient(
             rereadAfterWrite = true
         )
 
+    override fun applyConfigBitsAndRestart(
+        mask: UInt,
+        encodedBits: UInt
+    ): Boolean =
+        mutateConfigWord(
+            mask = mask,
+            encodedBits = encodedBits,
+            failureText = "Could not apply RegattaLink configuration",
+            rereadAfterWrite = true,
+            restartAfterWrite = true
+        )
+
     private fun mutateConfigWord(
         mask: UInt,
         encodedBits: UInt,
         failureText: String,
-        rereadAfterWrite: Boolean = false
+        rereadAfterWrite: Boolean = false,
+        restartAfterWrite: Boolean = false
     ): Boolean {
         if (encodedBits and mask.inv() != 0u) return false
         if (otaRunning.get() || !isConnected()) return false
@@ -3657,6 +3670,7 @@ internal class RegattaLinkBleClient(
 
         otaExecutor.execute {
             var wordBeforeWrite: UInt? = null
+            var restartAfterMutation = false
             try {
                 if (
                     !optionalFeatureWorkAllowed(activeGatt) ||
@@ -3704,10 +3718,9 @@ internal class RegattaLinkBleClient(
 
                     /*
                      * Bits 16..19 read back current-session availability, not
-                     * the desired next-boot subsystem state. Re-read after an
-                     * explicit subsystem write so the UI keeps showing the
-                     * running session and only the restart-required state
-                     * reflects the pending change.
+                     * the desired next-boot subsystem state. Re-reading keeps
+                     * current-session availability authoritative while the
+                     * staged UI owns the user's next-boot selection.
                      */
                     val confirmedWord =
                         if (rereadAfterWrite && nextWord != currentWord) {
@@ -3734,6 +3747,7 @@ internal class RegattaLinkBleClient(
                             error = ""
                         )
                     }
+                    restartAfterMutation = restartAfterWrite
                 } catch (error: Exception) {
                     val rereadWord =
                         if (optionalFeatureWorkAllowed(activeGatt)) {
@@ -3770,6 +3784,18 @@ internal class RegattaLinkBleClient(
                 }
             } finally {
                 configurationMutationRunning.set(false)
+            }
+
+            if (
+                restartAfterMutation &&
+                !executeDeviceControl(RegattaLinkDeviceControlOpcode.RESTART, 0)
+            ) {
+                updateConfiguration {
+                    it.copy(
+                        userMessage = RegattaLinkUiMessage.CONFIGURATION_FAILED,
+                        error = "Configuration was saved, but RegattaLink restart could not be started"
+                    )
+                }
             }
         }
         return true

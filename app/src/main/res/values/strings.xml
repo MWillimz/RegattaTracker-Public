@@ -630,7 +630,7 @@
     <string name="regattalink_advanced_diagnostics">Advanced / Diagnostics</string>
     <string name="regattalink_device_settings">Device settings</string>
     <string name="regattalink_subsystems">Hardware subsystems</string>
-    <string name="regattalink_subsystems_session_help">Switches show availability for this boot. Changes are saved for the next restart.</string>
+    <string name="regattalink_subsystems_session_help">Select the hardware subsystems to enable after restart.</string>
     <string name="regattalink_subsystem_imu">IMU</string>
     <string name="regattalink_subsystem_mag">Onboard compass</string>
     <string name="regattalink_subsystem_boat_data">Boat Data / CAN</string>
@@ -767,6 +767,10 @@
     <string name="regattalink_phone_gps_relay_stop">Stop forwarding</string>
     <string name="regattalink_nmea0183_baud">0183 input baud</string>
     <string name="regattalink_applies_after_restart">Saved setting applies after RegattaLink restart.</string>
+    <string name="regattalink_config_draft_enable">Will be enabled after Apply &amp; restart.</string>
+    <string name="regattalink_config_draft_disable">Will be disabled after Apply &amp; restart.</string>
+    <string name="regattalink_config_draft_restart">Changes are ready to apply. RegattaLink will restart.</string>
+    <string name="regattalink_apply_restart">Apply &amp; restart</string>
     <string name="regattalink_boat_data_output_selected_runtime_unknown">Selected. Applied state is unavailable.</string>
     <string name="regattalink_boat_data_output_off_runtime_unknown">Not selected. Applied state is unavailable.</string>
     <string name="regattalink_boat_data_output_restart_required">Saved. Restart RegattaLink to apply.</string>

@@ -587,7 +587,7 @@
     <string name="regattalink_advanced_diagnostics">Erweitert / Diagnose</string>
     <string name="regattalink_device_settings">Geräteeinstellungen</string>
     <string name="regattalink_subsystems">Hardware-Subsysteme</string>
-    <string name="regattalink_subsystems_session_help">Die Schalter zeigen die Verfügbarkeit für diesen Start. Änderungen werden für den nächsten Neustart gespeichert.</string>
+    <string name="regattalink_subsystems_session_help">Hardware-Subsysteme für den nächsten Neustart auswählen.</string>
     <string name="regattalink_subsystem_imu">IMU</string>
     <string name="regattalink_subsystem_mag">Bordkompass</string>
     <string name="regattalink_subsystem_boat_data">Boat Data / CAN</string>
@@ -724,6 +724,10 @@
     <string name="regattalink_phone_gps_relay_stop">Weiterleitung stoppen</string>
     <string name="regattalink_nmea0183_baud">Baudrate des 0183-Eingangs</string>
     <string name="regattalink_applies_after_restart">Die gespeicherte Einstellung wird nach einem RegattaLink-Neustart aktiv.</string>
+    <string name="regattalink_config_draft_enable">Wird nach Übernehmen &amp; neu starten aktiviert.</string>
+    <string name="regattalink_config_draft_disable">Wird nach Übernehmen &amp; neu starten deaktiviert.</string>
+    <string name="regattalink_config_draft_restart">Änderungen sind bereit. RegattaLink wird neu gestartet.</string>
+    <string name="regattalink_apply_restart">Übernehmen &amp; neu starten</string>
     <string name="regattalink_boat_data_output_selected_runtime_unknown">Ausgewählt. Der angewendete Zustand ist nicht verfügbar.</string>
     <string name="regattalink_boat_data_output_off_runtime_unknown">Nicht ausgewählt. Der angewendete Zustand ist nicht verfügbar.</string>
     <string name="regattalink_boat_data_output_restart_required">Gespeichert. RegattaLink neu starten, um die Änderung anzuwenden.</string>

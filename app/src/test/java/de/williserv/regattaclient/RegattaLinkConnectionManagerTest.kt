@@ -886,6 +886,62 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun stagedConfigApplyUsesExpectedGroupMasks() {
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                configWordSupported = true,
+                configWord = 0u,
+                deviceControlSupported = true
+            )
+        )
+
+        val txDraft =
+            REGATTALINK_CONFIG_TX_MASTER or
+                REGATTALINK_CONFIG_TX_COMPASS
+        assertTrue(manager.applyTxSelectionAndRestart(txDraft))
+        assertEquals(1, fakeClient.applyConfigBitsAndRestartCalls)
+        assertEquals(
+            REGATTALINK_CONFIG_TX_SELECTION_MASK,
+            fakeClient.lastAppliedConfigMask
+        )
+        assertEquals(txDraft, fakeClient.lastAppliedConfigBits)
+
+        val subsystemDraft =
+            REGATTALINK_CONFIG_SESSION_IMU or
+                REGATTALINK_CONFIG_SESSION_CAN
+        assertTrue(manager.applySubsystemSelectionAndRestart(subsystemDraft))
+        assertEquals(2, fakeClient.applyConfigBitsAndRestartCalls)
+        assertEquals(
+            REGATTALINK_CONFIG_SESSION_SUBSYSTEM_MASK,
+            fakeClient.lastAppliedConfigMask
+        )
+        assertEquals(subsystemDraft, fakeClient.lastAppliedConfigBits)
+    }
+
+    @Test
+    fun stagedConfigApplyRejectsBitsOutsideOwnedMask() {
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                configWordSupported = true,
+                configWord = 0u,
+                deviceControlSupported = true
+            )
+        )
+
+        assertFalse(
+            manager.applyTxSelectionAndRestart(
+                REGATTALINK_CONFIG_TX_LOAD
+            )
+        )
+        assertFalse(
+            manager.applySubsystemSelectionAndRestart(
+                REGATTALINK_CONFIG_TX_MASTER
+            )
+        )
+        assertEquals(0, fakeClient.applyConfigBitsAndRestartCalls)
+    }
+
+    @Test
     fun activeOtaSuppressesConfigurationAndDiagnosticActions() {
         fakeClient.emitConfiguration(
             RegattaLinkConfigurationState(
@@ -1503,6 +1559,7 @@ class RegattaLinkConnectionManagerTest {
         var setDampingCalls = 0
         var setNmeaTxCalls = 0
         var setNmeaAttitudeTxCalls = 0
+        var applyConfigBitsAndRestartCalls = 0
         var diagnosticDrainCalls = 0
         var deviceControlCalls = 0
         var refreshPgnCalls = 0
@@ -1519,6 +1576,8 @@ class RegattaLinkConnectionManagerTest {
         var lastDampingSeconds: Int? = null
         var lastNmeaTxEnabled: Boolean? = null
         var lastNmeaAttitudeTxEnabled: Boolean? = null
+        var lastAppliedConfigMask: UInt? = null
+        var lastAppliedConfigBits: UInt? = null
         var lastReconnectAddress: String? = null
         var lastReconnectStableId: String? = null
 
@@ -1575,6 +1634,16 @@ class RegattaLinkConnectionManagerTest {
         override fun setNmeaAttitudeTxEnabled(enabled: Boolean): Boolean {
             setNmeaAttitudeTxCalls += 1
             lastNmeaAttitudeTxEnabled = enabled
+            return true
+        }
+
+        override fun applyConfigBitsAndRestart(
+            mask: UInt,
+            encodedBits: UInt
+        ): Boolean {
+            applyConfigBitsAndRestartCalls += 1
+            lastAppliedConfigMask = mask
+            lastAppliedConfigBits = encodedBits
             return true
         }
 

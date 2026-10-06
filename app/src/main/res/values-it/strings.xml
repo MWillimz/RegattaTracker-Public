@@ -587,7 +587,7 @@
     <string name="regattalink_advanced_diagnostics">Avanzate / Diagnostica</string>
     <string name="regattalink_device_settings">Impostazioni dispositivo</string>
     <string name="regattalink_subsystems">Sottosistemi hardware</string>
-    <string name="regattalink_subsystems_session_help">Gli interruttori mostrano la disponibilità per questo avvio. Le modifiche vengono salvate per il prossimo riavvio.</string>
+    <string name="regattalink_subsystems_session_help">Seleziona i sottosistemi hardware da abilitare dopo il riavvio.</string>
     <string name="regattalink_subsystem_imu">IMU</string>
     <string name="regattalink_subsystem_mag">Bussola integrata</string>
     <string name="regattalink_subsystem_boat_data">Boat Data / CAN</string>
@@ -724,6 +724,10 @@
     <string name="regattalink_phone_gps_relay_stop">Ferma inoltro</string>
     <string name="regattalink_nmea0183_baud">Baud dell’ingresso 0183</string>
     <string name="regattalink_applies_after_restart">L’impostazione salvata viene applicata dopo il riavvio di RegattaLink.</string>
+    <string name="regattalink_config_draft_enable">Verrà abilitato dopo Applica e riavvia.</string>
+    <string name="regattalink_config_draft_disable">Verrà disabilitato dopo Applica e riavvia.</string>
+    <string name="regattalink_config_draft_restart">Le modifiche sono pronte per essere applicate. RegattaLink verrà riavviato.</string>
+    <string name="regattalink_apply_restart">Applica e riavvia</string>
     <string name="regattalink_boat_data_output_selected_runtime_unknown">Selezionato. Lo stato applicato non è disponibile.</string>
     <string name="regattalink_boat_data_output_off_runtime_unknown">Non selezionato. Lo stato applicato non è disponibile.</string>
     <string name="regattalink_boat_data_output_restart_required">Salvato. Riavvia RegattaLink per applicare la modifica.</string>
