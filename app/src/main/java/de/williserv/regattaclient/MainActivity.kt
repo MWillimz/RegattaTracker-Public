@@ -867,20 +867,9 @@ class MainActivity : ComponentActivity() {
                             onSetLoadPrecisionX10 = { enabled ->
                                 regattaLinkManager.setLoadPrecisionX10(enabled)
                             },
-                            onSetNmeaTxEnabled = { enabled ->
-                                regattaLinkManager.setNmeaTxEnabled(enabled)
-                            },
-                            onSetNmeaAttitudeTxEnabled = { enabled ->
-                                regattaLinkManager.setNmeaAttitudeTxEnabled(enabled)
-                            },
-                            onSetNmea0183TxEnabled = { enabled ->
-                                regattaLinkManager.setNmea0183TxEnabled(enabled)
-                            },
-                            onSetPhoneGpsTxEnabled = { enabled ->
-                                regattaLinkManager.setPhoneGpsTxEnabled(enabled)
-                            },
-                            onSetCompassTxEnabled = { enabled ->
-                                regattaLinkManager.setCompassTxEnabled(enabled)
+                            onApplyTxConfigAndRestart = { encodedBits ->
+                                regattaLinkManager
+                                    .applyTxSelectionAndRestart(encodedBits)
                             },
                             onSetPhoneGpsRelayEnabled = { enabled ->
                                 setRegattaLinkPhoneGpsRelayEnabled(enabled)
@@ -892,9 +881,9 @@ class MainActivity : ComponentActivity() {
                                 regattaLinkManager
                                     .setMagBackgroundLearningEnabled(enabled)
                             },
-                            onSetSubsystemEnabled = { subsystem, enabled ->
+                            onApplySubsystemConfigAndRestart = { encodedBits ->
                                 regattaLinkManager
-                                    .setSubsystemEnabled(subsystem, enabled)
+                                    .applySubsystemSelectionAndRestart(encodedBits)
                             },
                             onSetHeadingTrimDeg = { value ->
                                 regattaLinkManager.setHeadingTrimDeg(value)
