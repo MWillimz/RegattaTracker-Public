@@ -33,6 +33,39 @@ class RegattaLinkPhoneGnssTest {
         val buffer = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
 
         assertEquals(REGATTALINK_PHONE_GNSS_FRAME_SIZE, raw.size)
+        assertArrayEquals(
+            byteArrayOf(
+                0x02,
+                0x3f,
+                0xd2.toByte(),
+                0x04,
+                0x07,
+                0xff.toByte(),
+                0xa9.toByte(),
+                0x1f,
+                0xcf.toByte(),
+                0xe9.toByte(),
+                0x2d,
+                0xfa.toByte(),
+                0x7d,
+                0x00,
+                0xc8.toByte(),
+                0x01,
+                0x41,
+                0x01,
+                0x85.toByte(),
+                0xff.toByte(),
+                0x7b,
+                0x68,
+                0xe5.toByte(),
+                0xcf.toByte(),
+                0x8b.toByte(),
+                0x01,
+                0x00,
+                0x00
+            ),
+            raw
+        )
         assertEquals(REGATTALINK_PHONE_GNSS_FRAME_VERSION, raw[0].toInt() and 0xff)
         assertEquals(0x3f, raw[1].toInt() and 0xff)
         assertEquals(1_234, buffer.getShort(2).toInt() and 0xffff)
