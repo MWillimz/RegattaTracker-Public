@@ -49,7 +49,7 @@ The firmware-image OTA wire protocol remains version 1.0. Only the GATT namespac
 | `0019` | Diagnostic Log FIFO | existing 22 B record |
 | `001A` | Device Control | existing 8 B request / 20 B status |
 | `001B` | Boat Data TX Runtime Status v2 | exactly 4 B |
-| `001C` | Phone GNSS Input | exactly 20 B, W with response |
+| `001C` | Phone GNSS Input | exactly 28 B, W with response |
 
 The Config/Control block is frozen at `0010..001C`. Extension is not a compatibility container.
 
@@ -195,11 +195,11 @@ Normal user Factory Reset clears learned background calibration while preserving
 
 ## Phone GNSS 001C
 
-The frozen input is exactly 20 bytes, write-with-response:
+The frozen pre-production input is exactly 28 bytes, write-with-response:
 
 | Offset | Width | Field |
 | ---: | ---: | --- |
-| 0 | 1 | version = 1 |
+| 0 | 1 | version = 2 |
 | 1 | 1 | validity flags |
 | 2 | 2 | sample age, u16 LE ms |
 | 4 | 4 | latitude, i32 LE degrees x1e7 |
@@ -208,6 +208,7 @@ The frozen input is exactly 20 bytes, write-with-response:
 | 14 | 2 | SOG, u16 LE cm/s |
 | 16 | 2 | horizontal accuracy, u16 LE cm |
 | 18 | 2 | altitude, i16 LE decimetres |
+| 20 | 8 | UTC fix time, Unix epoch milliseconds, u64 LE |
 
 Validity flags:
 - bit0 position
@@ -215,9 +216,26 @@ Validity flags:
 - bit2 SOG
 - bit3 horizontal accuracy
 - bit4 altitude
-- bits5..7 zero
+- bit5 UTC fix time
+- bits6..7 zero
 
-Tracker forwards fresh Android GPS observations through this characteristic at no more than 1 Hz while desired Config bits 0 and 3 are both enabled. The forwarding queue is latest-wins: at most one write is scheduled/in flight and one newer pending observation replaces the older pending observation.
+The monotonic Android `Location.elapsedRealtimeNanos` timestamp is used only to
+derive sample age at send time. Absolute UTC comes only from `Location.time` of
+the same live GPS observation. A non-positive `Location.time` leaves bit5 clear
+and encodes zero in bytes 20..27; it is never replaced with current wall-clock time.
+
+A 28-byte normal ATT write requires negotiated ATT MTU >=31. Tracker requests the
+shared connection MTU once per physical BLE connection through the serialized GATT
+operation path (currently requesting 247) and forwards Phone GNSS only when the
+negotiated value is at least 31. There is no 20-byte fallback. Disconnect/reconnect
+resets this connection-local MTU readiness and negotiates again.
+
+Tracker forwards fresh Android GPS observations through this characteristic at no
+more than 1 Hz while desired Config bits 0 and 3 are both enabled and CAN is
+available for the current session. The forwarding queue is latest-wins: at most one
+write is scheduled/in flight and one newer pending observation replaces the older
+pending observation. Cached last-known locations are never forwarded as fresh Phone
+GNSS observations.
 
 ## Existing Config/Control payloads retained
 
@@ -312,7 +330,7 @@ The Android migration is complete when:
 - Load precision and MAG background-learning use their assigned `0017` bits;
 - Heading Trim `0018` uses exact signed LE -180..+180° encoding and applies without restart;
 - runtime status parses `001B` version 2 and remains separate from desired Config state;
-- Phone GNSS `001C` uses the exact 20-byte v1 frame, send-time monotonic age, validity bits and one write-with-response transaction;
+- Phone GNSS `001C` uses the exact 28-byte v2 frame, send-time monotonic age, same-fix UTC epoch-ms, validity bits and one write-with-response transaction at negotiated ATT MTU >=31;
 - Phone GNSS forwarding is gated by desired Config bits 0+3, stops on disconnect/OTA/disable, is rate-limited to 1 Hz and uses latest-wins buffering rather than a FIFO;
 - while Phone GNSS forwarding is enabled, Android GPS acquisition is requested at 1000 ms while local adaptive sample persistence keeps its existing cadence;
 - cached last-known locations are never forwarded as fresh Phone GNSS observations;
