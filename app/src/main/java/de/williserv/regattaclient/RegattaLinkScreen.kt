@@ -374,9 +374,6 @@ fun RegattaLinkScreen(
                 onSetLedBrightness = onSetLedBrightness,
                 onApplySubsystemConfigAndRestart =
                     onApplySubsystemConfigAndRestart,
-                onRestart = {
-                    onDeviceControl(RegattaLinkDeviceControlOpcode.RESTART, 0)
-                },
                 onDrainDiagnosticLog = onDrainDiagnosticLog,
                 onReadRawFrames = onReadRawFrames,
                 onStartRawCapture = onStartRawCapture,
@@ -1719,7 +1716,6 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
     onChangeName: () -> Unit,
     onSetLedBrightness: (Int) -> Unit,
     onApplySubsystemConfigAndRestart: (UInt) -> Unit,
-    onRestart: () -> Unit,
     onDrainDiagnosticLog: () -> Unit,
     onReadRawFrames: () -> Unit,
     onStartRawCapture: () -> Unit,
@@ -1890,6 +1886,11 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
                         stringResource(R.string.regattalink_subsystem_nmea0183)
                 )
                 subsystemRows.forEach { (subsystem, label) ->
+                    val draftEnabled =
+                        regattaLinkConfigDraftBit(
+                            subsystemDraft,
+                            subsystem.configBit
+                        )
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1902,19 +1903,22 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
                             modifier = Modifier.weight(1f)
                         )
                         Switch(
-                            checked =
-                                configurationState
-                                    .subsystemSessionBit(subsystem) == true,
+                            checked = draftEnabled == true,
                             onCheckedChange = { enabled ->
-                                onSetSubsystemEnabled(subsystem, enabled)
+                                subsystemDraft =
+                                    regattaLinkConfigDraftWithBit(
+                                        subsystemDraft,
+                                        subsystem.configBit,
+                                        enabled
+                                    )
                             },
-                            enabled = configEnabled
+                            enabled = configEnabled && draftEnabled != null
                         )
                     }
                 }
 
                 if (
-                    configurationState.configRestartRequired ||
+                    subsystemDirty ||
                     configurationState.restartAwaitingDisconnect
                 ) {
                     Text(
@@ -1924,18 +1928,22 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
                             stringResource(R.string.regattalink_restarting)
                         } else {
                             stringResource(
-                                R.string.regattalink_applies_after_restart
+                                R.string.regattalink_config_draft_restart
                             )
                         },
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 8.dp)
                     )
                     Button(
-                        onClick = onRestart,
+                        onClick = {
+                            subsystemDraft?.let(
+                                onApplySubsystemConfigAndRestart
+                            )
+                        },
                         enabled =
                             configEnabled &&
                                 configurationState.deviceControlSupported &&
-                                configurationState.configRestartRequired &&
+                                subsystemDirty &&
                                 !configurationState.restartAwaitingDisconnect,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1945,7 +1953,9 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
                             if (configurationState.restartAwaitingDisconnect) {
                                 stringResource(R.string.regattalink_restarting)
                             } else {
-                                stringResource(R.string.regattalink_restart)
+                                stringResource(
+                                    R.string.regattalink_apply_restart
+                                )
                             }
                         )
                     }
