@@ -1042,6 +1042,7 @@ class MainActivity : ComponentActivity() {
                             raceInfoText = raceInfoText.value,
                             raceShortenedText = raceShortenedText.value,
                             raceShortened = rawRaceCourseShortened,
+                            scoringMode = raceScoringMode.value,
                             currentTargetText = currentTargetText.value,
                             courseMapMarks = courseMapMarks.value,
                             onSetCourseProgress = { passedMarks, raceStarted ->
