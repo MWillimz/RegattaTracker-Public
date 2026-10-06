@@ -2916,7 +2916,7 @@ internal class RegattaLinkBleClient(
             optionalFeatureWorkAllowed(activeGatt)
         ) {
             if (mtu < REGATTALINK_BOAT_STATE_NOTIFICATION_MTU) {
-                requestMtuBestEffort(activeGatt)
+                requestConnectionMtuBestEffort(activeGatt)
             }
             if (!optionalFeatureWorkAllowed(activeGatt)) return
 
