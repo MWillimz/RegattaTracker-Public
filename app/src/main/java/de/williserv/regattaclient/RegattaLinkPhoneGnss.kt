@@ -6,7 +6,10 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.roundToInt
 
-internal const val REGATTALINK_PHONE_GNSS_FRAME_SIZE = 20
+internal const val REGATTALINK_PHONE_GNSS_FRAME_VERSION = 2
+internal const val REGATTALINK_PHONE_GNSS_FRAME_SIZE = 28
+internal const val REGATTALINK_PHONE_GNSS_REQUIRED_MTU =
+    REGATTALINK_PHONE_GNSS_FRAME_SIZE + 3
 internal const val REGATTALINK_PHONE_GNSS_MIN_INTERVAL_MS = 1_000L
 
 internal class RegattaLinkPhoneGpsRelayStore(context: Context) {
@@ -34,9 +37,11 @@ internal const val REGATTALINK_PHONE_GNSS_VALID_COG = 1 shl 1
 internal const val REGATTALINK_PHONE_GNSS_VALID_SOG = 1 shl 2
 internal const val REGATTALINK_PHONE_GNSS_VALID_ACCURACY = 1 shl 3
 internal const val REGATTALINK_PHONE_GNSS_VALID_ALTITUDE = 1 shl 4
+internal const val REGATTALINK_PHONE_GNSS_VALID_UTC_TIME = 1 shl 5
 
 internal data class RegattaLinkPhoneGnssSample(
     val observationElapsedRealtimeNanos: Long,
+    val utcTimeMs: Long? = null,
     val latitudeDeg: Double,
     val longitudeDeg: Double,
     val cogDeg: Double? = null,
@@ -48,6 +53,7 @@ internal data class RegattaLinkPhoneGnssSample(
 internal fun regattaLinkPhoneGnssSample(location: Location): RegattaLinkPhoneGnssSample =
     RegattaLinkPhoneGnssSample(
         observationElapsedRealtimeNanos = location.elapsedRealtimeNanos,
+        utcTimeMs = location.time.takeIf { it > 0L },
         latitudeDeg = location.latitude,
         longitudeDeg = location.longitude,
         cogDeg = location.bearing
@@ -115,6 +121,11 @@ internal fun encodeRegattaLinkPhoneGnss(
         ?.also { validity = validity or REGATTALINK_PHONE_GNSS_VALID_ALTITUDE }
         ?: 0
 
+    val utcTimeMs = sample.utcTimeMs
+        ?.takeIf { it > 0L }
+        ?.also { validity = validity or REGATTALINK_PHONE_GNSS_VALID_UTC_TIME }
+        ?: 0L
+
     val ageNanos =
         (sendElapsedRealtimeNanos - sample.observationElapsedRealtimeNanos)
             .coerceAtLeast(0L)
@@ -125,7 +136,7 @@ internal fun encodeRegattaLinkPhoneGnss(
 
     return ByteBuffer.allocate(REGATTALINK_PHONE_GNSS_FRAME_SIZE)
         .order(ByteOrder.LITTLE_ENDIAN)
-        .put(1.toByte())
+        .put(REGATTALINK_PHONE_GNSS_FRAME_VERSION.toByte())
         .put(validity.toByte())
         .putShort(sampleAgeMs.toShort())
         .putInt(latitudeScaled)
@@ -134,6 +145,7 @@ internal fun encodeRegattaLinkPhoneGnss(
         .putShort(sogCms.toShort())
         .putShort(accuracyCm.toShort())
         .putShort(altitudeDm.toShort())
+        .putLong(utcTimeMs)
         .array()
 }
 
@@ -165,3 +177,7 @@ internal fun regattaLinkLocationRequestIntervalMs(
     } else {
         persistenceIntervalMs
     }
+
+internal fun regattaLinkPhoneGnssTransportReady(
+    negotiatedMtu: Int
+): Boolean = negotiatedMtu >= REGATTALINK_PHONE_GNSS_REQUIRED_MTU
