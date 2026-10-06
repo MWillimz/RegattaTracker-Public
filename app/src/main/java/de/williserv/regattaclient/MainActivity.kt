@@ -3567,6 +3567,9 @@ class MainActivity : ComponentActivity() {
         localRaceStarted = false
         localRaceFinished = false
         localRaceStartTimestampMillis = null
+        retirementReported.value = false
+        retirementStatusText.value = ""
+        ParticipantRetirementStore.clear(this)
         showFinishDetectedDialog.value = false
         updateLocalRaceStatus()
     }
