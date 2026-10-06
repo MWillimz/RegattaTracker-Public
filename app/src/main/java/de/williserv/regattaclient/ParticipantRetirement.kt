@@ -106,7 +106,11 @@ internal object ParticipantRetirementStore {
             prefs.getString("captain_name", "").orEmpty() == value.captainName
     }
 
-    internal fun clearForTests(context: Context) {
+    fun clear(context: Context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().commit()
+    }
+
+    internal fun clearForTests(context: Context) {
+        clear(context)
     }
 }

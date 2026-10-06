@@ -228,6 +228,13 @@
     <string name="next_wait">Next: wait</string>
     <string name="next_course">Next: course</string>
     <string name="start_in">START IN %1$d:%2$02d</string>
+    <string name="daily_event">Daily Event</string>
+    <string name="flying_start">Flying Start</string>
+    <string name="start_window_value">Start window: %1$s</string>
+    <string name="start_window_unknown">Start window: --</string>
+    <string name="start_window_in">START WINDOW IN %1$d:%2$02d</string>
+    <string name="start_window_open">START WINDOW OPEN</string>
+    <string name="flying_start_started">STARTED</string>
     <string name="ocs">OCS</string>
     <string name="finished">FINISHED</string>
     <string name="finalised">FINALISED</string>

@@ -206,6 +206,13 @@
     <string name="next_wait">Suivant : attendre</string>
     <string name="next_course">Suivant : parcours</string>
     <string name="start_in">DÉPART DANS %1$d:%2$02d</string>
+    <string name="daily_event">Événement quotidien</string>
+    <string name="flying_start">Départ libre</string>
+    <string name="start_window_value">Fenêtre de départ : %1$s</string>
+    <string name="start_window_unknown">Fenêtre de départ : --</string>
+    <string name="start_window_in">FENÊTRE DE DÉPART DANS %1$d:%2$02d</string>
+    <string name="start_window_open">FENÊTRE DE DÉPART OUVERTE</string>
+    <string name="flying_start_started">PARTI</string>
     <string name="ocs">OCS</string>
     <string name="finished">TERMINÉ</string>
     <string name="finalised">CLÔTURÉE</string>
