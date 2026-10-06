@@ -15,19 +15,19 @@ class RegattaLinkPhoneGnssTest {
     fun encodesGoldenVectorAtSendTime() {
         val sample = RegattaLinkPhoneGnssSample(
             observationElapsedRealtimeNanos = 10_000_000_000L,
-            utcTimeMs = 1_700_000_000_123L,
-            latitudeDeg = 53.1234567,
-            longitudeDeg = -9.7654321,
-            cogDeg = 361.25,
-            sogMps = 4.56,
-            horizontalAccuracyM = 3.21,
+            utcTimeMs = 1_791_316_800_123L,
+            latitudeDeg = 48.1234567,
+            longitudeDeg = 11.54321,
+            cogDeg = 123.45,
+            sogMps = 6.78,
+            horizontalAccuracyM = 2.5,
             altitudeM = -12.3
         )
 
         val raw = requireNotNull(
             encodeRegattaLinkPhoneGnss(
                 sample,
-                sendElapsedRealtimeNanos = 11_234_000_000L
+                sendElapsedRealtimeNanos = 14_321_000_000L
             )
         )
         val buffer = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
@@ -37,29 +37,29 @@ class RegattaLinkPhoneGnssTest {
             byteArrayOf(
                 0x02,
                 0x3f,
-                0xd2.toByte(),
-                0x04,
-                0x07,
-                0xff.toByte(),
-                0xa9.toByte(),
-                0x1f,
-                0xcf.toByte(),
-                0xe9.toByte(),
-                0x2d,
+                0xe1.toByte(),
+                0x10,
+                0x87.toByte(),
+                0x0e,
+                0xaf.toByte(),
+                0x1c,
+                0xa4.toByte(),
+                0x5a,
+                0xe1.toByte(),
+                0x06,
+                0x39,
+                0x30,
+                0xa6.toByte(),
+                0x02,
                 0xfa.toByte(),
-                0x7d,
                 0x00,
-                0xc8.toByte(),
-                0x01,
-                0x41,
-                0x01,
                 0x85.toByte(),
                 0xff.toByte(),
                 0x7b,
-                0x68,
-                0xe5.toByte(),
-                0xcf.toByte(),
-                0x8b.toByte(),
+                0x32,
+                0xcd.toByte(),
+                0x12,
+                0xa1.toByte(),
                 0x01,
                 0x00,
                 0x00
@@ -68,14 +68,14 @@ class RegattaLinkPhoneGnssTest {
         )
         assertEquals(REGATTALINK_PHONE_GNSS_FRAME_VERSION, raw[0].toInt() and 0xff)
         assertEquals(0x3f, raw[1].toInt() and 0xff)
-        assertEquals(1_234, buffer.getShort(2).toInt() and 0xffff)
-        assertEquals(531_234_567, buffer.getInt(4))
-        assertEquals(-97_654_321, buffer.getInt(8))
-        assertEquals(125, buffer.getShort(12).toInt() and 0xffff)
-        assertEquals(456, buffer.getShort(14).toInt() and 0xffff)
-        assertEquals(321, buffer.getShort(16).toInt() and 0xffff)
+        assertEquals(4_321, buffer.getShort(2).toInt() and 0xffff)
+        assertEquals(481_234_567, buffer.getInt(4))
+        assertEquals(115_432_100, buffer.getInt(8))
+        assertEquals(12_345, buffer.getShort(12).toInt() and 0xffff)
+        assertEquals(678, buffer.getShort(14).toInt() and 0xffff)
+        assertEquals(250, buffer.getShort(16).toInt() and 0xffff)
         assertEquals(-123, buffer.getShort(18).toInt())
-        assertEquals(1_700_000_000_123L, buffer.getLong(20))
+        assertEquals(1_791_316_800_123L, buffer.getLong(20))
     }
 
     @Test
