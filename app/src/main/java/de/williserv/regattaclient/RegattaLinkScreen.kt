@@ -921,13 +921,13 @@ private fun RegattaLinkNmeaSetupSheet(
         connected && (canAvailable || nmea0183Available)
     val txSelectionFromDevice =
         configurationState.configWord?.and(REGATTALINK_CONFIG_TX_SELECTION_MASK)
-    var txBaseline by remember(deviceKey) {
+    var txBaseline by remember(deviceKey, connected) {
         mutableStateOf(txSelectionFromDevice)
     }
-    var txDraft by remember(deviceKey) {
+    var txDraft by remember(deviceKey, connected) {
         mutableStateOf(txSelectionFromDevice)
     }
-    LaunchedEffect(deviceKey, txSelectionFromDevice) {
+    LaunchedEffect(deviceKey, connected, txSelectionFromDevice) {
         if (txBaseline == null && txSelectionFromDevice != null) {
             txBaseline = txSelectionFromDevice
             txDraft = txSelectionFromDevice
@@ -1731,13 +1731,13 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
     val subsystemSelectionFromSession =
         configurationState.configWord
             ?.and(REGATTALINK_CONFIG_SESSION_SUBSYSTEM_MASK)
-    var subsystemBaseline by remember(deviceKey) {
+    var subsystemBaseline by remember(deviceKey, connected) {
         mutableStateOf(subsystemSelectionFromSession)
     }
-    var subsystemDraft by remember(deviceKey) {
+    var subsystemDraft by remember(deviceKey, connected) {
         mutableStateOf(subsystemSelectionFromSession)
     }
-    LaunchedEffect(deviceKey, subsystemSelectionFromSession) {
+    LaunchedEffect(deviceKey, connected, subsystemSelectionFromSession) {
         if (
             subsystemBaseline == null &&
             subsystemSelectionFromSession != null
