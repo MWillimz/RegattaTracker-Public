@@ -905,6 +905,9 @@ class MainActivity : ComponentActivity() {
                             onDeviceControl = { opcode, value ->
                                 regattaLinkManager.executeDeviceControl(opcode, value)
                             },
+                            onSetImuRawPreviewEnabled = { enabled ->
+                                regattaLinkManager.setImuRawPreviewEnabled(enabled)
+                            },
                             onRefreshPgnInventory = {
                                 regattaLinkManager.refreshPgnInventory()
                             },

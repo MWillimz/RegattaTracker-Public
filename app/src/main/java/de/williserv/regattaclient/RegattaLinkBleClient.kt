@@ -3260,19 +3260,42 @@ internal class RegattaLinkBleClient(
                 }
 
                 TELEMETRY_FAST_UUID -> {
-                    val parsed = parseRegattaLinkFastMotion(value)
-                    updateTelemetry {
-                        if (initialOnly && it.fast != null) {
-                            it
-                        } else {
-                            it.copy(
-                                supported = true,
-                                fast = parsed,
-                                fastReceivedAtElapsedMs = receivedAt,
-                                userMessage = null,
-                                error = ""
-                            )
+                    val version =
+                        value.firstOrNull()?.toInt()?.and(0xff) ?: -1
+                    when (version) {
+                        REGATTALINK_TELEMETRY_SCHEMA_VERSION -> {
+                            val parsed = parseRegattaLinkFastMotion(value)
+                            updateTelemetry {
+                                if (initialOnly && it.fast != null) {
+                                    it
+                                } else {
+                                    it.copy(
+                                        supported = true,
+                                        fast = parsed,
+                                        fastReceivedAtElapsedMs = receivedAt,
+                                        userMessage = null,
+                                        error = ""
+                                    )
+                                }
+                            }
                         }
+
+                        REGATTALINK_RAW_IMU_SCHEMA_VERSION -> {
+                            val parsed = parseRegattaLinkRawImu(value)
+                            updateTelemetry {
+                                it.copy(
+                                    supported = true,
+                                    rawImu = parsed,
+                                    rawImuReceivedAtElapsedMs = receivedAt,
+                                    userMessage = null,
+                                    error = ""
+                                )
+                            }
+                        }
+
+                        else -> throw IllegalArgumentException(
+                            "Unsupported RegattaLink Fast Motion schema $version"
+                        )
                     }
                 }
 
@@ -4036,6 +4059,89 @@ internal class RegattaLinkBleClient(
                         diagnosticLogEntries = entries,
                         diagnosticLogError = errorMessage
                     )
+                }
+            }
+        }
+        return true
+    }
+
+    override fun setImuRawPreviewEnabled(enabled: Boolean): Boolean {
+        if (
+            otaRunning.get() ||
+            rawCaptureRunning.get() ||
+            diagnosticLogRunning.get() ||
+            !isConnected()
+        ) {
+            return false
+        }
+
+        val activeGatt = gatt ?: return false
+        otaExecutor.execute {
+            if (!optionalFeatureWorkAllowed(activeGatt)) {
+                return@execute
+            }
+
+            try {
+                val characteristic = activeGatt
+                    .getService(TELEMETRY_SERVICE_UUID)
+                    ?.getCharacteristic(TELEMETRY_FAST_UUID)
+                    ?: throw RegattaLinkOtaTransportException(
+                        "RegattaLink Fast Motion telemetry is unavailable",
+                        ambiguous = false
+                    )
+                val descriptor = characteristic.getDescriptor(CCCD_UUID)
+                    ?: throw RegattaLinkOtaTransportException(
+                        "RegattaLink Fast Motion CCCD is unavailable",
+                        ambiguous = false
+                    )
+
+                if (enabled) {
+                    updateTelemetry {
+                        it.copy(
+                            fast = null,
+                            fastReceivedAtElapsedMs = null,
+                            rawImu = null,
+                            rawImuReceivedAtElapsedMs = null
+                        )
+                    }
+                    if (
+                        !activeGatt.setCharacteristicNotification(
+                            characteristic,
+                            true
+                        )
+                    ) {
+                        throw RegattaLinkOtaTransportException(
+                            "Could not enable RegattaLink Fast Motion notifications",
+                            ambiguous = false
+                        )
+                    }
+                    writeDescriptorBlocking(
+                        activeGatt,
+                        descriptor,
+                        BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                    )
+                } else {
+                    runCatching {
+                        writeDescriptorBlocking(
+                            activeGatt,
+                            descriptor,
+                            BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
+                        )
+                    }
+                    activeGatt.setCharacteristicNotification(
+                        characteristic,
+                        false
+                    )
+                }
+            } catch (error: Exception) {
+                if (enabled && gatt === activeGatt && connected) {
+                    updateTelemetry {
+                        it.copy(
+                            userMessage = RegattaLinkUiMessage.TELEMETRY_FAILED,
+                            error = error.message
+                                ?: "Could not read RegattaLink installation orientation"
+                        )
+                    }
                 }
             }
         }

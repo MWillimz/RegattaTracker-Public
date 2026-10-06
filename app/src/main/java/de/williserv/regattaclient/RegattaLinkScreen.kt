@@ -172,6 +172,7 @@ fun RegattaLinkScreen(
     onSetLoadSensorAlias: (String, String) -> Unit = { _, _ -> },
     onDrainDiagnosticLog: () -> Unit,
     onDeviceControl: (RegattaLinkDeviceControlOpcode, Int) -> Unit,
+    onSetImuRawPreviewEnabled: (Boolean) -> Unit = {},
     onRefreshPgnInventory: () -> Unit,
     onReadRawFrames: () -> Unit,
     onStartRawCapture: () -> Unit,
@@ -329,6 +330,15 @@ fun RegattaLinkScreen(
                         RegattaLinkDeviceControlOpcode.SET_UPRIGHT,
                         0
                     )
+                },
+                onSetImuRawPreviewEnabled = { enabled ->
+                    onSetImuRawPreviewEnabled(enabled)
+                    if (enabled) {
+                        onDeviceControl(
+                            RegattaLinkDeviceControlOpcode.IMU_RAW_MODE,
+                            1
+                        )
+                    }
                 },
                 onAdjust = onDeviceControl,
                 onDismiss = { activeSetupDestination = null }
@@ -2736,6 +2746,7 @@ private fun RegattaLinkImuSetupSheet(
     onSetHeadingTrimDeg: (Int) -> Unit,
     onRestart: () -> Unit,
     onSetUpright: () -> Unit,
+    onSetImuRawPreviewEnabled: (Boolean) -> Unit,
     onAdjust: (RegattaLinkDeviceControlOpcode, Int) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -2744,6 +2755,36 @@ private fun RegattaLinkImuSetupSheet(
     var dampingDraft by remember(configurationState.motionDampingSeconds) {
         mutableStateOf((configurationState.motionDampingSeconds ?: 3).toFloat())
     }
+    var uprightDialogOpen by rememberSaveable { mutableStateOf(false) }
+    var uprightPreviewStartedAtElapsedMs by remember {
+        mutableStateOf<Long?>(null)
+    }
+    var uprightRawTiltSamples by remember {
+        mutableStateOf<List<Double>>(emptyList())
+    }
+    val rawPreview = telemetryState.rawImu
+    val rawPreviewReceivedAt = telemetryState.rawImuReceivedAtElapsedMs
+
+    LaunchedEffect(
+        uprightDialogOpen,
+        rawPreview?.sequence,
+        rawPreviewReceivedAt
+    ) {
+        val startedAt = uprightPreviewStartedAtElapsedMs
+        if (
+            uprightDialogOpen &&
+            startedAt != null &&
+            rawPreview != null &&
+            rawPreviewReceivedAt != null &&
+            rawPreviewReceivedAt >= startedAt
+        ) {
+            regattaLinkRawImuFrontTiltDeg(rawPreview)?.let { tilt ->
+                uprightRawTiltSamples =
+                    (uprightRawTiltSamples + tilt).takeLast(5)
+            }
+        }
+    }
+
     val motionIsStale = rememberTelemetryStale(
         telemetryState.motionOneHzReceivedAtElapsedMs,
         REGATTALINK_MOTION_ONE_HZ_STALE_MS
@@ -2944,8 +2985,120 @@ private fun RegattaLinkImuSetupSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 6.dp)
             )
+            if (uprightDialogOpen) {
+                val startedAt = uprightPreviewStartedAtElapsedMs
+                val rawTilt =
+                    uprightRawTiltSamples
+                        .takeIf { it.isNotEmpty() }
+                        ?.average()
+                val fallbackTilt = telemetryState.fast?.pitchDeg?.takeIf {
+                    val receivedAt = telemetryState.fastReceivedAtElapsedMs
+                    startedAt != null &&
+                        receivedAt != null &&
+                        receivedAt >= startedAt
+                }
+                val frontTiltDeg = rawTilt ?: fallbackTilt
+                val roundedTilt =
+                    frontTiltDeg?.let(::roundRegattaLinkUserFacingDegrees)
+                val tiltMagnitude = roundedTilt?.let { kotlin.math.abs(it) }
+                val tiltDirection = when {
+                    roundedTilt == null -> null
+                    roundedTilt > 0 ->
+                        stringResource(R.string.regattalink_arrow_tilt_up)
+                    roundedTilt < 0 ->
+                        stringResource(R.string.regattalink_arrow_tilt_down)
+                    else ->
+                        stringResource(R.string.regattalink_arrow_tilt_level)
+                }
+                val mountingLooksOff =
+                    tiltMagnitude != null &&
+                        tiltMagnitude > REGATTALINK_UPRIGHT_MAX_FRONT_TILT_DEG
+
+                AlertDialog(
+                    onDismissRequest = {
+                        onSetImuRawPreviewEnabled(false)
+                        uprightDialogOpen = false
+                    },
+                    title = {
+                        Text(stringResource(R.string.regattalink_set_upright))
+                    },
+                    text = {
+                        Column {
+                            Text(
+                                stringResource(
+                                    R.string.regattalink_set_upright_arrow_forward
+                                )
+                            )
+                            Text(
+                                text = if (
+                                    tiltMagnitude != null &&
+                                    tiltDirection != null
+                                ) {
+                                    stringResource(
+                                        if (mountingLooksOff) {
+                                            R.string.regattalink_set_upright_tilt_off
+                                        } else {
+                                            R.string.regattalink_set_upright_tilt
+                                        },
+                                        tiltMagnitude,
+                                        tiltDirection,
+                                        REGATTALINK_UPRIGHT_MAX_FRONT_TILT_DEG
+                                    )
+                                } else {
+                                    stringResource(
+                                        R.string.regattalink_set_upright_tilt_waiting
+                                    )
+                                },
+                                color =
+                                    if (mountingLooksOff) {
+                                        MaterialTheme.colorScheme.error
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                modifier = Modifier.padding(top = 12.dp)
+                            )
+                            Text(
+                                text = stringResource(
+                                    R.string.regattalink_set_upright_dialog_instruction
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 12.dp)
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                onSetImuRawPreviewEnabled(false)
+                                uprightDialogOpen = false
+                                onSetUpright()
+                            },
+                            enabled = setUprightEnabled
+                        ) {
+                            Text(stringResource(R.string.regattalink_set_upright))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = {
+                                onSetImuRawPreviewEnabled(false)
+                                uprightDialogOpen = false
+                            }
+                        ) {
+                            Text(stringResource(R.string.cancel))
+                        }
+                    }
+                )
+            }
+
             Button(
-                onClick = onSetUpright,
+                onClick = {
+                    uprightRawTiltSamples = emptyList()
+                    uprightPreviewStartedAtElapsedMs =
+                        SystemClock.elapsedRealtime()
+                    uprightDialogOpen = true
+                    onSetImuRawPreviewEnabled(true)
+                },
                 enabled = setUprightEnabled,
                 modifier = Modifier.padding(top = 10.dp)
             ) {

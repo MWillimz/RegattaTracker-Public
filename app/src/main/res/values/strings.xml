@@ -712,6 +712,14 @@
     <string name="regattalink_device_control">Calibration</string>
     <string name="regattalink_set_upright">Set upright</string>
     <string name="regattalink_set_upright_instruction">Keep the boat and RegattaLink still in the intended neutral orientation while calibration runs.</string>
+    <string name="regattalink_set_upright_arrow_forward">Is the RegattaLink installed with the arrow pointing forward?</string>
+    <string name="regattalink_set_upright_dialog_instruction">Keep the boat level and the RegattaLink still, then set upright.</string>
+    <string name="regattalink_set_upright_tilt">Arrow tilt: %1$d° %2$s / %3$d°</string>
+    <string name="regattalink_set_upright_tilt_off">Arrow tilt: %1$d° %2$s / %3$d° — Mounting looks off</string>
+    <string name="regattalink_set_upright_tilt_waiting">Checking mounting angle…</string>
+    <string name="regattalink_arrow_tilt_up">up</string>
+    <string name="regattalink_arrow_tilt_down">down</string>
+    <string name="regattalink_arrow_tilt_level">level</string>
     <string name="regattalink_forward_trim">Forward / yaw</string>
     <string name="regattalink_one_degree_port">1° Port</string>
     <string name="regattalink_one_degree_starboard">1° Starboard</string>
