@@ -206,6 +206,13 @@
     <string name="next_wait">Nächstes Ziel: warten</string>
     <string name="next_course">Nächstes Ziel: Kurs</string>
     <string name="start_in">START IN %1$d:%2$02d</string>
+    <string name="daily_event">Daily Event</string>
+    <string name="flying_start">Flying Start</string>
+    <string name="start_window_value">Startfenster: %1$s</string>
+    <string name="start_window_unknown">Startfenster: --</string>
+    <string name="start_window_in">STARTFENSTER IN %1$d:%2$02d</string>
+    <string name="start_window_open">STARTFENSTER OFFEN</string>
+    <string name="flying_start_started">GESTARTET</string>
     <string name="ocs">OCS</string>
     <string name="finished">IM ZIEL</string>
     <string name="finalised">ABGESCHLOSSEN</string>
