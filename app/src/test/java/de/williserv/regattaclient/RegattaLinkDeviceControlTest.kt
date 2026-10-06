@@ -102,6 +102,34 @@ class RegattaLinkDeviceControlTest {
     }
 
     @Test
+    fun imuRawModeUsesOpcodeSevenAndAcceptsEnableDisableValues() {
+        val enabled = buildRegattaLinkDeviceControlRequest(
+            opcode = RegattaLinkDeviceControlOpcode.IMU_RAW_MODE,
+            requestId = 8u,
+            value = 1
+        )
+        val disabled = buildRegattaLinkDeviceControlRequest(
+            opcode = RegattaLinkDeviceControlOpcode.IMU_RAW_MODE,
+            requestId = 9u,
+            value = 0
+        )
+
+        assertEquals(7, enabled[1].toInt() and 0xff)
+        assertEquals(1, ByteBuffer.wrap(enabled).order(ByteOrder.LITTLE_ENDIAN).getShort(6).toInt())
+        assertEquals(7, disabled[1].toInt() and 0xff)
+        assertEquals(0, ByteBuffer.wrap(disabled).order(ByteOrder.LITTLE_ENDIAN).getShort(6).toInt())
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun imuRawModeRejectsOtherValues() {
+        buildRegattaLinkDeviceControlRequest(
+            opcode = RegattaLinkDeviceControlOpcode.IMU_RAW_MODE,
+            requestId = 10u,
+            value = 2
+        )
+    }
+
+    @Test
     fun deviceControlStatusParsesSignedTrimsFlagsAndUnsignedFields() {
         val raw = ByteArray(REGATTALINK_DEVICE_CONTROL_STATUS_SIZE)
         val buffer = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
