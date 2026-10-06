@@ -3000,7 +3000,7 @@ private fun RegattaLinkImuSetupSheet(
                 val frontTiltDeg = rawTilt ?: fallbackTilt
                 val roundedTilt =
                     frontTiltDeg?.let(::roundRegattaLinkUserFacingDegrees)
-                val tiltMagnitude = roundedTilt?.let(kotlin.math::abs)
+                val tiltMagnitude = roundedTilt?.let { kotlin.math.abs(it) }
                 val tiltDirection = when {
                     roundedTilt == null -> null
                     roundedTilt > 0 ->
