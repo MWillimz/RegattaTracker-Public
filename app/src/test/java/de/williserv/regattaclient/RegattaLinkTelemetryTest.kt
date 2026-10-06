@@ -43,6 +43,49 @@ class RegattaLinkTelemetryTest {
     }
 
     @Test
+    fun parsesRawImuV2WithSignedSensorCounts() {
+        val raw = ByteArray(REGATTALINK_TELEMETRY_RECORD_SIZE)
+        val buffer = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
+        raw[0] = REGATTALINK_RAW_IMU_SCHEMA_VERSION.toByte()
+        buffer.putShort(2, 0xffff.toShort())
+        buffer.putInt(4, 0xffffffff.toInt())
+        buffer.putShort(8, 1234.toShort())
+        buffer.putShort(10, (-2345).toShort())
+        buffer.putShort(12, 32767.toShort())
+        buffer.putShort(14, (-32768).toShort())
+        buffer.putShort(16, 3456.toShort())
+        buffer.putShort(18, (-4567).toShort())
+
+        val parsed = parseRegattaLinkRawImu(raw)
+
+        assertEquals(65535, parsed.sequence)
+        assertEquals(4_294_967_295L, parsed.timestampMs)
+        assertEquals(1234, parsed.accelXRaw)
+        assertEquals(-2345, parsed.accelYRaw)
+        assertEquals(32767, parsed.accelZRaw)
+        assertEquals(-32768, parsed.gyroXRaw)
+        assertEquals(3456, parsed.gyroYRaw)
+        assertEquals(-4567, parsed.gyroZRaw)
+    }
+
+    @Test
+    fun rawImuFrontTiltUsesSensorFrameAccelDirection() {
+        val level = RegattaLinkRawImu(1, 1, 0, 0, 8192, 0, 0, 0)
+        val frontUp = RegattaLinkRawImu(2, 2, 5793, 0, 5793, 0, 0, 0)
+        val frontDown = RegattaLinkRawImu(3, 3, -5793, 0, 5793, 0, 0, 0)
+
+        assertEquals(0.0, requireNotNull(regattaLinkRawImuFrontTiltDeg(level)), 0.001)
+        assertEquals(45.0, requireNotNull(regattaLinkRawImuFrontTiltDeg(frontUp)), 0.01)
+        assertEquals(-45.0, requireNotNull(regattaLinkRawImuFrontTiltDeg(frontDown)), 0.01)
+    }
+
+    @Test
+    fun rawImuFrontTiltRejectsZeroAccelVector() {
+        val zero = RegattaLinkRawImu(1, 1, 0, 0, 0, 0, 0, 0)
+        assertNull(regattaLinkRawImuFrontTiltDeg(zero))
+    }
+
+    @Test
     fun parsesSummaryUnsignedFields() {
         val raw = ByteArray(20)
         raw[0] = 1
