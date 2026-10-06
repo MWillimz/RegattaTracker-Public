@@ -163,15 +163,11 @@ fun RegattaLinkScreen(
     onSetLedBrightness: (Int) -> Unit,
     onSetMotionDamping: (Int) -> Unit,
     onSetLoadPrecisionX10: (Boolean) -> Unit = {},
-    onSetNmeaTxEnabled: (Boolean) -> Unit = {},
-    onSetNmeaAttitudeTxEnabled: (Boolean) -> Unit = {},
-    onSetNmea0183TxEnabled: (Boolean) -> Unit = {},
-    onSetPhoneGpsTxEnabled: (Boolean) -> Unit = {},
-    onSetCompassTxEnabled: (Boolean) -> Unit = {},
+    onApplyTxConfigAndRestart: (UInt) -> Unit = {},
     onSetPhoneGpsRelayEnabled: (Boolean) -> Unit = {},
     onSetNmea0183Baud: (Int) -> Unit = {},
     onSetMagBackgroundLearningEnabled: (Boolean) -> Unit = {},
-    onSetSubsystemEnabled: (RegattaLinkSubsystem, Boolean) -> Unit = { _, _ -> },
+    onApplySubsystemConfigAndRestart: (UInt) -> Unit = {},
     onSetHeadingTrimDeg: (Int) -> Unit = {},
     onSetLoadSensorAlias: (String, String) -> Unit = { _, _ -> },
     onDrainDiagnosticLog: () -> Unit,
@@ -342,16 +338,13 @@ fun RegattaLinkScreen(
             RegattaLinkNmeaSetupSheet(
                 nmeaState = nmeaState,
                 configurationState = configurationState,
+                deviceKey = state.deviceInfo?.stableId ?: state.deviceAddress,
                 connected = connected,
                 configEnabled = configEnabled,
                 otaActive = otaState.isActive,
                 rawCaptureActive = rawCaptureState.isActive,
                 onSetLoadPrecisionX10 = onSetLoadPrecisionX10,
-                onSetNmeaTxEnabled = onSetNmeaTxEnabled,
-                onSetNmeaAttitudeTxEnabled = onSetNmeaAttitudeTxEnabled,
-                onSetNmea0183TxEnabled = onSetNmea0183TxEnabled,
-                onSetPhoneGpsTxEnabled = onSetPhoneGpsTxEnabled,
-                onSetCompassTxEnabled = onSetCompassTxEnabled,
+                onApplyTxConfigAndRestart = onApplyTxConfigAndRestart,
                 phoneGpsRelayEnabled = phoneGpsRelayEnabled,
                 onSetPhoneGpsRelayEnabled = onSetPhoneGpsRelayEnabled,
                 onSetNmea0183Baud = onSetNmea0183Baud,
@@ -367,6 +360,7 @@ fun RegattaLinkScreen(
             RegattaLinkAdvancedDiagnosticsSheet(
                 state = state,
                 configurationState = configurationState,
+                deviceKey = state.deviceInfo?.stableId ?: state.deviceAddress,
                 nmeaState = nmeaState,
                 rawCaptureState = rawCaptureState,
                 connected = connected,
@@ -378,7 +372,8 @@ fun RegattaLinkScreen(
                     nameDialogOpen = true
                 },
                 onSetLedBrightness = onSetLedBrightness,
-                onSetSubsystemEnabled = onSetSubsystemEnabled,
+                onApplySubsystemConfigAndRestart =
+                    onApplySubsystemConfigAndRestart,
                 onRestart = {
                     onDeviceControl(RegattaLinkDeviceControlOpcode.RESTART, 0)
                 },
@@ -855,6 +850,8 @@ private fun regattaLinkBoatDataOutputStateText(
 private fun RegattaLinkBoatDataSelectorRow(
     title: String,
     desired: Boolean?,
+    draft: Boolean?,
+    draftChanged: Boolean,
     bootMask: Int?,
     activeMask: Int?,
     runtimeBit: Int,
@@ -871,19 +868,29 @@ private fun RegattaLinkBoatDataSelectorRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(text = title, fontWeight = FontWeight.SemiBold)
             Text(
-                text = regattaLinkBoatDataOutputStateText(
-                    desired = desired,
-                    bootMask = bootMask,
-                    activeMask = activeMask,
-                    runtimeBit = runtimeBit
-                ),
+                text = if (draftChanged && draft != null) {
+                    stringResource(
+                        if (draft) {
+                            R.string.regattalink_config_draft_enable
+                        } else {
+                            R.string.regattalink_config_draft_disable
+                        }
+                    )
+                } else {
+                    regattaLinkBoatDataOutputStateText(
+                        desired = desired,
+                        bootMask = bootMask,
+                        activeMask = activeMask,
+                        runtimeBit = runtimeBit
+                    )
+                },
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         Switch(
-            checked = desired == true,
+            checked = draft == true,
             onCheckedChange = onCheckedChange,
-            enabled = enabled && desired != null
+            enabled = enabled && draft != null
         )
     }
 }
@@ -893,16 +900,13 @@ private fun RegattaLinkBoatDataSelectorRow(
 private fun RegattaLinkNmeaSetupSheet(
     nmeaState: RegattaLinkNmeaState,
     configurationState: RegattaLinkConfigurationState,
+    deviceKey: String,
     connected: Boolean,
     configEnabled: Boolean,
     otaActive: Boolean,
     rawCaptureActive: Boolean,
     onSetLoadPrecisionX10: (Boolean) -> Unit,
-    onSetNmeaTxEnabled: (Boolean) -> Unit,
-    onSetNmeaAttitudeTxEnabled: (Boolean) -> Unit,
-    onSetNmea0183TxEnabled: (Boolean) -> Unit,
-    onSetPhoneGpsTxEnabled: (Boolean) -> Unit,
-    onSetCompassTxEnabled: (Boolean) -> Unit,
+    onApplyTxConfigAndRestart: (UInt) -> Unit,
     phoneGpsRelayEnabled: Boolean,
     onSetPhoneGpsRelayEnabled: (Boolean) -> Unit,
     onSetNmea0183Baud: (Int) -> Unit,
@@ -918,6 +922,24 @@ private fun RegattaLinkNmeaSetupSheet(
     val magAvailable = configurationState.magSessionAvailable != false
     val nmeaAvailable =
         connected && (canAvailable || nmea0183Available)
+    val txSelectionFromDevice =
+        configurationState.configWord?.and(REGATTALINK_CONFIG_TX_SELECTION_MASK)
+    var txBaseline by remember(deviceKey) {
+        mutableStateOf(txSelectionFromDevice)
+    }
+    var txDraft by remember(deviceKey) {
+        mutableStateOf(txSelectionFromDevice)
+    }
+    LaunchedEffect(deviceKey, txSelectionFromDevice) {
+        if (txBaseline == null && txSelectionFromDevice != null) {
+            txBaseline = txSelectionFromDevice
+            txDraft = txSelectionFromDevice
+        }
+    }
+    val txDirty =
+        txBaseline != null &&
+            txDraft != null &&
+            txBaseline != txDraft
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -1589,6 +1611,7 @@ private fun RegattaLinkNmeaSetupSheet(
 private fun RegattaLinkAdvancedDiagnosticsSheet(
     state: RegattaLinkClientState,
     configurationState: RegattaLinkConfigurationState,
+    deviceKey: String,
     nmeaState: RegattaLinkNmeaState,
     rawCaptureState: RegattaLinkRawCaptureState,
     connected: Boolean,
@@ -1596,7 +1619,7 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
     otaActive: Boolean,
     onChangeName: () -> Unit,
     onSetLedBrightness: (Int) -> Unit,
-    onSetSubsystemEnabled: (RegattaLinkSubsystem, Boolean) -> Unit,
+    onApplySubsystemConfigAndRestart: (UInt) -> Unit,
     onRestart: () -> Unit,
     onDrainDiagnosticLog: () -> Unit,
     onReadRawFrames: () -> Unit,
@@ -1610,6 +1633,28 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
     var brightnessDraft by remember(configurationState.ledBrightnessPct) {
         mutableStateOf((configurationState.ledBrightnessPct ?: 0).toFloat())
     }
+    val subsystemSelectionFromSession =
+        configurationState.configWord
+            ?.and(REGATTALINK_CONFIG_SESSION_SUBSYSTEM_MASK)
+    var subsystemBaseline by remember(deviceKey) {
+        mutableStateOf(subsystemSelectionFromSession)
+    }
+    var subsystemDraft by remember(deviceKey) {
+        mutableStateOf(subsystemSelectionFromSession)
+    }
+    LaunchedEffect(deviceKey, subsystemSelectionFromSession) {
+        if (
+            subsystemBaseline == null &&
+            subsystemSelectionFromSession != null
+        ) {
+            subsystemBaseline = subsystemSelectionFromSession
+            subsystemDraft = subsystemSelectionFromSession
+        }
+    }
+    val subsystemDirty =
+        subsystemBaseline != null &&
+            subsystemDraft != null &&
+            subsystemBaseline != subsystemDraft
     val rawCaptureRemainingSeconds =
         rememberRawCaptureRemainingSeconds(rawCaptureState)
     val displayedName =
