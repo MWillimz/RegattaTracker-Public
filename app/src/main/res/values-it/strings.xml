@@ -206,6 +206,13 @@
     <string name="next_wait">Prossimo: attendi</string>
     <string name="next_course">Prossimo: percorso</string>
     <string name="start_in">PARTENZA TRA %1$d:%2$02d</string>
+    <string name="daily_event">Evento giornaliero</string>
+    <string name="flying_start">Partenza libera</string>
+    <string name="start_window_value">Finestra di partenza: %1$s</string>
+    <string name="start_window_unknown">Finestra di partenza: --</string>
+    <string name="start_window_in">FINESTRA DI PARTENZA TRA %1$d:%2$02d</string>
+    <string name="start_window_open">FINESTRA DI PARTENZA APERTA</string>
+    <string name="flying_start_started">PARTITO</string>
     <string name="ocs">OCS</string>
     <string name="finished">ARRIVATO</string>
     <string name="finalised">CHIUSA</string>
