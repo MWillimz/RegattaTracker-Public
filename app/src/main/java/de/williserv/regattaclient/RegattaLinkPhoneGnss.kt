@@ -41,13 +41,13 @@ internal const val REGATTALINK_PHONE_GNSS_VALID_UTC_TIME = 1 shl 5
 
 internal data class RegattaLinkPhoneGnssSample(
     val observationElapsedRealtimeNanos: Long,
-    val utcTimeMs: Long? = null,
     val latitudeDeg: Double,
     val longitudeDeg: Double,
     val cogDeg: Double? = null,
     val sogMps: Double? = null,
     val horizontalAccuracyM: Double? = null,
-    val altitudeM: Double? = null
+    val altitudeM: Double? = null,
+    val utcTimeMs: Long? = null
 )
 
 internal fun regattaLinkPhoneGnssSample(location: Location): RegattaLinkPhoneGnssSample =
