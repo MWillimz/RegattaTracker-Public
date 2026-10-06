@@ -1362,7 +1362,8 @@ private fun RegattaLinkNmeaSetupSheet(
                             configurationState.nmeaAttitudeTxSupported
                         )
             val nmeaRestartActionAvailable =
-                regattaLinkNmeaRestartRequired(configurationState) ||
+                txDirty ||
+                    regattaLinkNmeaRestartRequired(configurationState) ||
                     nmeaAppliedStateUnknown
 
             if (
@@ -1377,6 +1378,10 @@ private fun RegattaLinkNmeaSetupSheet(
                         when {
                             configurationState.restartAwaitingDisconnect ->
                                 stringResource(R.string.regattalink_restarting)
+                            txDirty ->
+                                stringResource(
+                                    R.string.regattalink_config_draft_restart
+                                )
                             nmeaAppliedStateUnknown ->
                                 stringResource(
                                     R.string.regattalink_nmea_runtime_unknown_restart
@@ -1390,7 +1395,14 @@ private fun RegattaLinkNmeaSetupSheet(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Button(
-                    onClick = onRestart,
+                    onClick = {
+                        val draft = txDraft
+                        if (txDirty && draft != null) {
+                            onApplyTxConfigAndRestart(draft)
+                        } else {
+                            onRestart()
+                        }
+                    },
                     enabled =
                         configEnabled &&
                             configurationState.deviceControlSupported &&
@@ -1401,10 +1413,15 @@ private fun RegattaLinkNmeaSetupSheet(
                         .padding(top = 8.dp)
                 ) {
                     Text(
-                        if (configurationState.restartAwaitingDisconnect) {
-                            stringResource(R.string.regattalink_restarting)
-                        } else {
-                            stringResource(R.string.regattalink_restart)
+                        when {
+                            configurationState.restartAwaitingDisconnect ->
+                                stringResource(R.string.regattalink_restarting)
+                            txDirty ->
+                                stringResource(
+                                    R.string.regattalink_apply_restart
+                                )
+                            else ->
+                                stringResource(R.string.regattalink_restart)
                         }
                     )
                 }
