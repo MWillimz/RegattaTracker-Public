@@ -669,6 +669,14 @@
     <string name="regattalink_device_control">Étalonnage</string>
     <string name="regattalink_set_upright">Définir la position verticale</string>
     <string name="regattalink_set_upright_instruction">Maintenez le bateau et le RegattaLink immobiles dans la position neutre souhaitée pendant l’étalonnage.</string>
+    <string name="regattalink_set_upright_arrow_forward">Le RegattaLink est-il installé avec la flèche orientée vers l’avant ?</string>
+    <string name="regattalink_set_upright_dialog_instruction">Maintenez le bateau à niveau et le RegattaLink immobile, puis définissez la position verticale.</string>
+    <string name="regattalink_set_upright_tilt">Inclinaison de la flèche : %1$d° %2$s / %3$d°</string>
+    <string name="regattalink_set_upright_tilt_off">Inclinaison de la flèche : %1$d° %2$s / %3$d° — Montage à vérifier</string>
+    <string name="regattalink_set_upright_tilt_waiting">Vérification de l’angle de montage…</string>
+    <string name="regattalink_arrow_tilt_up">vers le haut</string>
+    <string name="regattalink_arrow_tilt_down">vers le bas</string>
+    <string name="regattalink_arrow_tilt_level">à niveau</string>
     <string name="regattalink_forward_trim">Direction / lacet</string>
     <string name="regattalink_one_degree_port">1° Bâbord</string>
     <string name="regattalink_one_degree_starboard">1° Tribord</string>
