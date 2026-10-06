@@ -123,6 +123,10 @@ internal interface RegattaLinkConnectionClient {
         subsystem: RegattaLinkSubsystem,
         enabled: Boolean
     ): Boolean = false
+    fun applyConfigBitsAndRestart(
+        mask: UInt,
+        encodedBits: UInt
+    ): Boolean = false
     fun setHeadingTrimDeg(value: Int): Boolean = false
     fun offerPhoneGnss(sample: RegattaLinkPhoneGnssSample): Boolean = false
     fun clearPhoneGnss() = Unit
@@ -487,6 +491,33 @@ internal class RegattaLinkConnectionManager(
         withConfigMutationAllowed {
             client.setSubsystemEnabled(subsystem, enabled)
         }
+
+    fun applyTxSelectionAndRestart(encodedBits: UInt): Boolean =
+        applyConfigBitsAndRestart(
+            mask = REGATTALINK_CONFIG_TX_SELECTION_MASK,
+            encodedBits = encodedBits
+        )
+
+    fun applySubsystemSelectionAndRestart(encodedBits: UInt): Boolean =
+        applyConfigBitsAndRestart(
+            mask = REGATTALINK_CONFIG_SESSION_SUBSYSTEM_MASK,
+            encodedBits = encodedBits
+        )
+
+    private fun applyConfigBitsAndRestart(
+        mask: UInt,
+        encodedBits: UInt
+    ): Boolean {
+        if (
+            encodedBits and mask.inv() != 0u ||
+            !configurationState.deviceControlSupported
+        ) {
+            return false
+        }
+        return withConfigMutationAllowed {
+            client.applyConfigBitsAndRestart(mask, encodedBits)
+        }
+    }
 
     fun setHeadingTrimDeg(value: Int): Boolean {
         if (value !in -180..180) return false
