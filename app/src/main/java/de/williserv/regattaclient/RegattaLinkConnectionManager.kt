@@ -510,6 +510,8 @@ internal class RegattaLinkConnectionManager(
     ): Boolean {
         if (
             encodedBits and mask.inv() != 0u ||
+            !configurationState.configWordSupported ||
+            configurationState.configWord == null ||
             !configurationState.deviceControlSupported
         ) {
             return false
