@@ -876,7 +876,7 @@ internal class RegattaLinkBleClient(
             negotiatedMtu: Int,
             status: Int
         ) {
-            if (gatt !== callbackGatt) return
+            if (gatt !== callbackGatt || !connected) return
             if (status == BluetoothGatt.GATT_SUCCESS && negotiatedMtu >= 23) {
                 mtu = negotiatedMtu
                 if (!regattaLinkPhoneGnssTransportReady(mtu)) {
