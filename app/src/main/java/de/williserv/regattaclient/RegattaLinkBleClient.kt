@@ -879,7 +879,19 @@ internal class RegattaLinkBleClient(
             if (gatt !== callbackGatt) return
             if (status == BluetoothGatt.GATT_SUCCESS && negotiatedMtu >= 23) {
                 mtu = negotiatedMtu
+                if (!regattaLinkPhoneGnssTransportReady(mtu)) {
+                    Log.w(
+                        LOG_TAG,
+                        "Negotiated ATT MTU $mtu is below Phone GNSS minimum " +
+                            REGATTALINK_PHONE_GNSS_REQUIRED_MTU
+                    )
+                }
                 publishPhoneGnssTransportReadinessIfChanged()
+            } else {
+                Log.w(
+                    LOG_TAG,
+                    "Connection MTU negotiation failed status=$status mtu=$negotiatedMtu"
+                )
             }
             completeMtu(mtu)
         }
