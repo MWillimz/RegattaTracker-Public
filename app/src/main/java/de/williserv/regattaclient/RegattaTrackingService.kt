@@ -146,6 +146,7 @@ class RegattaTrackingService : Service() {
         const val EXTRA_BOAT_TYPE = "boat_type"
         const val EXTRA_MANUAL_RECORDING = "manual_recording"
         const val EXTRA_PRESERVE_LOCAL_RACE_STATUS = "preserve_local_race_status"
+        const val EXTRA_RESET_RACE_RUN_STATE = "reset_race_run_state"
 
         private const val NOTIFICATION_CHANNEL_ID = "regatta_tracking_channel"
         private const val NOTIFICATION_ID = 1001
@@ -193,6 +194,7 @@ class RegattaTrackingService : Service() {
 
     private var boatType = ""
     private var raceStatus = "unknown"
+    private var scoringMode = "mass_start"
     private var raceStartInstant: Instant? = null
     private var raceStopInstant: Instant? = null
 
@@ -219,6 +221,7 @@ class RegattaTrackingService : Service() {
     private var raceFinished = false
     private var finishDetectionSuppressed = false
     private var passedMarks = 0
+    private var localStartTimestampMillis: Long? = null
 
     private var lastDtlM: Double? = null
     private var lastTtlSeconds: Double? = null
@@ -473,6 +476,7 @@ class RegattaTrackingService : Service() {
 
     private fun resetRunSpecificState() {
         raceStatus = "unknown"
+        scoringMode = "mass_start"
         raceStartInstant = null
         raceStopInstant = null
         courseShortened = false
@@ -482,6 +486,10 @@ class RegattaTrackingService : Service() {
         coursePositions = emptyList()
         firstCourseReference = null
 
+        resetRaceProgressState()
+    }
+
+    private fun resetRaceProgressState() {
         previousStartLinePosition = null
         previousStartLineTimestampMillis = null
         previousFinishLinePosition = null
@@ -495,6 +503,7 @@ class RegattaTrackingService : Service() {
         raceFinished = false
         finishDetectionSuppressed = false
         passedMarks = 0
+        localStartTimestampMillis = null
 
         lastDtlM = null
         lastTtlSeconds = null
@@ -530,6 +539,8 @@ class RegattaTrackingService : Service() {
         finishDetectionSuppressed = prefs.getBoolean("finish_detection_suppressed", false)
         passedMarks = prefs.getInt("passed_marks", 0)
         isOcs = prefs.getBoolean("is_ocs", false)
+        localStartTimestampMillis = prefs.getLong("local_start_timestamp_ms", 0L)
+            .takeIf { it > 0L }
 
         if (savedResolvedEventName.isBlank()) {
             savePersistedRaceState()
@@ -539,7 +550,7 @@ class RegattaTrackingService : Service() {
     private fun savePersistedRaceState() {
         val resolvedName = resolvedEventName ?: return
 
-        getSharedPreferences(raceStatePrefsName, Context.MODE_PRIVATE)
+        val editor = getSharedPreferences(raceStatePrefsName, Context.MODE_PRIVATE)
             .edit()
             .putString("event_name", eventName)
             .putString("resolved_event_name", resolvedName)
@@ -550,7 +561,12 @@ class RegattaTrackingService : Service() {
             .putInt("passed_marks", passedMarks)
             .putBoolean("is_ocs", isOcs)
             .putLong("saved_at", System.currentTimeMillis())
-            .apply()
+
+        localStartTimestampMillis?.let {
+            editor.putLong("local_start_timestamp_ms", it)
+        } ?: editor.remove("local_start_timestamp_ms")
+
+        editor.apply()
     }
 
     private fun handleStickyRestart(): Int {
@@ -710,6 +726,11 @@ class RegattaTrackingService : Service() {
             ?.trim()
             ?.takeIf { it.isNotBlank() }
             ?.let(::adoptResolvedEventName)
+
+        if (intent.getBooleanExtra(EXTRA_RESET_RACE_RUN_STATE, false)) {
+            resetRaceProgressState()
+            savePersistedRaceState()
+        }
 
         refreshAccessContextId()
     }
@@ -1353,6 +1374,7 @@ class RegattaTrackingService : Service() {
         persistActiveRaceContext(snapshot)
 
         raceStatus = snapshot.status.ifBlank { "unknown" }
+        scoringMode = snapshot.scoringMode.ifBlank { "mass_start" }
         courseShortened = snapshot.courseShortened
         raceStartInstant = parseServerInstant(snapshot.startRaw)
         raceStopInstant = parseServerInstant(snapshot.stopRaw)
@@ -1669,14 +1691,22 @@ class RegattaTrackingService : Service() {
                 boatSignedDistance = metrics.signedDistanceM
             )
 
-            if (
+            val shouldStart = if (isFlyingStart(scoringMode)) {
+                !isOcs &&
+                    !raceStarted &&
+                    metrics.crossed &&
+                    isOnCourseSide
+            } else {
                 shouldMarkRaceStarted(
                     isOcs = isOcs,
                     raceStarted = raceStarted,
                     isOnCourseSide = isOnCourseSide
                 )
-            ) {
+            }
+
+            if (shouldStart) {
                 raceStarted = true
+                localStartTimestampMillis = nowMillis
                 savePersistedRaceState()
             }
         }
@@ -2078,6 +2108,7 @@ class RegattaTrackingService : Service() {
         raceStarted = raceStartedFromUser
         raceFinished = false
         finishDetectionSuppressed = false
+        localStartTimestampMillis = null
         passedMarks = if (raceStartedFromUser) {
             safePassedMarks
         } else {
@@ -2134,7 +2165,7 @@ class RegattaTrackingService : Service() {
         val progressText = buildProgressText()
         val boatStatusText = buildBoatStatusText()
 
-        getSharedPreferences(localStatusPrefsName, Context.MODE_PRIVATE)
+        val editor = getSharedPreferences(localStatusPrefsName, Context.MODE_PRIVATE)
             .edit()
             .putString("dtl_text", distanceText)
             .putString("ttl_text", ttlText)
@@ -2146,7 +2177,12 @@ class RegattaTrackingService : Service() {
             .putBoolean("race_started", raceStarted)
             .putBoolean("race_finished", raceFinished)
             .putInt("passed_marks", passedMarks)
-            .apply()
+
+        localStartTimestampMillis?.let {
+            editor.putLong("local_start_timestamp_ms", it)
+        } ?: editor.remove("local_start_timestamp_ms")
+
+        editor.apply()
 
         updateAutoStopAfterFinish()
     }
