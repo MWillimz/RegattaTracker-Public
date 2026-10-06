@@ -669,6 +669,14 @@
     <string name="regattalink_device_control">Calibrazione</string>
     <string name="regattalink_set_upright">Imposta posizione verticale</string>
     <string name="regattalink_set_upright_instruction">Mantieni barca e RegattaLink fermi nella posizione neutra desiderata durante la calibrazione.</string>
+    <string name="regattalink_set_upright_arrow_forward">Il RegattaLink è installato con la freccia rivolta verso prua?</string>
+    <string name="regattalink_set_upright_dialog_instruction">Mantieni la barca in piano e il RegattaLink fermo, quindi imposta la posizione verticale.</string>
+    <string name="regattalink_set_upright_tilt">Inclinazione freccia: %1$d° %2$s / %3$d°</string>
+    <string name="regattalink_set_upright_tilt_off">Inclinazione freccia: %1$d° %2$s / %3$d° — Controlla il montaggio</string>
+    <string name="regattalink_set_upright_tilt_waiting">Controllo dell’angolo di montaggio…</string>
+    <string name="regattalink_arrow_tilt_up">verso l’alto</string>
+    <string name="regattalink_arrow_tilt_down">verso il basso</string>
+    <string name="regattalink_arrow_tilt_level">in piano</string>
     <string name="regattalink_forward_trim">Direzione / imbardata</string>
     <string name="regattalink_one_degree_port">1° Babordo</string>
     <string name="regattalink_one_degree_starboard">1° Tribordo</string>
