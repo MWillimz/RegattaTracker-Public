@@ -118,6 +118,7 @@ fun HomeScreen(
     retirementReported: Boolean,
     retirementStatusText: String,
     raceDataReady: Boolean,
+    dailyReentryEnabled: Boolean = false,
     raceRegistered: Boolean,
     localRaceFinished: Boolean,
     dtlText: String,
@@ -350,7 +351,20 @@ fun HomeScreen(
         Spacer(modifier = Modifier.height(HomeGapMedium))
 
 
-        if (isRaceFinished(raceStatusCode, raceDataReady)) {
+        val raceFinished = isRaceFinished(raceStatusCode, raceDataReady)
+
+        if (!raceFinished) {
+            RacecourseRow(
+                raceDataReady = raceDataReady,
+                onCourse = onCourse,
+                onMap = onMap
+            )
+        }
+
+        if (raceFinished || dailyReentryEnabled) {
+            if (!raceFinished) {
+                Spacer(modifier = Modifier.height(HomeGapMedium))
+            }
             Button(
                 onClick = onResults,
                 enabled = raceDataReady,
@@ -364,12 +378,6 @@ fun HomeScreen(
             ) {
                 Text(stringResource(R.string.results))
             }
-        } else {
-            RacecourseRow(
-                raceDataReady = raceDataReady,
-                onCourse = onCourse,
-                onMap = onMap
-            )
         }
 
         Spacer(modifier = Modifier.height(HomeGapLarge))
