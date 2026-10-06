@@ -669,6 +669,14 @@
     <string name="regattalink_device_control">Kalibrierung</string>
     <string name="regattalink_set_upright">Aufrechte Lage setzen</string>
     <string name="regattalink_set_upright_instruction">Boot und RegattaLink während der Kalibrierung ruhig in der gewünschten neutralen Lage halten.</string>
+    <string name="regattalink_set_upright_arrow_forward">Ist der RegattaLink mit dem Pfeil nach vorne eingebaut?</string>
+    <string name="regattalink_set_upright_dialog_instruction">Boot waagerecht und den RegattaLink ruhig halten, dann die aufrechte Lage setzen.</string>
+    <string name="regattalink_set_upright_tilt">Pfeilneigung: %1$d° %2$s / %3$d°</string>
+    <string name="regattalink_set_upright_tilt_off">Pfeilneigung: %1$d° %2$s / %3$d° — Einbaulage auffällig</string>
+    <string name="regattalink_set_upright_tilt_waiting">Einbauneigung wird geprüft…</string>
+    <string name="regattalink_arrow_tilt_up">nach oben</string>
+    <string name="regattalink_arrow_tilt_down">nach unten</string>
+    <string name="regattalink_arrow_tilt_level">waagerecht</string>
     <string name="regattalink_forward_trim">Vorwärtsrichtung / Gier</string>
     <string name="regattalink_one_degree_port">1° Backbord</string>
     <string name="regattalink_one_degree_starboard">1° Steuerbord</string>
