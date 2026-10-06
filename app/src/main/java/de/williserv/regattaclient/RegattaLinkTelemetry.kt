@@ -8,6 +8,7 @@ import java.nio.ByteOrder
 internal const val REGATTALINK_TELEMETRY_RECORD_SIZE = 20
 internal const val REGATTALINK_TELEMETRY_SCHEMA_VERSION = 1
 internal const val REGATTALINK_RAW_IMU_SCHEMA_VERSION = 2
+internal const val REGATTALINK_UPRIGHT_MAX_FRONT_TILT_DEG = 10
 internal const val REGATTALINK_FAST_STALE_MS = 2_000L
 internal const val REGATTALINK_SLOW_STALE_MS = 3_000L
 internal const val REGATTALINK_MOTION_ONE_HZ_STALE_MS = 3_000L
