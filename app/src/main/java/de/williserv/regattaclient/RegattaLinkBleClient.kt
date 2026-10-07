@@ -1950,6 +1950,11 @@ internal class RegattaLinkBleClient(
                 reconnectFuture?.complete(null)
             } else if (scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT) {
                 retryKnownDeviceReconnect("Could not open configured RegattaLink connection")
+            } else if (scanPurpose == ScanPurpose.KNOWN_DEVICE_AUTOCONNECT) {
+                finishKnownDeviceAutoConnectError(
+                    "Could not open configured RegattaLink connection",
+                    RegattaLinkUiMessage.CONNECTION_OPEN_FAILED
+                )
             } else if (discoveryInProgress) {
                 retryDiscoveryAfterCandidateFailure()
             } else {
