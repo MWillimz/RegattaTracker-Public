@@ -155,6 +155,7 @@ fun RegattaLinkScreen(
     phoneGpsRelayEnabled: Boolean = false,
     modifier: Modifier = Modifier,
     onSearch: () -> Unit,
+    onEnableBluetooth: () -> Unit = {},
     onCheckFirmware: () -> Unit,
     onFirmwareSourceSelected: (RegattaLinkFirmwareSource) -> Unit,
     onInstallFirmware: () -> Unit,
@@ -191,6 +192,7 @@ fun RegattaLinkScreen(
     )
     val statusText = when (state.status) {
         RegattaLinkConnectionStatus.IDLE -> stringResource(R.string.regattalink_status_not_connected)
+        RegattaLinkConnectionStatus.WAITING -> stringResource(R.string.regattalink_status_waiting)
         RegattaLinkConnectionStatus.SCANNING -> stringResource(R.string.regattalink_status_scanning)
         RegattaLinkConnectionStatus.BONDING -> stringResource(R.string.regattalink_status_pairing)
         RegattaLinkConnectionStatus.CONNECTING -> stringResource(R.string.regattalink_status_connecting)
@@ -198,6 +200,8 @@ fun RegattaLinkScreen(
         RegattaLinkConnectionStatus.READING_DEVICE_INFO ->
             stringResource(R.string.regattalink_status_reading_device)
         RegattaLinkConnectionStatus.CONNECTED -> stringResource(R.string.regattalink_status_connected)
+        RegattaLinkConnectionStatus.BLUETOOTH_OFF ->
+            stringResource(R.string.regattalink_status_bluetooth_off)
         RegattaLinkConnectionStatus.ERROR -> stringResource(R.string.regattalink_status_error)
     }
 
@@ -720,6 +724,18 @@ fun RegattaLinkScreen(
             }
         }
 
+        if (state.status == RegattaLinkConnectionStatus.BLUETOOTH_OFF) {
+            Button(
+                onClick = onEnableBluetooth,
+                enabled = !otaState.isActive,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 18.dp)
+            ) {
+                Text(stringResource(R.string.regattalink_enable_bluetooth))
+            }
+        }
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -730,7 +746,8 @@ fun RegattaLinkScreen(
                 onClick = onSearch,
                 enabled = !busy &&
                     !otaState.isActive &&
-                    state.status != RegattaLinkConnectionStatus.CONNECTED,
+                    state.status != RegattaLinkConnectionStatus.CONNECTED &&
+                    state.status != RegattaLinkConnectionStatus.BLUETOOTH_OFF,
                 modifier = Modifier.weight(1f)
             ) {
                 Text(stringResource(R.string.regattalink_search_connect))
@@ -741,7 +758,8 @@ fun RegattaLinkScreen(
                 enabled = !otaState.isActive &&
                     !configurationState.deviceControlBusy &&
                     !configurationState.factoryResetAwaitingDisconnect &&
-                    state.status != RegattaLinkConnectionStatus.IDLE,
+                    state.status != RegattaLinkConnectionStatus.IDLE &&
+                    state.status != RegattaLinkConnectionStatus.BLUETOOTH_OFF,
                 modifier = Modifier.weight(1f)
             ) {
                 Text(stringResource(R.string.regattalink_disconnect))
