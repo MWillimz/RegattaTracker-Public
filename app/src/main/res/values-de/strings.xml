@@ -771,4 +771,11 @@
     <string name="session_metric_acceleration_5s">Beschleunigung (5 s)</string>
     <string name="session_metric_magnetic_heading">Magnetischer Steuerkurs</string>
     <string name="session_metric_true_heading">Rechtweisender Steuerkurs</string>
+
+    <string name="regattalink_devices">Meine RLinks</string>
+    <string name="regattalink_find">RLink suchen</string>
+    <string name="regattalink_selected">Ausgewählt</string>
+    <string name="regattalink_known">Bekannt</string>
+    <string name="regattalink_nearby">In der Nähe</string>
+    <string name="regattalink_no_known_devices">Keine bekannten RLinks</string>
 </resources>
