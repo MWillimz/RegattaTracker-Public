@@ -47,6 +47,7 @@ import de.williserv.regattaclient.ui.theme.RegattaBlue
 import de.williserv.regattaclient.ui.theme.RegattaGreen
 import de.williserv.regattaclient.ui.theme.RegattaOrange
 import de.williserv.regattaclient.ui.theme.RegattaRed
+import de.williserv.regattaclient.ui.theme.RegattaYellow
 
 import androidx.compose.foundation.Image
 import androidx.compose.ui.res.painterResource
@@ -822,7 +823,7 @@ private fun RegattaLinkStatusIndicator(
                 .background(
                     when (status) {
                         RegattaLinkHomeStatus.CONNECTED -> RegattaGreen
-                        RegattaLinkHomeStatus.WAITING -> RegattaOrange
+                        RegattaLinkHomeStatus.WAITING -> RegattaYellow
                         RegattaLinkHomeStatus.ERROR -> RegattaRed
                     },
                     CircleShape
