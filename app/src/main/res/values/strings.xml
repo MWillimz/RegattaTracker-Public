@@ -466,6 +466,10 @@
     <string name="regattalink_status_reading_device">Reading device information…</string>
     <string name="regattalink_status_connected">Connected</string>
     <string name="regattalink_status_error">Connection failed</string>
+    <string name="regattalink_status_waiting">Waiting for RegattaLink</string>
+    <string name="regattalink_status_bluetooth_off">Bluetooth is turned off</string>
+    <string name="regattalink_error_bluetooth_disabled">Turn on Bluetooth to connect to RegattaLink.</string>
+    <string name="regattalink_enable_bluetooth">Turn on Bluetooth</string>
     <string name="regattalink_search_connect">Search / connect</string>
     <string name="regattalink_disconnect">Disconnect</string>
     <string name="regattalink_permission_denied">Bluetooth permission denied.</string>
