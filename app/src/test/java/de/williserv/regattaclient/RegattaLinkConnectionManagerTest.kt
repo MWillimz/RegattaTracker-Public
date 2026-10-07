@@ -152,6 +152,22 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun bluetoothOffEndsManualDiscoveryOwnershipSoAutoconnectCanResume() {
+        assertTrue(manager.startDiscovery())
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.BLUETOOTH_OFF,
+                userMessage = RegattaLinkUiMessage.BLUETOOTH_DISABLED
+            )
+        )
+
+        manager.ensureConnectedIfPermitted()
+
+        assertEquals(1, fakeClient.discoveryCalls)
+        assertEquals(1, fakeClient.autoConnectCalls)
+    }
+
+    @Test
     fun rejectedDiscoveryDoesNotBlockConfiguredReconnect() {
         fakeClient.discoveryAccepted = false
 
