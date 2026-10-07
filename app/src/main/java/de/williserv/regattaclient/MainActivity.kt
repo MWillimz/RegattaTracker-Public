@@ -1,6 +1,7 @@
 package de.williserv.regattaclient
 
 import android.Manifest
+import android.bluetooth.BluetoothAdapter
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -13,6 +14,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -459,6 +461,11 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+    private val regattaLinkBluetoothEnableLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            // BluetoothAdapter.ACTION_STATE_CHANGED drives connection recovery.
+        }
+
     private val regattaLinkPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
             val action = pendingRegattaLinkPermissionAction
@@ -644,9 +651,12 @@ class MainActivity : ComponentActivity() {
                             sogText = sogText.value,
                             gpsAccuracyText = gpsAccuracyText.value,
                             gpsColor = gpsColor.value,
-                            regattaLinkConnected =
-                                regattaLinkState.value.status ==
-                                    RegattaLinkConnectionStatus.CONNECTED,
+                            regattaLinkStatus =
+                                regattaLinkHomeStatus(
+                                    state = regattaLinkState.value,
+                                    pairingRequired =
+                                        regattaLinkManager.requiresNewPairing()
+                                ),
                             showClearConfirmDialog = showClearConfirmDialog.value,
                             showAdvanced = showAdvanced.value,
                             modifier = Modifier.padding(innerPadding),
@@ -677,7 +687,23 @@ class MainActivity : ComponentActivity() {
                                     fetchEventResults()
                                 }
                             },
-                            onRegattaLinkReconnect = ::startRegattaLinkReconnect,
+                            onRegattaLinkReconnect = {
+                                val homeStatus =
+                                    regattaLinkHomeStatus(
+                                        state = regattaLinkState.value,
+                                        pairingRequired =
+                                            regattaLinkManager.requiresNewPairing()
+                                    )
+                                if (
+                                    regattaLinkManager.configuredDevice() == null ||
+                                    homeStatus == RegattaLinkHomeStatus.ERROR
+                                ) {
+                                    regattaLinkReturnScreen = Screen.HOME
+                                    currentScreen.value = Screen.REGATTALINK
+                                } else {
+                                    startRegattaLinkReconnect()
+                                }
+                            },
                             onRegattaLinkOpen = {
                                 regattaLinkReturnScreen = Screen.HOME
                                 currentScreen.value = Screen.REGATTALINK
@@ -854,6 +880,7 @@ class MainActivity : ComponentActivity() {
                                 regattaLinkPhoneGpsRelayEnabled.value,
                             modifier = Modifier.padding(innerPadding),
                             onSearch = ::startRegattaLinkConnection,
+                            onEnableBluetooth = ::requestEnableRegattaLinkBluetooth,
                             onCheckFirmware = ::loadRegattaLinkFirmware,
                             onFirmwareSourceSelected = ::selectRegattaLinkFirmwareSource,
                             onInstallFirmware = ::installRegattaLinkFirmware,
@@ -3376,6 +3403,18 @@ class MainActivity : ComponentActivity() {
                             )
                     }
                 }, revealDelay)
+            }
+        }
+    }
+
+    private fun requestEnableRegattaLinkBluetooth() {
+        val enableIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+        val launched = runCatching {
+            regattaLinkBluetoothEnableLauncher.launch(enableIntent)
+        }.isSuccess
+        if (!launched) {
+            runCatching {
+                startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
             }
         }
     }
