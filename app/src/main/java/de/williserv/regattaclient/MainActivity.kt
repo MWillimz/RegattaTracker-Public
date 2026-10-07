@@ -329,6 +329,7 @@ class MainActivity : ComponentActivity() {
     private val retirementReported = mutableStateOf(false)
     private val retirementStatusText = mutableStateOf("")
     private val retirementRequestInFlight = mutableStateOf(false)
+    private val retirementRunGuard = ParticipantRetirementRunGuard()
     private val showAdvanced = mutableStateOf(false)
 
     private val sessionSummaries = mutableStateOf<List<TrackingSessionSummary>>(emptyList())
@@ -3561,7 +3562,10 @@ class MainActivity : ComponentActivity() {
         localRaceStartTimestampMillis = null
         retirementReported.value = false
         retirementStatusText.value = ""
-        ParticipantRetirementStore.clear(this)
+        retirementRunGuard.resetForNewRun {
+            ParticipantRetirementStore.clear(this)
+        }
+        retirementRequestInFlight.value = false
         showFinishDetectedDialog.value = false
         updateLocalRaceStatus()
     }
@@ -3589,9 +3593,11 @@ class MainActivity : ComponentActivity() {
 
     private fun isCurrentRetirementRequest(
         access: EventAccessKey,
-        identity: ParticipantRetirementIdentity
+        identity: ParticipantRetirementIdentity,
+        requestRunGeneration: Long
     ): Boolean =
-        inRace.value &&
+        retirementRunGuard.isCurrent(requestRunGeneration) &&
+            inRace.value &&
             currentEventAccessKey() == access &&
             currentRetirementIdentity() == identity
 
@@ -3600,6 +3606,7 @@ class MainActivity : ComponentActivity() {
 
         val access = currentEventAccessKey() ?: return
         val identity = currentRetirementIdentity()
+        val requestRunGeneration = retirementRunGuard.captureGeneration()
         if (!identity.isComplete()) {
             retirementStatusText.value = getString(R.string.confirm_boat_setup_first_period)
             return
@@ -3643,15 +3650,25 @@ class MainActivity : ComponentActivity() {
                 if (responseCode in 200..299) {
                     val receipt = parseParticipantRetirementReceipt(body, identity)
                     if (receipt != null) {
-                        ParticipantRetirementStore.save(
-                            context = applicationContext,
-                            serverUrl = access.server,
-                            receipt = receipt
-                        )
+                        retirementRunGuard.runIfCurrent(requestRunGeneration) {
+                            ParticipantRetirementStore.save(
+                                context = applicationContext,
+                                serverUrl = access.server,
+                                receipt = receipt
+                            )
+                        }
                     }
                     runOnUiThread {
                         if (!asyncLifetime.isActive()) return@runOnUiThread
-                        if (!isCurrentRetirementRequest(access, identity)) return@runOnUiThread
+                        if (
+                            !isCurrentRetirementRequest(
+                                access,
+                                identity,
+                                requestRunGeneration
+                            )
+                        ) {
+                            return@runOnUiThread
+                        }
                         if (receipt == null) {
                             retirementStatusText.value = getString(R.string.retire_response_invalid)
                         } else {
@@ -3662,7 +3679,15 @@ class MainActivity : ComponentActivity() {
                 } else {
                     runOnUiThread {
                         if (!asyncLifetime.isActive()) return@runOnUiThread
-                        if (!isCurrentRetirementRequest(access, identity)) return@runOnUiThread
+                        if (
+                            !isCurrentRetirementRequest(
+                                access,
+                                identity,
+                                requestRunGeneration
+                            )
+                        ) {
+                            return@runOnUiThread
+                        }
                         retirementStatusText.value =
                             getString(R.string.retire_failed_code, responseCode, body.take(120))
                     }
@@ -3673,7 +3698,15 @@ class MainActivity : ComponentActivity() {
                 }
                 runOnUiThread {
                     if (!asyncLifetime.isActive()) return@runOnUiThread
-                    if (!isCurrentRetirementRequest(access, identity)) return@runOnUiThread
+                    if (
+                            !isCurrentRetirementRequest(
+                                access,
+                                identity,
+                                requestRunGeneration
+                            )
+                        ) {
+                            return@runOnUiThread
+                        }
                     updateConnectionUiState()
                     retirementStatusText.value = if (serverResponded) {
                         getString(R.string.retire_failed, e.message ?: "")
@@ -3683,7 +3716,10 @@ class MainActivity : ComponentActivity() {
                 }
             } finally {
                 runOnUiThread {
-                    if (asyncLifetime.isActive()) {
+                    if (
+                        asyncLifetime.isActive() &&
+                        retirementRunGuard.isCurrent(requestRunGeneration)
+                    ) {
                         retirementRequestInFlight.value = false
                     }
                 }
