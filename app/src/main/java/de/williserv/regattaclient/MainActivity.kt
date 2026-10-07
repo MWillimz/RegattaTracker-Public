@@ -512,6 +512,8 @@ class MainActivity : ComponentActivity() {
 
                     null -> Unit
                 }
+                pendingRegattaLinkKnownStableId = null
+                pendingRegattaLinkDiscoveredAddress = null
             } else {
                 pendingRegattaLinkKnownStableId = null
                 pendingRegattaLinkDiscoveredAddress = null
