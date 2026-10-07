@@ -28,6 +28,37 @@ internal data class ParticipantRetirementReceipt(
     val reportedAt: String
 )
 
+internal class ParticipantRetirementRunGuard {
+    private val lock = Any()
+    private var generation = 0L
+
+    fun captureGeneration(): Long =
+        synchronized(lock) { generation }
+
+    fun resetForNewRun(clearPersistedReceipt: () -> Unit) {
+        synchronized(lock) {
+            generation += 1L
+            clearPersistedReceipt()
+        }
+    }
+
+    fun isCurrent(requestGeneration: Long): Boolean =
+        synchronized(lock) { generation == requestGeneration }
+
+    fun runIfCurrent(
+        requestGeneration: Long,
+        action: () -> Unit
+    ): Boolean =
+        synchronized(lock) {
+            if (generation != requestGeneration) {
+                false
+            } else {
+                action()
+                true
+            }
+        }
+}
+
 internal fun buildParticipantRetirementPayload(
     eventName: String,
     identity: ParticipantRetirementIdentity
