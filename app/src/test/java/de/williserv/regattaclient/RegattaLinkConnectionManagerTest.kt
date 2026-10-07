@@ -117,6 +117,41 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun startupUsesPersistentKnownDeviceAutoConnect() {
+        manager.requestForegroundStartupReconnectIfPermitted()
+
+        assertEquals(1, fakeClient.autoConnectCalls)
+        assertEquals(0, fakeClient.reconnectCalls)
+        assertEquals(configured.deviceAddress, fakeClient.lastAutoConnectAddress)
+        assertEquals(configured.stableId, fakeClient.lastAutoConnectStableId)
+    }
+
+    @Test
+    fun unexpectedDisconnectUsesPersistentKnownDeviceAutoConnect() {
+        fakeClient.emitUnexpectedDisconnect()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(1, fakeClient.autoConnectCalls)
+        assertEquals(0, fakeClient.reconnectCalls)
+    }
+
+    @Test
+    fun explicitDisconnectSuppressesBackgroundAutoConnectUntilUserReconnects() {
+        manager.disconnect()
+        fakeClient.emitUnexpectedDisconnect()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(0, fakeClient.autoConnectCalls)
+
+        assertTrue(manager.reconnectConfigured())
+        assertEquals(1, fakeClient.reconnectCalls)
+
+        fakeClient.emitUnexpectedDisconnect()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(1, fakeClient.autoConnectCalls)
+    }
+
+    @Test
     fun rejectedDiscoveryDoesNotBlockConfiguredReconnect() {
         fakeClient.discoveryAccepted = false
 
@@ -1570,8 +1605,10 @@ class RegattaLinkConnectionManagerTest {
     ) : RegattaLinkConnectionClient {
         var discoveryAccepted = true
         var reconnectAccepted = true
+        var autoConnectAccepted = true
         var discoveryCalls = 0
         var reconnectCalls = 0
+        var autoConnectCalls = 0
         var disconnectCalls = 0
         var otaStartCalls = 0
         var setNameCalls = 0
@@ -1601,6 +1638,8 @@ class RegattaLinkConnectionManagerTest {
         var lastAppliedConfigBits: UInt? = null
         var lastReconnectAddress: String? = null
         var lastReconnectStableId: String? = null
+        var lastAutoConnectAddress: String? = null
+        var lastAutoConnectStableId: String? = null
 
         override fun startKnownDeviceReconnect(
             deviceAddress: String,
@@ -1612,6 +1651,20 @@ class RegattaLinkConnectionManagerTest {
             lastReconnectStableId = expectedStableId
             return reconnectAccepted
         }
+
+        override fun startKnownDeviceAutoConnect(
+            deviceAddress: String,
+            expectedStableId: String?
+        ): Boolean {
+            autoConnectCalls += 1
+            lastAutoConnectAddress = deviceAddress
+            lastAutoConnectStableId = expectedStableId
+            return autoConnectAccepted
+        }
+
+        override fun onBluetoothAdapterDisabled() = Unit
+
+        override fun onBluetoothAdapterEnabled() = Unit
 
         override fun startDiscovery(): Boolean {
             discoveryCalls += 1
