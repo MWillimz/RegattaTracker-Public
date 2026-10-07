@@ -1053,6 +1053,7 @@ class RegattaTrackingServiceLifecycleTest {
                     onConfigurationStateChanged,
                     _,
                     _,
+                    _,
                     _ ->
                 RelayTestClient(
                     onStateChanged = onStateChanged,
