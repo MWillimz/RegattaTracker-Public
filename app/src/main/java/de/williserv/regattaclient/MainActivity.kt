@@ -685,7 +685,10 @@ class MainActivity : ComponentActivity() {
                                 regattaLinkHomeStatus(
                                     state = regattaLinkState.value,
                                     pairingRequired =
-                                        regattaLinkManager.requiresNewPairing()
+                                        regattaLinkManager.requiresNewPairing(),
+                                    selectedStableId =
+                                        regattaLinkDeviceSelectionState.value
+                                            .selectedStableId
                                 ),
                             showClearConfirmDialog = showClearConfirmDialog.value,
                             showAdvanced = showAdvanced.value,
@@ -722,7 +725,10 @@ class MainActivity : ComponentActivity() {
                                     regattaLinkHomeStatus(
                                         state = regattaLinkState.value,
                                         pairingRequired =
-                                            regattaLinkManager.requiresNewPairing()
+                                            regattaLinkManager.requiresNewPairing(),
+                                        selectedStableId =
+                                            regattaLinkDeviceSelectionState.value
+                                                .selectedStableId
                                     )
                                 if (
                                     regattaLinkManager.configuredDevice() == null ||
