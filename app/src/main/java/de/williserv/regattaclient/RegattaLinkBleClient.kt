@@ -1421,7 +1421,7 @@ internal class RegattaLinkBleClient(
 
         val adapter = bluetoothManager.adapter
         if (adapter == null || !adapter.isEnabled) {
-            handleBluetoothAdapterDisabled()
+            onBluetoothAdapterDisabled()
             return true
         }
 
@@ -1505,7 +1505,7 @@ internal class RegattaLinkBleClient(
 
         val adapter = bluetoothManager.adapter
         if (adapter == null || !adapter.isEnabled) {
-            handleBluetoothAdapterDisabled()
+            onBluetoothAdapterDisabled()
             return
         }
 
@@ -1552,7 +1552,7 @@ internal class RegattaLinkBleClient(
 
         val adapter = bluetoothManager.adapter
         if (adapter == null || !adapter.isEnabled) {
-            handleBluetoothAdapterDisabled()
+            onBluetoothAdapterDisabled()
             return
         }
 
