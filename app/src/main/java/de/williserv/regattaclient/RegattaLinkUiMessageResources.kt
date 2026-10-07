@@ -12,6 +12,8 @@ internal fun regattaLinkUiMessageResource(
         R.string.regattalink_error_bluetooth_disabled
     RegattaLinkUiMessage.BLUETOOTH_UNAVAILABLE ->
         R.string.regattalink_error_bluetooth_unavailable
+    RegattaLinkUiMessage.PAIRING_REQUIRED ->
+        R.string.regattalink_error_pairing_required
     RegattaLinkUiMessage.CONNECTION_FAILED ->
         R.string.regattalink_status_error
     RegattaLinkUiMessage.CONNECTION_TIMEOUT ->
