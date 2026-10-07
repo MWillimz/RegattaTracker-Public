@@ -51,7 +51,8 @@ data class RegattaLinkClientState(
     val deviceAddress: String = "",
     val deviceInfo: RegattaLinkDeviceInfo? = null,
     val error: String = "",
-    val userMessage: RegattaLinkUiMessage? = null
+    val userMessage: RegattaLinkUiMessage? = null,
+    val phoneGnssTransportReady: Boolean = false
 )
 
 @SuppressLint(
@@ -128,7 +129,7 @@ internal class RegattaLinkBleClient(
         private const val RESTART_EXPECTED_DISCONNECT_TIMEOUT_MS = 10_000L
         private const val KNOWN_RECONNECT_SCAN_SLICE_MS = 6_000L
         private const val KNOWN_RECONNECT_PAUSE_MS = 4_000L
-        private const val REQUESTED_OTA_MTU = 247
+        private const val REQUESTED_GATT_MTU = 247
         private const val OTA_PHY_REQUEST_GRACE_MS = 300L
         private const val LOG_TAG = "RegattaLinkBLE"
 
@@ -233,6 +234,7 @@ internal class RegattaLinkBleClient(
     @Volatile
     override var mtu: Int = 23
         private set
+    private val mtuRequestAttempted = AtomicBoolean(false)
 
     private val pendingGattLock = Any()
     private var pendingGattOperation: PendingGattOperation? = null
@@ -573,6 +575,7 @@ internal class RegattaLinkBleClient(
                 status == BluetoothGatt.GATT_SUCCESS &&
                 newState == BluetoothProfile.STATE_CONNECTED
             ) {
+                resetConnectionTransportState()
                 connected = true
                 connectionSetupComplete = false
                 serviceDiscoveryInProgress = false
@@ -608,6 +611,7 @@ internal class RegattaLinkBleClient(
                 val wasReadyConnection = establishedConnection
                 connected = false
                 establishedConnection = false
+                resetConnectionTransportState()
                 resetServiceDiscoveryState()
                 failPendingGattOperation(
                     RegattaLinkOtaTransportException(
@@ -872,9 +876,22 @@ internal class RegattaLinkBleClient(
             negotiatedMtu: Int,
             status: Int
         ) {
-            if (gatt !== callbackGatt) return
+            if (gatt !== callbackGatt || !connected) return
             if (status == BluetoothGatt.GATT_SUCCESS && negotiatedMtu >= 23) {
                 mtu = negotiatedMtu
+                if (!regattaLinkPhoneGnssTransportReady(mtu)) {
+                    Log.w(
+                        LOG_TAG,
+                        "Negotiated ATT MTU $mtu is below Phone GNSS minimum " +
+                            REGATTALINK_PHONE_GNSS_REQUIRED_MTU
+                    )
+                }
+                publishPhoneGnssTransportReadinessIfChanged()
+            } else {
+                Log.w(
+                    LOG_TAG,
+                    "Connection MTU negotiation failed status=$status mtu=$negotiatedMtu"
+                )
             }
             completeMtu(mtu)
         }
@@ -896,6 +913,7 @@ internal class RegattaLinkBleClient(
     private fun completeFactoryResetDisconnect(activeGatt: BluetoothGatt) {
         connected = false
         establishedConnection = false
+        resetConnectionTransportState()
         resetServiceDiscoveryState()
         failPendingGattOperation(
             RegattaLinkOtaTransportException(
@@ -934,6 +952,7 @@ internal class RegattaLinkBleClient(
         val previousState = lastState
         connected = false
         establishedConnection = false
+        resetConnectionTransportState()
         resetServiceDiscoveryState()
         failPendingGattOperation(
             RegattaLinkOtaTransportException(
@@ -1997,7 +2016,10 @@ internal class RegattaLinkBleClient(
                 status = RegattaLinkConnectionStatus.CONNECTED,
                 deviceName = deviceName(device),
                 deviceAddress = device.address,
-                deviceInfo = info
+                deviceInfo = info,
+                phoneGnssTransportReady =
+                    establishedConnection &&
+                        regattaLinkPhoneGnssTransportReady(mtu)
             )
         )
 
@@ -2180,6 +2202,7 @@ internal class RegattaLinkBleClient(
 
         connected = false
         establishedConnection = false
+        resetConnectionTransportState()
         resetServiceDiscoveryState()
         failPendingGattOperation(
             RegattaLinkOtaTransportException(
@@ -2238,7 +2261,6 @@ internal class RegattaLinkBleClient(
                     activeGatt.close()
                     if (gatt === activeGatt) {
                         gatt = null
-                        mtu = 23
                         prepareDevice(device)
                     }
                 },
@@ -2254,7 +2276,6 @@ internal class RegattaLinkBleClient(
         if (gatt === activeGatt) {
             gatt = null
         }
-        mtu = 23
         handler.post {
             if (gatt == null) {
                 prepareDevice(device)
@@ -2692,6 +2713,9 @@ internal class RegattaLinkBleClient(
     ) {
         if (!optionalFeatureWorkAllowed(activeGatt)) return
 
+        requestConnectionMtuBestEffort(activeGatt)
+        if (!optionalFeatureWorkAllowed(activeGatt)) return
+
         if (info.telemetryAvailable) {
             setupTelemetry(activeGatt)
         }
@@ -2904,7 +2928,7 @@ internal class RegattaLinkBleClient(
             optionalFeatureWorkAllowed(activeGatt)
         ) {
             if (mtu < REGATTALINK_BOAT_STATE_NOTIFICATION_MTU) {
-                requestMtuBestEffort(activeGatt)
+                requestConnectionMtuBestEffort(activeGatt)
             }
             if (!optionalFeatureWorkAllowed(activeGatt)) return
 
@@ -3923,7 +3947,9 @@ internal class RegattaLinkBleClient(
     private fun phoneGnssForwardingAllowed(): Boolean =
         regattaLinkPhoneGnssForwardingGate(
             connected = connected,
-            transportReady = establishedConnection,
+            transportReady =
+                establishedConnection &&
+                    regattaLinkPhoneGnssTransportReady(mtu),
             otaActive = otaRunning.get(),
             configurationState = lastConfigurationState
         )
@@ -3950,6 +3976,7 @@ internal class RegattaLinkBleClient(
             val sample = phoneGnssPending.getAndSet(null) ?: return
             val activeGatt = gatt ?: return
             if (!optionalFeatureWorkAllowed(activeGatt)) return
+            if (!regattaLinkPhoneGnssTransportReady(mtu)) return
 
             val characteristic = activeGatt
                 .getService(CONFIG_SERVICE_UUID)
@@ -4825,7 +4852,7 @@ internal class RegattaLinkBleClient(
 
     override fun tuneConnection(info: RegattaLinkDeviceInfo) {
         val activeGatt = requireGatt()
-        requestMtuBestEffort(activeGatt)
+        requestConnectionMtuBestEffort(activeGatt)
 
         val priorityAccepted = runCatching {
             activeGatt.requestConnectionPriority(
@@ -5078,25 +5105,42 @@ internal class RegattaLinkBleClient(
         }
     }
 
-    private fun requestMtuBestEffort(activeGatt: BluetoothGatt) {
-        if (mtu >= REQUESTED_OTA_MTU) return
+    private fun requestConnectionMtuBestEffort(activeGatt: BluetoothGatt) {
+        if (gatt !== activeGatt || !connected) return
+        if (!mtuRequestAttempted.compareAndSet(false, true)) return
+
+        if (mtu >= REQUESTED_GATT_MTU) {
+            publishPhoneGnssTransportReadinessIfChanged()
+            return
+        }
+
         val future = CompletableFuture<Int>()
         val pending = PendingGattOperation.Mtu(future)
-        if (!setPendingGattOperation(pending)) return
+        if (!setPendingGattOperation(pending)) {
+            Log.w(
+                LOG_TAG,
+                "Skipping connection MTU request because another GATT operation is active"
+            )
+            return
+        }
 
         val initiated = runCatching {
-            activeGatt.requestMtu(REQUESTED_OTA_MTU)
+            activeGatt.requestMtu(REQUESTED_GATT_MTU)
+        }.onFailure { error ->
+            Log.w(LOG_TAG, "Connection MTU request failed locally", error)
         }.getOrDefault(false)
 
         if (!initiated) {
             clearPendingGattOperation(pending)
+            Log.w(LOG_TAG, "Connection MTU request was rejected locally")
             return
         }
 
         try {
             future.get(GATT_OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-        } catch (_: Exception) {
+        } catch (error: Exception) {
             clearPendingGattOperation(pending)
+            Log.w(LOG_TAG, "Connection MTU negotiation did not complete", error)
         }
     }
 
@@ -5588,6 +5632,33 @@ internal class RegattaLinkBleClient(
         runCatching { scanner?.stopScan(scanCallback) }
     }
 
+    private fun resetConnectionTransportState() {
+        /*
+         * Do not reset phoneGnssDrainScheduled here. A previously posted or
+         * in-flight drain owns that flag and clears it in its finally block.
+         * Clearing it from the disconnect path could schedule two drains after
+         * a fast reconnect. Dropping the pending sample is sufficient.
+         */
+        phoneGnssPending.set(null)
+        mtu = 23
+        mtuRequestAttempted.set(false)
+    }
+
+    private fun publishPhoneGnssTransportReadinessIfChanged() {
+        val ready =
+            connected &&
+                establishedConnection &&
+                regattaLinkPhoneGnssTransportReady(mtu)
+        val current = lastState
+        if (
+            current.status != RegattaLinkConnectionStatus.CONNECTED ||
+            current.phoneGnssTransportReady == ready
+        ) {
+            return
+        }
+        emit(current.copy(phoneGnssTransportReady = ready))
+    }
+
     private fun resetServiceDiscoveryState() {
         handler.removeCallbacks(serviceRediscovery)
         serviceRediscoveryGatt = null
@@ -5600,7 +5671,7 @@ internal class RegattaLinkBleClient(
     }
 
     private fun closeGatt() {
-        clearPhoneGnssPending()
+        resetConnectionTransportState()
         handler.removeCallbacks(gattTimeout)
         handler.removeCallbacks(gattSchemaReconcileTimeout)
         clearGattSchemaReconnectState()
@@ -5621,7 +5692,6 @@ internal class RegattaLinkBleClient(
             runCatching { existing.disconnect() }
             existing.close()
         }
-        mtu = 23
     }
 
     private fun closeGattWithError(
@@ -5634,6 +5704,7 @@ internal class RegattaLinkBleClient(
         resetServiceDiscoveryState()
         connected = false
         establishedConnection = false
+        resetConnectionTransportState()
         callbackGatt.disconnect()
         callbackGatt.close()
         if (gatt === callbackGatt) {
@@ -5832,6 +5903,7 @@ internal class RegattaLinkBleClient(
         )
         clearConfiguration()
         clearNmea()
+        resetConnectionTransportState()
         emit(
             RegattaLinkClientState(
                 status = RegattaLinkConnectionStatus.IDLE,

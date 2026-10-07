@@ -1453,18 +1453,38 @@ class RegattaLinkConnectionManagerTest {
             latitude = 53.0
             longitude = 10.0
             elapsedRealtimeNanos = 1_000_000_000L
+            time = 1_700_000_000_123L
         }
 
         fakeClient.emitConnection(
             RegattaLinkClientState(
-                status = RegattaLinkConnectionStatus.CONNECTED
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                phoneGnssTransportReady = false
             )
         )
         fakeClient.emitConfiguration(ready)
 
+        assertFalse(manager.isPhoneGnssForwardingEnabled())
+        assertFalse(manager.offerPhoneGnss(location))
+        assertEquals(0, fakeClient.phoneGnssOfferCalls)
+
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                phoneGnssTransportReady = true
+            )
+        )
         assertTrue(manager.isPhoneGnssForwardingEnabled())
         assertTrue(manager.offerPhoneGnss(location))
         assertEquals(1, fakeClient.phoneGnssOfferCalls)
+        assertEquals(
+            1_000_000_000L,
+            fakeClient.lastPhoneGnssSample?.observationElapsedRealtimeNanos
+        )
+        assertEquals(
+            1_700_000_000_123L,
+            fakeClient.lastPhoneGnssSample?.utcTimeMs
+        )
 
         fakeClient.emitConfiguration(
             ready.copy(
@@ -1565,6 +1585,7 @@ class RegattaLinkConnectionManagerTest {
         var refreshPgnCalls = 0
         var rawReadCalls = 0
         var phoneGnssOfferCalls = 0
+        var lastPhoneGnssSample: RegattaLinkPhoneGnssSample? = null
         var captureStartCalls = 0
         var captureRecordingStarted: (() -> Unit)? = null
         var captureFrame: ((RegattaLinkRawCanFrame) -> Unit)? = null
@@ -1676,6 +1697,7 @@ class RegattaLinkConnectionManagerTest {
             sample: RegattaLinkPhoneGnssSample
         ): Boolean {
             phoneGnssOfferCalls += 1
+            lastPhoneGnssSample = sample
             return true
         }
 

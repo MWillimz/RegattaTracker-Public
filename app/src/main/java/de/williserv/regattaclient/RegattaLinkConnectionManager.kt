@@ -533,7 +533,7 @@ internal class RegattaLinkConnectionManager(
         regattaLinkPhoneGnssForwardingGate(
             connected =
                 connectionState.status == RegattaLinkConnectionStatus.CONNECTED,
-            transportReady = true,
+            transportReady = connectionState.phoneGnssTransportReady,
             otaActive = otaState.isActive,
             configurationState = configurationState
         )

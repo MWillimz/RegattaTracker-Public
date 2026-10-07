@@ -642,6 +642,52 @@ class RegattaTrackingServiceLifecycleTest {
     }
 
     @Test
+    fun `relay only waits for Phone GNSS MTU readiness and resumes when ready`() {
+        grantLocationPermission()
+        RegattaLinkPhoneGpsRelayStore(context).setEnabled(true)
+        val relayClient = installReadyRelayTestManager()
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+
+        service.onStartCommand(phoneGpsRelaySyncIntent(), 0, 1)
+        assertEquals(
+            REGATTALINK_PHONE_GNSS_MIN_INTERVAL_MS,
+            getField<Long>(service, "activeLocationIntervalMs")
+        )
+
+        relayClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                phoneGnssTransportReady = false
+            )
+        )
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(0L, getField<Long>(service, "activeLocationIntervalMs"))
+        simulateGpsLocation()
+        assertEquals(0, relayClient.phoneGnssOfferCount)
+
+        relayClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                phoneGnssTransportReady = true
+            )
+        )
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(
+            REGATTALINK_PHONE_GNSS_MIN_INTERVAL_MS,
+            getField<Long>(service, "activeLocationIntervalMs")
+        )
+        simulateGpsLocation(latitude = 53.2)
+        assertEquals(1, relayClient.phoneGnssOfferCount)
+
+        RegattaLinkPhoneGpsRelayStore(context).setEnabled(false)
+        service.onStartCommand(phoneGpsRelaySyncIntent(), 0, 2)
+        controller.destroy()
+    }
+
+    @Test
     fun `relay only pauses GPS work when CAN disappears and resumes when it returns`() {
         grantLocationPermission()
         RegattaLinkPhoneGpsRelayStore(context).setEnabled(true)
@@ -1019,7 +1065,8 @@ class RegattaTrackingServiceLifecycleTest {
 
         relayClient.emitConnection(
             RegattaLinkClientState(
-                status = RegattaLinkConnectionStatus.CONNECTED
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                phoneGnssTransportReady = true
             )
         )
         relayClient.emitConfiguration(relayConfiguration(includeCan = true))

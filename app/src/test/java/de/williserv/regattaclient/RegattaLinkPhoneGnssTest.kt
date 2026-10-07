@@ -15,32 +15,67 @@ class RegattaLinkPhoneGnssTest {
     fun encodesGoldenVectorAtSendTime() {
         val sample = RegattaLinkPhoneGnssSample(
             observationElapsedRealtimeNanos = 10_000_000_000L,
-            latitudeDeg = 53.1234567,
-            longitudeDeg = -9.7654321,
-            cogDeg = 361.25,
-            sogMps = 4.56,
-            horizontalAccuracyM = 3.21,
+            utcTimeMs = 1_791_316_800_123L,
+            latitudeDeg = 48.1234567,
+            longitudeDeg = 11.54321,
+            cogDeg = 123.45,
+            sogMps = 6.78,
+            horizontalAccuracyM = 2.5,
             altitudeM = -12.3
         )
 
         val raw = requireNotNull(
             encodeRegattaLinkPhoneGnss(
                 sample,
-                sendElapsedRealtimeNanos = 11_234_000_000L
+                sendElapsedRealtimeNanos = 14_321_000_000L
             )
         )
         val buffer = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
 
         assertEquals(REGATTALINK_PHONE_GNSS_FRAME_SIZE, raw.size)
-        assertEquals(1, raw[0].toInt() and 0xff)
-        assertEquals(0x1f, raw[1].toInt() and 0xff)
-        assertEquals(1_234, buffer.getShort(2).toInt() and 0xffff)
-        assertEquals(531_234_567, buffer.getInt(4))
-        assertEquals(-97_654_321, buffer.getInt(8))
-        assertEquals(125, buffer.getShort(12).toInt() and 0xffff)
-        assertEquals(456, buffer.getShort(14).toInt() and 0xffff)
-        assertEquals(321, buffer.getShort(16).toInt() and 0xffff)
+        assertArrayEquals(
+            byteArrayOf(
+                0x02,
+                0x3f,
+                0xe1.toByte(),
+                0x10,
+                0x87.toByte(),
+                0x0e,
+                0xaf.toByte(),
+                0x1c,
+                0xa4.toByte(),
+                0x5a,
+                0xe1.toByte(),
+                0x06,
+                0x39,
+                0x30,
+                0xa6.toByte(),
+                0x02,
+                0xfa.toByte(),
+                0x00,
+                0x85.toByte(),
+                0xff.toByte(),
+                0x7b,
+                0x32,
+                0xcd.toByte(),
+                0x12,
+                0xa1.toByte(),
+                0x01,
+                0x00,
+                0x00
+            ),
+            raw
+        )
+        assertEquals(REGATTALINK_PHONE_GNSS_FRAME_VERSION, raw[0].toInt() and 0xff)
+        assertEquals(0x3f, raw[1].toInt() and 0xff)
+        assertEquals(4_321, buffer.getShort(2).toInt() and 0xffff)
+        assertEquals(481_234_567, buffer.getInt(4))
+        assertEquals(115_432_100, buffer.getInt(8))
+        assertEquals(12_345, buffer.getShort(12).toInt() and 0xffff)
+        assertEquals(678, buffer.getShort(14).toInt() and 0xffff)
+        assertEquals(250, buffer.getShort(16).toInt() and 0xffff)
         assertEquals(-123, buffer.getShort(18).toInt())
+        assertEquals(1_791_316_800_123L, buffer.getLong(20))
     }
 
     @Test
@@ -66,10 +101,69 @@ class RegattaLinkPhoneGnssTest {
         assertFalse(flags and REGATTALINK_PHONE_GNSS_VALID_SOG != 0)
         assertTrue(flags and REGATTALINK_PHONE_GNSS_VALID_ACCURACY != 0)
         assertFalse(flags and REGATTALINK_PHONE_GNSS_VALID_ALTITUDE != 0)
-        assertEquals(0, flags and 0xe0)
+        assertFalse(flags and REGATTALINK_PHONE_GNSS_VALID_UTC_TIME != 0)
+        assertEquals(0, flags and 0xc0)
 
         val buffer = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
         assertEquals(65_535, buffer.getShort(16).toInt() and 0xffff)
+        assertEquals(0L, buffer.getLong(20))
+    }
+
+
+    @Test
+    fun utcValidityRequiresPositiveEpochMillis() {
+        listOf<Long?>(null, 0L, -1L).forEach { utc ->
+            val raw = requireNotNull(
+                encodeRegattaLinkPhoneGnss(
+                    RegattaLinkPhoneGnssSample(
+                        observationElapsedRealtimeNanos = 1L,
+                        utcTimeMs = utc,
+                        latitudeDeg = 53.0,
+                        longitudeDeg = 10.0
+                    ),
+                    sendElapsedRealtimeNanos = 2L
+                )
+            )
+            assertFalse(
+                raw[1].toInt() and REGATTALINK_PHONE_GNSS_VALID_UTC_TIME != 0
+            )
+            assertEquals(
+                0L,
+                ByteBuffer.wrap(raw)
+                    .order(ByteOrder.LITTLE_ENDIAN)
+                    .getLong(20)
+            )
+        }
+
+        val raw = requireNotNull(
+            encodeRegattaLinkPhoneGnss(
+                RegattaLinkPhoneGnssSample(
+                    observationElapsedRealtimeNanos = 1L,
+                    utcTimeMs = 123_456_789L,
+                    latitudeDeg = 53.0,
+                    longitudeDeg = 10.0
+                ),
+                sendElapsedRealtimeNanos = 2L
+            )
+        )
+        assertTrue(
+            raw[1].toInt() and REGATTALINK_PHONE_GNSS_VALID_UTC_TIME != 0
+        )
+        assertEquals(
+            123_456_789L,
+            ByteBuffer.wrap(raw)
+                .order(ByteOrder.LITTLE_ENDIAN)
+                .getLong(20)
+        )
+    }
+
+    @Test
+    fun phoneGnssTransportRequiresAttMtu31() {
+        assertFalse(regattaLinkPhoneGnssTransportReady(23))
+        assertFalse(regattaLinkPhoneGnssTransportReady(30))
+        assertTrue(regattaLinkPhoneGnssTransportReady(31))
+        assertTrue(regattaLinkPhoneGnssTransportReady(83))
+        assertTrue(regattaLinkPhoneGnssTransportReady(247))
     }
 
     @Test
