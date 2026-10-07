@@ -111,6 +111,46 @@ class RegattaLinkPhoneGnssTest {
 
 
     @Test
+    fun missingCourseRetainsLastValidCourseUntilReplacementArrives() {
+        assertEquals(
+            123.45,
+            requireNotNull(
+                regattaLinkRetainedPhoneGnssCog(
+                    currentCogDeg = null,
+                    previousCogDeg = 123.45
+                )
+            ),
+            0.0
+        )
+        assertEquals(
+            123.45,
+            requireNotNull(
+                regattaLinkRetainedPhoneGnssCog(
+                    currentCogDeg = Double.NaN,
+                    previousCogDeg = 123.45
+                )
+            ),
+            0.0
+        )
+        assertEquals(
+            210.0,
+            requireNotNull(
+                regattaLinkRetainedPhoneGnssCog(
+                    currentCogDeg = 210.0,
+                    previousCogDeg = 123.45
+                )
+            ),
+            0.0
+        )
+        assertNull(
+            regattaLinkRetainedPhoneGnssCog(
+                currentCogDeg = null,
+                previousCogDeg = null
+            )
+        )
+    }
+
+    @Test
     fun utcValidityRequiresPositiveEpochMillis() {
         listOf<Long?>(null, 0L, -1L).forEach { utc ->
             val raw = requireNotNull(
