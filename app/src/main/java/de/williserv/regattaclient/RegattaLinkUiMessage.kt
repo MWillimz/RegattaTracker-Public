@@ -9,6 +9,7 @@ package de.williserv.regattaclient
  */
 enum class RegattaLinkUiMessage {
     BLUETOOTH_PERMISSION_DENIED,
+    BLUETOOTH_DISABLED,
     BLUETOOTH_UNAVAILABLE,
     CONNECTION_FAILED,
     CONNECTION_TIMEOUT,
