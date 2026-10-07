@@ -242,6 +242,12 @@ class RegattaLinkConnectionManagerTest {
     @Test
     fun bluetoothOffEndsManualDiscoveryOwnershipSoAutoconnectCanResume() {
         assertTrue(manager.startDiscovery())
+        fakeClient.emitDiscovery(
+            RegattaLinkDiscoveryState(
+                scanning = false,
+                userMessage = RegattaLinkUiMessage.BLUETOOTH_DISABLED
+            )
+        )
         fakeClient.emitConnection(
             RegattaLinkClientState(
                 status = RegattaLinkConnectionStatus.BLUETOOTH_OFF,
@@ -947,10 +953,10 @@ class RegattaLinkConnectionManagerTest {
     fun failedExplicitSearchPreservesPreviouslyConfiguredDevice() {
         assertTrue(manager.startDiscovery())
 
-        fakeClient.emitConnection(
-            RegattaLinkClientState(
-                status = RegattaLinkConnectionStatus.ERROR,
-                error = "search failed"
+        fakeClient.emitDiscovery(
+            RegattaLinkDiscoveryState(
+                scanning = false,
+                userMessage = RegattaLinkUiMessage.CONNECTION_FAILED
             )
         )
 
