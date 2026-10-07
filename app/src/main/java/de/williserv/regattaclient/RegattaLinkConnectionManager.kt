@@ -336,11 +336,6 @@ internal class RegattaLinkConnectionManager(
     fun requestForegroundStartupReconnectIfPermitted() {
         if (!startupReconnectRequested.compareAndSet(false, true)) return
         if (!hasRequiredPermissions()) return
-        if (!isBluetoothAdapterEnabled()) {
-            client.onBluetoothAdapterDisabled()
-            return
-        }
-        client.onBluetoothAdapterEnabled()
         ensureBackgroundConnectedIfPermitted()
     }
 
@@ -359,11 +354,6 @@ internal class RegattaLinkConnectionManager(
         ) {
             return false
         }
-        if (!isBluetoothAdapterEnabled()) {
-            client.onBluetoothAdapterDisabled()
-            return false
-        }
-
         val configured = configuredDeviceStore.load()
         if (configured != null) {
             legacyBootstrapAddress = null
@@ -958,14 +948,6 @@ internal class RegattaLinkConnectionManager(
 
     internal fun requiresNewPairing(): Boolean =
         configuredDeviceStore.requiresNewPairing()
-
-    @SuppressLint("MissingPermission")
-    private fun isBluetoothAdapterEnabled(): Boolean =
-        runCatching {
-            val manager =
-                appContext.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-            manager.adapter?.isEnabled == true
-        }.getOrDefault(false)
 
     private fun hasRequiredPermissions(): Boolean =
         RegattaLinkBleClient.requiredPermissions().all { permission ->
