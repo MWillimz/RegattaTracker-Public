@@ -697,18 +697,27 @@ internal class RegattaLinkBleClient(
                                 isRegattaLinkStaleBondSecurityGattStatus(status)
                         )
                     } else {
-                        emitError(
-                            callbackGatt.device,
-                            "RegattaLink disconnected ($status)"
-                        )
-                        if (
+                        val shouldReconnect =
                             shouldStartRegattaLinkOutageReconnect(
                                 connectionWasReady = wasReadyConnection,
                                 otaOwnsConnection = otaRunning.get(),
                                 knownReconnectAlreadyActive = false
                             )
-                        ) {
+                        if (shouldReconnect) {
+                            Log.w(
+                                LOG_TAG,
+                                "RegattaLink disconnected ($status); waiting for known-device reconnect"
+                            )
+                            emitForDevice(
+                                callbackGatt.device,
+                                RegattaLinkConnectionStatus.WAITING
+                            )
                             handler.post { onUnexpectedDisconnect() }
+                        } else {
+                            emitError(
+                                callbackGatt.device,
+                                "RegattaLink disconnected ($status)"
+                            )
                         }
                     }
                 }
@@ -6028,15 +6037,24 @@ internal class RegattaLinkBleClient(
                         ) == true
                 )
             } else {
-                emitError(callbackGatt.device, message)
-                if (
+                val shouldReconnect =
                     shouldStartRegattaLinkOutageReconnect(
                         connectionWasReady = wasReadyConnection,
                         otaOwnsConnection = otaRunning.get(),
                         knownReconnectAlreadyActive = false
                     )
-                ) {
+                if (shouldReconnect) {
+                    Log.w(
+                        LOG_TAG,
+                        "$message; waiting for known-device reconnect"
+                    )
+                    emitForDevice(
+                        callbackGatt.device,
+                        RegattaLinkConnectionStatus.WAITING
+                    )
                     handler.post { onUnexpectedDisconnect() }
+                } else {
+                    emitError(callbackGatt.device, message)
                 }
             }
         }
