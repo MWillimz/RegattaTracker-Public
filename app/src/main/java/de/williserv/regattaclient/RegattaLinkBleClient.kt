@@ -1328,7 +1328,7 @@ internal class RegattaLinkBleClient(
         if (
             isConnected() &&
             lastState.status == RegattaLinkConnectionStatus.CONNECTED &&
-            lastState.deviceInfo?.stableId == expectedStableId
+            (expectedStableId == null || lastState.deviceInfo?.stableId == expectedStableId)
         ) {
             return true
         }
@@ -1499,7 +1499,10 @@ internal class RegattaLinkBleClient(
 
         val address = knownReconnectAddress
         if (address.isNullOrBlank()) {
-            finishKnownDeviceReconnect("Configured RegattaLink address is unavailable")
+            finishKnownDeviceReconnect(
+                message = "Configured RegattaLink address is unavailable",
+                terminal = true
+            )
             return
         }
 
@@ -1513,12 +1516,17 @@ internal class RegattaLinkBleClient(
             adapter.getRemoteDevice(address)
         }.getOrNull()
         if (device == null) {
-            finishKnownDeviceReconnect("Configured RegattaLink address is invalid")
+            finishKnownDeviceReconnect(
+                message = "Configured RegattaLink address is invalid",
+                terminal = true
+            )
             return
         }
         if (device.bondState != BluetoothDevice.BOND_BONDED) {
             finishKnownDeviceReconnect(
-                "Configured RegattaLink is no longer bonded; use Search in RegattaLink setup"
+                message = "Configured RegattaLink is no longer bonded; use Search in RegattaLink setup",
+                terminal = true,
+                userMessage = RegattaLinkUiMessage.PAIRING_REQUIRED
             )
             return
         }
@@ -1546,7 +1554,10 @@ internal class RegattaLinkBleClient(
 
         val address = knownReconnectAddress
         if (address.isNullOrBlank()) {
-            finishKnownDeviceReconnect("Configured RegattaLink address is unavailable")
+            finishKnownDeviceReconnect(
+                message = "Configured RegattaLink address is unavailable",
+                terminal = true
+            )
             return
         }
 
@@ -1586,6 +1597,15 @@ internal class RegattaLinkBleClient(
     private fun retryKnownDeviceReconnect(message: String) {
         if (scanPurpose != ScanPurpose.KNOWN_DEVICE_RECONNECT) return
 
+        if (message == REGATTALINK_STALE_ANDROID_BOND_ERROR) {
+            finishKnownDeviceReconnect(
+                message = message,
+                terminal = true,
+                userMessage = RegattaLinkUiMessage.PAIRING_REQUIRED
+            )
+            return
+        }
+
         knownReconnectLastError = message
         stopScan()
         handler.removeCallbacks(bondPoll)
@@ -1609,7 +1629,11 @@ internal class RegattaLinkBleClient(
         )
     }
 
-    private fun finishKnownDeviceReconnect(message: String) {
+    private fun finishKnownDeviceReconnect(
+        message: String,
+        terminal: Boolean = false,
+        userMessage: RegattaLinkUiMessage = RegattaLinkUiMessage.CONNECTION_FAILED
+    ) {
         val address = knownReconnectAddress.orEmpty()
         stopScan()
         handler.removeCallbacks(knownReconnectRetry)
@@ -1618,13 +1642,24 @@ internal class RegattaLinkBleClient(
         closeGatt()
         currentDevice = null
         clearKnownDeviceReconnectState()
-        emit(
-            RegattaLinkClientState(
-                status = RegattaLinkConnectionStatus.ERROR,
-                deviceAddress = address,
-                error = message
+        if (terminal) {
+            emit(
+                RegattaLinkClientState(
+                    status = RegattaLinkConnectionStatus.ERROR,
+                    deviceAddress = address,
+                    userMessage = userMessage,
+                    error = message
+                )
             )
-        )
+        } else {
+            emit(
+                RegattaLinkClientState(
+                    status = RegattaLinkConnectionStatus.WAITING,
+                    deviceAddress = address
+                )
+            )
+            handler.post { onUnexpectedDisconnect() }
+        }
     }
 
     private fun completeKnownDeviceReconnect() {
@@ -2204,7 +2239,9 @@ internal class RegattaLinkBleClient(
                     )
                 } else {
                     finishKnownDeviceReconnect(
-                        "Configured RegattaLink identity did not match the bonded device"
+                        message = "Configured RegattaLink identity did not match the bonded device",
+                        terminal = true,
+                        userMessage = RegattaLinkUiMessage.PAIRING_REQUIRED
                     )
                 }
                 return
