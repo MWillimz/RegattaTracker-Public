@@ -269,6 +269,9 @@ internal class RegattaLinkConnectionManager(
     @Volatile
     private var factoryResetPending = false
 
+    @Volatile
+    private var lastPhoneGnssCogDeg: Double? = null
+
     private val bluetoothStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action != BluetoothAdapter.ACTION_STATE_CHANGED) return
@@ -619,7 +622,17 @@ internal class RegattaLinkConnectionManager(
 
     fun offerPhoneGnss(location: Location): Boolean {
         if (!isPhoneGnssForwardingEnabled()) return false
-        return client.offerPhoneGnss(regattaLinkPhoneGnssSample(location))
+
+        val sample = regattaLinkPhoneGnssSample(location)
+        val retainedCogDeg = regattaLinkRetainedPhoneGnssCog(
+            currentCogDeg = sample.cogDeg,
+            previousCogDeg = lastPhoneGnssCogDeg
+        )
+        lastPhoneGnssCogDeg = retainedCogDeg
+
+        return client.offerPhoneGnss(
+            sample.copy(cogDeg = retainedCogDeg)
+        )
     }
 
     fun stopPhoneGnssForwarding() {
