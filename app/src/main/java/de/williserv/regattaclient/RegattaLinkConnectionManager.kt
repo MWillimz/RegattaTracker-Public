@@ -579,7 +579,14 @@ internal class RegattaLinkConnectionManager(
     }
 
     fun startDiscovery(): Boolean {
-        if (otaState.isActive || factoryResetPending) return false
+        if (
+            otaState.isActive ||
+            factoryResetPending ||
+            configurationState.deviceControlBusy ||
+            configurationState.restartAwaitingDisconnect
+        ) {
+            return false
+        }
         autoReconnectSuppressedByUser = false
         legacyBootstrapAddress = null
         pendingDiscoveredSelectionAddress = null
@@ -596,6 +603,8 @@ internal class RegattaLinkConnectionManager(
             deviceAddress.isBlank() ||
             otaState.isActive ||
             factoryResetPending ||
+            configurationState.deviceControlBusy ||
+            configurationState.restartAwaitingDisconnect ||
             !hasRequiredPermissions()
         ) {
             return false
@@ -621,6 +630,7 @@ internal class RegattaLinkConnectionManager(
             factoryResetPending ||
             configurationState.deviceControlBusy ||
             configurationState.factoryResetAwaitingDisconnect ||
+            configurationState.restartAwaitingDisconnect ||
             !hasRequiredPermissions()
         ) {
             return false
