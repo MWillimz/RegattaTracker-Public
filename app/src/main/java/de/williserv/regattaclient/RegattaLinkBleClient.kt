@@ -1448,6 +1448,12 @@ internal class RegattaLinkBleClient(
 
     override fun onBluetoothAdapterDisabled() {
         clearPhoneGnssPending()
+        if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
+            reconnectFuture?.complete(null)
+        }
+        if (otaRunning.get()) {
+            cancelOta()
+        }
         cancelKnownDeviceReconnect()
         stopScan()
         handler.removeCallbacks(bondPoll)
