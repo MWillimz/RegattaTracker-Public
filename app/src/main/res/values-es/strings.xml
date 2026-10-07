@@ -771,4 +771,11 @@
     <string name="session_metric_acceleration_5s">Aceleración (5 s)</string>
     <string name="session_metric_magnetic_heading">Rumbo magnético</string>
     <string name="session_metric_true_heading">Rumbo verdadero</string>
+
+    <string name="regattalink_devices">Mis RLinks</string>
+    <string name="regattalink_find">Buscar RLink</string>
+    <string name="regattalink_selected">Seleccionado</string>
+    <string name="regattalink_known">Conocido</string>
+    <string name="regattalink_nearby">Cerca</string>
+    <string name="regattalink_no_known_devices">No hay RLinks conocidos</string>
 </resources>
