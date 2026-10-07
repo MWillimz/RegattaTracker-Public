@@ -771,4 +771,11 @@
     <string name="session_metric_acceleration_5s">Accelerazione (5 s)</string>
     <string name="session_metric_magnetic_heading">Prua magnetica</string>
     <string name="session_metric_true_heading">Prua vera</string>
+
+    <string name="regattalink_devices">I miei RLink</string>
+    <string name="regattalink_find">Trova RLink</string>
+    <string name="regattalink_selected">Selezionato</string>
+    <string name="regattalink_known">Conosciuto</string>
+    <string name="regattalink_nearby">Nelle vicinanze</string>
+    <string name="regattalink_no_known_devices">Nessun RLink conosciuto</string>
 </resources>

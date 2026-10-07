@@ -54,6 +54,73 @@ class RegattaLinkConfiguredDeviceStoreTest {
     }
 
     @Test
+    fun multipleKnownDevicesPersistWithSingleSelection() {
+        val first = RegattaLinkConfiguredDevice(
+            stableId = "first",
+            deviceAddress = "44:B1:76:48:31:B2",
+            deviceName = "Cockpit"
+        )
+        val second = RegattaLinkConfiguredDevice(
+            stableId = "second",
+            deviceAddress = "44:B1:76:48:31:CE",
+            deviceName = "Dinghy"
+        )
+
+        store.upsert(first)
+        store.upsert(second)
+        assertNull(store.selected())
+        assertEquals(setOf(first, second), store.all().toSet())
+
+        assertEquals(true, store.select(second.stableId))
+        assertEquals(second, store.selected())
+        assertEquals(setOf(first, second), store.all().toSet())
+    }
+
+    @Test
+    fun upsertingSameStableIdRefreshesAddressWithoutDuplicate() {
+        store.upsert(
+            RegattaLinkConfiguredDevice(
+                stableId = "same",
+                deviceAddress = "44:B1:76:48:31:B2",
+                deviceName = "Old"
+            )
+        )
+        val refreshed = RegattaLinkConfiguredDevice(
+            stableId = "same",
+            deviceAddress = "44:B1:76:48:31:CE",
+            deviceName = "New"
+        )
+
+        store.upsertAndSelect(refreshed)
+
+        assertEquals(listOf(refreshed), store.all())
+        assertEquals(refreshed, store.selected())
+    }
+
+    @Test
+    fun legacySingleDeviceMigratesIntoKnownRegistryAndSelection() {
+        context.getSharedPreferences(
+            RegattaLinkConfiguredDeviceStore.PREFS_NAME,
+            Context.MODE_PRIVATE
+        ).edit()
+            .clear()
+            .putString("stable_id", "legacy")
+            .putString("device_address", "44:B1:76:48:31:B2")
+            .putString("device_name", "Legacy RLink")
+            .commit()
+
+        store = RegattaLinkConfiguredDeviceStore(context)
+
+        val migrated = RegattaLinkConfiguredDevice(
+            stableId = "legacy",
+            deviceAddress = "44:B1:76:48:31:B2",
+            deviceName = "Legacy RLink"
+        )
+        assertEquals(migrated, store.selected())
+        assertEquals(listOf(migrated), store.all())
+    }
+
+    @Test
     fun replacingConfiguredDeviceReplacesTheCompleteIdentity() {
         store.save(
             RegattaLinkConfiguredDevice(

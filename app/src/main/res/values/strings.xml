@@ -814,4 +814,11 @@
     <string name="session_metric_acceleration_5s">Acceleration (5 s)</string>
     <string name="session_metric_magnetic_heading">Magnetic heading</string>
     <string name="session_metric_true_heading">True heading</string>
+
+    <string name="regattalink_devices">My RLinks</string>
+    <string name="regattalink_find">Find RLink</string>
+    <string name="regattalink_selected">Selected</string>
+    <string name="regattalink_known">Known</string>
+    <string name="regattalink_nearby">Nearby</string>
+    <string name="regattalink_no_known_devices">No known RLinks</string>
 </resources>
