@@ -269,6 +269,52 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun factoryResetRemovesOnlyAffectedRLinkAndDoesNotSelectAnother() {
+        val second = RegattaLinkConfiguredDevice(
+            stableId = "8899aabbccddeeff",
+            deviceAddress = "44:B1:76:48:31:CE",
+            deviceName = "RegattaLink-31CE"
+        )
+        RegattaLinkConfiguredDeviceStore(context).upsert(second)
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress,
+                deviceName = configured.deviceName,
+                deviceInfo = testDeviceInfo(configured.stableId)
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                deviceControlAcceptedOpcode =
+                    RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                deviceControlAcceptedRequestId = 77u
+            )
+        )
+
+        fakeClient.emitConnection(RegattaLinkClientState())
+
+        val selection = manager.currentDeviceSelectionState()
+        assertEquals(null, selection.selectedStableId)
+        assertEquals(listOf(second), selection.knownDevices)
+        assertEquals(null, manager.configuredDevice())
+        assertFalse(manager.reconnectConfigured())
+        assertEquals(0, fakeClient.reconnectCalls)
+        assertEquals(0, fakeClient.autoConnectCalls)
+    }
+
+    @Test
     fun factoryResetClearsAssociationAndSuppressesLegacyBondReconnect() {
         fakeClient.emitConnection(
             RegattaLinkClientState(
