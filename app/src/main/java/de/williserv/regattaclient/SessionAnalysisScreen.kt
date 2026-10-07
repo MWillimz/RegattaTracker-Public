@@ -3,6 +3,7 @@ package de.williserv.regattaclient
 import android.graphics.Paint
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,13 +39,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.text.DateFormat
+import java.util.Date
 import java.util.Locale
 import kotlin.math.min
 
@@ -112,6 +114,9 @@ fun SessionAnalysisScreen(
                 remember(detail.session.id) {
                     mutableStateMapOf<String, ClosedFloatingPointRange<Float>>()
                 }
+            var activeTimeRange by remember(detail.session.id) {
+                mutableStateOf<ClosedFloatingPointRange<Float>?>(null)
+            }
             var filtersExpanded by rememberSaveable(detail.session.id) {
                 mutableStateOf(false)
             }
@@ -178,12 +183,20 @@ fun SessionAnalysisScreen(
             val analysisSamples = remember(prepared, sampleFilters) {
                 applyAnalysisSampleFilters(prepared, sampleFilters)
             }
+            val timeFilter = remember(prepared, activeTimeRange) {
+                activeTimeRange?.let { range ->
+                    analysisTimeFilterFromFraction(prepared, range)
+                }
+            }
+            val timeFilteredSamples = remember(analysisSamples, timeFilter) {
+                applyAnalysisTimeFilter(analysisSamples, timeFilter)
+            }
 
-            LaunchedEffect(analysisSamples, metricsById) {
+            LaunchedEffect(timeFilteredSamples, metricsById) {
                 activeFilterRanges.keys.toList().forEach { metricId ->
                     val metric = metricsById[metricId]
                     val observed = metric?.let {
-                        metricObservedRange(it, analysisSamples)
+                        metricObservedRange(it, timeFilteredSamples)
                     }
                     if (observed == null) {
                         activeFilterRanges.remove(metricId)
@@ -229,23 +242,106 @@ fun SessionAnalysisScreen(
                     capabilities.colorMetrics.firstOrNull { it.id == selected }
                 }
 
+            var colorUseAbsoluteValue by rememberSaveable(
+                detail.session.id,
+                colorMetric?.id
+            ) {
+                mutableStateOf(false)
+            }
+            var selectedColorRange by remember(
+                detail.session.id,
+                colorMetric?.id
+            ) {
+                mutableStateOf<ClosedFloatingPointRange<Float>?>(null)
+            }
+            var colorScaleEditorOpen by rememberSaveable(
+                detail.session.id,
+                colorMetric?.id
+            ) {
+                mutableStateOf(false)
+            }
+
+            val colorFilteredSamples = remember(
+                timeFilteredSamples,
+                activeFilters,
+                metricsById
+            ) {
+                applyAnalysisRangeFilters(
+                    samples = timeFilteredSamples,
+                    filters = activeFilters,
+                    metricsById = metricsById
+                )
+            }
+            val colorRawValues = remember(
+                colorFilteredSamples,
+                angleMetric,
+                radiusMetric,
+                colorMetric
+            ) {
+                if (colorMetric == null) {
+                    emptyList()
+                } else {
+                    analysisEligibleColorValues(
+                        samples = colorFilteredSamples,
+                        angleMetric = angleMetric,
+                        radiusMetric = radiusMetric,
+                        colorMetric = colorMetric
+                    )
+                }
+            }
+            val colorHasNegativeValues =
+                sessionColorHasNegativeValue(colorRawValues)
+
+            LaunchedEffect(colorHasNegativeValues) {
+                if (!colorHasNegativeValues) {
+                    colorUseAbsoluteValue = false
+                }
+            }
+
             val dataset = remember(
-                analysisSamples,
+                timeFilteredSamples,
                 angleMetric,
                 radiusMetric,
                 colorMetric,
+                colorUseAbsoluteValue,
                 activeFilters
             ) {
                 buildSessionAnalysisDataset(
-                    samples = analysisSamples,
+                    samples = timeFilteredSamples,
                     angleMetric = angleMetric,
                     radiusMetric = radiusMetric,
                     colorMetric = colorMetric,
                     filters = activeFilters,
                     metricsById = metricsById,
+                    colorUseAbsoluteValue = colorUseAbsoluteValue,
                     aggregationWindowMs = ANALYSIS_AGGREGATION_WINDOW_MS
                 )
             }
+
+            val colorObservedRange = remember(
+                colorRawValues,
+                colorUseAbsoluteValue
+            ) {
+                sessionColorObservedRange(
+                    values = colorRawValues,
+                    useAbsoluteValue = colorUseAbsoluteValue
+                )
+            }
+
+            LaunchedEffect(colorObservedRange) {
+                selectedColorRange = clampSessionColorRange(
+                    selectedRange = selectedColorRange,
+                    observedRange = colorObservedRange
+                )
+                if (colorObservedRange == null) {
+                    colorScaleEditorOpen = false
+                }
+            }
+
+            val effectiveColorRange = effectiveSessionColorRange(
+                selectedRange = selectedColorRange,
+                observedRange = colorObservedRange
+            )
 
             LazyColumn(
                 modifier = Modifier.weight(1f),
@@ -257,6 +353,11 @@ fun SessionAnalysisScreen(
                         angleMetric = angleMetric,
                         radiusMetric = radiusMetric,
                         colorMetric = colorMetric,
+                        colorMinValue = effectiveColorRange?.start,
+                        colorMaxValue = effectiveColorRange?.endInclusive,
+                        onColorLegendClick = {
+                            colorScaleEditorOpen = true
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(1f)
@@ -295,20 +396,24 @@ fun SessionAnalysisScreen(
                     )
                 }
 
-                if (colorMetric != null &&
-                    dataset.colorMin != null &&
-                    dataset.colorMax != null
+                if (
+                    colorMetric != null &&
+                    effectiveColorRange != null
                 ) {
                     item {
                         AnalysisColorLegend(
                             metric = colorMetric,
-                            minValue = dataset.colorMin,
-                            maxValue = dataset.colorMax
+                            minValue = effectiveColorRange.start,
+                            maxValue = effectiveColorRange.endInclusive,
+                            onClick = {
+                                colorScaleEditorOpen = true
+                            }
                         )
                     }
                 }
 
                 if (
+                    analysisObservedTimeRange(prepared) != null ||
                     capabilities.filterMetrics.isNotEmpty() ||
                     capabilities.gpsManeuverFilterAvailable ||
                     capabilities.imuStabilityFilterAvailable
@@ -328,6 +433,13 @@ fun SessionAnalysisScreen(
                     }
 
                     if (filtersExpanded) {
+                        item {
+                            AnalysisTimeFilterRow(
+                                samples = prepared,
+                                activeRange = activeTimeRange,
+                                onActiveRangeChange = { activeTimeRange = it }
+                            )
+                        }
                         item {
                             AnalysisStateFilters(
                                 gpsAvailable =
@@ -364,7 +476,7 @@ fun SessionAnalysisScreen(
                         item {
                             AnalysisFilters(
                                 metrics = capabilities.filterMetrics,
-                                preparedSamples = analysisSamples,
+                                preparedSamples = timeFilteredSamples,
                                 activeRanges = activeFilterRanges,
                                 allExpanded = allFiltersExpanded,
                                 onAllExpandedChange = { allFiltersExpanded = it }
@@ -383,6 +495,34 @@ fun SessionAnalysisScreen(
                         fontSize = 12.sp
                     )
                 }
+            }
+
+            if (
+                colorScaleEditorOpen &&
+                colorMetric != null &&
+                colorObservedRange != null
+            ) {
+                SessionColorScaleEditorSheet(
+                    metricDisplayName = analysisMetricDisplayName(colorMetric),
+                    unit = colorMetric.unit,
+                    observedRange = colorObservedRange,
+                    selectedRange = selectedColorRange,
+                    hasNegativeValues = colorHasNegativeValues,
+                    useAbsoluteValue = colorUseAbsoluteValue,
+                    onRangeChange = {
+                        selectedColorRange = it
+                    },
+                    onAbsoluteValueChange = {
+                        colorUseAbsoluteValue = it
+                        selectedColorRange = null
+                    },
+                    onResetRange = {
+                        selectedColorRange = null
+                    },
+                    onDismiss = {
+                        colorScaleEditorOpen = false
+                    }
+                )
             }
         }
 
@@ -499,7 +639,62 @@ private fun AnalysisMetricSelector(
 }
 
 @Composable
-private fun AnalysisStateFilters(
+internal fun AnalysisTimeFilterRow(
+    samples: List<PreparedAnalysisSample>,
+    activeRange: ClosedFloatingPointRange<Float>?,
+    onActiveRangeChange: (ClosedFloatingPointRange<Float>?) -> Unit
+) {
+    val observed = remember(samples) {
+        analysisObservedTimeRange(samples)
+    } ?: return
+    val enabled = activeRange != null
+    val range = activeRange ?: (0f..1f)
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(
+                checked = enabled,
+                onCheckedChange = { checked ->
+                    onActiveRangeChange(if (checked) 0f..1f else null)
+                }
+            )
+            Text(stringResource(R.string.session_analysis_time_filter))
+        }
+
+        if (enabled) {
+            if (observed.first < observed.last) {
+                RangeSlider(
+                    value = range,
+                    onValueChange = { onActiveRangeChange(it) },
+                    valueRange = 0f..1f,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            val selected = analysisTimeFilterFromFraction(samples, range)
+            if (selected != null) {
+                Text(
+                    text = stringResource(
+                        R.string.session_analysis_time_filter_range,
+                        formatAnalysisTimeMillis(selected.startMs),
+                        formatAnalysisTimeMillis(selected.endMs)
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp
+                )
+            }
+        }
+    }
+}
+
+private fun formatAnalysisTimeMillis(timestampMs: Long): String =
+    DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(timestampMs))
+
+@Composable
+internal fun AnalysisStateFilters(
     gpsAvailable: Boolean,
     gpsEnabled: Boolean,
     onGpsEnabledChange: (Boolean) -> Unit,
@@ -617,7 +812,7 @@ private fun AnalysisRecoverySlider(
 }
 
 @Composable
-private fun AnalysisFilters(
+internal fun AnalysisFilters(
     metrics: List<AnalysisMetric>,
     preparedSamples: List<PreparedAnalysisSample>,
     activeRanges: MutableMap<String, ClosedFloatingPointRange<Float>>,
@@ -676,7 +871,7 @@ private fun AnalysisFilters(
 }
 
 @Composable
-private fun AnalysisFilterRow(
+internal fun AnalysisFilterRow(
     metric: AnalysisMetric,
     samples: List<PreparedAnalysisSample>,
     activeRanges: MutableMap<String, ClosedFloatingPointRange<Float>>
@@ -736,13 +931,16 @@ private fun SessionPolarPlot(
     angleMetric: AnalysisMetric,
     radiusMetric: AnalysisMetric,
     colorMetric: AnalysisMetric?,
+    colorMinValue: Double?,
+    colorMaxValue: Double?,
+    onColorLegendClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val gridColor = MaterialTheme.colorScheme.outlineVariant
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
     val pointColor = MaterialTheme.colorScheme.primary
     val neutralColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
-    val colorScale = analysisColorScale()
+    val colorScale = sessionColorScale()
 
     Column(modifier = modifier) {
         Box(
@@ -832,18 +1030,15 @@ private fun SessionPolarPlot(
                     val color = if (
                         colorMetric != null &&
                         point.colorValue != null &&
-                        dataset.colorMin != null &&
-                        dataset.colorMax != null
+                        colorMinValue != null &&
+                        colorMaxValue != null
                     ) {
-                        val span = dataset.colorMax - dataset.colorMin
-                        val t = if (span > 0.0) {
-                            ((point.colorValue - dataset.colorMin) / span)
-                                .coerceIn(0.0, 1.0)
-                                .toFloat()
-                        } else {
-                            0.5f
-                        }
-                        sampleAnalysisColor(colorScale, t)
+                        val t = sessionColorFraction(
+                            value = point.colorValue,
+                            minValue = colorMinValue,
+                            maxValue = colorMaxValue
+                        ) ?: 0.5f
+                        sampleSessionColor(colorScale, t)
                     } else if (colorMetric != null) {
                         neutralColor
                     } else {
@@ -868,13 +1063,14 @@ private fun SessionPolarPlot(
 
             if (
                 colorMetric != null &&
-                dataset.colorMin != null &&
-                dataset.colorMax != null
+                colorMinValue != null &&
+                colorMaxValue != null
             ) {
                 PlotColorLegend(
                     metric = colorMetric,
-                    minValue = dataset.colorMin,
-                    maxValue = dataset.colorMax,
+                    minValue = colorMinValue,
+                    maxValue = colorMaxValue,
+                    onClick = onColorLegendClick,
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(8.dp)
@@ -896,12 +1092,14 @@ private fun PlotColorLegend(
     metric: AnalysisMetric,
     minValue: Double,
     maxValue: Double,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val colorScale = analysisColorScale()
+    val colorScale = sessionColorScale()
 
     Column(
         modifier = modifier
+            .clickable(onClick = onClick)
             .background(
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
                 shape = RoundedCornerShape(6.dp)
@@ -945,11 +1143,16 @@ private fun PlotColorLegend(
 private fun AnalysisColorLegend(
     metric: AnalysisMetric,
     minValue: Double,
-    maxValue: Double
+    maxValue: Double,
+    onClick: () -> Unit
 ) {
-    val colorScale = analysisColorScale()
+    val colorScale = sessionColorScale()
 
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    ) {
         Text(
             text = stringResource(
                 R.string.session_analysis_color_legend,
@@ -983,7 +1186,7 @@ private fun AnalysisColorLegend(
 }
 
 @Composable
-private fun analysisMetricLabel(metric: AnalysisMetric): String =
+internal fun analysisMetricLabel(metric: AnalysisMetric): String =
     when (metric.id) {
         "gps.cog" -> stringResource(R.string.session_metric_cog)
         "gps.sog" -> stringResource(R.string.session_metric_sog)
@@ -1002,7 +1205,9 @@ private fun analysisMetricLabel(metric: AnalysisMetric): String =
         "measurement:regattalink.motion.heel_deg" ->
             stringResource(R.string.session_metric_heel)
         "measurement:regattalink.motion.pitch_deg" ->
-            stringResource(R.string.session_metric_pitch)
+            stringResource(R.string.session_metric_pitch_imu)
+        "measurement:nmea.pitch_deg" ->
+            stringResource(R.string.session_metric_pitch_boat_data)
         "measurement:nmea.depth_m" ->
             stringResource(R.string.session_metric_depth)
         "measurement:nmea.water_temperature_c" ->
@@ -1015,7 +1220,7 @@ private fun analysisMetricLabel(metric: AnalysisMetric): String =
     }
 
 @Composable
-private fun analysisMetricDisplayName(metric: AnalysisMetric): String {
+internal fun analysisMetricDisplayName(metric: AnalysisMetric): String {
     val label = analysisMetricLabel(metric)
     return metric.unit?.takeIf { it.isNotBlank() }
         ?.let { "$label ($it)" }
@@ -1025,33 +1230,3 @@ private fun analysisMetricDisplayName(metric: AnalysisMetric): String {
 private fun formatAnalysisNumber(value: Double): String =
     String.format(Locale.getDefault(), "%.1f", value)
 
-private fun analysisColorScale(): List<Color> = listOf(
-    Color(0xFF440154),
-    Color(0xFF3B528B),
-    Color(0xFF21918C),
-    Color(0xFF5EC962),
-    Color(0xFFFDE725)
-)
-
-private fun sampleAnalysisColor(
-    scale: List<Color>,
-    fraction: Float
-): Color {
-    if (scale.isEmpty()) return Color.Unspecified
-    if (scale.size == 1) return scale.first()
-
-    val t = fraction.coerceIn(0f, 1f)
-    val scaled = t * (scale.size - 1)
-    val lowerIndex = scaled.toInt().coerceIn(0, scale.lastIndex)
-    val upperIndex = (lowerIndex + 1).coerceAtMost(scale.lastIndex)
-    val localT = scaled - lowerIndex
-
-    val start = scale[lowerIndex]
-    val end = scale[upperIndex]
-    return Color(
-        red = start.red + (end.red - start.red) * localT,
-        green = start.green + (end.green - start.green) * localT,
-        blue = start.blue + (end.blue - start.blue) * localT,
-        alpha = start.alpha + (end.alpha - start.alpha) * localT
-    )
-}

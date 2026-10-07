@@ -24,7 +24,7 @@ class RegattaLinkDeviceInfoTest {
         assertEquals(22_786_837uL, info.runningBuild)
         assertEquals(1_572_864u, info.otaSlotSize)
         assertEquals(16, info.maxInflightBlocks)
-        assertEquals(9, info.gattSchemaVersion)
+        assertEquals(16, info.gattSchemaVersion)
         assertTrue(info.otaAvailable)
         assertTrue(info.telemetryAvailable)
         assertNull(validateRegattaLinkDeviceInfo(info))
@@ -58,6 +58,11 @@ class RegattaLinkDeviceInfoTest {
             validateRegattaLinkDeviceInfo(valid.copy(profileId = 2))
                 ?.contains("profile") == true
         )
+        assertTrue(
+            validateRegattaLinkDeviceInfo(
+                valid.copy(capabilities = (15u shl 24) or 0x0au)
+            )?.contains("legacy") == true
+        )
         assertFalse(valid.copy(capabilities = 0u).otaAvailable)
     }
 
@@ -67,7 +72,7 @@ class RegattaLinkDeviceInfoTest {
         raw[0] = 1
         raw[1] = 0
         buffer.putShort(2, REGATTALINK_DEVICE_INFO_SIZE.toShort())
-        buffer.putInt(4, (9 shl 24) or (1 shl 1) or (1 shl 3))
+        buffer.putInt(4, (16 shl 24) or (1 shl 1) or (1 shl 3))
         byteArrayOf(
             0x44, 0xb1.toByte(), 0x76, 0x48, 0x31, 0xb2.toByte()
         ).copyInto(raw, destinationOffset = 8)

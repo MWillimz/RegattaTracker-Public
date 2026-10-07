@@ -23,7 +23,7 @@ class RegattaLinkFirmwareSourceTest {
     }
 
     @Test
-    fun eventSourcePreservesExistingFirmwareTransport() {
+    fun eventSourceUsesOnlyEventCredentials() {
         val headers = regattaLinkFirmwareAuthHeaders(
             RegattaLinkFirmwareAuth.Event(
                 eventIdentifier = "Weekend Cup",
@@ -31,7 +31,9 @@ class RegattaLinkFirmwareSourceTest {
             )
         )
 
-        assertTrue(headers.isEmpty())
+        assertEquals("Weekend Cup", headers["X-Event-Name"])
+        assertEquals("event-secret", headers["X-Shared-Secret"])
+        assertFalse(headers.containsKey("X-Regatta-Firmware-Key"))
     }
 
     @Test
@@ -157,6 +159,38 @@ class RegattaLinkFirmwareSourceTest {
                 preferredSource = RegattaLinkFirmwareSource.STANDARD
             )
         }
+    }
+
+    @Test
+    fun eventFirmwareRevealAlwaysWaitsUntilTwentySecondsFromProbeStart() {
+        assertEquals(
+            20_000L,
+            regattaLinkEventFirmwareRevealDelayMs(
+                probeStartedAtElapsedMs = 1_000L,
+                completedAtElapsedMs = 1_000L
+            )
+        )
+        assertEquals(
+            15_000L,
+            regattaLinkEventFirmwareRevealDelayMs(
+                probeStartedAtElapsedMs = 1_000L,
+                completedAtElapsedMs = 6_000L
+            )
+        )
+        assertEquals(
+            0L,
+            regattaLinkEventFirmwareRevealDelayMs(
+                probeStartedAtElapsedMs = 1_000L,
+                completedAtElapsedMs = 21_000L
+            )
+        )
+        assertEquals(
+            20_000L,
+            regattaLinkEventFirmwareRevealDelayMs(
+                probeStartedAtElapsedMs = 5_000L,
+                completedAtElapsedMs = 4_000L
+            )
+        )
     }
 
     @Test

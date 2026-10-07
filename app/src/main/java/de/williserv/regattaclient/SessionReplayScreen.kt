@@ -2,8 +2,11 @@ package de.williserv.regattaclient
 
 import android.os.SystemClock
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -16,14 +19,17 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -31,28 +37,36 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.text.DateFormat
 import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -61,17 +75,28 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 
+private enum class ReplayConfigSheet {
+    VALUES,
+    FILTERS,
+    COLOR
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SessionReplayScreen(
+internal fun SessionReplayScreen(
     detail: SessionDetailData?,
+    replayMaps: Map<ReplayMapContextKey, ReplayMapBackground> = emptyMap(),
     modifier: Modifier = Modifier,
     extraFieldIds: Set<String> = emptySet(),
     onExtraFieldIdsChange: (Set<String>) -> Unit = {},
     onBack: () -> Unit
 ) {
-    val samples = detail?.samples.orEmpty()
-    var selectedIndex by remember(detail?.session?.id, samples.size) {
-        mutableIntStateOf(replayInitialSampleIndex(samples.size))
+    val sourceSamples = detail?.samples.orEmpty()
+    var selectedSourceIndex by rememberSaveable(
+        detail?.session?.id,
+        sourceSamples.size
+    ) {
+        mutableIntStateOf(replayInitialSampleIndex(sourceSamples.size))
     }
     var isPlaying by rememberSaveable(detail?.session?.id) {
         mutableStateOf(false)
@@ -79,44 +104,50 @@ fun SessionReplayScreen(
     var playbackSpeed by rememberSaveable(detail?.session?.id) {
         mutableIntStateOf(1)
     }
-    var fieldsExpanded by rememberSaveable(detail?.session?.id) {
+    var configSheet by rememberSaveable(detail?.session?.id) {
+        mutableStateOf<ReplayConfigSheet?>(null)
+    }
+    var colorMetricId by rememberSaveable(detail?.session?.id) {
+        mutableStateOf<String?>(null)
+    }
+    var colorUseAbsoluteValue by rememberSaveable(
+        detail?.session?.id,
+        colorMetricId
+    ) {
         mutableStateOf(false)
     }
-
-    LaunchedEffect(isPlaying, playbackSpeed, detail?.session?.id, samples.size) {
-        if (!isPlaying || samples.isEmpty()) return@LaunchedEffect
-
-        var startIndex = selectedIndex.coerceIn(0, samples.lastIndex)
-        if (startIndex >= samples.lastIndex) {
-            startIndex = 0
-            selectedIndex = 0
-        }
-
-        val offsets = replayPlaybackOffsetsMs(samples)
-        val startOffset = offsets.getOrElse(startIndex) { 0L }
-        val startedAt = SystemClock.elapsedRealtime()
-
-        while (isPlaying) {
-            val elapsedRealMs = SystemClock.elapsedRealtime() - startedAt
-            val targetOffset = startOffset +
-                (elapsedRealMs * playbackSpeed.toLong())
-            val nextIndex = replayPlaybackIndexForOffset(offsets, targetOffset)
-
-            if (nextIndex >= 0) {
-                selectedIndex = nextIndex
-            }
-
-            if (
-                offsets.isNotEmpty() &&
-                targetOffset >= offsets.last()
-            ) {
-                selectedIndex = samples.lastIndex
-                isPlaying = false
-                break
-            }
-
-            delay(REPLAY_PLAYBACK_TICK_MS)
-        }
+    var selectedColorRange by remember(
+        detail?.session?.id,
+        colorMetricId
+    ) {
+        mutableStateOf<ClosedFloatingPointRange<Float>?>(null)
+    }
+    val activeFilterRanges = remember(detail?.session?.id) {
+        mutableStateMapOf<String, ClosedFloatingPointRange<Float>>()
+    }
+    var activeTimeRange by remember(detail?.session?.id) {
+        mutableStateOf<ClosedFloatingPointRange<Float>?>(null)
+    }
+    var allFiltersExpanded by rememberSaveable(detail?.session?.id) {
+        mutableStateOf(false)
+    }
+    var gpsManeuverFilterEnabled by rememberSaveable(detail?.session?.id) {
+        mutableStateOf(false)
+    }
+    var gpsManeuverThresholdDeg by rememberSaveable(detail?.session?.id) {
+        mutableStateOf(DEFAULT_GPS_MANEUVER_THRESHOLD_DEG.toFloat())
+    }
+    var gpsManeuverRecoverySeconds by rememberSaveable(detail?.session?.id) {
+        mutableStateOf(DEFAULT_ANALYSIS_RECOVERY_SECONDS.toFloat())
+    }
+    var imuStabilityFilterEnabled by rememberSaveable(detail?.session?.id) {
+        mutableStateOf(false)
+    }
+    var imuMaxAttitudeRateDps by rememberSaveable(detail?.session?.id) {
+        mutableStateOf(DEFAULT_IMU_STEADY_ATTITUDE_RATE_DPS.toFloat())
+    }
+    var imuRecoverySeconds by rememberSaveable(detail?.session?.id) {
+        mutableStateOf(DEFAULT_ANALYSIS_RECOVERY_SECONDS.toFloat())
     }
 
     Column(
@@ -139,7 +170,7 @@ fun SessionReplayScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        if (detail == null || samples.isEmpty()) {
+        if (detail == null || sourceSamples.isEmpty()) {
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -152,79 +183,510 @@ fun SessionReplayScreen(
                 )
             }
         } else {
-            val safeIndex = selectedIndex.coerceIn(0, samples.lastIndex)
-            val selectedSample = samples[safeIndex]
-            val extraFields = detail.replayFields
-                .filter { it.id in extraFieldIds }
+            val preparedAnalysis = remember(detail.session.id, sourceSamples) {
+                prepareAnalysisSamples(sourceSamples)
+            }
+            val capabilities = remember(
+                detail.session.id,
+                sourceSamples,
+                preparedAnalysis
+            ) {
+                discoverSessionAnalysisCapabilities(
+                    sourceSamples = sourceSamples,
+                    preparedSamples = preparedAnalysis
+                )
+            }
+            val metricsById = remember(capabilities.metrics) {
+                capabilities.metrics.associateBy { it.id }
+            }
 
-            ReplayCurrentSampleCard(
-                sample = selectedSample,
-                fallbackEvent = detail.session.eventIdentifier,
-                extraFields = extraFields
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            ReplayPlaybackControls(
-                isPlaying = isPlaying,
-                speed = playbackSpeed,
-                onPlayPause = {
-                    isPlaying = !isPlaying
-                },
-                onSpeedChange = { newSpeed ->
-                    playbackSpeed = newSpeed
+            LaunchedEffect(
+                capabilities.gpsManeuverFilterAvailable,
+                capabilities.imuStabilityFilterAvailable
+            ) {
+                if (!capabilities.gpsManeuverFilterAvailable) {
+                    gpsManeuverFilterEnabled = false
                 }
-            )
+                if (!capabilities.imuStabilityFilterAvailable) {
+                    imuStabilityFilterEnabled = false
+                }
+            }
 
-            if (detail.replayFields.isNotEmpty()) {
-                TextButton(
-                    onClick = { fieldsExpanded = !fieldsExpanded }
+            val sampleFilters = buildList<AnalysisSampleFilter> {
+                if (
+                    gpsManeuverFilterEnabled &&
+                    capabilities.gpsManeuverFilterAvailable
                 ) {
-                    Text(
-                        if (fieldsExpanded) {
-                            stringResource(R.string.session_replay_fields_hide_config)
-                        } else {
-                            stringResource(R.string.session_replay_fields_show_config)
-                        }
+                    add(
+                        GpsManeuverAnalysisFilter(
+                            changeThresholdDeg = gpsManeuverThresholdDeg.toDouble(),
+                            recoverySeconds = gpsManeuverRecoverySeconds.toDouble()
+                        )
                     )
                 }
+                if (
+                    imuStabilityFilterEnabled &&
+                    capabilities.imuStabilityFilterAvailable
+                ) {
+                    add(
+                        ImuStabilityAnalysisFilter(
+                            maxAttitudeRateDps = imuMaxAttitudeRateDps.toDouble(),
+                            recoverySeconds = imuRecoverySeconds.toDouble()
+                        )
+                    )
+                }
+            }
+            val stateFilteredSamples = remember(preparedAnalysis, sampleFilters) {
+                applyAnalysisSampleFilters(preparedAnalysis, sampleFilters)
+            }
+            val timeFilter = remember(preparedAnalysis, activeTimeRange) {
+                activeTimeRange?.let { range ->
+                    analysisTimeFilterFromFraction(preparedAnalysis, range)
+                }
+            }
+            val timeFilteredSamples = remember(stateFilteredSamples, timeFilter) {
+                applyAnalysisTimeFilter(stateFilteredSamples, timeFilter)
+            }
 
-                if (fieldsExpanded) {
-                    ReplayFieldConfiguration(
-                        fields = detail.replayFields,
-                        selectedIds = extraFieldIds,
-                        onSelectionChange = onExtraFieldIdsChange
+            LaunchedEffect(timeFilteredSamples, metricsById) {
+                activeFilterRanges.keys.toList().forEach { metricId ->
+                    val metric = metricsById[metricId]
+                    val observed = metric?.let {
+                        metricObservedRange(it, timeFilteredSamples)
+                    }
+                    if (observed == null) {
+                        activeFilterRanges.remove(metricId)
+                    } else {
+                        val current = activeFilterRanges[metricId]
+                            ?: return@forEach
+                        val observedStart = observed.start.toFloat()
+                        val observedEnd = observed.endInclusive.toFloat()
+                        val rangeStart = current.start.coerceIn(
+                            observedStart,
+                            observedEnd
+                        )
+                        val rangeEnd = current.endInclusive.coerceIn(
+                            observedStart,
+                            observedEnd
+                        )
+                        activeFilterRanges[metricId] =
+                            minOf(rangeStart, rangeEnd)..maxOf(rangeStart, rangeEnd)
+                    }
+                }
+            }
+
+            val activeFilters = activeFilterRanges.mapNotNull { (metricId, range) ->
+                if (metricsById[metricId] == null) {
+                    null
+                } else {
+                    AnalysisRangeFilter(
+                        metricId = metricId,
+                        min = range.start.toDouble(),
+                        max = range.endInclusive.toDouble()
+                    )
+                }
+            }
+            val replayPrepared = remember(
+                timeFilteredSamples,
+                activeFilters,
+                metricsById
+            ) {
+                applyAnalysisRangeFilters(
+                    samples = timeFilteredSamples,
+                    filters = activeFilters,
+                    metricsById = metricsById
+                )
+            }
+            val replaySamples = remember(sourceSamples, replayPrepared) {
+                replayPrepared.mapNotNull { prepared ->
+                    sourceSamples.getOrNull(prepared.sourceIndex)
+                }
+            }
+            val replaySourceIndices = remember(replayPrepared) {
+                replayPrepared.map { it.sourceIndex }
+            }
+
+            val selectedIndex = replaySelectedFilteredIndex(
+                sourceIndices = replaySourceIndices,
+                selectedSourceIndex = selectedSourceIndex
+            )
+
+            LaunchedEffect(replayPrepared) {
+                isPlaying = false
+                if (replaySourceIndices.isNotEmpty()) {
+                    selectedSourceIndex = replaySourceIndices[selectedIndex]
+                }
+            }
+
+            LaunchedEffect(
+                isPlaying,
+                playbackSpeed,
+                detail.session.id,
+                replaySamples
+            ) {
+                if (!isPlaying || replaySamples.isEmpty()) return@LaunchedEffect
+
+                var startIndex = selectedIndex.coerceIn(0, replaySamples.lastIndex)
+                if (startIndex >= replaySamples.lastIndex) {
+                    startIndex = 0
+                    selectedSourceIndex = replaySourceIndices[0]
+                }
+
+                val offsets = replayPlaybackOffsetsMs(replaySamples)
+                val startOffset = offsets.getOrElse(startIndex) { 0L }
+                val startedAt = SystemClock.elapsedRealtime()
+
+                while (isPlaying) {
+                    val elapsedRealMs = SystemClock.elapsedRealtime() - startedAt
+                    val targetOffset = startOffset +
+                        (elapsedRealMs * playbackSpeed.toLong())
+                    val nextIndex = replayPlaybackIndexForOffset(offsets, targetOffset)
+
+                    if (nextIndex >= 0) {
+                        selectedSourceIndex = replaySourceIndices[nextIndex]
+                    }
+
+                    if (
+                        offsets.isNotEmpty() &&
+                        targetOffset >= offsets.last()
+                    ) {
+                        selectedSourceIndex = replaySourceIndices.last()
+                        isPlaying = false
+                        break
+                    }
+
+                    delay(REPLAY_PLAYBACK_TICK_MS)
+                }
+            }
+
+            val extraFields = detail.replayFields
+                .filter { it.id in extraFieldIds }
+            val replayColorMetrics = remember(
+                capabilities.colorMetrics,
+                preparedAnalysis
+            ) {
+                capabilities.colorMetrics.filter { metric ->
+                    metricObservedRange(metric, preparedAnalysis) != null
+                }
+            }
+
+            LaunchedEffect(replayColorMetrics, colorMetricId) {
+                if (
+                    colorMetricId != null &&
+                    replayColorMetrics.none { it.id == colorMetricId }
+                ) {
+                    colorMetricId = null
+                }
+            }
+
+            val colorMetric = colorMetricId?.let { selectedId ->
+                replayColorMetrics.firstOrNull { it.id == selectedId }
+            }
+            val trackColorData = remember(
+                replayPrepared,
+                colorMetric,
+                colorUseAbsoluteValue
+            ) {
+                colorMetric?.let { metric ->
+                    prepareReplayTrackColorData(
+                        samples = replayPrepared,
+                        metric = metric,
+                        useAbsoluteValue = colorUseAbsoluteValue
+                    )
+                }
+            }
+            LaunchedEffect(trackColorData?.hasNegativeValues) {
+                if (trackColorData?.hasNegativeValues == false) {
+                    colorUseAbsoluteValue = false
+                }
+            }
+
+            val colorObservedRange =
+                if (
+                    trackColorData?.minValue != null &&
+                    trackColorData.maxValue != null
+                ) {
+                    trackColorData.minValue..trackColorData.maxValue
+                } else {
+                    null
+                }
+
+            LaunchedEffect(colorObservedRange) {
+                selectedColorRange = clampSessionColorRange(
+                    selectedRange = selectedColorRange,
+                    observedRange = colorObservedRange
+                )
+                if (
+                    colorObservedRange == null &&
+                    configSheet == ReplayConfigSheet.COLOR
+                ) {
+                    configSheet = null
+                }
+            }
+
+            val effectiveColorRange = effectiveSessionColorRange(
+                selectedRange = selectedColorRange,
+                observedRange = colorObservedRange
+            )
+
+            if (replaySamples.isNotEmpty()) {
+                val safeIndex = selectedIndex.coerceIn(0, replaySamples.lastIndex)
+                ReplayCurrentSampleCard(
+                    sample = replaySamples[safeIndex],
+                    fallbackEvent = detail.session.eventIdentifier,
+                    extraFields = extraFields
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                ReplayPlaybackControls(
+                    isPlaying = isPlaying,
+                    speed = playbackSpeed,
+                    onPlayPause = {
+                        isPlaying = !isPlaying
+                    },
+                    onSpeedChange = { newSpeed ->
+                        playbackSpeed = newSpeed
+                    }
+                )
+            }
+
+            val activeFilterCount = replayActiveFilterCount(
+                timeFilterActive = activeTimeRange != null,
+                rangeFilterCount = activeFilters.size,
+                sampleFilterCount = sampleFilters.size
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (detail.replayFields.isNotEmpty()) {
+                    TextButton(
+                        onClick = { configSheet = ReplayConfigSheet.VALUES },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = stringResource(
+                                R.string.session_replay_fields_show_config
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                TextButton(
+                    onClick = { configSheet = ReplayConfigSheet.FILTERS },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    val filtersLabel =
+                        stringResource(R.string.session_analysis_filters)
+                    val label = if (activeFilterCount > 0) {
+                        "$filtersLabel · $activeFilterCount " +
+                            stringResource(R.string.status_active)
+                    } else {
+                        filtersLabel
+                    }
+                    Text(
+                        text = label,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
 
+            ReplayColorMetricSelector(
+                selected = colorMetric,
+                metrics = replayColorMetrics,
+                onSelected = { metric ->
+                    colorMetricId = metric?.id
+                }
+            )
+
+            when (configSheet) {
+                ReplayConfigSheet.VALUES -> {
+                    ModalBottomSheet(
+                        onDismissRequest = { configSheet = null }
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 24.dp)
+                                .padding(bottom = 24.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            ReplayFieldConfiguration(
+                                fields = detail.replayFields,
+                                selectedIds = extraFieldIds,
+                                onSelectionChange = onExtraFieldIdsChange
+                            )
+                        }
+                    }
+                }
+
+                ReplayConfigSheet.FILTERS -> {
+                    ModalBottomSheet(
+                        onDismissRequest = { configSheet = null }
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 24.dp)
+                                .padding(bottom = 24.dp)
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = stringResource(
+                                    R.string.session_analysis_filters
+                                ),
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            AnalysisTimeFilterRow(
+                                samples = preparedAnalysis,
+                                activeRange = activeTimeRange,
+                                onActiveRangeChange = {
+                                    activeTimeRange = it
+                                }
+                            )
+                            AnalysisStateFilters(
+                                gpsAvailable =
+                                    capabilities.gpsManeuverFilterAvailable,
+                                gpsEnabled = gpsManeuverFilterEnabled,
+                                onGpsEnabledChange = {
+                                    gpsManeuverFilterEnabled = it
+                                },
+                                gpsThresholdDeg = gpsManeuverThresholdDeg,
+                                onGpsThresholdChange = {
+                                    gpsManeuverThresholdDeg = it
+                                },
+                                gpsRecoverySeconds =
+                                    gpsManeuverRecoverySeconds,
+                                onGpsRecoveryChange = {
+                                    gpsManeuverRecoverySeconds = it
+                                },
+                                imuAvailable =
+                                    capabilities.imuStabilityFilterAvailable,
+                                imuEnabled = imuStabilityFilterEnabled,
+                                onImuEnabledChange = {
+                                    imuStabilityFilterEnabled = it
+                                },
+                                imuMaxAttitudeRateDps =
+                                    imuMaxAttitudeRateDps,
+                                onImuMaxAttitudeRateChange = {
+                                    imuMaxAttitudeRateDps = it
+                                },
+                                imuRecoverySeconds = imuRecoverySeconds,
+                                onImuRecoveryChange = {
+                                    imuRecoverySeconds = it
+                                }
+                            )
+                            AnalysisFilters(
+                                metrics = capabilities.filterMetrics,
+                                preparedSamples = timeFilteredSamples,
+                                activeRanges = activeFilterRanges,
+                                allExpanded = allFiltersExpanded,
+                                onAllExpandedChange = {
+                                    allFiltersExpanded = it
+                                }
+                            )
+                        }
+                    }
+                }
+
+                ReplayConfigSheet.COLOR -> {
+                    if (
+                        colorMetric != null &&
+                        colorObservedRange != null &&
+                        trackColorData != null
+                    ) {
+                        SessionColorScaleEditorSheet(
+                            metricDisplayName =
+                                analysisMetricDisplayName(colorMetric),
+                            unit = colorMetric.unit,
+                            observedRange = colorObservedRange,
+                            selectedRange = selectedColorRange,
+                            hasNegativeValues =
+                                trackColorData.hasNegativeValues,
+                            useAbsoluteValue = colorUseAbsoluteValue,
+                            onRangeChange = {
+                                selectedColorRange = it
+                            },
+                            onAbsoluteValueChange = {
+                                colorUseAbsoluteValue = it
+                                selectedColorRange = null
+                            },
+                            onResetRange = {
+                                selectedColorRange = null
+                            },
+                            onDismiss = {
+                                configSheet = null
+                            }
+                        )
+                    }
+                }
+
+                null -> Unit
+            }
+
             Spacer(modifier = Modifier.height(8.dp))
 
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                ReplayTrackCanvas(
-                    samples = samples,
-                    selectedIndex = safeIndex,
+            if (replaySamples.isEmpty()) {
+                Box(
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxHeight()
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = stringResource(R.string.session_replay_no_filtered_samples),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                val safeIndex = selectedIndex.coerceIn(0, replaySamples.lastIndex)
+                val replayMapBackground = replayMapBackgroundForSample(
+                    sample = replaySamples[safeIndex],
+                    backgrounds = replayMaps
                 )
-
-                ReplayTimeline(
-                    samples = samples,
-                    selectedIndex = safeIndex,
-                    onSelectedIndex = {
-                        isPlaying = false
-                        selectedIndex = it
-                    },
+                Row(
                     modifier = Modifier
-                        .width(52.dp)
-                        .fillMaxHeight()
-                )
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ReplayTrackCanvas(
+                        samples = replaySamples,
+                        sourceIndices = replaySourceIndices,
+                        selectedIndex = safeIndex,
+                        mapBackground = replayMapBackground,
+                        colorMetric = colorMetric,
+                        colorData = trackColorData,
+                        colorMinValue = effectiveColorRange?.start,
+                        colorMaxValue = effectiveColorRange?.endInclusive,
+                        onColorLegendClick = {
+                            configSheet = ReplayConfigSheet.COLOR
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                    )
+
+                    ReplayTimeline(
+                        samples = replaySamples,
+                        sourceIndices = replaySourceIndices,
+                        selectedIndex = safeIndex,
+                        onSelectedIndex = {
+                            isPlaying = false
+                            selectedSourceIndex = replaySourceIndices[it]
+                        },
+                        modifier = Modifier
+                            .width(52.dp)
+                            .fillMaxHeight()
+                    )
+                }
             }
         }
 
@@ -238,6 +700,57 @@ fun SessionReplayScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(stringResource(R.string.session_back))
+        }
+    }
+}
+
+@Composable
+private fun ReplayColorMetricSelector(
+    selected: AnalysisMetric?,
+    metrics: List<AnalysisMetric>,
+    onSelected: (AnalysisMetric?) -> Unit
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = stringResource(R.string.session_analysis_color),
+            fontWeight = FontWeight.SemiBold
+        )
+        Box {
+            OutlinedButton(
+                onClick = { menuExpanded = true },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    selected?.let { analysisMetricDisplayName(it) }
+                        ?: stringResource(R.string.session_analysis_none)
+                )
+            }
+
+            DropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = { menuExpanded = false }
+            ) {
+                DropdownMenuItem(
+                    text = {
+                        Text(stringResource(R.string.session_analysis_none))
+                    },
+                    onClick = {
+                        onSelected(null)
+                        menuExpanded = false
+                    }
+                )
+                metrics.forEach { metric ->
+                    DropdownMenuItem(
+                        text = { Text(analysisMetricDisplayName(metric)) },
+                        onClick = {
+                            onSelected(metric)
+                            menuExpanded = false
+                        }
+                    )
+                }
+            }
         }
     }
 }
@@ -293,30 +806,62 @@ private fun ReplayFieldConfiguration(
     val recommended = fields.filter { it.recommended }
     val additional = fields.filterNot { it.recommended }
 
-    Card(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .heightIn(max = 220.dp)
-                .verticalScroll(rememberScrollState())
-                .padding(10.dp)
-        ) {
-            Text(
-                text = stringResource(R.string.session_replay_fields_title),
-                fontWeight = FontWeight.SemiBold
-            )
+        Text(
+            text = stringResource(R.string.session_replay_fields_title),
+            fontSize = 22.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = stringResource(R.string.session_replay_fields_hint),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.sp
+        )
 
-            if (recommended.isNotEmpty()) {
-                Text(
-                    text = stringResource(R.string.session_replay_fields_recommended),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 12.sp
+        if (recommended.isNotEmpty()) {
+            Text(
+                text = stringResource(R.string.session_replay_fields_recommended),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp
+            )
+            recommended.forEach { field ->
+                ReplayFieldConfigRow(
+                    field = field,
+                    checked = field.id in selectedIds,
+                    onCheckedChange = { checked ->
+                        onSelectionChange(
+                            if (checked) {
+                                selectedIds + field.id
+                            } else {
+                                selectedIds - field.id
+                            }
+                        )
+                    }
                 )
-                recommended.forEach { field ->
+            }
+        }
+
+        if (additional.isNotEmpty()) {
+            TextButton(
+                onClick = { allExpanded = !allExpanded }
+            ) {
+                Text(
+                    if (allExpanded) {
+                        stringResource(R.string.session_replay_fields_hide_all)
+                    } else {
+                        stringResource(
+                            R.string.session_replay_fields_show_all,
+                            additional.size
+                        )
+                    }
+                )
+            }
+
+            if (allExpanded) {
+                additional.forEach { field ->
                     ReplayFieldConfigRow(
                         field = field,
                         checked = field.id in selectedIds,
@@ -332,41 +877,6 @@ private fun ReplayFieldConfiguration(
                     )
                 }
             }
-
-            if (additional.isNotEmpty()) {
-                TextButton(
-                    onClick = { allExpanded = !allExpanded }
-                ) {
-                    Text(
-                        if (allExpanded) {
-                            stringResource(R.string.session_replay_fields_hide_all)
-                        } else {
-                            stringResource(
-                                R.string.session_replay_fields_show_all,
-                                additional.size
-                            )
-                        }
-                    )
-                }
-
-                if (allExpanded) {
-                    additional.forEach { field ->
-                        ReplayFieldConfigRow(
-                            field = field,
-                            checked = field.id in selectedIds,
-                            onCheckedChange = { checked ->
-                                onSelectionChange(
-                                    if (checked) {
-                                        selectedIds + field.id
-                                    } else {
-                                        selectedIds - field.id
-                                    }
-                                )
-                            }
-                        )
-                    }
-                }
-            }
         }
     }
 }
@@ -377,16 +887,7 @@ private fun ReplayFieldConfigRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
-    val source = field.measurementGroup
-        ?.takeIf { it.isNotBlank() }
-        ?.let { group ->
-            if (group.equals("regattalink", ignoreCase = true)) {
-                "RegattaLink"
-            } else {
-                group
-            }
-        }
-        ?: stringResource(R.string.session_replay_field_source_measurements)
+    val source = replayExtraFieldSourceLabel(field)
     val fieldLabel = replayExtraFieldLabel(field)
     val label = field.unit?.let { "$fieldLabel ($it)" } ?: fieldLabel
 
@@ -475,8 +976,11 @@ private fun ReplayCurrentSampleCard(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     extraFields.forEach { field ->
-                        val value = extraValues[field.id]
-                            ?: stringResource(R.string.session_unknown_value)
+                        val value = replayExtraFieldDisplayValue(
+                            sample = sample,
+                            field = field,
+                            fallback = extraValues[field.id]
+                        ) ?: stringResource(R.string.session_unknown_value)
                         ReplayValue(
                             label = replayExtraFieldReplayLabel(field),
                             value = value,
@@ -499,18 +1003,49 @@ private fun ReplayCurrentSampleCard(
 }
 
 @Composable
-private fun replayExtraFieldReplayLabel(field: ReplayExtraField): String {
-    val source = field.measurementGroup
-        ?.takeIf { it.isNotBlank() }
-        ?.let { group ->
-            if (group.equals("regattalink", ignoreCase = true)) {
-                "RegattaLink"
-            } else {
-                group
-            }
-        }
-        ?: stringResource(R.string.session_replay_field_source_measurements)
-    return "$source · ${replayExtraFieldLabel(field)}"
+private fun replayExtraFieldReplayLabel(field: ReplayExtraField): String =
+    "${replayExtraFieldSourceLabel(field)} · ${replayExtraFieldLabel(field)}"
+
+@Composable
+private fun replayExtraFieldDisplayValue(
+    sample: SessionTrackingSample,
+    field: ReplayExtraField,
+    fallback: String?
+): String? {
+    val value = replayExtraFieldNumericValue(sample, field)
+    return when (replayExtraFieldDirection(field)) {
+        ReplayExtraFieldDirection.HEEL ->
+            formatRegattaLinkDirectionalMeasurement(
+                valueDeg = value,
+                positiveDirectionLabel =
+                    stringResource(R.string.regattalink_starboard),
+                negativeDirectionLabel =
+                    stringResource(R.string.regattalink_port)
+            )
+        ReplayExtraFieldDirection.PITCH ->
+            formatRegattaLinkDirectionalMeasurement(
+                valueDeg = value,
+                positiveDirectionLabel =
+                    stringResource(R.string.regattalink_bow_up),
+                negativeDirectionLabel =
+                    stringResource(R.string.regattalink_bow_down)
+            )
+        null -> fallback
+    }
+}
+
+@Composable
+private fun replayExtraFieldSourceLabel(field: ReplayExtraField): String {
+    val group = field.measurementGroup?.takeIf { it.isNotBlank() }
+    return when {
+        group == null ->
+            stringResource(R.string.session_replay_field_source_measurements)
+        group.equals("regattalink", ignoreCase = true) ->
+            "RegattaLink"
+        group.equals("nmea", ignoreCase = true) ->
+            stringResource(R.string.regattalink_nmea_title)
+        else -> group
+    }
 }
 
 @Composable
@@ -564,7 +1099,14 @@ private fun ReplayValue(
 @Composable
 private fun ReplayTrackCanvas(
     samples: List<SessionTrackingSample>,
+    sourceIndices: List<Int>,
     selectedIndex: Int,
+    mapBackground: ReplayMapBackground?,
+    colorMetric: AnalysisMetric?,
+    colorData: ReplayTrackColorData?,
+    colorMinValue: Double?,
+    colorMaxValue: Double?,
+    onColorLegendClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val selected = samples[selectedIndex]
@@ -578,7 +1120,10 @@ private fun ReplayTrackCanvas(
     val densityValue = density.density
     val minPaddingPx = with(density) { 12.dp.toPx() }
     val trackColor = MaterialTheme.colorScheme.primary
+    val missingMetricColor =
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
     val futureColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.20f)
+    val colorScale = sessionColorScale()
     val courseColor = MaterialTheme.colorScheme.secondary
     val startColor = MaterialTheme.colorScheme.tertiary
     val finishColor = MaterialTheme.colorScheme.error
@@ -587,6 +1132,14 @@ private fun ReplayTrackCanvas(
     val validSamples = remember(samples) {
         samples.filter { it.hasUsableGpsPosition() }
     }
+    var viewport by remember(
+        samples.firstOrNull()?.localId,
+        samples.lastOrNull()?.localId,
+        samples.size,
+        mapBackground?.candidate?.key
+    ) {
+        mutableStateOf(ReplayViewport())
+    }
 
     Box(
         modifier = modifier
@@ -594,7 +1147,25 @@ private fun ReplayTrackCanvas(
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 shape = MaterialTheme.shapes.medium
             )
+            .clipToBounds()
     ) {
+        mapBackground?.let { background ->
+            Image(
+                bitmap = background.bitmap.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(4.dp)
+                    .graphicsLayer(
+                        scaleX = viewport.zoom,
+                        scaleY = viewport.zoom,
+                        translationX = viewport.panX,
+                        translationY = viewport.panY
+                    )
+            )
+        }
+
         if (validSamples.isEmpty()) {
             Text(
                 text = stringResource(R.string.session_replay_no_position),
@@ -607,25 +1178,87 @@ private fun ReplayTrackCanvas(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(4.dp)
+                .pointerInput(samples.size, sourceIndices) {
+                    detectTransformGestures { centroid, pan, zoom, _ ->
+                        viewport = updateReplayViewport(
+                            viewport = viewport,
+                            zoomChange = zoom,
+                            panX = pan.x,
+                            panY = pan.y,
+                            centroidX = centroid.x,
+                            centroidY = centroid.y,
+                            widthPx = size.width.toFloat(),
+                            heightPx = size.height.toFloat()
+                        )
+                    }
+                }
         ) {
-            val geoPoints = buildList {
-                validSamples.forEach { add(OwnShipGeoPoint(it.lat, it.lon)) }
-                coursePoints.forEach { add(OwnShipGeoPoint(it.lat, it.lon)) }
+            val localProjection = if (mapBackground == null) {
+                val geoPoints = buildList {
+                    validSamples.forEach { add(OwnShipGeoPoint(it.lat, it.lon)) }
+                    coursePoints.forEach { add(OwnShipGeoPoint(it.lat, it.lon)) }
+                }
+                ReplayMapProjection.create(
+                    points = geoPoints,
+                    widthPx = size.width,
+                    heightPx = size.height,
+                    paddingFraction = 0.09f,
+                    minPaddingPx = minPaddingPx
+                ) ?: return@Canvas
+            } else {
+                null
             }
 
-            val projection = ReplayMapProjection.create(
-                points = geoPoints,
-                widthPx = size.width,
-                heightPx = size.height,
-                paddingFraction = 0.09f,
-                minPaddingPx = minPaddingPx
-            ) ?: return@Canvas
+            fun transformed(point: Offset): Offset =
+                replayTransformPoint(
+                    point = point,
+                    viewport = viewport,
+                    widthPx = size.width,
+                    heightPx = size.height
+                )
 
-            fun point(sample: SessionTrackingSample): Offset? =
-                projection.project(sample.lat, sample.lon)
+            fun projectedPoint(lat: Double, lon: Double): Offset? {
+                val background = mapBackground
+                val basePoint = if (background != null) {
+                    val viewport = background.candidate.viewport
+                    val imagePoint = projectToCourseMap(
+                        lat = lat,
+                        lon = lon,
+                        viewport = viewport
+                    ) ?: return null
+                    if (!isPointInsideCourseMap(imagePoint, viewport)) {
+                        return null
+                    }
+                    val fitted = fitCourseMapPoint(
+                        point = imagePoint,
+                        imageWidth = background.bitmap.width,
+                        imageHeight = background.bitmap.height,
+                        containerWidth = size.width.toInt(),
+                        containerHeight = size.height.toInt()
+                    ) ?: return null
+                    Offset(
+                        x = fitted.x.toFloat(),
+                        y = fitted.y.toFloat()
+                    )
+                } else {
+                    localProjection?.project(lat, lon) ?: return null
+                }
+                return transformed(basePoint)
+            }
+
+            fun point(sample: SessionTrackingSample): Offset? {
+                val activeContextId = mapBackground?.candidate?.key?.raceContextId
+                if (
+                    activeContextId != null &&
+                    sample.raceContextId != activeContextId
+                ) {
+                    return null
+                }
+                return projectedPoint(sample.lat, sample.lon)
+            }
 
             fun coursePoint(point: CourseOverlayGeoPoint): Offset? =
-                projection.project(point.lat, point.lon)
+                projectedPoint(point.lat, point.lon)
 
             val sizing = replayCanvasSizing(
                 canvasScalePx = min(size.width, size.height),
@@ -638,14 +1271,27 @@ private fun ReplayTrackCanvas(
                 if (
                     !previous.hasUsableGpsPosition() ||
                     !current.hasUsableGpsPosition() ||
-                    !areSessionSamplesContiguous(previous, current)
+                    !areSessionSamplesContiguous(previous, current) ||
+                    !replaySourceIndicesAreContiguous(sourceIndices, index)
                 ) {
                     continue
                 }
                 val from = point(previous) ?: continue
                 val to = point(current) ?: continue
+                val sailedColor =
+                    if (colorMetric != null && colorData != null) {
+                        colorData.fractionAt(
+                            index = index,
+                            minValue = colorMinValue,
+                            maxValue = colorMaxValue
+                        )?.let { fraction ->
+                            sampleSessionColor(colorScale, fraction)
+                        } ?: missingMetricColor
+                    } else {
+                        trackColor
+                    }
                 drawLine(
-                    color = if (index <= selectedIndex) trackColor else futureColor,
+                    color = if (index <= selectedIndex) sailedColor else futureColor,
                     start = from,
                     end = to,
                     strokeWidth = if (index <= selectedIndex) {
@@ -741,19 +1387,93 @@ private fun ReplayTrackCanvas(
                     drawReplayBoat(
                         center = center,
                         radius = sizing.boatRadiusPx,
-                        bearingDegrees = replayBoatBearingDegrees(samples, selectedIndex),
+                        bearingDegrees = replayBoatBearingDegrees(
+                            samples = samples,
+                            selectedIndex = selectedIndex,
+                            sourceIndices = sourceIndices
+                        ),
                         color = markerColor,
                         outlineWidth = sizing.boatOutlineWidthPx
                     )
                 }
             }
         }
+
+        if (
+            colorMetric != null &&
+            colorData != null &&
+            colorMinValue != null &&
+            colorMaxValue != null
+        ) {
+            ReplayTrackColorLegend(
+                metric = colorMetric,
+                minValue = colorMinValue,
+                maxValue = colorMaxValue,
+                onClick = onColorLegendClick,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp)
+            )
+        }
     }
 }
 
 @Composable
+private fun ReplayTrackColorLegend(
+    metric: AnalysisMetric,
+    minValue: Double,
+    maxValue: Double,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colorScale = sessionColorScale()
+
+    Column(
+        modifier = modifier
+            .clickable(onClick = onClick)
+            .background(
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+                shape = MaterialTheme.shapes.small
+            )
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+    ) {
+        Text(
+            text = analysisMetricDisplayName(metric),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium
+        )
+        Spacer(modifier = Modifier.height(3.dp))
+        Box(
+            modifier = Modifier
+                .width(112.dp)
+                .height(6.dp)
+                .background(brush = Brush.horizontalGradient(colors = colorScale))
+        )
+        Row(
+            modifier = Modifier.width(112.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = formatReplayColorLegendValue(minValue),
+                fontSize = 9.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = formatReplayColorLegendValue(maxValue),
+                fontSize = 9.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+private fun formatReplayColorLegendValue(value: Double): String =
+    String.format(Locale.getDefault(), "%.1f", value)
+
+@Composable
 private fun ReplayTimeline(
     samples: List<SessionTrackingSample>,
+    sourceIndices: List<Int>,
     selectedIndex: Int,
     onSelectedIndex: (Int) -> Unit,
     modifier: Modifier = Modifier
@@ -811,14 +1531,22 @@ private fun ReplayTimeline(
                 var index = 0
                 while (index < samples.lastIndex) {
                     val next = min(samples.lastIndex, index + stride)
-                    val y1 = fractions[index] * size.height
-                    val y2 = fractions[next] * size.height
-                    drawLine(
-                        color = replaySpeedColor(samples[index].sog.toDouble(), maxSog),
-                        start = Offset(x, y1),
-                        end = Offset(x, max(y1 + timelineMinSegmentPx, y2)),
-                        strokeWidth = timelineStrokeWidthPx
-                    )
+                    val sourceSpanContinuous =
+                        sourceIndices.size != samples.size ||
+                            sourceIndices[next] - sourceIndices[index] == next - index
+                    if (sourceSpanContinuous) {
+                        val y1 = fractions[index] * size.height
+                        val y2 = fractions[next] * size.height
+                        drawLine(
+                            color = replaySpeedColor(
+                                samples[index].sog.toDouble(),
+                                maxSog
+                            ),
+                            start = Offset(x, y1),
+                            end = Offset(x, max(y1 + timelineMinSegmentPx, y2)),
+                            strokeWidth = timelineStrokeWidthPx
+                        )
+                    }
                     index = next
                 }
             }
@@ -835,6 +1563,69 @@ private fun ReplayTimeline(
             )
         }
     }
+}
+
+internal fun replayActiveFilterCount(
+    timeFilterActive: Boolean,
+    rangeFilterCount: Int,
+    sampleFilterCount: Int
+): Int =
+    (if (timeFilterActive) 1 else 0) +
+        rangeFilterCount +
+        sampleFilterCount
+
+internal data class ReplayTrackColorData(
+    val values: List<Double?>,
+    val minValue: Double?,
+    val maxValue: Double?,
+    val hasNegativeValues: Boolean
+) {
+    fun fractionAt(
+        index: Int,
+        minValue: Double? = this.minValue,
+        maxValue: Double? = this.maxValue
+    ): Float? =
+        sessionColorFraction(
+            value = values.getOrNull(index),
+            minValue = minValue,
+            maxValue = maxValue
+        )
+}
+
+internal fun prepareReplayTrackColorData(
+    samples: List<PreparedAnalysisSample>,
+    metric: AnalysisMetric,
+    useAbsoluteValue: Boolean = false
+): ReplayTrackColorData {
+    val rawValues = samples.map { sample ->
+        metricValue(metric, sample)?.takeIf { it.isFinite() }
+    }
+    val values = rawValues.map {
+        sessionColorValue(it, useAbsoluteValue)
+    }
+    val observed = sessionColorObservedRange(
+        values = rawValues,
+        useAbsoluteValue = useAbsoluteValue
+    )
+    return ReplayTrackColorData(
+        values = values,
+        minValue = observed?.start,
+        maxValue = observed?.endInclusive,
+        hasNegativeValues = sessionColorHasNegativeValue(rawValues)
+    )
+}
+
+internal fun replaySelectedFilteredIndex(
+    sourceIndices: List<Int>,
+    selectedSourceIndex: Int
+): Int {
+    if (sourceIndices.isEmpty()) return 0
+    val exact = sourceIndices.indexOf(selectedSourceIndex)
+    if (exact >= 0) return exact
+
+    return sourceIndices.indices.minByOrNull { index ->
+        abs(sourceIndices[index] - selectedSourceIndex)
+    } ?: 0
 }
 
 internal fun replayInitialSampleIndex(sampleCount: Int): Int =
@@ -942,6 +1733,74 @@ internal fun replayPlaybackIndexForOffset(
     return low
 }
 
+internal fun replaySourceIndicesAreContiguous(
+    sourceIndices: List<Int>,
+    currentIndex: Int
+): Boolean {
+    if (currentIndex <= 0 || currentIndex >= sourceIndices.size) return false
+    val previous = sourceIndices[currentIndex - 1]
+    val current = sourceIndices[currentIndex]
+    return previous >= 0 && current == previous + 1
+}
+
+internal data class ReplayViewport(
+    val zoom: Float = 1f,
+    val panX: Float = 0f,
+    val panY: Float = 0f
+)
+
+internal fun updateReplayViewport(
+    viewport: ReplayViewport,
+    zoomChange: Float,
+    panX: Float,
+    panY: Float,
+    centroidX: Float,
+    centroidY: Float,
+    widthPx: Float,
+    heightPx: Float
+): ReplayViewport {
+    if (widthPx <= 0f || heightPx <= 0f) return viewport
+
+    val oldZoom = viewport.zoom.coerceIn(1f, REPLAY_MAX_ZOOM)
+    val safeZoomChange = zoomChange.takeIf { it.isFinite() && it > 0f } ?: 1f
+    val newZoom = (oldZoom * safeZoomChange).coerceIn(1f, REPLAY_MAX_ZOOM)
+    if (newZoom <= 1f) return ReplayViewport()
+
+    val ratio = newZoom / oldZoom
+    val centerX = widthPx / 2f
+    val centerY = heightPx / 2f
+    val nextPanX =
+        viewport.panX * ratio +
+            (1f - ratio) * (centroidX - centerX) +
+            panX
+    val nextPanY =
+        viewport.panY * ratio +
+            (1f - ratio) * (centroidY - centerY) +
+            panY
+    val maxPanX = (newZoom - 1f) * widthPx / 2f
+    val maxPanY = (newZoom - 1f) * heightPx / 2f
+
+    return ReplayViewport(
+        zoom = newZoom,
+        panX = nextPanX.coerceIn(-maxPanX, maxPanX),
+        panY = nextPanY.coerceIn(-maxPanY, maxPanY)
+    )
+}
+
+internal fun replayTransformPoint(
+    point: Offset,
+    viewport: ReplayViewport,
+    widthPx: Float,
+    heightPx: Float
+): Offset {
+    val centerX = widthPx / 2f
+    val centerY = heightPx / 2f
+    return Offset(
+        x = centerX + (point.x - centerX) * viewport.zoom + viewport.panX,
+        y = centerY + (point.y - centerY) * viewport.zoom + viewport.panY
+    )
+}
+
 internal data class ReplayCanvasSizing(
     val sailedTrackWidthPx: Float,
     val futureTrackWidthPx: Float,
@@ -984,7 +1843,8 @@ internal fun replaySpeedFraction(speedMps: Double, maxSpeedMps: Double): Float {
 
 internal fun replayBoatBearingDegrees(
     samples: List<SessionTrackingSample>,
-    selectedIndex: Int
+    selectedIndex: Int,
+    sourceIndices: List<Int> = emptyList()
 ): Float {
     if (samples.isEmpty()) return 0f
 
@@ -1003,14 +1863,19 @@ internal fun replayBoatBearingDegrees(
         return recorded ?: 0f
     }
 
-    return replayTrackBearingDegrees(samples, index)
+    return replayTrackBearingDegrees(
+        samples = samples,
+        selectedIndex = index,
+        sourceIndices = sourceIndices
+    )
         ?: recorded
         ?: 0f
 }
 
 private fun replayTrackBearingDegrees(
     samples: List<SessionTrackingSample>,
-    selectedIndex: Int
+    selectedIndex: Int,
+    sourceIndices: List<Int>
 ): Float? {
     val selected = samples.getOrNull(selectedIndex)
         ?.takeIf { it.hasUsableGpsPosition() }
@@ -1036,10 +1901,20 @@ private fun replayTrackBearingDegrees(
     }
 
     samples.getOrNull(selectedIndex + 1)?.let { next ->
-        bearing(selected, next)?.let { return it }
+        if (
+            sourceIndices.isEmpty() ||
+            replaySourceIndicesAreContiguous(sourceIndices, selectedIndex + 1)
+        ) {
+            bearing(selected, next)?.let { return it }
+        }
     }
     samples.getOrNull(selectedIndex - 1)?.let { previous ->
-        bearing(previous, selected)?.let { return it }
+        if (
+            sourceIndices.isEmpty() ||
+            replaySourceIndicesAreContiguous(sourceIndices, selectedIndex)
+        ) {
+            bearing(previous, selected)?.let { return it }
+        }
     }
     return null
 }
@@ -1155,6 +2030,7 @@ private fun DrawScope.drawReplayBoat(
     }
 }
 
+private const val REPLAY_MAX_ZOOM = 6f
 private const val REPLAY_PLAYBACK_TICK_MS = 50L
 private const val REPLAY_FALLBACK_SAMPLE_INTERVAL_MS = 1_000L
 private const val METERS_PER_LAT_DEGREE = 111_320.0

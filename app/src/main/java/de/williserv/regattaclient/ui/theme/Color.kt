@@ -8,6 +8,8 @@ val RegattaBlueDark = Color(0xFF5F73B3)
 val RegattaGreen = Color(0xFF1B8F3A)
 val RegattaGreenDark = Color(0xFF1B8F3A)
 
+val RegattaYellow = Color(0xFFF2B600)
+
 val RegattaOrange = Color(0xFFB26A00)
 val RegattaOrangeDark = Color(0xFFB87812)
 

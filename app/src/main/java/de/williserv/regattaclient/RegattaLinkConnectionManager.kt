@@ -1,11 +1,16 @@
 package de.williserv.regattaclient
 
 import android.annotation.SuppressLint
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.location.Location
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -102,6 +107,14 @@ internal interface RegattaLinkConnectionClient {
         timeoutMs: Long
     ): Boolean
 
+    fun startKnownDeviceAutoConnect(
+        deviceAddress: String,
+        expectedStableId: String?
+    ): Boolean
+
+    fun onBluetoothAdapterDisabled()
+    fun onBluetoothAdapterEnabled()
+
     fun startDiscovery(): Boolean
     fun disconnect()
     fun startOta(artifact: RegattaLinkFirmwareArtifact)
@@ -113,11 +126,28 @@ internal interface RegattaLinkConnectionClient {
     fun setLoadPrecisionX10(enabled: Boolean): Boolean = false
     fun setNmeaTxEnabled(enabled: Boolean): Boolean = false
     fun setNmeaAttitudeTxEnabled(enabled: Boolean): Boolean = false
+    fun setNmea0183TxEnabled(enabled: Boolean): Boolean = false
+    fun setPhoneGpsTxEnabled(enabled: Boolean): Boolean = false
+    fun setCompassTxEnabled(enabled: Boolean): Boolean = false
+    fun setNmea0183Baud(baudRate: Int): Boolean = false
+    fun setMagBackgroundLearningEnabled(enabled: Boolean): Boolean = false
+    fun setSubsystemEnabled(
+        subsystem: RegattaLinkSubsystem,
+        enabled: Boolean
+    ): Boolean = false
+    fun applyConfigBitsAndRestart(
+        mask: UInt,
+        encodedBits: UInt
+    ): Boolean = false
+    fun setHeadingTrimDeg(value: Int): Boolean = false
+    fun offerPhoneGnss(sample: RegattaLinkPhoneGnssSample): Boolean = false
+    fun clearPhoneGnss() = Unit
     fun drainDiagnosticLog(): Boolean = false
     fun executeDeviceControl(
         opcode: RegattaLinkDeviceControlOpcode,
         value: Int
     ): Boolean = false
+    fun setImuRawPreviewEnabled(enabled: Boolean): Boolean = false
     fun refreshPgnInventory(): Boolean
     fun readRawCanFrames(): Boolean
 
@@ -205,6 +235,9 @@ internal class RegattaLinkConnectionManager(
     private val startupReconnectRequested = AtomicBoolean(false)
 
     @Volatile
+    private var autoReconnectSuppressedByUser = false
+
+    @Volatile
     private var connectionState = RegattaLinkClientState()
 
     @Volatile
@@ -236,6 +269,29 @@ internal class RegattaLinkConnectionManager(
     @Volatile
     private var factoryResetPending = false
 
+    @Volatile
+    private var lastPhoneGnssCogDeg: Double? = null
+
+    private val bluetoothStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != BluetoothAdapter.ACTION_STATE_CHANGED) return
+            when (
+                intent.getIntExtra(
+                    BluetoothAdapter.EXTRA_STATE,
+                    BluetoothAdapter.ERROR
+                )
+            ) {
+                BluetoothAdapter.STATE_OFF -> {
+                    client.onBluetoothAdapterDisabled()
+                }
+                BluetoothAdapter.STATE_ON -> {
+                    client.onBluetoothAdapterEnabled()
+                    ensureBackgroundConnectedIfPermitted()
+                }
+            }
+        }
+    }
+
     private val client = clientFactory.create(
         context = appContext,
         onStateChanged = ::handleConnectionState,
@@ -253,6 +309,15 @@ internal class RegattaLinkConnectionManager(
             }
         }
     )
+
+    init {
+        ContextCompat.registerReceiver(
+            appContext,
+            bluetoothStateReceiver,
+            IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+    }
 
     fun addListener(listener: RegattaLinkConnectionListener) {
         listeners.add(listener)
@@ -273,15 +338,48 @@ internal class RegattaLinkConnectionManager(
 
     fun requestForegroundStartupReconnectIfPermitted() {
         if (!startupReconnectRequested.compareAndSet(false, true)) return
-        ensureConnectedIfPermitted()
+        if (!hasRequiredPermissions()) return
+        ensureBackgroundConnectedIfPermitted()
     }
 
     fun ensureConnectedIfPermitted() {
-        if (!hasRequiredPermissions()) return
-        reconnectConfigured()
+        ensureBackgroundConnectedIfPermitted()
+    }
+
+    private fun ensureBackgroundConnectedIfPermitted(): Boolean {
+        if (
+            autoReconnectSuppressedByUser ||
+            otaState.isActive ||
+            explicitDiscoveryRequested ||
+            factoryResetPending ||
+            configuredDeviceStore.requiresNewPairing() ||
+            !hasRequiredPermissions()
+        ) {
+            return false
+        }
+        val configured = configuredDeviceStore.load()
+        if (configured != null) {
+            legacyBootstrapAddress = null
+            return client.startKnownDeviceAutoConnect(
+                deviceAddress = configured.deviceAddress,
+                expectedStableId = configured.stableId
+            )
+        }
+
+        val legacyAddress = legacyBondedAddressProvider(appContext) ?: return false
+        legacyBootstrapAddress = legacyAddress
+        val accepted = client.startKnownDeviceAutoConnect(
+            deviceAddress = legacyAddress,
+            expectedStableId = null
+        )
+        if (!accepted) {
+            legacyBootstrapAddress = null
+        }
+        return accepted
     }
 
     fun reconnectConfigured(): Boolean {
+        autoReconnectSuppressedByUser = false
         if (otaState.isActive || explicitDiscoveryRequested || factoryResetPending) return false
         if (configuredDeviceStore.requiresNewPairing()) return false
 
@@ -310,6 +408,7 @@ internal class RegattaLinkConnectionManager(
 
     fun startDiscovery(): Boolean {
         if (otaState.isActive || factoryResetPending) return false
+        autoReconnectSuppressedByUser = false
         legacyBootstrapAddress = null
         val accepted = client.startDiscovery()
         if (accepted) {
@@ -320,6 +419,7 @@ internal class RegattaLinkConnectionManager(
 
     fun disconnect() {
         if (factoryResetPending) return
+        autoReconnectSuppressedByUser = true
         explicitDiscoveryRequested = false
         legacyBootstrapAddress = null
         stopRawCanCapture(interrupted = true)
@@ -438,6 +538,123 @@ internal class RegattaLinkConnectionManager(
         return client.setNmeaAttitudeTxEnabled(enabled)
     }
 
+    fun setNmea0183TxEnabled(enabled: Boolean): Boolean =
+        withConfigMutationAllowed {
+            client.setNmea0183TxEnabled(enabled)
+        }
+
+    fun setPhoneGpsTxEnabled(enabled: Boolean): Boolean =
+        withConfigMutationAllowed {
+            client.setPhoneGpsTxEnabled(enabled)
+        }
+
+    fun setCompassTxEnabled(enabled: Boolean): Boolean =
+        withConfigMutationAllowed {
+            client.setCompassTxEnabled(enabled)
+        }
+
+    fun setNmea0183Baud(baudRate: Int): Boolean {
+        if (RegattaLinkNmea0183Baud.fromBaudRate(baudRate) == null) {
+            return false
+        }
+        return withConfigMutationAllowed {
+            client.setNmea0183Baud(baudRate)
+        }
+    }
+
+    fun setMagBackgroundLearningEnabled(enabled: Boolean): Boolean =
+        withConfigMutationAllowed {
+            client.setMagBackgroundLearningEnabled(enabled)
+        }
+
+    fun setSubsystemEnabled(
+        subsystem: RegattaLinkSubsystem,
+        enabled: Boolean
+    ): Boolean =
+        withConfigMutationAllowed {
+            client.setSubsystemEnabled(subsystem, enabled)
+        }
+
+    fun applyTxSelectionAndRestart(encodedBits: UInt): Boolean =
+        applyConfigBitsAndRestart(
+            mask = REGATTALINK_CONFIG_TX_SELECTION_MASK,
+            encodedBits = encodedBits
+        )
+
+    fun applySubsystemSelectionAndRestart(encodedBits: UInt): Boolean =
+        applyConfigBitsAndRestart(
+            mask = REGATTALINK_CONFIG_SESSION_SUBSYSTEM_MASK,
+            encodedBits = encodedBits
+        )
+
+    private fun applyConfigBitsAndRestart(
+        mask: UInt,
+        encodedBits: UInt
+    ): Boolean {
+        if (
+            encodedBits and mask.inv() != 0u ||
+            !configurationState.configWordSupported ||
+            configurationState.configWord == null ||
+            !configurationState.deviceControlSupported
+        ) {
+            return false
+        }
+        return withConfigMutationAllowed {
+            client.applyConfigBitsAndRestart(mask, encodedBits)
+        }
+    }
+
+    fun setHeadingTrimDeg(value: Int): Boolean {
+        if (value !in -180..180) return false
+        return withConfigMutationAllowed {
+            client.setHeadingTrimDeg(value)
+        }
+    }
+
+    fun isPhoneGnssForwardingEnabled(): Boolean =
+        regattaLinkPhoneGnssForwardingGate(
+            connected =
+                connectionState.status == RegattaLinkConnectionStatus.CONNECTED,
+            transportReady = connectionState.phoneGnssTransportReady,
+            otaActive = otaState.isActive,
+            configurationState = configurationState
+        )
+
+    fun offerPhoneGnss(location: Location): Boolean {
+        if (!isPhoneGnssForwardingEnabled()) return false
+
+        val sample = regattaLinkPhoneGnssSample(location)
+        val retainedCogDeg = regattaLinkRetainedPhoneGnssCog(
+            currentCogDeg = sample.cogDeg,
+            previousCogDeg = lastPhoneGnssCogDeg
+        )
+        lastPhoneGnssCogDeg = retainedCogDeg
+
+        return client.offerPhoneGnss(
+            sample.copy(cogDeg = retainedCogDeg)
+        )
+    }
+
+    fun stopPhoneGnssForwarding() {
+        client.clearPhoneGnss()
+    }
+
+    private inline fun withConfigMutationAllowed(
+        action: () -> Boolean
+    ): Boolean {
+        if (
+            otaState.isActive ||
+            rawCaptureState.isActive ||
+            regattaLinkConfigurationMutationBlocked(
+                state = configurationState,
+                factoryResetOwned = factoryResetPending
+            )
+        ) {
+            return false
+        }
+        return action()
+    }
+
     fun setLoadSensorAlias(identityKey: String, alias: String): Boolean {
         val sensor = nmeaState.loadSensors.firstOrNull {
             it.identityKey == identityKey
@@ -519,6 +736,17 @@ internal class RegattaLinkConnectionManager(
             )
         }
         return accepted
+    }
+
+    fun setImuRawPreviewEnabled(enabled: Boolean): Boolean {
+        if (
+            otaState.isActive ||
+            rawCaptureState.isActive ||
+            configurationState.diagnosticLogLoading
+        ) {
+            return false
+        }
+        return client.setImuRawPreviewEnabled(enabled)
     }
 
     fun refreshPgnInventory(): Boolean {
@@ -731,6 +959,24 @@ internal class RegattaLinkConnectionManager(
     internal fun configuredDevice(): RegattaLinkConfiguredDevice? =
         configuredDeviceStore.load()
 
+    internal fun requiresNewPairing(): Boolean =
+        configuredDeviceStore.requiresNewPairing()
+
+    @SuppressLint("MissingPermission")
+    fun refreshBluetoothAvailability() {
+        if (!hasRequiredPermissions()) return
+        val enabled = runCatching {
+            val manager =
+                appContext.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+            manager.adapter?.isEnabled == true
+        }.getOrDefault(false)
+        if (enabled) {
+            client.onBluetoothAdapterEnabled()
+        } else {
+            client.onBluetoothAdapterDisabled()
+        }
+    }
+
     private fun hasRequiredPermissions(): Boolean =
         RegattaLinkBleClient.requiredPermissions().all { permission ->
             ContextCompat.checkSelfPermission(
@@ -798,7 +1044,10 @@ internal class RegattaLinkConnectionManager(
             )
             explicitDiscoveryRequested = false
         } else if (
-            state.status == RegattaLinkConnectionStatus.ERROR &&
+            state.status in setOf(
+                RegattaLinkConnectionStatus.ERROR,
+                RegattaLinkConnectionStatus.BLUETOOTH_OFF
+            ) &&
             explicitDiscoveryRequested
         ) {
             explicitDiscoveryRequested = false

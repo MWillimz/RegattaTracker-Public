@@ -21,6 +21,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -40,6 +41,7 @@ fun CourseScreen(
     raceInfoText: String,
     raceShortenedText: String,
     raceShortened: Boolean,
+    scoringMode: String = "mass_start",
     currentTargetText: String,
     courseMapMarks: List<CourseMapMark>,
     onSetCourseProgress: (Int, Boolean) -> Unit,
@@ -69,7 +71,8 @@ fun CourseScreen(
             raceStartText = raceStartText,
             raceStopText = raceStopText,
             raceShortenedText = raceShortenedText,
-            raceShortened = raceShortened
+            raceShortened = raceShortened,
+            scoringMode = scoringMode
         )
 
         Spacer(modifier = Modifier.height(14.dp))
@@ -346,8 +349,22 @@ fun CourseInfoCard(
     raceStartText: String,
     raceStopText: String,
     raceShortenedText: String,
-    raceShortened: Boolean
+    raceShortened: Boolean,
+    scoringMode: String = "mass_start"
 ) {
+    val resources = LocalResources.current
+    val startPayload = raceStartText
+        .removePrefix(resources.getString(R.string.start_prefix))
+        .trim()
+    val displayedStartText = if (isFlyingStart(scoringMode)) {
+        if (startPayload.isBlank() || startPayload == "--") {
+            resources.getString(R.string.start_window_unknown)
+        } else {
+            resources.getString(R.string.start_window_value, startPayload)
+        }
+    } else {
+        raceStartText
+    }
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
@@ -384,7 +401,7 @@ fun CourseInfoCard(
             )
 
             Text(
-                text = raceStartText,
+                text = displayedStartText,
                 fontSize = 18.sp,
                 modifier = Modifier.padding(top = 4.dp)
             )

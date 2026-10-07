@@ -33,6 +33,17 @@ class TrackingDbHelperTest {
     }
 
     @Test
+    fun trackingDatabase_enablesWriteAheadLogging() {
+        val helper = TrackingDbHelper(context)
+
+        try {
+            assertTrue(helper.writableDatabase.isWriteAheadLoggingEnabled)
+        } finally {
+            helper.close()
+        }
+    }
+
+    @Test
     fun storageCounts_returnTotalAndPendingTogether() {
         val helper = TrackingDbHelper(context)
         val contextId = createAccessContext(helper, "Event A", "secret-a")
@@ -98,6 +109,177 @@ class TrackingDbHelperTest {
     }
 
     @Test
+    fun csvExport_streamingApiMatchesStringCompatibilityWrapper() {
+        val helper = TrackingDbHelper(context)
+        insertSample(
+            helper = helper,
+            sequenceId = 1L,
+            accessContextId = null,
+            measurementsJson =
+                """{"nmea.depth_m":{"value":4.2,"group":"nmea","unit":"m"}}"""
+        )
+
+        val streamed = StringBuilder()
+        helper.exportAllAsCsv(streamed)
+
+        assertEquals(helper.exportAllAsCsv(), streamed.toString())
+    }
+
+    @Test
+    fun csvExport_usesStableSnapshotWhenSampleArrivesAfterHeaderDiscovery() {
+        val helper = TrackingDbHelper(context)
+        insertSample(
+            helper = helper,
+            sequenceId = 1L,
+            accessContextId = null,
+            sailNumber = "SNAPSHOT",
+            measurementsJson =
+                """{"nmea.depth_m":{"value":4.2,"group":"nmea","unit":"m"}}"""
+        )
+
+        val sink = StringBuilder()
+        var insertedLateSample = false
+        val output = object : Appendable {
+            private fun beforeFirstWrite() {
+                if (insertedLateSample) return
+                insertedLateSample = true
+                insertSample(
+                    helper = helper,
+                    sequenceId = 2L,
+                    accessContextId = null,
+                    sailNumber = "LATE",
+                    measurementsJson =
+                        """{"late.measurement":{"value":99,"group":"test"}}"""
+                )
+            }
+
+            override fun append(value: CharSequence?): Appendable {
+                beforeFirstWrite()
+                sink.append(value)
+                return this
+            }
+
+            override fun append(
+                value: CharSequence?,
+                start: Int,
+                end: Int
+            ): Appendable {
+                beforeFirstWrite()
+                sink.append(value, start, end)
+                return this
+            }
+
+            override fun append(value: Char): Appendable {
+                beforeFirstWrite()
+                sink.append(value)
+                return this
+            }
+        }
+
+        helper.exportAllAsCsv(output)
+
+        val lines = sink.lineSequence()
+            .filter { it.isNotBlank() }
+            .toList()
+        assertEquals(2, lines.size)
+        assertTrue(lines[1].contains("\"SNAPSHOT\""))
+        assertFalse(lines[1].contains("\"LATE\""))
+        assertFalse(lines[0].contains("late_measurement"))
+        assertEquals(2L, helper.countSamples())
+    }
+
+    @Test
+    fun csvExport_flattensMeasurementsIntoDedicatedColumns() {
+        val helper = TrackingDbHelper(context)
+
+        insertSample(
+            helper = helper,
+            sequenceId = 1L,
+            accessContextId = null,
+            measurementsJson =
+                """{"nmea.pitch_deg":{"value":1.25,"group":"nmea","unit":"deg"},"regattalink.motion.pitch_deg":{"value":2.5,"group":"regattalink","unit":"deg"},"nmea.depth_m":{"value":4.2,"group":"nmea","unit":"m"}}"""
+        )
+        insertSample(
+            helper = helper,
+            sequenceId = 2L,
+            accessContextId = null,
+            measurementsJson =
+                """{"nmea.pitch_deg":{"value":1.5,"group":"nmea","unit":"deg"}}"""
+        )
+
+        val lines = helper.exportAllAsCsv()
+            .lineSequence()
+            .filter { it.isNotBlank() }
+            .toList()
+        val header = lines[0].split(',')
+        val first = lines[1].split(',')
+        val second = lines[2].split(',')
+
+        val depthIndex = header.indexOf("boat_data_depth_m")
+        val boatPitchIndex = header.indexOf("boat_data_pitch_deg")
+        val imuPitchIndex = header.indexOf("imu_pitch_deg")
+
+        assertTrue(depthIndex >= 0)
+        assertTrue(boatPitchIndex >= 0)
+        assertTrue(imuPitchIndex >= 0)
+        assertFalse(header.contains("nmea_pitch_deg"))
+        assertFalse(header.contains("measurements_json"))
+
+        assertEquals("4.2", first[depthIndex])
+        assertEquals("1.25", first[boatPitchIndex])
+        assertEquals("2.5", first[imuPitchIndex])
+        assertEquals("", second[depthIndex])
+        assertEquals("1.5", second[boatPitchIndex])
+    }
+
+    @Test
+    fun csvExport_omitsInternalStorageAndUploadMetadata() {
+        val helper = TrackingDbHelper(context)
+
+        helper.insertSample(
+            sequenceId = 7L,
+            timestamp = "2026-08-25T12:00:00",
+            boatName = "Test Boat",
+            captainName = "Test Skipper",
+            hullColor = "white",
+            sailNumber = "GER 1234",
+            yardstick = 100.0,
+            boatType = "Test Type",
+            lat = 54.0,
+            lon = 10.0,
+            accuracy = 5f,
+            cog = 90f,
+            sog = 3f,
+            cogValid = true,
+            batteryPercent = 87,
+            batteryCharging = true,
+            trackingProfile = "high_rate",
+            sessionId = 42L,
+            raceContextId = 43L,
+            utcOffsetMinutes = 120,
+            measurementsJson =
+                """{"regattalink.motion.heel_deg":{"value":12.3,"group":"regattalink","unit":"deg"}}"""
+        )
+
+        val header = helper.exportAllAsCsv()
+            .lineSequence()
+            .first()
+            .split(',')
+
+        assertTrue(header.contains("utc_offset_minutes"))
+        assertTrue(header.contains("imu_heel_deg"))
+        assertFalse(header.contains("local_id"))
+        assertFalse(header.contains("cog_valid"))
+        assertFalse(header.contains("uploaded"))
+        assertFalse(header.contains("access_context_id"))
+        assertFalse(header.contains("battery_percent"))
+        assertFalse(header.contains("battery_charging"))
+        assertFalse(header.contains("tracking_profile"))
+        assertFalse(header.contains("session_id"))
+        assertFalse(header.contains("race_context_id"))
+    }
+
+    @Test
     fun pendingSample_preservesOriginalMeasurementsSnapshot() {
         val helper = TrackingDbHelper(context)
         val contextId = createAccessContext(helper, "Event A", "secret-a")
@@ -148,6 +330,7 @@ class TrackingDbHelperTest {
         assertTrue(columnExists(db, "tracking_samples", "session_id"))
         assertTrue(columnExists(db, "tracking_samples", "measurements_json"))
         assertTrue(columnExists(db, "tracking_samples", "cog_valid"))
+        assertTrue(columnExists(db, "race_contexts", "context_key"))
         listOf(
             "accel_x",
             "accel_y",
@@ -439,6 +622,7 @@ class TrackingDbHelperTest {
         assertEquals(111L, sessionSample.localId)
         assertEquals(31L, sessionSample.raceContextId)
         assertEquals("Legacy Run", sessionSample.resolvedEventName)
+        assertNull(sessionSample.courseMapViewportJson)
         assertNull(sessionSample.cogValid)
         assertEquals(
             """{"regattalink.fast.roll_deg":{"value":12.3,"group":"regattalink"}}""",

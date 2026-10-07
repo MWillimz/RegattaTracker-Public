@@ -27,6 +27,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -152,8 +153,10 @@ fun RegattaLinkScreen(
     nmeaState: RegattaLinkNmeaState,
     rawCaptureState: RegattaLinkRawCaptureState,
     installAvailable: Boolean,
+    phoneGpsRelayEnabled: Boolean = false,
     modifier: Modifier = Modifier,
     onSearch: () -> Unit,
+    onEnableBluetooth: () -> Unit = {},
     onCheckFirmware: () -> Unit,
     onFirmwareSourceSelected: (RegattaLinkFirmwareSource) -> Unit,
     onInstallFirmware: () -> Unit,
@@ -162,11 +165,16 @@ fun RegattaLinkScreen(
     onSetLedBrightness: (Int) -> Unit,
     onSetMotionDamping: (Int) -> Unit,
     onSetLoadPrecisionX10: (Boolean) -> Unit = {},
-    onSetNmeaTxEnabled: (Boolean) -> Unit = {},
-    onSetNmeaAttitudeTxEnabled: (Boolean) -> Unit = {},
+    onApplyTxConfigAndRestart: (UInt) -> Unit = {},
+    onSetPhoneGpsRelayEnabled: (Boolean) -> Unit = {},
+    onSetNmea0183Baud: (Int) -> Unit = {},
+    onSetMagBackgroundLearningEnabled: (Boolean) -> Unit = {},
+    onApplySubsystemConfigAndRestart: (UInt) -> Unit = {},
+    onSetHeadingTrimDeg: (Int) -> Unit = {},
     onSetLoadSensorAlias: (String, String) -> Unit = { _, _ -> },
     onDrainDiagnosticLog: () -> Unit,
     onDeviceControl: (RegattaLinkDeviceControlOpcode, Int) -> Unit,
+    onSetImuRawPreviewEnabled: (Boolean) -> Unit = {},
     onRefreshPgnInventory: () -> Unit,
     onReadRawFrames: () -> Unit,
     onStartRawCapture: () -> Unit,
@@ -185,6 +193,7 @@ fun RegattaLinkScreen(
     )
     val statusText = when (state.status) {
         RegattaLinkConnectionStatus.IDLE -> stringResource(R.string.regattalink_status_not_connected)
+        RegattaLinkConnectionStatus.WAITING -> stringResource(R.string.regattalink_status_waiting)
         RegattaLinkConnectionStatus.SCANNING -> stringResource(R.string.regattalink_status_scanning)
         RegattaLinkConnectionStatus.BONDING -> stringResource(R.string.regattalink_status_pairing)
         RegattaLinkConnectionStatus.CONNECTING -> stringResource(R.string.regattalink_status_connecting)
@@ -192,6 +201,8 @@ fun RegattaLinkScreen(
         RegattaLinkConnectionStatus.READING_DEVICE_INFO ->
             stringResource(R.string.regattalink_status_reading_device)
         RegattaLinkConnectionStatus.CONNECTED -> stringResource(R.string.regattalink_status_connected)
+        RegattaLinkConnectionStatus.BLUETOOTH_OFF ->
+            stringResource(R.string.regattalink_status_bluetooth_off)
         RegattaLinkConnectionStatus.ERROR -> stringResource(R.string.regattalink_status_error)
     }
 
@@ -207,6 +218,8 @@ fun RegattaLinkScreen(
     var nameDraft by rememberSaveable { mutableStateOf("") }
 
     val connected = state.status == RegattaLinkConnectionStatus.CONNECTED
+    val firmwareSetupOpen =
+        activeSetupDestination == RegattaLinkSetupDestination.FIRMWARE
     val displayedName = configurationState.deviceName.ifBlank { state.deviceName }
     val configEnabled =
         connected &&
@@ -258,13 +271,27 @@ fun RegattaLinkScreen(
             connected
 
     LaunchedEffect(
+        firmwareSetupOpen,
+        connected,
+        state.deviceAddress
+    ) {
+        if (firmwareSetupOpen && connected) {
+            onCheckFirmware()
+        }
+    }
+
+    LaunchedEffect(
         nmeaSetupOpen,
         nmeaState.pgnInventorySupported,
         nmeaState.pgnInventoryLoading,
+        configurationState.canSessionAvailable,
         otaState.isActive,
         state.deviceAddress
     ) {
-        if (!nmeaSetupOpen) {
+        if (
+            !nmeaSetupOpen ||
+            configurationState.canSessionAvailable == false
+        ) {
             pgnInventoryAutoRefreshRequested = false
             return@LaunchedEffect
         }
@@ -297,10 +324,23 @@ fun RegattaLinkScreen(
                 deviceControlBusy = configurationState.deviceControlBusy,
                 deviceControlError = configurationState.deviceControlError,
                 onSetMotionDamping = onSetMotionDamping,
+                onSetMagBackgroundLearningEnabled =
+                    onSetMagBackgroundLearningEnabled,
+                onSetHeadingTrimDeg = onSetHeadingTrimDeg,
+                onRestart = {
+                    onDeviceControl(RegattaLinkDeviceControlOpcode.RESTART, 0)
+                },
                 onSetUpright = {
                     onDeviceControl(
                         RegattaLinkDeviceControlOpcode.SET_UPRIGHT,
                         0
+                    )
+                },
+                onSetImuRawPreviewEnabled = onSetImuRawPreviewEnabled,
+                onSetImuRawModeEnabled = { enabled ->
+                    onDeviceControl(
+                        RegattaLinkDeviceControlOpcode.IMU_RAW_MODE,
+                        if (enabled) 1 else 0
                     )
                 },
                 onAdjust = onDeviceControl,
@@ -311,13 +351,16 @@ fun RegattaLinkScreen(
             RegattaLinkNmeaSetupSheet(
                 nmeaState = nmeaState,
                 configurationState = configurationState,
+                deviceKey = state.deviceInfo?.stableId ?: state.deviceAddress,
                 connected = connected,
                 configEnabled = configEnabled,
                 otaActive = otaState.isActive,
                 rawCaptureActive = rawCaptureState.isActive,
                 onSetLoadPrecisionX10 = onSetLoadPrecisionX10,
-                onSetNmeaTxEnabled = onSetNmeaTxEnabled,
-                onSetNmeaAttitudeTxEnabled = onSetNmeaAttitudeTxEnabled,
+                onApplyTxConfigAndRestart = onApplyTxConfigAndRestart,
+                phoneGpsRelayEnabled = phoneGpsRelayEnabled,
+                onSetPhoneGpsRelayEnabled = onSetPhoneGpsRelayEnabled,
+                onSetNmea0183Baud = onSetNmea0183Baud,
                 onRestart = {
                     onDeviceControl(RegattaLinkDeviceControlOpcode.RESTART, 0)
                 },
@@ -330,6 +373,7 @@ fun RegattaLinkScreen(
             RegattaLinkAdvancedDiagnosticsSheet(
                 state = state,
                 configurationState = configurationState,
+                deviceKey = state.deviceInfo?.stableId ?: state.deviceAddress,
                 nmeaState = nmeaState,
                 rawCaptureState = rawCaptureState,
                 connected = connected,
@@ -341,6 +385,8 @@ fun RegattaLinkScreen(
                     nameDialogOpen = true
                 },
                 onSetLedBrightness = onSetLedBrightness,
+                onApplySubsystemConfigAndRestart =
+                    onApplySubsystemConfigAndRestart,
                 onDrainDiagnosticLog = onDrainDiagnosticLog,
                 onReadRawFrames = onReadRawFrames,
                 onStartRawCapture = onStartRawCapture,
@@ -398,7 +444,19 @@ fun RegattaLinkScreen(
                     expanded = settingsMenuExpanded,
                     onDismissRequest = { settingsMenuExpanded = false }
                 ) {
-                    regattaLinkSetupMenuItems.forEach { menuItem ->
+                    regattaLinkSetupMenuItems
+                        .filter { menuItem ->
+                            when (menuItem.destination) {
+                                RegattaLinkSetupDestination.IMU ->
+                                    configurationState.imuSessionAvailable != false ||
+                                        configurationState.magSessionAvailable != false
+                                RegattaLinkSetupDestination.NMEA ->
+                                    configurationState.canSessionAvailable != false ||
+                                        configurationState.nmea0183SessionAvailable != false
+                                else -> true
+                            }
+                        }
+                        .forEach { menuItem ->
                         DropdownMenuItem(
                             text = {
                                 Text(stringResource(menuItem.labelResId))
@@ -665,6 +723,18 @@ fun RegattaLinkScreen(
             }
         }
 
+        if (state.status == RegattaLinkConnectionStatus.BLUETOOTH_OFF) {
+            Button(
+                onClick = onEnableBluetooth,
+                enabled = !otaState.isActive,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 18.dp)
+            ) {
+                Text(stringResource(R.string.regattalink_enable_bluetooth))
+            }
+        }
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -675,7 +745,8 @@ fun RegattaLinkScreen(
                 onClick = onSearch,
                 enabled = !busy &&
                     !otaState.isActive &&
-                    state.status != RegattaLinkConnectionStatus.CONNECTED,
+                    state.status != RegattaLinkConnectionStatus.CONNECTED &&
+                    state.status != RegattaLinkConnectionStatus.BLUETOOTH_OFF,
                 modifier = Modifier.weight(1f)
             ) {
                 Text(stringResource(R.string.regattalink_search_connect))
@@ -686,7 +757,8 @@ fun RegattaLinkScreen(
                 enabled = !otaState.isActive &&
                     !configurationState.deviceControlBusy &&
                     !configurationState.factoryResetAwaitingDisconnect &&
-                    state.status != RegattaLinkConnectionStatus.IDLE,
+                    state.status != RegattaLinkConnectionStatus.IDLE &&
+                    state.status != RegattaLinkConnectionStatus.BLUETOOTH_OFF,
                 modifier = Modifier.weight(1f)
             ) {
                 Text(stringResource(R.string.regattalink_disconnect))
@@ -770,32 +842,138 @@ private fun rememberRawCaptureRemainingSeconds(
         }
 }
 
+@Composable
+private fun regattaLinkBoatDataOutputStateText(
+    desired: Boolean?,
+    bootMask: Int?,
+    activeMask: Int?,
+    runtimeBit: Int
+): String =
+    when {
+        desired == null ->
+            stringResource(R.string.regattalink_nmea_tx_state_unavailable)
+        bootMask == null || activeMask == null ->
+            stringResource(
+                if (desired) {
+                    R.string.regattalink_boat_data_output_selected_runtime_unknown
+                } else {
+                    R.string.regattalink_boat_data_output_off_runtime_unknown
+                }
+            )
+        desired != (bootMask and runtimeBit != 0) ->
+            stringResource(R.string.regattalink_boat_data_output_restart_required)
+        activeMask and runtimeBit != 0 ->
+            stringResource(R.string.regattalink_boat_data_output_active)
+        bootMask and runtimeBit != 0 ->
+            stringResource(R.string.regattalink_boat_data_output_selected_inactive)
+        else ->
+            stringResource(R.string.regattalink_boat_data_output_off)
+    }
+
+@Composable
+private fun RegattaLinkBoatDataSelectorRow(
+    title: String,
+    desired: Boolean?,
+    draft: Boolean?,
+    draftChanged: Boolean,
+    bootMask: Int?,
+    activeMask: Int?,
+    runtimeBit: Int,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, top = 14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, fontWeight = FontWeight.SemiBold)
+            Text(
+                text = if (draftChanged && draft != null) {
+                    stringResource(
+                        if (draft) {
+                            R.string.regattalink_config_draft_enable
+                        } else {
+                            R.string.regattalink_config_draft_disable
+                        }
+                    )
+                } else {
+                    regattaLinkBoatDataOutputStateText(
+                        desired = desired,
+                        bootMask = bootMask,
+                        activeMask = activeMask,
+                        runtimeBit = runtimeBit
+                    )
+                },
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(
+            checked = draft == true,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled && draft != null
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun RegattaLinkNmeaSetupSheet(
     nmeaState: RegattaLinkNmeaState,
     configurationState: RegattaLinkConfigurationState,
+    deviceKey: String,
     connected: Boolean,
     configEnabled: Boolean,
     otaActive: Boolean,
     rawCaptureActive: Boolean,
     onSetLoadPrecisionX10: (Boolean) -> Unit,
-    onSetNmeaTxEnabled: (Boolean) -> Unit,
-    onSetNmeaAttitudeTxEnabled: (Boolean) -> Unit,
+    onApplyTxConfigAndRestart: (UInt) -> Unit,
+    phoneGpsRelayEnabled: Boolean,
+    onSetPhoneGpsRelayEnabled: (Boolean) -> Unit,
+    onSetNmea0183Baud: (Int) -> Unit,
     onRestart: () -> Unit,
     onSetLoadSensorAlias: (String, String) -> Unit,
     onRefreshPgnInventory: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val canAvailable = configurationState.canSessionAvailable != false
+    val nmea0183Available =
+        configurationState.nmea0183SessionAvailable != false
+    val imuAvailable = configurationState.imuSessionAvailable != false
+    val magAvailable = configurationState.magSessionAvailable != false
     val nmeaAvailable =
-        connected &&
-            (
-                nmeaState.boatStateSupported ||
-                    nmeaState.pgnInventorySupported ||
-                    nmeaState.loadSupported ||
-                    configurationState.nmeaTxSupported ||
-                    configurationState.nmeaAttitudeTxSupported
-                )
+        connected && (canAvailable || nmea0183Available)
+    val txSelectionFromDevice =
+        configurationState.configWord?.and(REGATTALINK_CONFIG_TX_SELECTION_MASK)
+    var txBaseline by remember(deviceKey, connected) {
+        mutableStateOf(txSelectionFromDevice)
+    }
+    var txDraft by remember(deviceKey, connected) {
+        mutableStateOf(txSelectionFromDevice)
+    }
+    LaunchedEffect(deviceKey, connected, txSelectionFromDevice) {
+        if (txBaseline == null && txSelectionFromDevice != null) {
+            txBaseline = txSelectionFromDevice
+            txDraft = txSelectionFromDevice
+        }
+    }
+    val txDirty =
+        txBaseline != null &&
+            txDraft != null &&
+            txBaseline != txDraft
+    val txMasterDraft =
+        regattaLinkConfigDraftBit(txDraft, REGATTALINK_CONFIG_TX_MASTER)
+    val txAttitudeDraft =
+        regattaLinkConfigDraftBit(txDraft, REGATTALINK_CONFIG_TX_IMU)
+    val tx0183Draft =
+        regattaLinkConfigDraftBit(txDraft, REGATTALINK_CONFIG_TX_NMEA0183)
+    val txPhoneGpsDraft =
+        regattaLinkConfigDraftBit(txDraft, REGATTALINK_CONFIG_TX_PHONE_GPS)
+    val txCompassDraft =
+        regattaLinkConfigDraftBit(txDraft, REGATTALINK_CONFIG_TX_COMPASS)
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -835,14 +1013,24 @@ private fun RegattaLinkNmeaSetupSheet(
                     configurationState.nmeaTxActive != null
             val nmeaAttitudeBootSelected =
                 configurationState.nmeaBootOutputMask?.let {
-                    it and REGATTALINK_NMEA_TX_OUTPUT_ATTITUDE != 0
+                    it and REGATTALINK_TX_OUTPUT_IMU != 0
                 }
             val nmeaAttitudeRuntimeActive =
                 configurationState.nmeaActiveOutputMask?.let {
-                    it and REGATTALINK_NMEA_TX_OUTPUT_ATTITUDE != 0
+                    it and REGATTALINK_TX_OUTPUT_IMU != 0
                 }
 
-            if (connected && configurationState.nmeaTxSupported) {
+            if (
+                connected &&
+                canAvailable &&
+                configurationState.nmeaTxSupported
+            ) {
+                val masterDraftChanged =
+                    regattaLinkConfigDraftBitChanged(
+                        txBaseline,
+                        txDraft,
+                        REGATTALINK_CONFIG_TX_MASTER
+                    )
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -859,13 +1047,21 @@ private fun RegattaLinkNmeaSetupSheet(
                         )
                         Text(
                             text = when {
-                                configurationState.nmeaTxEnabled == null ->
+                                txMasterDraft == null ->
                                     stringResource(
                                         R.string.regattalink_nmea_tx_state_unavailable
                                     )
+                                masterDraftChanged ->
+                                    stringResource(
+                                        if (txMasterDraft) {
+                                            R.string.regattalink_config_draft_enable
+                                        } else {
+                                            R.string.regattalink_config_draft_disable
+                                        }
+                                    )
                                 !nmeaRuntimeKnown ->
                                     stringResource(
-                                        if (configurationState.nmeaTxEnabled) {
+                                        if (configurationState.nmeaTxEnabled == true) {
                                             R.string.regattalink_nmea_tx_selected_on_runtime_unknown
                                         } else {
                                             R.string.regattalink_nmea_tx_selected_off_runtime_unknown
@@ -873,7 +1069,7 @@ private fun RegattaLinkNmeaSetupSheet(
                                     )
                                 configurationState.nmeaTxRestartRequired ->
                                     stringResource(
-                                        if (configurationState.nmeaTxEnabled) {
+                                        if (configurationState.nmeaTxEnabled == true) {
                                             R.string.regattalink_nmea_tx_enable_pending
                                         } else {
                                             R.string.regattalink_nmea_tx_disable_pending
@@ -896,16 +1092,62 @@ private fun RegattaLinkNmeaSetupSheet(
                         )
                     }
                     Switch(
-                        checked = configurationState.nmeaTxEnabled == true,
-                        onCheckedChange = onSetNmeaTxEnabled,
-                        enabled =
-                            configEnabled &&
-                                configurationState.nmeaTxEnabled != null
+                        checked = txMasterDraft == true,
+                        onCheckedChange = { enabled ->
+                            txDraft = regattaLinkConfigDraftWithBit(
+                                txDraft,
+                                REGATTALINK_CONFIG_TX_MASTER,
+                                enabled
+                            )
+                        },
+                        enabled = configEnabled && txMasterDraft != null
                     )
                 }
             }
 
-            if (connected && configurationState.nmeaAttitudeTxSupported) {
+            if (
+                connected &&
+                canAvailable &&
+                nmea0183Available &&
+                configurationState.configWordSupported
+            ) {
+                RegattaLinkBoatDataSelectorRow(
+                    title = stringResource(
+                        R.string.regattalink_nmea0183_tx
+                    ),
+                    desired = configurationState.nmea0183TxEnabled,
+                    draft = tx0183Draft,
+                    draftChanged = regattaLinkConfigDraftBitChanged(
+                        txBaseline,
+                        txDraft,
+                        REGATTALINK_CONFIG_TX_NMEA0183
+                    ),
+                    bootMask = configurationState.nmeaBootOutputMask,
+                    activeMask = configurationState.nmeaActiveOutputMask,
+                    runtimeBit = REGATTALINK_TX_OUTPUT_NMEA0183,
+                    enabled = configEnabled,
+                    onCheckedChange = { enabled ->
+                        txDraft = regattaLinkConfigDraftWithBit(
+                            txDraft,
+                            REGATTALINK_CONFIG_TX_NMEA0183,
+                            enabled
+                        )
+                    }
+                )
+            }
+
+            if (
+                connected &&
+                canAvailable &&
+                imuAvailable &&
+                configurationState.nmeaAttitudeTxSupported
+            ) {
+                val attitudeDraftChanged =
+                    regattaLinkConfigDraftBitChanged(
+                        txBaseline,
+                        txDraft,
+                        REGATTALINK_CONFIG_TX_IMU
+                    )
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -922,14 +1164,22 @@ private fun RegattaLinkNmeaSetupSheet(
                         )
                         Text(
                             text = when {
-                                configurationState.nmeaAttitudeTxEnabled == null ->
+                                txAttitudeDraft == null ->
                                     stringResource(
                                         R.string.regattalink_nmea_tx_state_unavailable
+                                    )
+                                attitudeDraftChanged ->
+                                    stringResource(
+                                        if (txAttitudeDraft) {
+                                            R.string.regattalink_config_draft_enable
+                                        } else {
+                                            R.string.regattalink_config_draft_disable
+                                        }
                                     )
                                 nmeaAttitudeBootSelected == null ||
                                     nmeaAttitudeRuntimeActive == null ->
                                     stringResource(
-                                        if (configurationState.nmeaAttitudeTxEnabled) {
+                                        if (configurationState.nmeaAttitudeTxEnabled == true) {
                                             R.string.regattalink_nmea_attitude_selected_on_runtime_unknown
                                         } else {
                                             R.string.regattalink_nmea_attitude_selected_off_runtime_unknown
@@ -937,7 +1187,7 @@ private fun RegattaLinkNmeaSetupSheet(
                                     )
                                 configurationState.nmeaAttitudeTxRestartRequired ->
                                     stringResource(
-                                        if (configurationState.nmeaAttitudeTxEnabled) {
+                                        if (configurationState.nmeaAttitudeTxEnabled == true) {
                                             R.string.regattalink_nmea_attitude_enable_pending
                                         } else {
                                             R.string.regattalink_nmea_attitude_disable_pending
@@ -960,12 +1210,171 @@ private fun RegattaLinkNmeaSetupSheet(
                         )
                     }
                     Switch(
-                        checked = configurationState.nmeaAttitudeTxEnabled == true,
-                        onCheckedChange = onSetNmeaAttitudeTxEnabled,
-                        enabled =
-                            configEnabled &&
-                                configurationState.nmeaAttitudeTxEnabled != null
+                        checked = txAttitudeDraft == true,
+                        onCheckedChange = { enabled ->
+                            txDraft = regattaLinkConfigDraftWithBit(
+                                txDraft,
+                                REGATTALINK_CONFIG_TX_IMU,
+                                enabled
+                            )
+                        },
+                        enabled = configEnabled && txAttitudeDraft != null
                     )
+                }
+            }
+
+            if (
+                connected &&
+                canAvailable &&
+                magAvailable &&
+                configurationState.configWordSupported
+            ) {
+                RegattaLinkBoatDataSelectorRow(
+                    title = stringResource(
+                        R.string.regattalink_compass_tx
+                    ),
+                    desired = configurationState.compassTxEnabled,
+                    draft = txCompassDraft,
+                    draftChanged = regattaLinkConfigDraftBitChanged(
+                        txBaseline,
+                        txDraft,
+                        REGATTALINK_CONFIG_TX_COMPASS
+                    ),
+                    bootMask = configurationState.nmeaBootOutputMask,
+                    activeMask = configurationState.nmeaActiveOutputMask,
+                    runtimeBit = REGATTALINK_TX_OUTPUT_COMPASS,
+                    enabled = configEnabled,
+                    onCheckedChange = { enabled ->
+                        txDraft = regattaLinkConfigDraftWithBit(
+                            txDraft,
+                            REGATTALINK_CONFIG_TX_COMPASS,
+                            enabled
+                        )
+                    }
+                )
+            }
+
+            if (
+                connected &&
+                canAvailable &&
+                configurationState.configWordSupported
+            ) {
+                RegattaLinkBoatDataSelectorRow(
+                    title = stringResource(
+                        R.string.regattalink_phone_gps_tx
+                    ),
+                    desired = configurationState.phoneGpsTxEnabled,
+                    draft = txPhoneGpsDraft,
+                    draftChanged = regattaLinkConfigDraftBitChanged(
+                        txBaseline,
+                        txDraft,
+                        REGATTALINK_CONFIG_TX_PHONE_GPS
+                    ),
+                    bootMask = configurationState.nmeaBootOutputMask,
+                    activeMask = configurationState.nmeaActiveOutputMask,
+                    runtimeBit = REGATTALINK_TX_OUTPUT_PHONE_GPS,
+                    enabled = configEnabled,
+                    onCheckedChange = { enabled ->
+                        txDraft = regattaLinkConfigDraftWithBit(
+                            txDraft,
+                            REGATTALINK_CONFIG_TX_PHONE_GPS,
+                            enabled
+                        )
+                    }
+                )
+            }
+
+            if (canAvailable) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, top = 14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(
+                                R.string.regattalink_phone_gps_relay
+                            ),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.regattalink_phone_gps_relay_hint
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = phoneGpsRelayEnabled,
+                        onCheckedChange = onSetPhoneGpsRelayEnabled
+                    )
+                }
+            }
+
+            if (
+                connected &&
+                nmea0183Available &&
+                configurationState.configWordSupported
+            ) {
+                var baudMenuExpanded by remember {
+                    mutableStateOf(false)
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, top = 14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(
+                                R.string.regattalink_nmea0183_baud
+                            ),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.regattalink_applies_after_restart
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Box {
+                        TextButton(
+                            onClick = { baudMenuExpanded = true },
+                            enabled =
+                                configEnabled &&
+                                    configurationState.nmea0183Baud != null
+                        ) {
+                            Text(
+                                configurationState.nmea0183Baud
+                                    ?.baudRate
+                                    ?.toString()
+                                    ?: "--"
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = baudMenuExpanded,
+                            onDismissRequest = {
+                                baudMenuExpanded = false
+                            }
+                        ) {
+                            RegattaLinkNmea0183Baud.entries.forEach { baud ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(baud.baudRate.toString())
+                                    },
+                                    onClick = {
+                                        baudMenuExpanded = false
+                                        onSetNmea0183Baud(baud.baudRate)
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
@@ -977,7 +1386,8 @@ private fun RegattaLinkNmeaSetupSheet(
                             configurationState.nmeaAttitudeTxSupported
                         )
             val nmeaRestartActionAvailable =
-                regattaLinkNmeaRestartRequired(configurationState) ||
+                txDirty ||
+                    regattaLinkNmeaRestartRequired(configurationState) ||
                     nmeaAppliedStateUnknown
 
             if (
@@ -992,6 +1402,10 @@ private fun RegattaLinkNmeaSetupSheet(
                         when {
                             configurationState.restartAwaitingDisconnect ->
                                 stringResource(R.string.regattalink_restarting)
+                            txDirty ->
+                                stringResource(
+                                    R.string.regattalink_config_draft_restart
+                                )
                             nmeaAppliedStateUnknown ->
                                 stringResource(
                                     R.string.regattalink_nmea_runtime_unknown_restart
@@ -1005,7 +1419,14 @@ private fun RegattaLinkNmeaSetupSheet(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Button(
-                    onClick = onRestart,
+                    onClick = {
+                        val draft = txDraft
+                        if (txDirty && draft != null) {
+                            onApplyTxConfigAndRestart(draft)
+                        } else {
+                            onRestart()
+                        }
+                    },
                     enabled =
                         configEnabled &&
                             configurationState.deviceControlSupported &&
@@ -1016,10 +1437,15 @@ private fun RegattaLinkNmeaSetupSheet(
                         .padding(top = 8.dp)
                 ) {
                     Text(
-                        if (configurationState.restartAwaitingDisconnect) {
-                            stringResource(R.string.regattalink_restarting)
-                        } else {
-                            stringResource(R.string.regattalink_restart)
+                        when {
+                            configurationState.restartAwaitingDisconnect ->
+                                stringResource(R.string.regattalink_restarting)
+                            txDirty ->
+                                stringResource(
+                                    R.string.regattalink_apply_restart
+                                )
+                            else ->
+                                stringResource(R.string.regattalink_restart)
                         }
                     )
                 }
@@ -1046,6 +1472,7 @@ private fun RegattaLinkNmeaSetupSheet(
 
             if (
                 connected &&
+                canAvailable &&
                 configurationState.loadPrecisionSupported
             ) {
                 Row(
@@ -1082,7 +1509,7 @@ private fun RegattaLinkNmeaSetupSheet(
                 }
             }
 
-            if (connected && nmeaState.loadSupported) {
+            if (connected && canAvailable && nmeaState.loadSupported) {
                 Text(
                     text = stringResource(
                         R.string.regattalink_load_sensors
@@ -1091,6 +1518,20 @@ private fun RegattaLinkNmeaSetupSheet(
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(top = 18.dp)
                 )
+
+                if (
+                    nmeaRuntimeKnown &&
+                    configurationState.nmeaTxActive == false
+                ) {
+                    Text(
+                        text = stringResource(
+                            R.string.regattalink_load_listen_only
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
 
                 if (!nmeaState.loadSubscribed) {
                     Text(
@@ -1130,14 +1571,13 @@ private fun RegattaLinkNmeaSetupSheet(
                                     sensor.loadKg
                                 )
                             )
-                            Text(
-                                text = sensor.measurementKey,
-                                color =
-                                    MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 12.sp
-                            )
-
                             if (sensor.stableIdentity) {
+                                Text(
+                                    text = sensor.measurementKey,
+                                    color =
+                                        MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 12.sp
+                                )
                                 OutlinedTextField(
                                     value = aliasDraft,
                                     onValueChange = { aliasDraft = it },
@@ -1175,16 +1615,6 @@ private fun RegattaLinkNmeaSetupSheet(
                                         )
                                     )
                                 }
-                            } else {
-                                Text(
-                                    text = stringResource(
-                                        R.string.regattalink_load_identity_temporary
-                                    ),
-                                    color =
-                                        MaterialTheme.colorScheme.onSurfaceVariant,
-                                    fontSize = 12.sp,
-                                    modifier = Modifier.padding(top = 6.dp)
-                                )
                             }
                         }
                     }
@@ -1230,7 +1660,11 @@ private fun RegattaLinkNmeaSetupSheet(
                 }
             }
 
-            if (connected && nmeaState.pgnInventorySupported) {
+            if (
+                connected &&
+                canAvailable &&
+                nmeaState.pgnInventorySupported
+            ) {
                 Text(
                     text = stringResource(R.string.regattalink_pgns_seen),
                     fontSize = 18.sp,
@@ -1300,6 +1734,7 @@ private fun RegattaLinkNmeaSetupSheet(
 private fun RegattaLinkAdvancedDiagnosticsSheet(
     state: RegattaLinkClientState,
     configurationState: RegattaLinkConfigurationState,
+    deviceKey: String,
     nmeaState: RegattaLinkNmeaState,
     rawCaptureState: RegattaLinkRawCaptureState,
     connected: Boolean,
@@ -1307,6 +1742,7 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
     otaActive: Boolean,
     onChangeName: () -> Unit,
     onSetLedBrightness: (Int) -> Unit,
+    onApplySubsystemConfigAndRestart: (UInt) -> Unit,
     onDrainDiagnosticLog: () -> Unit,
     onReadRawFrames: () -> Unit,
     onStartRawCapture: () -> Unit,
@@ -1319,6 +1755,28 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
     var brightnessDraft by remember(configurationState.ledBrightnessPct) {
         mutableStateOf((configurationState.ledBrightnessPct ?: 0).toFloat())
     }
+    val subsystemSelectionFromSession =
+        configurationState.configWord
+            ?.and(REGATTALINK_CONFIG_SESSION_SUBSYSTEM_MASK)
+    var subsystemBaseline by remember(deviceKey, connected) {
+        mutableStateOf(subsystemSelectionFromSession)
+    }
+    var subsystemDraft by remember(deviceKey, connected) {
+        mutableStateOf(subsystemSelectionFromSession)
+    }
+    LaunchedEffect(deviceKey, connected, subsystemSelectionFromSession) {
+        if (
+            subsystemBaseline == null &&
+            subsystemSelectionFromSession != null
+        ) {
+            subsystemBaseline = subsystemSelectionFromSession
+            subsystemDraft = subsystemSelectionFromSession
+        }
+    }
+    val subsystemDirty =
+        subsystemBaseline != null &&
+            subsystemDraft != null &&
+            subsystemBaseline != subsystemDraft
     val rawCaptureRemainingSeconds =
         rememberRawCaptureRemainingSeconds(rawCaptureState)
     val displayedName =
@@ -1425,6 +1883,112 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
                 )
             }
 
+            if (
+                connected &&
+                configurationState.configWordSupported &&
+                configurationState.configWord != null
+            ) {
+                Text(
+                    text = stringResource(R.string.regattalink_subsystems),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 18.dp)
+                )
+                Text(
+                    text = stringResource(
+                        R.string.regattalink_subsystems_session_help
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+
+                val subsystemRows = listOf(
+                    RegattaLinkSubsystem.IMU to
+                        stringResource(R.string.regattalink_subsystem_imu),
+                    RegattaLinkSubsystem.MAG to
+                        stringResource(R.string.regattalink_subsystem_mag),
+                    RegattaLinkSubsystem.BOAT_DATA to
+                        stringResource(R.string.regattalink_subsystem_boat_data),
+                    RegattaLinkSubsystem.NMEA0183_RX to
+                        stringResource(R.string.regattalink_subsystem_nmea0183)
+                )
+                subsystemRows.forEach { (subsystem, label) ->
+                    val draftEnabled =
+                        regattaLinkConfigDraftBit(
+                            subsystemDraft,
+                            subsystem.configBit
+                        )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = label,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Switch(
+                            checked = draftEnabled == true,
+                            onCheckedChange = { enabled ->
+                                subsystemDraft =
+                                    regattaLinkConfigDraftWithBit(
+                                        subsystemDraft,
+                                        subsystem.configBit,
+                                        enabled
+                                    )
+                            },
+                            enabled = configEnabled && draftEnabled != null
+                        )
+                    }
+                }
+
+                if (
+                    subsystemDirty ||
+                    configurationState.restartAwaitingDisconnect
+                ) {
+                    Text(
+                        text = if (
+                            configurationState.restartAwaitingDisconnect
+                        ) {
+                            stringResource(R.string.regattalink_restarting)
+                        } else {
+                            stringResource(
+                                R.string.regattalink_config_draft_restart
+                            )
+                        },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    Button(
+                        onClick = {
+                            subsystemDraft?.let(
+                                onApplySubsystemConfigAndRestart
+                            )
+                        },
+                        enabled =
+                            configEnabled &&
+                                configurationState.deviceControlSupported &&
+                                subsystemDirty &&
+                                !configurationState.restartAwaitingDisconnect,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                    ) {
+                        Text(
+                            if (configurationState.restartAwaitingDisconnect) {
+                                stringResource(R.string.regattalink_restarting)
+                            } else {
+                                stringResource(
+                                    R.string.regattalink_apply_restart
+                                )
+                            }
+                        )
+                    }
+                }
+            }
+
             Text(
                 text = stringResource(R.string.regattalink_technical_details),
                 fontSize = 18.sp,
@@ -1515,7 +2079,10 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
                 )
             }
 
-            if (nmeaState.rawCanSupported) {
+            if (
+                nmeaState.rawCanSupported &&
+                configurationState.canSessionAvailable != false
+            ) {
                 Text(
                     text = stringResource(
                         R.string.regattalink_raw_capture_title
@@ -1917,6 +2484,7 @@ private fun RegattaLinkFirmwareSheet(
                 ) {
                     val sourceSelectionEnabled =
                         !otaState.isActive &&
+                            !firmwareState.installPreparing &&
                             firmwareState.status !=
                             RegattaLinkFirmwareStatus.LOADING
 
@@ -2010,6 +2578,7 @@ private fun RegattaLinkFirmwareSheet(
                     connected &&
                         !configurationState.deviceControlBusy &&
                         !configurationState.diagnosticLogLoading &&
+                        !firmwareState.installPreparing &&
                         firmwareState.status !=
                             RegattaLinkFirmwareStatus.LOADING,
                 modifier = Modifier
@@ -2108,8 +2677,16 @@ private fun RegattaLinkFirmwareSheet(
                     )
                 }
 
+                if (firmwareState.installPreparing) {
+                    Text(
+                        text = stringResource(R.string.regattalink_ota_preparing),
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
+
                 if (
                     installAvailable &&
+                    !firmwareState.installPreparing &&
                     !otaState.isActive &&
                     !rawCaptureState.isActive &&
                     otaState.phase !in setOf(
@@ -2182,19 +2759,103 @@ private fun RegattaLinkImuSetupSheet(
     deviceControlBusy: Boolean,
     deviceControlError: String,
     onSetMotionDamping: (Int) -> Unit,
+    onSetMagBackgroundLearningEnabled: (Boolean) -> Unit,
+    onSetHeadingTrimDeg: (Int) -> Unit,
+    onRestart: () -> Unit,
     onSetUpright: () -> Unit,
+    onSetImuRawPreviewEnabled: (Boolean) -> Unit,
+    onSetImuRawModeEnabled: (Boolean) -> Unit,
     onAdjust: (RegattaLinkDeviceControlOpcode, Int) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val imuAvailable = configurationState.imuSessionAvailable != false
+    val magAvailable = configurationState.magSessionAvailable != false
     var dampingDraft by remember(configurationState.motionDampingSeconds) {
         mutableStateOf((configurationState.motionDampingSeconds ?: 3).toFloat())
     }
+    var uprightDialogOpen by rememberSaveable { mutableStateOf(false) }
+    var uprightPreviewStartedAtElapsedMs by remember {
+        mutableStateOf<Long?>(null)
+    }
+    var uprightRawTiltSamples by remember {
+        mutableStateOf<List<Double>>(emptyList())
+    }
+    var uprightLastRawSampleAtElapsedMs by remember {
+        mutableStateOf<Long?>(null)
+    }
+    val rawPreview = telemetryState.rawImu
+    val rawPreviewReceivedAt = telemetryState.rawImuReceivedAtElapsedMs
+    val rawPreviewIsStale = rememberTelemetryStale(
+        rawPreviewReceivedAt,
+        REGATTALINK_RAW_IMU_PREVIEW_STALE_MS
+    )
+
+    LaunchedEffect(
+        uprightDialogOpen,
+        rawPreview?.sequence,
+        rawPreviewReceivedAt
+    ) {
+        val startedAt = uprightPreviewStartedAtElapsedMs
+        if (
+            uprightDialogOpen &&
+            startedAt != null &&
+            rawPreview != null &&
+            rawPreviewReceivedAt != null &&
+            rawPreviewReceivedAt >= startedAt
+        ) {
+            regattaLinkRawImuFrontTiltDeg(rawPreview)?.let { tilt ->
+                val previousReceivedAt = uprightLastRawSampleAtElapsedMs
+                uprightRawTiltSamples =
+                    if (
+                        previousReceivedAt == null ||
+                        rawPreviewReceivedAt - previousReceivedAt >
+                        REGATTALINK_RAW_IMU_PREVIEW_STALE_MS
+                    ) {
+                        listOf(tilt)
+                    } else {
+                        (uprightRawTiltSamples + tilt).takeLast(5)
+                    }
+                uprightLastRawSampleAtElapsedMs = rawPreviewReceivedAt
+            }
+        }
+    }
+
+    LaunchedEffect(uprightDialogOpen, deviceControlBusy) {
+        if (!uprightDialogOpen || deviceControlBusy) {
+            return@LaunchedEffect
+        }
+
+        while (true) {
+            delay(REGATTALINK_SENSOR_RAW_MODE_RENEW_INTERVAL_MS)
+            onSetImuRawModeEnabled(true)
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            if (uprightDialogOpen) {
+                onSetImuRawModeEnabled(false)
+                onSetImuRawPreviewEnabled(false)
+            }
+        }
+    }
+
+    val stopUprightPreview = {
+        onSetImuRawModeEnabled(false)
+        onSetImuRawPreviewEnabled(false)
+        uprightDialogOpen = false
+        uprightPreviewStartedAtElapsedMs = null
+        uprightRawTiltSamples = emptyList()
+        uprightLastRawSampleAtElapsedMs = null
+    }
+
     val motionIsStale = rememberTelemetryStale(
         telemetryState.motionOneHzReceivedAtElapsedMs,
         REGATTALINK_MOTION_ONE_HZ_STALE_MS
     )
     val liveMotion = telemetryState.motionOneHz.takeIf {
-        telemetryState.supported &&
+        imuAvailable &&
+            telemetryState.supported &&
             !telemetryState.pausedForOta &&
             !motionIsStale
     }
@@ -2213,7 +2874,14 @@ private fun RegattaLinkImuSetupSheet(
         negativeDirectionLabel = bowDown
     )
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(
+        onDismissRequest = {
+            if (uprightDialogOpen) {
+                stopUprightPreview()
+            }
+            onDismiss()
+        }
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -2228,7 +2896,7 @@ private fun RegattaLinkImuSetupSheet(
             )
 
             val liveStatusText = when {
-                !telemetryState.supported ->
+                !imuAvailable || !telemetryState.supported ->
                     stringResource(R.string.regattalink_unavailable)
                 telemetryState.pausedForOta ->
                     stringResource(R.string.regattalink_telemetry_paused_ota)
@@ -2247,6 +2915,7 @@ private fun RegattaLinkImuSetupSheet(
             }
 
             if (
+                imuAvailable &&
                 configurationState.motionDampingSupported &&
                 configurationState.motionDampingSeconds != null
             ) {
@@ -2294,6 +2963,72 @@ private fun RegattaLinkImuSetupSheet(
                 )
             }
 
+            if (
+                magAvailable &&
+                configurationState.configWordSupported &&
+                configurationState.magBackgroundLearningEnabled != null
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 22.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(
+                                R.string.regattalink_mag_background_learning
+                            ),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.regattalink_applies_after_restart
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked =
+                            configurationState.magBackgroundLearningEnabled == true,
+                        onCheckedChange =
+                            onSetMagBackgroundLearningEnabled,
+                        enabled = configEnabled
+                    )
+                }
+            }
+
+            if (
+                configurationState.configRestartRequired ||
+                configurationState.restartAwaitingDisconnect
+            ) {
+                Text(
+                    text = if (configurationState.restartAwaitingDisconnect) {
+                        stringResource(R.string.regattalink_restarting)
+                    } else {
+                        stringResource(
+                            R.string.regattalink_config_restart_required
+                        )
+                    },
+                    modifier = Modifier.padding(top = 14.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Button(
+                    onClick = onRestart,
+                    enabled =
+                        configEnabled &&
+                            configurationState.deviceControlSupported &&
+                            configurationState.configRestartRequired &&
+                            !configurationState.restartAwaitingDisconnect,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                ) {
+                    Text(stringResource(R.string.regattalink_restart))
+                }
+            }
+
             if (configurationState.busy) {
                 Text(
                     text = stringResource(R.string.regattalink_saving),
@@ -2302,6 +3037,7 @@ private fun RegattaLinkImuSetupSheet(
                 )
             }
 
+            if (imuAvailable) {
             Text(
                 text = stringResource(R.string.regattalink_set_upright),
                 fontSize = 18.sp,
@@ -2320,8 +3056,122 @@ private fun RegattaLinkImuSetupSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 6.dp)
             )
+            if (uprightDialogOpen) {
+                val startedAt = uprightPreviewStartedAtElapsedMs
+                val rawTilt =
+                    uprightRawTiltSamples
+                        .takeIf {
+                            it.isNotEmpty() &&
+                                !rawPreviewIsStale
+                        }
+                        ?.average()
+                val fallbackTilt = telemetryState.fast?.pitchDeg?.takeIf {
+                    val receivedAt = telemetryState.fastReceivedAtElapsedMs
+                    startedAt != null &&
+                        receivedAt != null &&
+                        receivedAt >= startedAt
+                }
+                val frontTiltDeg = rawTilt ?: fallbackTilt
+                val roundedTilt =
+                    frontTiltDeg?.let(::roundRegattaLinkUserFacingDegrees)
+                val tiltMagnitude = roundedTilt?.let { kotlin.math.abs(it) }
+                val tiltDirection = when {
+                    roundedTilt == null -> null
+                    roundedTilt > 0 ->
+                        stringResource(R.string.regattalink_arrow_tilt_up)
+                    roundedTilt < 0 ->
+                        stringResource(R.string.regattalink_arrow_tilt_down)
+                    else ->
+                        stringResource(R.string.regattalink_arrow_tilt_level)
+                }
+                val mountingLooksOff =
+                    tiltMagnitude != null &&
+                        tiltMagnitude > REGATTALINK_UPRIGHT_MAX_FRONT_TILT_DEG
+
+                AlertDialog(
+                    onDismissRequest = {
+                        stopUprightPreview()
+                    },
+                    title = {
+                        Text(stringResource(R.string.regattalink_set_upright))
+                    },
+                    text = {
+                        Column {
+                            Text(
+                                stringResource(
+                                    R.string.regattalink_set_upright_arrow_forward
+                                )
+                            )
+                            Text(
+                                text = if (
+                                    tiltMagnitude != null &&
+                                    tiltDirection != null
+                                ) {
+                                    stringResource(
+                                        if (mountingLooksOff) {
+                                            R.string.regattalink_set_upright_tilt_off
+                                        } else {
+                                            R.string.regattalink_set_upright_tilt
+                                        },
+                                        tiltMagnitude,
+                                        tiltDirection,
+                                        REGATTALINK_UPRIGHT_MAX_FRONT_TILT_DEG
+                                    )
+                                } else {
+                                    stringResource(
+                                        R.string.regattalink_set_upright_tilt_waiting
+                                    )
+                                },
+                                color =
+                                    if (mountingLooksOff) {
+                                        MaterialTheme.colorScheme.error
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                modifier = Modifier.padding(top = 12.dp)
+                            )
+                            Text(
+                                text = stringResource(
+                                    R.string.regattalink_set_upright_dialog_instruction
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 12.dp)
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                onSetUpright()
+                                stopUprightPreview()
+                            },
+                            enabled = setUprightEnabled
+                        ) {
+                            Text(stringResource(R.string.regattalink_set_upright))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = {
+                                stopUprightPreview()
+                            }
+                        ) {
+                            Text(stringResource(R.string.cancel))
+                        }
+                    }
+                )
+            }
+
             Button(
-                onClick = onSetUpright,
+                onClick = {
+                    uprightRawTiltSamples = emptyList()
+                    uprightLastRawSampleAtElapsedMs = null
+                    uprightPreviewStartedAtElapsedMs =
+                        SystemClock.elapsedRealtime()
+                    uprightDialogOpen = true
+                    onSetImuRawPreviewEnabled(true)
+                    onSetImuRawModeEnabled(true)
+                },
                 enabled = setUprightEnabled,
                 modifier = Modifier.padding(top = 10.dp)
             ) {
@@ -2365,6 +3215,68 @@ private fun RegattaLinkImuSetupSheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 14.dp)
+                )
+            }
+
+
+            }
+
+            if (
+                magAvailable &&
+                configurationState.headingTrimSupported &&
+                configurationState.headingTrimDeg != null
+            ) {
+                val headingTrim = configurationState.headingTrimDeg
+                    .coerceIn(-180, 180)
+                Text(
+                    text = stringResource(R.string.regattalink_heading_trim),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 22.dp)
+                )
+                Text(
+                    text = stringResource(
+                        R.string.regattalink_heading_trim_value,
+                        headingTrim
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    RegattaLinkOrientationActionButton(
+                        text = "−1°",
+                        contentDescription =
+                            stringResource(R.string.regattalink_heading_trim) +
+                                " −1°",
+                        enabled = configEnabled && headingTrim > -180,
+                        onClick = {
+                            onSetHeadingTrimDeg(headingTrim - 1)
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                    RegattaLinkOrientationActionButton(
+                        text = "+1°",
+                        contentDescription =
+                            stringResource(R.string.regattalink_heading_trim) +
+                                " +1°",
+                        enabled = configEnabled && headingTrim < 180,
+                        onClick = {
+                            onSetHeadingTrimDeg(headingTrim + 1)
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Text(
+                    text = stringResource(
+                        R.string.regattalink_heading_trim_immediate
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
                 )
             }
 

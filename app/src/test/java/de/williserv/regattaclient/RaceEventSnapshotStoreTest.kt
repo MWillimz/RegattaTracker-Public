@@ -39,6 +39,8 @@ class RaceEventSnapshotStoreTest {
             raceInfo = "Race two",
             courseJson = "{}",
             courseShortened = false,
+            scoringMode = "flying_start",
+            dailyReentryEnabled = true,
             seriesDisplayMetadata = SeriesDisplayMetadata(
                 runName = "Sunday Race",
                 occurrenceNo = 2,
@@ -75,6 +77,8 @@ class RaceEventSnapshotStoreTest {
         assertEquals("Sunday Race", restored?.seriesDisplayMetadata?.runName)
         assertEquals(2, restored?.seriesDisplayMetadata?.occurrenceNo)
         assertEquals(5, restored?.seriesDisplayMetadata?.plannedRaceCount)
+        assertEquals("flying_start", restored?.scoringMode)
+        assertEquals(true, restored?.dailyReentryEnabled)
         assertEquals("generation-42", restored?.courseMapViewport?.generationId)
         assertEquals(2400, restored?.courseMapViewport?.widthPx)
     }
@@ -148,6 +152,37 @@ class RaceEventSnapshotStoreTest {
         assertEquals("Afternoon Race", snapshot.seriesDisplayMetadata.runName)
         assertEquals(3, snapshot.seriesDisplayMetadata.occurrenceNo)
         assertEquals(4, snapshot.seriesDisplayMetadata.plannedRaceCount)
+    }
+
+    @Test
+    fun `parser reads Daily Event and Flying Start metadata with legacy defaults`() {
+        val daily = parseRaceEventSnapshot(
+            """
+            {
+              "event_name": "Daily",
+              "race_status": "planned",
+              "start_time": "2026-09-20T14:00:00Z",
+              "stop_time": "2026-09-20T15:00:00Z",
+              "scoring_mode": "flying_start",
+              "daily_reentry_enabled": true
+            }
+            """.trimIndent()
+        )
+        val legacy = parseRaceEventSnapshot(
+            """
+            {
+              "event_name": "Legacy",
+              "race_status": "planned",
+              "start_time": "2026-09-20T14:00:00Z",
+              "stop_time": "2026-09-20T15:00:00Z"
+            }
+            """.trimIndent()
+        )
+
+        assertEquals("flying_start", daily.scoringMode)
+        assertEquals(true, daily.dailyReentryEnabled)
+        assertEquals("mass_start", legacy.scoringMode)
+        assertEquals(false, legacy.dailyReentryEnabled)
     }
 
     @Test

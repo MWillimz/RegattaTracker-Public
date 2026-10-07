@@ -4,6 +4,8 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import org.json.JSONObject
+import java.security.MessageDigest
 import java.util.Locale
 
 data class TrackingStorageCounts(
@@ -120,7 +122,11 @@ internal fun normalizeAccessContextKey(
 }
 
 class TrackingDbHelper(context: Context) :
-    SQLiteOpenHelper(context, "regatta_tracking.db", null, 13) {
+    SQLiteOpenHelper(context, "regatta_tracking.db", null, 14) {
+
+    init {
+        setWriteAheadLoggingEnabled(true)
+    }
 
     private val appContext = context.applicationContext
     private var lastBatteryReadAtMs: Long? = null
@@ -170,6 +176,9 @@ class TrackingDbHelper(context: Context) :
         }
         if (oldVersion < 13 && newVersion >= 13) {
             migrateToVersion13(db)
+        }
+        if (oldVersion < 14 && newVersion >= 14) {
+            migrateToVersion14(db)
         }
     }
 
@@ -275,12 +284,33 @@ class TrackingDbHelper(context: Context) :
         val normalizedName = resolvedEventName.trim()
         if (normalizedName.isBlank()) return null
 
+        val normalizedCourseJson = courseJson?.takeIf { it.isNotBlank() }
+        val normalizedViewportJson = courseMapViewportJson?.takeIf { it.isNotBlank() }
         val db = writableDatabase
+
+        /*
+         * Sampling can start before the first /event response. Reuse the most
+         * recent version if one exists; otherwise create one immutable empty
+         * placeholder that later snapshots will supersede rather than mutate.
+         */
+        if (normalizedCourseJson == null && normalizedViewportJson == null) {
+            findLatestRaceContextId(
+                db = db,
+                accessContextId = accessContextId,
+                resolvedEventName = normalizedName
+            )?.let { return it }
+        }
+
+        val contextKey = raceContextVersionKey(
+            courseJson = normalizedCourseJson,
+            courseMapViewportJson = normalizedViewportJson
+        )
         val insertValues = ContentValues().apply {
             put("access_context_id", accessContextId)
             put("resolved_event_name", normalizedName)
-            putNullableString("course_json", courseJson)
-            putNullableString("course_map_viewport_json", courseMapViewportJson)
+            putNullableString("course_json", normalizedCourseJson)
+            putNullableString("course_map_viewport_json", normalizedViewportJson)
+            put("context_key", contextKey)
         }
         db.insertWithOnConflict(
             "race_contexts",
@@ -289,28 +319,12 @@ class TrackingDbHelper(context: Context) :
             SQLiteDatabase.CONFLICT_IGNORE
         )
 
-        val raceContextId = findRaceContextId(
+        return findRaceContextId(
             db = db,
             accessContextId = accessContextId,
-            resolvedEventName = normalizedName
-        ) ?: return null
-
-        val updateValues = ContentValues().apply {
-            courseJson?.takeIf { it.isNotBlank() }?.let { put("course_json", it) }
-            courseMapViewportJson
-                ?.takeIf { it.isNotBlank() }
-                ?.let { put("course_map_viewport_json", it) }
-        }
-        if (updateValues.size() > 0) {
-            db.update(
-                "race_contexts",
-                updateValues,
-                "id = ?",
-                arrayOf(raceContextId.toString())
-            )
-        }
-
-        return raceContextId
+            resolvedEventName = normalizedName,
+            contextKey = contextKey
+        )
     }
 
     fun createTrackingSession(
@@ -497,7 +511,10 @@ class TrackingDbHelper(context: Context) :
                 samples.race_context_id,
                 race_contexts.resolved_event_name,
                 race_contexts.course_json,
-                race_contexts.course_map_viewport_json,
+                CASE
+                    WHEN race_contexts.context_key LIKE 'legacy:%' THEN NULL
+                    ELSE race_contexts.course_map_viewport_json
+                END,
                 samples.cog_valid
             FROM tracking_samples AS samples
             LEFT JOIN race_contexts
@@ -890,14 +907,45 @@ class TrackingDbHelper(context: Context) :
         }
     }
 
-    fun exportAllAsCsv(): String {
-        val header =
-            "sequence_id,timestamp,utc_offset_minutes,boat_name,captain_name,hull_color,sail_number,yardstick,boat_type,lat,lon,accuracy,cog,sog\n"
+    fun exportAllAsCsv(): String = buildString {
+        exportAllAsCsv(this)
+    }
 
-        val builder = StringBuilder()
-        builder.append(header)
+    fun exportAllAsCsv(output: Appendable) {
+        val db = readableDatabase
+        val snapshotMaxId = csvExportSnapshotMaxId(db)
+        val measurementKeys = discoverCsvMeasurementKeys(
+            db = db,
+            snapshotMaxId = snapshotMaxId
+        )
 
-        readableDatabase.rawQuery(
+        val baseHeaderColumns = listOf(
+            "sequence_id",
+            "timestamp",
+            "utc_offset_minutes",
+            "boat_name",
+            "captain_name",
+            "hull_color",
+            "sail_number",
+            "yardstick",
+            "boat_type",
+            "lat",
+            "lon",
+            "accuracy",
+            "cog",
+            "sog"
+        )
+        val measurementColumns = buildCsvMeasurementColumns(
+            measurementKeys = measurementKeys,
+            reservedHeaders = baseHeaderColumns.toSet()
+        )
+        val headerColumns =
+            baseHeaderColumns + measurementColumns.map { it.second }
+
+        output.append(headerColumns.joinToString(","))
+        output.append('\n')
+
+        db.rawQuery(
             """
             SELECT
                 sequence_id,
@@ -913,39 +961,141 @@ class TrackingDbHelper(context: Context) :
                 lon,
                 accuracy,
                 cog,
-                sog
+                sog,
+                measurements_json
             FROM tracking_samples
+            WHERE id <= ?
             ORDER BY id ASC
             """.trimIndent(),
-            null
+            arrayOf(snapshotMaxId.toString())
         ).use { cursor ->
             while (cursor.moveToNext()) {
-                val utcOffset = if (cursor.isNull(2)) "" else cursor.getInt(2).toString()
-                builder.append(
-                    String.format(
-                        Locale.US,
-                        "%d,%s,%s,%s,%s,%s,%s,%.2f,%s,%.7f,%.7f,%.2f,%.2f,%.2f\n",
-                        cursor.getLong(0),
-                        csvEscape(cursor.getString(1)),
-                        utcOffset,
-                        csvEscape(cursor.getString(3)),
-                        csvEscape(cursor.getString(4)),
-                        csvEscape(cursor.getString(5)),
-                        csvEscape(cursor.getString(6)),
-                        cursor.getDouble(7),
-                        csvEscape(cursor.getString(8)),
-                        cursor.getDouble(9),
-                        cursor.getDouble(10),
-                        cursor.getDouble(11),
-                        cursor.getDouble(12),
-                        cursor.getDouble(13)
-                    )
+                val measurements = parseCsvMeasurements(
+                    if (cursor.isNull(14)) null else cursor.getString(14)
                 )
+                val row = mutableListOf(
+                    cursor.getLong(0).toString(),
+                    csvEscape(cursor.getString(1)),
+                    csvNullableInt(cursor, 2),
+                    csvEscape(cursor.getString(3)),
+                    csvEscape(cursor.getString(4)),
+                    csvEscape(cursor.getString(5)),
+                    csvEscape(cursor.getString(6)),
+                    String.format(Locale.US, "%.2f", cursor.getDouble(7)),
+                    csvEscape(cursor.getString(8)),
+                    String.format(Locale.US, "%.7f", cursor.getDouble(9)),
+                    String.format(Locale.US, "%.7f", cursor.getDouble(10)),
+                    String.format(Locale.US, "%.2f", cursor.getDouble(11)),
+                    String.format(Locale.US, "%.2f", cursor.getDouble(12)),
+                    String.format(Locale.US, "%.2f", cursor.getDouble(13))
+                )
+
+                measurementColumns.forEach { (key, _) ->
+                    row += csvMeasurementValue(measurements, key)
+                }
+
+                output.append(row.joinToString(","))
+                output.append('\n')
             }
         }
-
-        return builder.toString()
     }
+
+    private fun csvExportSnapshotMaxId(db: SQLiteDatabase): Long {
+        db.rawQuery(
+            "SELECT COALESCE(MAX(id), 0) FROM tracking_samples",
+            null
+        ).use { cursor ->
+            cursor.moveToFirst()
+            return cursor.getLong(0)
+        }
+    }
+
+    private fun discoverCsvMeasurementKeys(
+        db: SQLiteDatabase,
+        snapshotMaxId: Long
+    ): List<String> {
+        val keys = mutableSetOf<String>()
+        db.rawQuery(
+            """
+            SELECT measurements_json
+            FROM tracking_samples
+            WHERE id <= ?
+              AND measurements_json IS NOT NULL
+            ORDER BY id ASC
+            """.trimIndent(),
+            arrayOf(snapshotMaxId.toString())
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val measurements = parseCsvMeasurements(cursor.getString(0)) ?: continue
+                val iterator = measurements.keys()
+                while (iterator.hasNext()) {
+                    val key = iterator.next()
+                    val measurement = measurements.optJSONObject(key) ?: continue
+                    if (!measurement.has("value")) continue
+                    keys += key
+                }
+            }
+        }
+        return keys.toList()
+    }
+
+    private fun buildCsvMeasurementColumns(
+        measurementKeys: List<String>,
+        reservedHeaders: Set<String>
+    ): List<Pair<String, String>> {
+        val usedHeaders = reservedHeaders.toMutableSet()
+        return measurementKeys
+            .sortedWith(
+                compareBy<String> { csvMeasurementColumnName(it) }
+                    .thenBy { it }
+            )
+            .map { key ->
+                val baseName = csvMeasurementColumnName(key)
+                var header = baseName
+                var suffix = 2
+                while (!usedHeaders.add(header)) {
+                    header = "${baseName}_${suffix++}"
+                }
+                key to header
+            }
+    }
+
+    private fun parseCsvMeasurements(raw: String?): JSONObject? {
+        if (raw.isNullOrBlank()) return null
+        return runCatching { JSONObject(raw) }.getOrNull()
+    }
+
+    private fun csvMeasurementColumnName(key: String): String {
+        val visibleKey = when {
+            key.startsWith("nmea.") ->
+                "boat_data." + key.removePrefix("nmea.")
+            key.startsWith("regattalink.motion.") ->
+                "imu." + key.removePrefix("regattalink.motion.")
+            else -> key
+        }
+        return visibleKey.replace('.', '_')
+    }
+
+    private fun csvMeasurementValue(
+        measurements: JSONObject?,
+        key: String
+    ): String {
+        val measurement = measurements?.optJSONObject(key) ?: return ""
+        if (!measurement.has("value")) return ""
+        val value = measurement.opt("value")
+        if (value == null || value === JSONObject.NULL) return ""
+
+        return when (value) {
+            is Number -> value.toString()
+            is Boolean -> if (value) "1" else "0"
+            else -> csvEscape(value.toString())
+        }
+    }
+
+    private fun csvNullableInt(
+        cursor: android.database.Cursor,
+        index: Int
+    ): String = if (cursor.isNull(index)) "" else cursor.getInt(index).toString()
 
     private fun migrateToVersion4(db: SQLiteDatabase) {
         createAccessContextsTable(db)
@@ -1118,6 +1268,41 @@ class TrackingDbHelper(context: Context) :
         }
     }
 
+    private fun migrateToVersion14(db: SQLiteDatabase) {
+        if (!tableExists(db, "race_contexts")) {
+            createRaceContextsTable(db)
+            return
+        }
+        if (columnExists(db, "race_contexts", "context_key")) {
+            return
+        }
+
+        db.execSQL("DROP TABLE IF EXISTS race_contexts_v14")
+        createRaceContextsTable(db, tableName = "race_contexts_v14")
+        db.execSQL(
+            """
+            INSERT INTO race_contexts_v14 (
+                id,
+                access_context_id,
+                resolved_event_name,
+                course_json,
+                course_map_viewport_json,
+                context_key
+            )
+            SELECT
+                id,
+                access_context_id,
+                resolved_event_name,
+                course_json,
+                course_map_viewport_json,
+                'legacy:' || id
+            FROM race_contexts
+            """.trimIndent()
+        )
+        db.execSQL("DROP TABLE race_contexts")
+        db.execSQL("ALTER TABLE race_contexts_v14 RENAME TO race_contexts")
+    }
+
     private fun migrateToVersion10(db: SQLiteDatabase) {
         createRaceContextsTable(db)
 
@@ -1137,13 +1322,15 @@ class TrackingDbHelper(context: Context) :
                     access_context_id,
                     resolved_event_name,
                     course_json,
-                    course_map_viewport_json
+                    course_map_viewport_json,
+                    context_key
                 )
                 SELECT
                     access_context_id,
                     resolved_event_name,
                     course_json,
-                    course_map_viewport_json
+                    course_map_viewport_json,
+                    'migrated-session:' || id
                 FROM tracking_sessions
                 WHERE mode = 'race'
                   AND access_context_id IS NOT NULL
@@ -1160,6 +1347,8 @@ class TrackingDbHelper(context: Context) :
                     INNER JOIN race_contexts
                         ON race_contexts.access_context_id = tracking_sessions.access_context_id
                        AND race_contexts.resolved_event_name = tracking_sessions.resolved_event_name
+                       AND race_contexts.context_key =
+                           'migrated-session:' || tracking_sessions.id
                     WHERE tracking_sessions.id = tracking_samples.session_id
                     LIMIT 1
                 )
@@ -1206,16 +1395,22 @@ class TrackingDbHelper(context: Context) :
         )
     }
 
-    private fun createRaceContextsTable(db: SQLiteDatabase) {
+    private fun createRaceContextsTable(
+        db: SQLiteDatabase,
+        tableName: String = "race_contexts"
+    ) {
+        require(tableName == "race_contexts" || tableName == "race_contexts_v14")
+
         db.execSQL(
             """
-            CREATE TABLE IF NOT EXISTS race_contexts (
+            CREATE TABLE IF NOT EXISTS $tableName (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 access_context_id INTEGER NOT NULL,
                 resolved_event_name TEXT NOT NULL,
                 course_json TEXT,
                 course_map_viewport_json TEXT,
-                UNIQUE(access_context_id, resolved_event_name)
+                context_key TEXT NOT NULL,
+                UNIQUE(access_context_id, resolved_event_name, context_key)
             )
             """.trimIndent()
         )
@@ -1338,6 +1533,27 @@ class TrackingDbHelper(context: Context) :
     private fun findRaceContextId(
         db: SQLiteDatabase,
         accessContextId: Long,
+        resolvedEventName: String,
+        contextKey: String
+    ): Long? {
+        db.rawQuery(
+            """
+            SELECT id
+            FROM race_contexts
+            WHERE access_context_id = ?
+              AND resolved_event_name = ?
+              AND context_key = ?
+            LIMIT 1
+            """.trimIndent(),
+            arrayOf(accessContextId.toString(), resolvedEventName, contextKey)
+        ).use { cursor ->
+            return if (cursor.moveToFirst()) cursor.getLong(0) else null
+        }
+    }
+
+    private fun findLatestRaceContextId(
+        db: SQLiteDatabase,
+        accessContextId: Long,
         resolvedEventName: String
     ): Long? {
         db.rawQuery(
@@ -1346,11 +1562,35 @@ class TrackingDbHelper(context: Context) :
             FROM race_contexts
             WHERE access_context_id = ?
               AND resolved_event_name = ?
+            ORDER BY id DESC
             LIMIT 1
             """.trimIndent(),
             arrayOf(accessContextId.toString(), resolvedEventName)
         ).use { cursor ->
             return if (cursor.moveToFirst()) cursor.getLong(0) else null
+        }
+    }
+
+    private fun raceContextVersionKey(
+        courseJson: String?,
+        courseMapViewportJson: String?
+    ): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(
+                buildString {
+                    append(courseJson.orEmpty())
+                    append('\u0000')
+                    append(courseMapViewportJson.orEmpty())
+                }.toByteArray(Charsets.UTF_8)
+            )
+
+        val hex = "0123456789abcdef"
+        return buildString(digest.size * 2) {
+            digest.forEach { byte ->
+                val value = byte.toInt() and 0xff
+                append(hex[value ushr 4])
+                append(hex[value and 0x0f])
+            }
         }
     }
 

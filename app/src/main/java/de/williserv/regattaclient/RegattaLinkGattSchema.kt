@@ -23,6 +23,26 @@ internal fun regattaLinkGattReconnectAction(
             RegattaLinkGattReconnectAction.FAIL_CACHE_REFRESH
     }
 
+internal enum class RegattaLinkGattCoreFailureAction {
+    SECURITY_FAILURE,
+    OTA_ONLY_RECOVERY,
+    CACHE_RECOVERY
+}
+
+internal fun regattaLinkGattCoreFailureAction(
+    otaReconnect: Boolean,
+    allowOtaOnly: Boolean,
+    securityFailure: Boolean
+): RegattaLinkGattCoreFailureAction =
+    when {
+        securityFailure ->
+            RegattaLinkGattCoreFailureAction.SECURITY_FAILURE
+        otaReconnect && allowOtaOnly ->
+            RegattaLinkGattCoreFailureAction.OTA_ONLY_RECOVERY
+        else ->
+            RegattaLinkGattCoreFailureAction.CACHE_RECOVERY
+    }
+
 internal data class RegattaLinkGattSchemaDecision(
     val waitForRediscovery: Boolean,
     val requestServiceChanged: Boolean,

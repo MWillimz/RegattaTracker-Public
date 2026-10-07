@@ -12,6 +12,7 @@ internal const val REGATTALINK_DEVICE_CONTROL_REQUEST_SIZE = 8
 internal const val REGATTALINK_DEVICE_CONTROL_STATUS_SIZE = 20
 internal const val REGATTALINK_DEVICE_CONTROL_VERSION = 1
 internal const val REGATTALINK_DEVICE_CONTROL_POLL_MS = 100L
+internal const val REGATTALINK_SENSOR_RAW_MODE_RENEW_INTERVAL_MS = 400L
 internal const val REGATTALINK_DEVICE_CONTROL_CLIENT_TIMEOUT_MS = 12_000L
 internal const val REGATTALINK_FACTORY_RESET_FINALIZATION_TIMEOUT_MS = 10_000L
 internal const val REGATTALINK_FACTORY_RESET_DISCONNECT_MARGIN_MS = 20_000L
@@ -27,7 +28,8 @@ enum class RegattaLinkDeviceControlOpcode(val wireValue: Int) {
     ADJUST_HEEL(3),
     ADJUST_PITCH(4),
     FACTORY_RESET(5),
-    RESTART(6);
+    RESTART(6),
+    IMU_RAW_MODE(7);
 
     companion object {
         fun fromWire(value: Int): RegattaLinkDeviceControlOpcode? =
@@ -446,6 +448,9 @@ internal fun buildRegattaLinkDeviceControlRequest(
         opcode == RegattaLinkDeviceControlOpcode.RESTART
     ) {
         require(value == 0) { "$opcode requires value 0" }
+    }
+    if (opcode == RegattaLinkDeviceControlOpcode.IMU_RAW_MODE) {
+        require(value in 0..1) { "$opcode requires value 0 or 1" }
     }
 
     return ByteBuffer.allocate(REGATTALINK_DEVICE_CONTROL_REQUEST_SIZE)

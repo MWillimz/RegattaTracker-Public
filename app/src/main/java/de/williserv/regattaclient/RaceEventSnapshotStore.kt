@@ -12,6 +12,8 @@ internal data class RaceEventSnapshot(
     val raceInfo: String,
     val courseJson: String,
     val courseShortened: Boolean,
+    val scoringMode: String = "mass_start",
+    val dailyReentryEnabled: Boolean = false,
     val seriesDisplayMetadata: SeriesDisplayMetadata = SeriesDisplayMetadata(),
     val courseMapViewport: CourseMapViewport? = null
 )
@@ -93,6 +95,10 @@ internal fun parseRaceEventSnapshot(body: String): RaceEventSnapshot {
         raceInfo = raceInfo,
         courseJson = course?.toString().orEmpty(),
         courseShortened = obj.optBoolean("course_shortened", false),
+        scoringMode = obj.optString("scoring_mode", "mass_start")
+            .trim()
+            .ifBlank { "mass_start" },
+        dailyReentryEnabled = obj.optBoolean("daily_reentry_enabled", false),
         seriesDisplayMetadata = parseSeriesDisplayMetadata(obj),
         courseMapViewport = parseCourseMapViewport(obj)
     )
@@ -213,6 +219,11 @@ internal object RaceEventSnapshotStore {
             raceInfo = prefs.getString("race_info_raw", "").orEmpty(),
             courseJson = prefs.getString("race_course_json_raw", "").orEmpty(),
             courseShortened = prefs.getBoolean("race_course_shortened_raw", false),
+            scoringMode = prefs.getString("race_scoring_mode", "mass_start")
+                .orEmpty()
+                .trim()
+                .ifBlank { "mass_start" },
+            dailyReentryEnabled = prefs.getBoolean("daily_reentry_enabled", false),
             seriesDisplayMetadata = SeriesDisplayMetadata(
                 runName = prefs.getString("series_run_name", "").orEmpty(),
                 occurrenceNo = prefs.getInt("series_occurrence_no", 0).takeIf { it > 0 },
@@ -315,6 +326,8 @@ internal object RaceEventSnapshotStore {
             .putString("race_info_raw", snapshot.raceInfo)
             .putString("race_course_json_raw", snapshot.courseJson)
             .putBoolean("race_course_shortened_raw", snapshot.courseShortened)
+            .putString("race_scoring_mode", snapshot.scoringMode)
+            .putBoolean("daily_reentry_enabled", snapshot.dailyReentryEnabled)
             .putString(COURSE_MAP_VIEWPORT_KEY, serializeCourseMapViewport(snapshot.courseMapViewport))
             .putBoolean("race_data_ready", true)
             .putLong(GENERATION_KEY, generation)
