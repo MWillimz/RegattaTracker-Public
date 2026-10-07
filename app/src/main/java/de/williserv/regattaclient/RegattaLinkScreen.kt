@@ -27,6 +27,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -331,14 +332,12 @@ fun RegattaLinkScreen(
                         0
                     )
                 },
-                onSetImuRawPreviewEnabled = { enabled ->
-                    onSetImuRawPreviewEnabled(enabled)
-                    if (enabled) {
-                        onDeviceControl(
-                            RegattaLinkDeviceControlOpcode.IMU_RAW_MODE,
-                            1
-                        )
-                    }
+                onSetImuRawPreviewEnabled = onSetImuRawPreviewEnabled,
+                onSetImuRawModeEnabled = { enabled ->
+                    onDeviceControl(
+                        RegattaLinkDeviceControlOpcode.IMU_RAW_MODE,
+                        if (enabled) 1 else 0
+                    )
                 },
                 onAdjust = onDeviceControl,
                 onDismiss = { activeSetupDestination = null }
@@ -2747,6 +2746,7 @@ private fun RegattaLinkImuSetupSheet(
     onRestart: () -> Unit,
     onSetUpright: () -> Unit,
     onSetImuRawPreviewEnabled: (Boolean) -> Unit,
+    onSetImuRawModeEnabled: (Boolean) -> Unit,
     onAdjust: (RegattaLinkDeviceControlOpcode, Int) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -2762,8 +2762,15 @@ private fun RegattaLinkImuSetupSheet(
     var uprightRawTiltSamples by remember {
         mutableStateOf<List<Double>>(emptyList())
     }
+    var uprightLastRawSampleAtElapsedMs by remember {
+        mutableStateOf<Long?>(null)
+    }
     val rawPreview = telemetryState.rawImu
     val rawPreviewReceivedAt = telemetryState.rawImuReceivedAtElapsedMs
+    val rawPreviewIsStale = rememberTelemetryStale(
+        rawPreviewReceivedAt,
+        REGATTALINK_RAW_IMU_PREVIEW_STALE_MS
+    )
 
     LaunchedEffect(
         uprightDialogOpen,
@@ -2779,10 +2786,49 @@ private fun RegattaLinkImuSetupSheet(
             rawPreviewReceivedAt >= startedAt
         ) {
             regattaLinkRawImuFrontTiltDeg(rawPreview)?.let { tilt ->
+                val previousReceivedAt = uprightLastRawSampleAtElapsedMs
                 uprightRawTiltSamples =
-                    (uprightRawTiltSamples + tilt).takeLast(5)
+                    if (
+                        previousReceivedAt == null ||
+                        rawPreviewReceivedAt - previousReceivedAt >
+                        REGATTALINK_RAW_IMU_PREVIEW_STALE_MS
+                    ) {
+                        listOf(tilt)
+                    } else {
+                        (uprightRawTiltSamples + tilt).takeLast(5)
+                    }
+                uprightLastRawSampleAtElapsedMs = rawPreviewReceivedAt
             }
         }
+    }
+
+    LaunchedEffect(uprightDialogOpen, deviceControlBusy) {
+        if (!uprightDialogOpen || deviceControlBusy) {
+            return@LaunchedEffect
+        }
+
+        while (true) {
+            delay(REGATTALINK_SENSOR_RAW_MODE_RENEW_INTERVAL_MS)
+            onSetImuRawModeEnabled(true)
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            if (uprightDialogOpen) {
+                onSetImuRawModeEnabled(false)
+                onSetImuRawPreviewEnabled(false)
+            }
+        }
+    }
+
+    val stopUprightPreview = {
+        onSetImuRawModeEnabled(false)
+        onSetImuRawPreviewEnabled(false)
+        uprightDialogOpen = false
+        uprightPreviewStartedAtElapsedMs = null
+        uprightRawTiltSamples = emptyList()
+        uprightLastRawSampleAtElapsedMs = null
     }
 
     val motionIsStale = rememberTelemetryStale(
@@ -2810,7 +2856,14 @@ private fun RegattaLinkImuSetupSheet(
         negativeDirectionLabel = bowDown
     )
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(
+        onDismissRequest = {
+            if (uprightDialogOpen) {
+                stopUprightPreview()
+            }
+            onDismiss()
+        }
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -2989,7 +3042,10 @@ private fun RegattaLinkImuSetupSheet(
                 val startedAt = uprightPreviewStartedAtElapsedMs
                 val rawTilt =
                     uprightRawTiltSamples
-                        .takeIf { it.isNotEmpty() }
+                        .takeIf {
+                            it.isNotEmpty() &&
+                                !rawPreviewIsStale
+                        }
                         ?.average()
                 val fallbackTilt = telemetryState.fast?.pitchDeg?.takeIf {
                     val receivedAt = telemetryState.fastReceivedAtElapsedMs
@@ -3016,8 +3072,7 @@ private fun RegattaLinkImuSetupSheet(
 
                 AlertDialog(
                     onDismissRequest = {
-                        onSetImuRawPreviewEnabled(false)
-                        uprightDialogOpen = false
+                        stopUprightPreview()
                     },
                     title = {
                         Text(stringResource(R.string.regattalink_set_upright))
@@ -3069,9 +3124,8 @@ private fun RegattaLinkImuSetupSheet(
                     confirmButton = {
                         TextButton(
                             onClick = {
-                                onSetImuRawPreviewEnabled(false)
-                                uprightDialogOpen = false
                                 onSetUpright()
+                                stopUprightPreview()
                             },
                             enabled = setUprightEnabled
                         ) {
@@ -3081,8 +3135,7 @@ private fun RegattaLinkImuSetupSheet(
                     dismissButton = {
                         TextButton(
                             onClick = {
-                                onSetImuRawPreviewEnabled(false)
-                                uprightDialogOpen = false
+                                stopUprightPreview()
                             }
                         ) {
                             Text(stringResource(R.string.cancel))
@@ -3094,10 +3147,12 @@ private fun RegattaLinkImuSetupSheet(
             Button(
                 onClick = {
                     uprightRawTiltSamples = emptyList()
+                    uprightLastRawSampleAtElapsedMs = null
                     uprightPreviewStartedAtElapsedMs =
                         SystemClock.elapsedRealtime()
                     uprightDialogOpen = true
                     onSetImuRawPreviewEnabled(true)
+                    onSetImuRawModeEnabled(true)
                 },
                 enabled = setUprightEnabled,
                 modifier = Modifier.padding(top = 10.dp)
