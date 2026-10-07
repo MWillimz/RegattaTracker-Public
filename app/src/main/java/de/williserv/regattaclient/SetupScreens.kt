@@ -227,7 +227,9 @@ fun RaceScreen(
     onServerInformation: () -> Unit,
     onClearRaceSetupClick: () -> Unit,
     onBack: () -> Unit,
-    seriesDisplayMetadata: SeriesDisplayMetadata = SeriesDisplayMetadata()
+    seriesDisplayMetadata: SeriesDisplayMetadata = SeriesDisplayMetadata(),
+    scoringMode: String = "mass_start",
+    dailyReentryEnabled: Boolean = false
 ) {
     val hasRaceSetup = raceEvent.isNotBlank() && raceSecret.isNotBlank() && raceServer.isNotBlank()
     val enterRaceTimeAvailable = isEnterRaceTimeAvailable(
@@ -253,7 +255,9 @@ fun RaceScreen(
                 raceStopText = raceStopText,
                 raceShortenedText = raceShortenedText,
                 raceShortened = raceShortened,
-                seriesDisplayMetadata = seriesDisplayMetadata
+                seriesDisplayMetadata = seriesDisplayMetadata,
+                scoringMode = scoringMode,
+                dailyReentryEnabled = dailyReentryEnabled
             )
 
             RaceSignalToggle(
@@ -515,7 +519,9 @@ fun EventSummaryCard(
     raceStopText: String,
     raceShortenedText: String,
     raceShortened: Boolean,
-    seriesDisplayMetadata: SeriesDisplayMetadata = SeriesDisplayMetadata()
+    seriesDisplayMetadata: SeriesDisplayMetadata = SeriesDisplayMetadata(),
+    scoringMode: String = "mass_start",
+    dailyReentryEnabled: Boolean = false
 ) {
     val resources = LocalResources.current
     val seriesLine = buildEventSummarySeriesLine(
@@ -524,6 +530,26 @@ fun EventSummaryCard(
             resources.getString(R.string.series_order, occurrence, planned)
         }
     )
+    val flyingStart = isFlyingStart(scoringMode)
+    val modeLine = when {
+        dailyReentryEnabled && flyingStart ->
+            resources.getString(R.string.daily_event) + " · " + resources.getString(R.string.flying_start)
+        dailyReentryEnabled -> resources.getString(R.string.daily_event)
+        flyingStart -> resources.getString(R.string.flying_start)
+        else -> ""
+    }
+    val startPayload = raceStartText
+        .removePrefix(resources.getString(R.string.start_prefix))
+        .trim()
+    val displayedStartText = if (flyingStart) {
+        if (startPayload.isBlank() || startPayload == "--") {
+            resources.getString(R.string.start_window_unknown)
+        } else {
+            resources.getString(R.string.start_window_value, startPayload)
+        }
+    } else {
+        raceStartText
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -551,6 +577,16 @@ fun EventSummaryCard(
                 )
             }
 
+            if (modeLine.isNotBlank()) {
+                Text(
+                    text = modeLine,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+
             Text(
                 text = stringResource(
                     R.string.status_value,
@@ -571,7 +607,7 @@ fun EventSummaryCard(
             )
 
             Text(
-                text = raceStartText,
+                text = displayedStartText,
                 fontSize = 18.sp,
                 modifier = Modifier.padding(top = 4.dp)
             )

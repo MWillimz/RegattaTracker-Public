@@ -117,6 +117,57 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun startupUsesPersistentKnownDeviceAutoConnect() {
+        manager.requestForegroundStartupReconnectIfPermitted()
+
+        assertEquals(1, fakeClient.autoConnectCalls)
+        assertEquals(0, fakeClient.reconnectCalls)
+        assertEquals(configured.deviceAddress, fakeClient.lastAutoConnectAddress)
+        assertEquals(configured.stableId, fakeClient.lastAutoConnectStableId)
+    }
+
+    @Test
+    fun unexpectedDisconnectUsesPersistentKnownDeviceAutoConnect() {
+        fakeClient.emitUnexpectedDisconnect()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(1, fakeClient.autoConnectCalls)
+        assertEquals(0, fakeClient.reconnectCalls)
+    }
+
+    @Test
+    fun explicitDisconnectSuppressesBackgroundAutoConnectUntilUserReconnects() {
+        manager.disconnect()
+        fakeClient.emitUnexpectedDisconnect()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(0, fakeClient.autoConnectCalls)
+
+        assertTrue(manager.reconnectConfigured())
+        assertEquals(1, fakeClient.reconnectCalls)
+
+        fakeClient.emitUnexpectedDisconnect()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(1, fakeClient.autoConnectCalls)
+    }
+
+    @Test
+    fun bluetoothOffEndsManualDiscoveryOwnershipSoAutoconnectCanResume() {
+        assertTrue(manager.startDiscovery())
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.BLUETOOTH_OFF,
+                userMessage = RegattaLinkUiMessage.BLUETOOTH_DISABLED
+            )
+        )
+
+        manager.ensureConnectedIfPermitted()
+
+        assertEquals(1, fakeClient.discoveryCalls)
+        assertEquals(1, fakeClient.autoConnectCalls)
+    }
+
+    @Test
     fun rejectedDiscoveryDoesNotBlockConfiguredReconnect() {
         fakeClient.discoveryAccepted = false
 
@@ -593,7 +644,8 @@ class RegattaLinkConnectionManagerTest {
 
         fakeClient.emitUnexpectedDisconnect()
         shadowOf(Looper.getMainLooper()).idle()
-        assertEquals(1, fakeClient.reconnectCalls)
+        assertEquals(1, fakeClient.autoConnectCalls)
+        assertEquals(0, fakeClient.reconnectCalls)
     }
 
     @Test
@@ -626,7 +678,8 @@ class RegattaLinkConnectionManagerTest {
         fakeClient.emitUnexpectedDisconnect()
         shadowOf(Looper.getMainLooper()).idle()
 
-        assertEquals(1, fakeClient.reconnectCalls)
+        assertEquals(1, fakeClient.autoConnectCalls)
+        assertEquals(0, fakeClient.reconnectCalls)
         assertEquals(configured, manager.configuredDevice())
     }
 
@@ -728,11 +781,12 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
-    fun unexpectedDisconnectReconnectsOnlyOutsideOtaOwnership() {
+    fun unexpectedDisconnectAutoConnectsOnlyOutsideOtaOwnership() {
         fakeClient.emitUnexpectedDisconnect()
         shadowOf(Looper.getMainLooper()).idle()
 
-        assertEquals(1, fakeClient.reconnectCalls)
+        assertEquals(1, fakeClient.autoConnectCalls)
+        assertEquals(0, fakeClient.reconnectCalls)
 
         fakeClient.emitOta(
             RegattaLinkOtaUiState(
@@ -742,7 +796,8 @@ class RegattaLinkConnectionManagerTest {
         fakeClient.emitUnexpectedDisconnect()
         shadowOf(Looper.getMainLooper()).idle()
 
-        assertEquals(1, fakeClient.reconnectCalls)
+        assertEquals(1, fakeClient.autoConnectCalls)
+        assertEquals(0, fakeClient.reconnectCalls)
     }
 
     @Test
@@ -883,6 +938,62 @@ class RegattaLinkConnectionManagerTest {
         assertFalse(manager.setNmeaAttitudeTxEnabled(false))
         assertEquals(1, fakeClient.setNmeaTxCalls)
         assertEquals(1, fakeClient.setNmeaAttitudeTxCalls)
+    }
+
+    @Test
+    fun stagedConfigApplyUsesExpectedGroupMasks() {
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                configWordSupported = true,
+                configWord = 0u,
+                deviceControlSupported = true
+            )
+        )
+
+        val txDraft =
+            REGATTALINK_CONFIG_TX_MASTER or
+                REGATTALINK_CONFIG_TX_COMPASS
+        assertTrue(manager.applyTxSelectionAndRestart(txDraft))
+        assertEquals(1, fakeClient.applyConfigBitsAndRestartCalls)
+        assertEquals(
+            REGATTALINK_CONFIG_TX_SELECTION_MASK,
+            fakeClient.lastAppliedConfigMask
+        )
+        assertEquals(txDraft, fakeClient.lastAppliedConfigBits)
+
+        val subsystemDraft =
+            REGATTALINK_CONFIG_SESSION_IMU or
+                REGATTALINK_CONFIG_SESSION_CAN
+        assertTrue(manager.applySubsystemSelectionAndRestart(subsystemDraft))
+        assertEquals(2, fakeClient.applyConfigBitsAndRestartCalls)
+        assertEquals(
+            REGATTALINK_CONFIG_SESSION_SUBSYSTEM_MASK,
+            fakeClient.lastAppliedConfigMask
+        )
+        assertEquals(subsystemDraft, fakeClient.lastAppliedConfigBits)
+    }
+
+    @Test
+    fun stagedConfigApplyRejectsBitsOutsideOwnedMask() {
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                configWordSupported = true,
+                configWord = 0u,
+                deviceControlSupported = true
+            )
+        )
+
+        assertFalse(
+            manager.applyTxSelectionAndRestart(
+                REGATTALINK_CONFIG_TX_LOAD
+            )
+        )
+        assertFalse(
+            manager.applySubsystemSelectionAndRestart(
+                REGATTALINK_CONFIG_TX_MASTER
+            )
+        )
+        assertEquals(0, fakeClient.applyConfigBitsAndRestartCalls)
     }
 
     @Test
@@ -1397,18 +1508,38 @@ class RegattaLinkConnectionManagerTest {
             latitude = 53.0
             longitude = 10.0
             elapsedRealtimeNanos = 1_000_000_000L
+            time = 1_700_000_000_123L
         }
 
         fakeClient.emitConnection(
             RegattaLinkClientState(
-                status = RegattaLinkConnectionStatus.CONNECTED
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                phoneGnssTransportReady = false
             )
         )
         fakeClient.emitConfiguration(ready)
 
+        assertFalse(manager.isPhoneGnssForwardingEnabled())
+        assertFalse(manager.offerPhoneGnss(location))
+        assertEquals(0, fakeClient.phoneGnssOfferCalls)
+
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                phoneGnssTransportReady = true
+            )
+        )
         assertTrue(manager.isPhoneGnssForwardingEnabled())
         assertTrue(manager.offerPhoneGnss(location))
         assertEquals(1, fakeClient.phoneGnssOfferCalls)
+        assertEquals(
+            1_000_000_000L,
+            fakeClient.lastPhoneGnssSample?.observationElapsedRealtimeNanos
+        )
+        assertEquals(
+            1_700_000_000_123L,
+            fakeClient.lastPhoneGnssSample?.utcTimeMs
+        )
 
         fakeClient.emitConfiguration(
             ready.copy(
@@ -1494,8 +1625,10 @@ class RegattaLinkConnectionManagerTest {
     ) : RegattaLinkConnectionClient {
         var discoveryAccepted = true
         var reconnectAccepted = true
+        var autoConnectAccepted = true
         var discoveryCalls = 0
         var reconnectCalls = 0
+        var autoConnectCalls = 0
         var disconnectCalls = 0
         var otaStartCalls = 0
         var setNameCalls = 0
@@ -1503,11 +1636,13 @@ class RegattaLinkConnectionManagerTest {
         var setDampingCalls = 0
         var setNmeaTxCalls = 0
         var setNmeaAttitudeTxCalls = 0
+        var applyConfigBitsAndRestartCalls = 0
         var diagnosticDrainCalls = 0
         var deviceControlCalls = 0
         var refreshPgnCalls = 0
         var rawReadCalls = 0
         var phoneGnssOfferCalls = 0
+        var lastPhoneGnssSample: RegattaLinkPhoneGnssSample? = null
         var captureStartCalls = 0
         var captureRecordingStarted: (() -> Unit)? = null
         var captureFrame: ((RegattaLinkRawCanFrame) -> Unit)? = null
@@ -1519,8 +1654,12 @@ class RegattaLinkConnectionManagerTest {
         var lastDampingSeconds: Int? = null
         var lastNmeaTxEnabled: Boolean? = null
         var lastNmeaAttitudeTxEnabled: Boolean? = null
+        var lastAppliedConfigMask: UInt? = null
+        var lastAppliedConfigBits: UInt? = null
         var lastReconnectAddress: String? = null
         var lastReconnectStableId: String? = null
+        var lastAutoConnectAddress: String? = null
+        var lastAutoConnectStableId: String? = null
 
         override fun startKnownDeviceReconnect(
             deviceAddress: String,
@@ -1532,6 +1671,20 @@ class RegattaLinkConnectionManagerTest {
             lastReconnectStableId = expectedStableId
             return reconnectAccepted
         }
+
+        override fun startKnownDeviceAutoConnect(
+            deviceAddress: String,
+            expectedStableId: String?
+        ): Boolean {
+            autoConnectCalls += 1
+            lastAutoConnectAddress = deviceAddress
+            lastAutoConnectStableId = expectedStableId
+            return autoConnectAccepted
+        }
+
+        override fun onBluetoothAdapterDisabled() = Unit
+
+        override fun onBluetoothAdapterEnabled() = Unit
 
         override fun startDiscovery(): Boolean {
             discoveryCalls += 1
@@ -1578,6 +1731,16 @@ class RegattaLinkConnectionManagerTest {
             return true
         }
 
+        override fun applyConfigBitsAndRestart(
+            mask: UInt,
+            encodedBits: UInt
+        ): Boolean {
+            applyConfigBitsAndRestartCalls += 1
+            lastAppliedConfigMask = mask
+            lastAppliedConfigBits = encodedBits
+            return true
+        }
+
         override fun drainDiagnosticLog(): Boolean {
             diagnosticDrainCalls += 1
             return true
@@ -1607,6 +1770,7 @@ class RegattaLinkConnectionManagerTest {
             sample: RegattaLinkPhoneGnssSample
         ): Boolean {
             phoneGnssOfferCalls += 1
+            lastPhoneGnssSample = sample
             return true
         }
 

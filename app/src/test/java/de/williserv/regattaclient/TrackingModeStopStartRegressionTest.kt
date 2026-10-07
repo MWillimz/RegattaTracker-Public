@@ -25,19 +25,25 @@ class TrackingModeStopStartRegressionTest {
     fun setUp() {
         context = RuntimeEnvironment.getApplication()
         context.deleteDatabase("regatta_tracking.db")
-        context.getSharedPreferences("app_state", Context.MODE_PRIVATE)
-            .edit()
-            .clear()
-            .commit()
+        listOf("app_state", "race_setup", "regatta_race_state", "regatta_local_status", "boat_setup")
+            .forEach { name ->
+                context.getSharedPreferences(name, Context.MODE_PRIVATE)
+                    .edit()
+                    .clear()
+                    .commit()
+            }
     }
 
     @After
     fun tearDown() {
         context.deleteDatabase("regatta_tracking.db")
-        context.getSharedPreferences("app_state", Context.MODE_PRIVATE)
-            .edit()
-            .clear()
-            .commit()
+        listOf("app_state", "race_setup", "regatta_race_state", "regatta_local_status", "boat_setup")
+            .forEach { name ->
+                context.getSharedPreferences(name, Context.MODE_PRIVATE)
+                    .edit()
+                    .clear()
+                    .commit()
+            }
     }
 
     @Test
@@ -79,6 +85,88 @@ class TrackingModeStopStartRegressionTest {
         assertFalse(prefs.getBoolean("manual_tracking", true))
         assertTrue(getField<Boolean>(service, "serviceRunning"))
         assertFalse(getField<Boolean>(service, "manualRecording"))
+
+        setField(service, "serviceRunning", false)
+        controller.destroy()
+    }
+
+    @Test
+    fun `explicit Daily entry resets persisted run progress and personal start time`() {
+        context.getSharedPreferences("regatta_race_state", Context.MODE_PRIVATE)
+            .edit()
+            .putString("event_name", "Daily")
+            .putString("resolved_event_name", "Daily")
+            .putString("sail_number", "GER 447")
+            .putBoolean("race_started", true)
+            .putBoolean("race_finished", true)
+            .putBoolean("is_ocs", true)
+            .putInt("passed_marks", 3)
+            .putLong("local_start_timestamp_ms", 123_456L)
+            .commit()
+
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+        setField(service, "eventPollRunning", true)
+
+        val start = Intent(context, RegattaTrackingService::class.java).apply {
+            action = RegattaTrackingService.ACTION_START
+            putExtra(RegattaTrackingService.EXTRA_SERVER_URL, "https://raceoffice.example.org")
+            putExtra(RegattaTrackingService.EXTRA_EVENT_NAME, "Daily")
+            putExtra(RegattaTrackingService.EXTRA_SHARED_SECRET, "secret")
+            putExtra(RegattaTrackingService.EXTRA_RESOLVED_EVENT_NAME, "Daily")
+            putExtra(RegattaTrackingService.EXTRA_BOAT_NAME, "Test Boat")
+            putExtra(RegattaTrackingService.EXTRA_SAIL_NUMBER, "GER 447")
+            putExtra(RegattaTrackingService.EXTRA_MANUAL_RECORDING, false)
+            putExtra(RegattaTrackingService.EXTRA_RESET_RACE_RUN_STATE, true)
+        }
+
+        assertEquals(Service.START_STICKY, service.onStartCommand(start, 0, 1))
+
+        val state = context.getSharedPreferences("regatta_race_state", Context.MODE_PRIVATE)
+        assertFalse(state.getBoolean("race_started", true))
+        assertFalse(state.getBoolean("race_finished", true))
+        assertFalse(state.getBoolean("is_ocs", true))
+        assertEquals(0, state.getInt("passed_marks", -1))
+        assertFalse(state.contains("local_start_timestamp_ms"))
+
+        setField(service, "serviceRunning", false)
+        controller.destroy()
+    }
+
+    @Test
+    fun `sticky restart restores personal Flying Start timestamp`() {
+        context.getSharedPreferences("app_state", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("in_race", true)
+            .putBoolean("manual_tracking", false)
+            .commit()
+        context.getSharedPreferences("boat_setup", Context.MODE_PRIVATE)
+            .edit()
+            .putString("sail_number", "GER 447")
+            .commit()
+        context.getSharedPreferences("race_setup", Context.MODE_PRIVATE)
+            .edit()
+            .putString("race_server", "https://raceoffice.example.org")
+            .putString("race_event", "Daily")
+            .putString("race_secret", "secret")
+            .putString("resolved_event_name", "Daily")
+            .commit()
+        context.getSharedPreferences("regatta_race_state", Context.MODE_PRIVATE)
+            .edit()
+            .putString("event_name", "Daily")
+            .putString("resolved_event_name", "Daily")
+            .putString("sail_number", "GER 447")
+            .putBoolean("race_started", true)
+            .putLong("local_start_timestamp_ms", 987_654L)
+            .commit()
+
+        val controller = Robolectric.buildService(RegattaTrackingService::class.java).create()
+        val service = controller.get()
+        setField(service, "eventPollRunning", true)
+
+        assertEquals(Service.START_STICKY, service.onStartCommand(null, 0, 1))
+        assertTrue(getField<Boolean>(service, "raceStarted"))
+        assertEquals(987_654L, getField<Long>(service, "localStartTimestampMillis"))
 
         setField(service, "serviceRunning", false)
         controller.destroy()

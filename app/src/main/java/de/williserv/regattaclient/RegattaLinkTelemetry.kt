@@ -7,7 +7,36 @@ import java.nio.ByteOrder
 
 internal const val REGATTALINK_TELEMETRY_RECORD_SIZE = 20
 internal const val REGATTALINK_TELEMETRY_SCHEMA_VERSION = 1
+internal const val REGATTALINK_RAW_IMU_SCHEMA_VERSION = 2
+internal const val REGATTALINK_RAW_MAG_SCHEMA_VERSION = 3
+
+internal enum class RegattaLinkFastMotionRecordKind {
+    MOTION,
+    RAW_IMU,
+    RAW_MAG
+}
+
+internal fun regattaLinkFastMotionRecordKind(
+    raw: ByteArray
+): RegattaLinkFastMotionRecordKind {
+    require(raw.size == REGATTALINK_TELEMETRY_RECORD_SIZE) {
+        "Invalid RegattaLink Fast Motion record length ${raw.size}"
+    }
+    return when (val version = raw[0].toInt() and 0xff) {
+        REGATTALINK_TELEMETRY_SCHEMA_VERSION ->
+            RegattaLinkFastMotionRecordKind.MOTION
+        REGATTALINK_RAW_IMU_SCHEMA_VERSION ->
+            RegattaLinkFastMotionRecordKind.RAW_IMU
+        REGATTALINK_RAW_MAG_SCHEMA_VERSION ->
+            RegattaLinkFastMotionRecordKind.RAW_MAG
+        else -> throw IllegalArgumentException(
+            "Unsupported RegattaLink Fast Motion schema $version"
+        )
+    }
+}
+internal const val REGATTALINK_UPRIGHT_MAX_FRONT_TILT_DEG = 10
 internal const val REGATTALINK_FAST_STALE_MS = 2_000L
+internal const val REGATTALINK_RAW_IMU_PREVIEW_STALE_MS = 500L
 internal const val REGATTALINK_SLOW_STALE_MS = 3_000L
 internal const val REGATTALINK_MOTION_ONE_HZ_STALE_MS = 3_000L
 
@@ -38,6 +67,29 @@ data class RegattaLinkFastMotion(
     val yawRateDps: Double,
     val verticalAccelG: Double
 )
+
+data class RegattaLinkRawImu(
+    val sequence: Int,
+    val timestampMs: Long,
+    val accelXRaw: Int,
+    val accelYRaw: Int,
+    val accelZRaw: Int,
+    val gyroXRaw: Int,
+    val gyroYRaw: Int,
+    val gyroZRaw: Int
+)
+
+internal fun regattaLinkRawImuFrontTiltDeg(
+    sample: RegattaLinkRawImu
+): Double? {
+    val x = sample.accelXRaw.toDouble()
+    val yz = kotlin.math.hypot(
+        sample.accelYRaw.toDouble(),
+        sample.accelZRaw.toDouble()
+    )
+    if (x == 0.0 && yz == 0.0) return null
+    return Math.toDegrees(kotlin.math.atan2(x, yz))
+}
 
 data class RegattaLinkMotionSummary(
     val confidencePct: Int,
@@ -91,6 +143,8 @@ data class RegattaLinkTelemetryState(
      */
     val fast: RegattaLinkFastMotion? = null,
     val fastReceivedAtElapsedMs: Long? = null,
+    val rawImu: RegattaLinkRawImu? = null,
+    val rawImuReceivedAtElapsedMs: Long? = null,
     val summary: RegattaLinkMotionSummary? = null,
     val summaryReceivedAtElapsedMs: Long? = null,
     val calibration: RegattaLinkCalibrationDiagnostics? = null,
@@ -115,6 +169,27 @@ internal fun parseRegattaLinkFastMotion(raw: ByteArray): RegattaLinkFastMotion {
         pitchRateDps = buffer.getShort(14).toInt() / 100.0,
         yawRateDps = buffer.getShort(16).toInt() / 100.0,
         verticalAccelG = buffer.getShort(18).toInt() / 1000.0
+    )
+}
+
+internal fun parseRegattaLinkRawImu(raw: ByteArray): RegattaLinkRawImu {
+    require(raw.size == REGATTALINK_TELEMETRY_RECORD_SIZE) {
+        "RegattaLink raw IMU record must be $REGATTALINK_TELEMETRY_RECORD_SIZE bytes, got ${raw.size}"
+    }
+    val version = raw[0].toInt() and 0xff
+    require(version == REGATTALINK_RAW_IMU_SCHEMA_VERSION) {
+        "Unsupported RegattaLink raw IMU schema $version"
+    }
+    val buffer = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
+    return RegattaLinkRawImu(
+        sequence = buffer.getShort(2).toInt() and 0xffff,
+        timestampMs = buffer.getInt(4).toLong() and 0xffffffffL,
+        accelXRaw = buffer.getShort(8).toInt(),
+        accelYRaw = buffer.getShort(10).toInt(),
+        accelZRaw = buffer.getShort(12).toInt(),
+        gyroXRaw = buffer.getShort(14).toInt(),
+        gyroYRaw = buffer.getShort(16).toInt(),
+        gyroZRaw = buffer.getShort(18).toInt()
     )
 }
 

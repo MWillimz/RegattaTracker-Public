@@ -1,6 +1,7 @@
 package de.williserv.regattaclient
 
 import android.Manifest
+import android.bluetooth.BluetoothAdapter
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -13,6 +14,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -244,6 +246,8 @@ class MainActivity : ComponentActivity() {
     private val raceSecret = mutableStateOf("")
     private val resolvedEventName = mutableStateOf("")
     private val raceSeriesDisplayMetadata = mutableStateOf(SeriesDisplayMetadata())
+    private val raceScoringMode = mutableStateOf("mass_start")
+    private val dailyReentryEnabled = mutableStateOf(false)
     private var raceLegalResolvedEventName = ""
 
     private val inRace = mutableStateOf(false)
@@ -285,7 +289,9 @@ class MainActivity : ComponentActivity() {
     private val ocsText = mutableStateOf("")
     private val debugErrorText = mutableStateOf("")
     private var localIsOcs = false
+    private var localRaceStarted = false
     private var localRaceFinished = false
+    private var localRaceStartTimestampMillis: Long? = null
 
     private val showFinishDetectedDialog = mutableStateOf(false)
     private val raceDataReady = mutableStateOf(false)
@@ -325,6 +331,7 @@ class MainActivity : ComponentActivity() {
     private val retirementReported = mutableStateOf(false)
     private val retirementStatusText = mutableStateOf("")
     private val retirementRequestInFlight = mutableStateOf(false)
+    private val retirementRunGuard = ParticipantRetirementRunGuard()
     private val showAdvanced = mutableStateOf(false)
 
     private val sessionSummaries = mutableStateOf<List<TrackingSessionSummary>>(emptyList())
@@ -453,6 +460,11 @@ class MainActivity : ComponentActivity() {
             } else {
                 statusText.value = getString(R.string.gps_permission_denied)
             }
+        }
+
+    private val regattaLinkBluetoothEnableLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            // BluetoothAdapter.ACTION_STATE_CHANGED drives connection recovery.
         }
 
     private val regattaLinkPermissionLauncher =
@@ -610,6 +622,7 @@ class MainActivity : ComponentActivity() {
                             raceEvent = raceEvent.value,
                             seriesDisplayMetadata = raceSeriesDisplayMetadata.value,
                             raceStartText = raceStartText.value,
+                            scoringMode = raceScoringMode.value,
                             raceStopText = raceStopText.value,
                             raceCourseText = raceCourseText.value,
                             raceStartLineText = raceStartLineText.value,
@@ -621,6 +634,7 @@ class MainActivity : ComponentActivity() {
                             retirementReported = retirementReported.value,
                             retirementStatusText = retirementStatusText.value,
                             raceDataReady = raceDataReady.value,
+                            dailyReentryEnabled = dailyReentryEnabled.value,
                             raceRegistered = raceRegistered.value,
                             localRaceFinished = localRaceFinished,
                             dtlText = dtlText.value,
@@ -639,9 +653,12 @@ class MainActivity : ComponentActivity() {
                             sogText = sogText.value,
                             gpsAccuracyText = gpsAccuracyText.value,
                             gpsColor = gpsColor.value,
-                            regattaLinkConnected =
-                                regattaLinkState.value.status ==
-                                    RegattaLinkConnectionStatus.CONNECTED,
+                            regattaLinkStatus =
+                                regattaLinkHomeStatus(
+                                    state = regattaLinkState.value,
+                                    pairingRequired =
+                                        regattaLinkManager.requiresNewPairing()
+                                ),
                             showClearConfirmDialog = showClearConfirmDialog.value,
                             showAdvanced = showAdvanced.value,
                             modifier = Modifier.padding(innerPadding),
@@ -672,8 +689,26 @@ class MainActivity : ComponentActivity() {
                                     fetchEventResults()
                                 }
                             },
-                            onRegattaLinkReconnect = ::startRegattaLinkReconnect,
+                            onRegattaLinkReconnect = {
+                                val homeStatus =
+                                    regattaLinkHomeStatus(
+                                        state = regattaLinkState.value,
+                                        pairingRequired =
+                                            regattaLinkManager.requiresNewPairing()
+                                    )
+                                if (
+                                    regattaLinkManager.configuredDevice() == null ||
+                                    homeStatus == RegattaLinkHomeStatus.ERROR
+                                ) {
+                                    regattaLinkManager.refreshBluetoothAvailability()
+                                    regattaLinkReturnScreen = Screen.HOME
+                                    currentScreen.value = Screen.REGATTALINK
+                                } else {
+                                    startRegattaLinkReconnect()
+                                }
+                            },
                             onRegattaLinkOpen = {
+                                regattaLinkManager.refreshBluetoothAvailability()
                                 regattaLinkReturnScreen = Screen.HOME
                                 currentScreen.value = Screen.REGATTALINK
                             },
@@ -849,6 +884,7 @@ class MainActivity : ComponentActivity() {
                                 regattaLinkPhoneGpsRelayEnabled.value,
                             modifier = Modifier.padding(innerPadding),
                             onSearch = ::startRegattaLinkConnection,
+                            onEnableBluetooth = ::requestEnableRegattaLinkBluetooth,
                             onCheckFirmware = ::loadRegattaLinkFirmware,
                             onFirmwareSourceSelected = ::selectRegattaLinkFirmwareSource,
                             onInstallFirmware = ::installRegattaLinkFirmware,
@@ -867,20 +903,9 @@ class MainActivity : ComponentActivity() {
                             onSetLoadPrecisionX10 = { enabled ->
                                 regattaLinkManager.setLoadPrecisionX10(enabled)
                             },
-                            onSetNmeaTxEnabled = { enabled ->
-                                regattaLinkManager.setNmeaTxEnabled(enabled)
-                            },
-                            onSetNmeaAttitudeTxEnabled = { enabled ->
-                                regattaLinkManager.setNmeaAttitudeTxEnabled(enabled)
-                            },
-                            onSetNmea0183TxEnabled = { enabled ->
-                                regattaLinkManager.setNmea0183TxEnabled(enabled)
-                            },
-                            onSetPhoneGpsTxEnabled = { enabled ->
-                                regattaLinkManager.setPhoneGpsTxEnabled(enabled)
-                            },
-                            onSetCompassTxEnabled = { enabled ->
-                                regattaLinkManager.setCompassTxEnabled(enabled)
+                            onApplyTxConfigAndRestart = { encodedBits ->
+                                regattaLinkManager
+                                    .applyTxSelectionAndRestart(encodedBits)
                             },
                             onSetPhoneGpsRelayEnabled = { enabled ->
                                 setRegattaLinkPhoneGpsRelayEnabled(enabled)
@@ -892,9 +917,9 @@ class MainActivity : ComponentActivity() {
                                 regattaLinkManager
                                     .setMagBackgroundLearningEnabled(enabled)
                             },
-                            onSetSubsystemEnabled = { subsystem, enabled ->
+                            onApplySubsystemConfigAndRestart = { encodedBits ->
                                 regattaLinkManager
-                                    .setSubsystemEnabled(subsystem, enabled)
+                                    .applySubsystemSelectionAndRestart(encodedBits)
                             },
                             onSetHeadingTrimDeg = { value ->
                                 regattaLinkManager.setHeadingTrimDeg(value)
@@ -910,6 +935,9 @@ class MainActivity : ComponentActivity() {
                             },
                             onDeviceControl = { opcode, value ->
                                 regattaLinkManager.executeDeviceControl(opcode, value)
+                            },
+                            onSetImuRawPreviewEnabled = { enabled ->
+                                regattaLinkManager.setImuRawPreviewEnabled(enabled)
                             },
                             onRefreshPgnInventory = {
                                 regattaLinkManager.refreshPgnInventory()
@@ -972,6 +1000,8 @@ class MainActivity : ComponentActivity() {
                             raceShortenedText = raceShortenedText.value,
                             raceShortened = rawRaceCourseShortened,
                             seriesDisplayMetadata = raceSeriesDisplayMetadata.value,
+                            scoringMode = raceScoringMode.value,
+                            dailyReentryEnabled = dailyReentryEnabled.value,
                             modifier = Modifier.padding(innerPadding),
                             retireEnabled = !retirementRequestInFlight.value,
                             onClearRaceSetupClick = {
@@ -1035,6 +1065,7 @@ class MainActivity : ComponentActivity() {
                             raceInfoText = raceInfoText.value,
                             raceShortenedText = raceShortenedText.value,
                             raceShortened = rawRaceCourseShortened,
+                            scoringMode = raceScoringMode.value,
                             currentTargetText = currentTargetText.value,
                             courseMapMarks = courseMapMarks.value,
                             onSetCourseProgress = { passedMarks, raceStarted ->
@@ -1281,6 +1312,11 @@ class MainActivity : ComponentActivity() {
             occurrenceNo = prefs.getInt("series_occurrence_no", 0).takeIf { it > 0 },
             plannedRaceCount = prefs.getInt("series_planned_race_count", 0).takeIf { it > 0 }
         )
+        raceScoringMode.value = prefs.getString("race_scoring_mode", "mass_start")
+            .orEmpty()
+            .trim()
+            .ifBlank { "mass_start" }
+        dailyReentryEnabled.value = prefs.getBoolean("daily_reentry_enabled", false)
         raceRegistered.value = prefs.getBoolean("race_registered", false)
 
         raceDataReady.value = prefs.getBoolean("race_data_ready", false)
@@ -1495,6 +1531,8 @@ class MainActivity : ComponentActivity() {
         raceInfoText.value = getString(R.string.info_unknown)
         raceShortenedText.value = getString(R.string.course_shortened_no)
         raceSeriesDisplayMetadata.value = SeriesDisplayMetadata()
+        raceScoringMode.value = "mass_start"
+        dailyReentryEnabled.value = false
         courseMapMarks.value = emptyList()
         selectedCourseMapView.value = null
         raceStartFlags.value = RaceStartFlags()
@@ -1563,6 +1601,8 @@ class MainActivity : ComponentActivity() {
             .remove("series_run_name")
             .remove("series_occurrence_no")
             .remove("series_planned_race_count")
+            .remove("race_scoring_mode")
+            .remove("daily_reentry_enabled")
             .putBoolean("race_data_ready", false)
             .apply()
     }
@@ -1615,6 +1655,8 @@ class MainActivity : ComponentActivity() {
         raceInfoText.value = getString(R.string.info_unknown)
         raceShortenedText.value = getString(R.string.course_shortened_no)
         raceSeriesDisplayMetadata.value = SeriesDisplayMetadata()
+        raceScoringMode.value = "mass_start"
+        dailyReentryEnabled.value = false
         courseMapMarks.value = emptyList()
         selectedCourseMapView.value = null
         raceStartFlags.value = RaceStartFlags()
@@ -1672,6 +1714,8 @@ class MainActivity : ComponentActivity() {
             .putString("series_run_name", raceSeriesDisplayMetadata.value.runName)
             .putInt("series_occurrence_no", raceSeriesDisplayMetadata.value.occurrenceNo ?: 0)
             .putInt("series_planned_race_count", raceSeriesDisplayMetadata.value.plannedRaceCount ?: 0)
+            .putString("race_scoring_mode", raceScoringMode.value)
+            .putBoolean("daily_reentry_enabled", dailyReentryEnabled.value)
             .putBoolean("race_registered", raceRegistered.value)
             .putInt("race_raw_state_version", RACE_RAW_STATE_VERSION)
             .putString("race_status_raw", rawRaceStatus)
@@ -2620,8 +2664,11 @@ class MainActivity : ComponentActivity() {
         }
 
         localIsOcs = prefs.getBoolean("is_ocs", false)
+        localRaceStarted = prefs.getBoolean("race_started", false)
         localRaceFinished = prefs.getBoolean("race_finished", false)
-        val raceStarted = prefs.getBoolean("race_started", false)
+        localRaceStartTimestampMillis = prefs.getLong("local_start_timestamp_ms", 0L)
+            .takeIf { it > 0L }
+        val raceStarted = localRaceStarted
         val passedMarks = prefs.getInt("passed_marks", 0).coerceAtLeast(0)
         val activeCourseMarks = courseMapMarks.value.filterNot { it.skipped }
 
@@ -2913,32 +2960,42 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        val startMillis = raceStartEpochMillis
+        val timing = resolveRaceStartTiming(
+            scoringMode = raceScoringMode.value,
+            eventStartMillis = raceStartEpochMillis,
+            localStartMillis = localRaceStartTimestampMillis,
+            nowMillis = System.currentTimeMillis()
+        )
 
-        if (startMillis == null) {
-            startPanelText.value = getString(R.string.app_name)
-            startPanelMode.value = "clear"
-            return
-        }
-
-        val remainingSeconds = (startMillis - System.currentTimeMillis()) / 1000L
-
-        when {
-            remainingSeconds > 600L -> {
+        when (timing.phase) {
+            RaceStartTimingPhase.CLEAR -> {
                 startPanelText.value = getString(R.string.app_name)
                 startPanelMode.value = "clear"
             }
 
-            remainingSeconds > 0L -> {
+            RaceStartTimingPhase.COUNTDOWN -> {
+                val remainingSeconds = timing.seconds ?: 0L
                 val minutes = remainingSeconds / 60L
                 val seconds = remainingSeconds % 60L
-
-                startPanelText.value = getString(R.string.start_in, minutes, seconds)
+                startPanelText.value = if (isFlyingStart(raceScoringMode.value)) {
+                    getString(R.string.start_window_in, minutes, seconds)
+                } else {
+                    getString(R.string.start_in, minutes, seconds)
+                }
                 startPanelMode.value = "countdown"
             }
 
-            else -> {
-                val elapsedSeconds = -remainingSeconds
+            RaceStartTimingPhase.FLYING_WINDOW_OPEN -> {
+                startPanelText.value = if (localRaceStarted) {
+                    getString(R.string.flying_start_started)
+                } else {
+                    getString(R.string.start_window_open)
+                }
+                startPanelMode.value = "started"
+            }
+
+            RaceStartTimingPhase.ELAPSED -> {
+                val elapsedSeconds = timing.seconds ?: 0L
                 val hours = elapsedSeconds / 3600L
                 val minutes = (elapsedSeconds % 3600L) / 60L
                 val seconds = elapsedSeconds % 60L
@@ -2959,7 +3016,6 @@ class MainActivity : ComponentActivity() {
                         seconds
                     )
                 }
-
                 startPanelMode.value = "started"
             }
         }
@@ -3355,6 +3411,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun requestEnableRegattaLinkBluetooth() {
+        val enableIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+        val launched = runCatching {
+            regattaLinkBluetoothEnableLauncher.launch(enableIntent)
+        }.isSuccess
+        if (!launched) {
+            runCatching {
+                startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
+            }
+        }
+    }
+
     private fun startRegattaLinkConnection() {
         if (regattaLinkOtaState.value.isActive) return
         invalidateRegattaLinkFirmwareSelection()
@@ -3493,6 +3561,11 @@ class MainActivity : ComponentActivity() {
 
         if (!storeRaceEntrySample()) return
 
+        val resetRaceRunState = dailyReentryEnabled.value
+        if (resetRaceRunState) {
+            resetLocalRaceDisplayForNewRun()
+        }
+
         inRace.value = true
         refreshRetirementReportedState()
         statusText.value = getString(R.string.in_race)
@@ -3501,9 +3574,42 @@ class MainActivity : ComponentActivity() {
 
         fetchRaceDataForDisplay()
         startRaceDataRefresh()
-        startRegattaForegroundService(manualMode = false)
+        startRegattaForegroundService(
+            manualMode = false,
+            resetRaceRunState = resetRaceRunState
+        )
 
         currentScreen.value = Screen.HOME
+    }
+
+    private fun resetLocalRaceDisplayForNewRun() {
+        getSharedPreferences("regatta_local_status", Context.MODE_PRIVATE)
+            .edit()
+            .remove("dtl_text")
+            .remove("ttl_text")
+            .remove("ocs_text")
+            .remove("target_text")
+            .remove("progress_text")
+            .remove("boat_status_text")
+            .remove("is_ocs")
+            .remove("race_started")
+            .remove("race_finished")
+            .remove("passed_marks")
+            .remove("local_start_timestamp_ms")
+            .commit()
+
+        localIsOcs = false
+        localRaceStarted = false
+        localRaceFinished = false
+        localRaceStartTimestampMillis = null
+        retirementReported.value = false
+        retirementStatusText.value = ""
+        retirementRunGuard.resetForNewRun {
+            ParticipantRetirementStore.clear(this)
+        }
+        retirementRequestInFlight.value = false
+        showFinishDetectedDialog.value = false
+        updateLocalRaceStatus()
     }
 
     private fun currentRetirementIdentity(): ParticipantRetirementIdentity =
@@ -3529,9 +3635,11 @@ class MainActivity : ComponentActivity() {
 
     private fun isCurrentRetirementRequest(
         access: EventAccessKey,
-        identity: ParticipantRetirementIdentity
+        identity: ParticipantRetirementIdentity,
+        requestRunGeneration: Long
     ): Boolean =
-        inRace.value &&
+        retirementRunGuard.isCurrent(requestRunGeneration) &&
+            inRace.value &&
             currentEventAccessKey() == access &&
             currentRetirementIdentity() == identity
 
@@ -3540,6 +3648,7 @@ class MainActivity : ComponentActivity() {
 
         val access = currentEventAccessKey() ?: return
         val identity = currentRetirementIdentity()
+        val requestRunGeneration = retirementRunGuard.captureGeneration()
         if (!identity.isComplete()) {
             retirementStatusText.value = getString(R.string.confirm_boat_setup_first_period)
             return
@@ -3583,15 +3692,25 @@ class MainActivity : ComponentActivity() {
                 if (responseCode in 200..299) {
                     val receipt = parseParticipantRetirementReceipt(body, identity)
                     if (receipt != null) {
-                        ParticipantRetirementStore.save(
-                            context = applicationContext,
-                            serverUrl = access.server,
-                            receipt = receipt
-                        )
+                        retirementRunGuard.runIfCurrent(requestRunGeneration) {
+                            ParticipantRetirementStore.save(
+                                context = applicationContext,
+                                serverUrl = access.server,
+                                receipt = receipt
+                            )
+                        }
                     }
                     runOnUiThread {
                         if (!asyncLifetime.isActive()) return@runOnUiThread
-                        if (!isCurrentRetirementRequest(access, identity)) return@runOnUiThread
+                        if (
+                            !isCurrentRetirementRequest(
+                                access,
+                                identity,
+                                requestRunGeneration
+                            )
+                        ) {
+                            return@runOnUiThread
+                        }
                         if (receipt == null) {
                             retirementStatusText.value = getString(R.string.retire_response_invalid)
                         } else {
@@ -3602,7 +3721,15 @@ class MainActivity : ComponentActivity() {
                 } else {
                     runOnUiThread {
                         if (!asyncLifetime.isActive()) return@runOnUiThread
-                        if (!isCurrentRetirementRequest(access, identity)) return@runOnUiThread
+                        if (
+                            !isCurrentRetirementRequest(
+                                access,
+                                identity,
+                                requestRunGeneration
+                            )
+                        ) {
+                            return@runOnUiThread
+                        }
                         retirementStatusText.value =
                             getString(R.string.retire_failed_code, responseCode, body.take(120))
                     }
@@ -3613,7 +3740,15 @@ class MainActivity : ComponentActivity() {
                 }
                 runOnUiThread {
                     if (!asyncLifetime.isActive()) return@runOnUiThread
-                    if (!isCurrentRetirementRequest(access, identity)) return@runOnUiThread
+                    if (
+                            !isCurrentRetirementRequest(
+                                access,
+                                identity,
+                                requestRunGeneration
+                            )
+                        ) {
+                            return@runOnUiThread
+                        }
                     updateConnectionUiState()
                     retirementStatusText.value = if (serverResponded) {
                         getString(R.string.retire_failed, e.message ?: "")
@@ -3623,7 +3758,10 @@ class MainActivity : ComponentActivity() {
                 }
             } finally {
                 runOnUiThread {
-                    if (asyncLifetime.isActive()) {
+                    if (
+                        asyncLifetime.isActive() &&
+                        retirementRunGuard.isCurrent(requestRunGeneration)
+                    ) {
                         retirementRequestInFlight.value = false
                     }
                 }
@@ -3723,7 +3861,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun startRegattaForegroundService(manualMode: Boolean) {
+    private fun startRegattaForegroundService(
+        manualMode: Boolean,
+        resetRaceRunState: Boolean = false
+    ) {
         val intent = Intent(this, RegattaTrackingService::class.java).apply {
             action = RegattaTrackingService.ACTION_START
 
@@ -3740,6 +3881,7 @@ class MainActivity : ComponentActivity() {
             putExtra(RegattaTrackingService.EXTRA_BOAT_TYPE, boatType.value)
 
             putExtra(RegattaTrackingService.EXTRA_MANUAL_RECORDING, manualMode)
+            putExtra(RegattaTrackingService.EXTRA_RESET_RACE_RUN_STATE, resetRaceRunState)
         }
 
         TrackingServiceRuntimeState.markStarting()
@@ -3962,6 +4104,8 @@ class MainActivity : ComponentActivity() {
 
                     adoptResolvedEventName(displaySnapshot.resolvedEventName)
                     raceSeriesDisplayMetadata.value = displaySnapshot.seriesDisplayMetadata
+                    raceScoringMode.value = displaySnapshot.scoringMode
+                    dailyReentryEnabled.value = displaySnapshot.dailyReentryEnabled
                     rawRaceStatus = displaySnapshot.status
                     rawRaceStart = displaySnapshot.startRaw
                     rawRaceStop = displaySnapshot.stopRaw

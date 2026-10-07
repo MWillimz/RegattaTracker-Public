@@ -45,6 +45,63 @@ class RegattaLinkReconnectPolicyTest {
         assertEquals(0L, regattaLinkReconnectRemainingMs(60_000L, 61_000L))
     }
     @Test
+    fun homeStatusUsesWaitingForNormalNonConnectedStates() {
+        listOf(
+            RegattaLinkConnectionStatus.IDLE,
+            RegattaLinkConnectionStatus.WAITING,
+            RegattaLinkConnectionStatus.SCANNING,
+            RegattaLinkConnectionStatus.BONDING,
+            RegattaLinkConnectionStatus.CONNECTING,
+            RegattaLinkConnectionStatus.DISCOVERING,
+            RegattaLinkConnectionStatus.READING_DEVICE_INFO
+        ).forEach { status ->
+            assertEquals(
+                RegattaLinkHomeStatus.WAITING,
+                regattaLinkHomeStatus(RegattaLinkClientState(status = status))
+            )
+        }
+    }
+
+    @Test
+    fun homeStatusUsesGreenOnlyForConnected() {
+        assertEquals(
+            RegattaLinkHomeStatus.CONNECTED,
+            regattaLinkHomeStatus(
+                RegattaLinkClientState(
+                    status = RegattaLinkConnectionStatus.CONNECTED
+                )
+            )
+        )
+    }
+
+    @Test
+    fun homeStatusUsesErrorForBluetoothOffTerminalErrorOrPairingRequirement() {
+        assertEquals(
+            RegattaLinkHomeStatus.ERROR,
+            regattaLinkHomeStatus(
+                RegattaLinkClientState(
+                    status = RegattaLinkConnectionStatus.BLUETOOTH_OFF
+                )
+            )
+        )
+        assertEquals(
+            RegattaLinkHomeStatus.ERROR,
+            regattaLinkHomeStatus(
+                RegattaLinkClientState(
+                    status = RegattaLinkConnectionStatus.ERROR
+                )
+            )
+        )
+        assertEquals(
+            RegattaLinkHomeStatus.ERROR,
+            regattaLinkHomeStatus(
+                state = RegattaLinkClientState(),
+                pairingRequired = true
+            )
+        )
+    }
+
+    @Test
     fun terminalOtaStateIsDeferredUntilOwnershipIsReleased() {
         listOf(
             RegattaLinkOtaPhase.SUCCESS,

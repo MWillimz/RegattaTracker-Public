@@ -47,6 +47,7 @@ import de.williserv.regattaclient.ui.theme.RegattaBlue
 import de.williserv.regattaclient.ui.theme.RegattaGreen
 import de.williserv.regattaclient.ui.theme.RegattaOrange
 import de.williserv.regattaclient.ui.theme.RegattaRed
+import de.williserv.regattaclient.ui.theme.RegattaYellow
 
 import androidx.compose.foundation.Image
 import androidx.compose.ui.res.painterResource
@@ -118,6 +119,7 @@ fun HomeScreen(
     retirementReported: Boolean,
     retirementStatusText: String,
     raceDataReady: Boolean,
+    dailyReentryEnabled: Boolean = false,
     raceRegistered: Boolean,
     localRaceFinished: Boolean,
     dtlText: String,
@@ -136,7 +138,7 @@ fun HomeScreen(
     sogText: String,
     gpsAccuracyText: String,
     gpsColor: Color,
-    regattaLinkConnected: Boolean,
+    regattaLinkStatus: RegattaLinkHomeStatus,
     showClearConfirmDialog: Boolean,
     showAdvanced: Boolean,
     modifier: Modifier = Modifier,
@@ -156,7 +158,8 @@ fun HomeScreen(
     onConfirmClearOldData: () -> Unit,
     onCancelClearOldData: () -> Unit,
     onToggleAdvanced: () -> Unit,
-    seriesDisplayMetadata: SeriesDisplayMetadata = SeriesDisplayMetadata()
+    seriesDisplayMetadata: SeriesDisplayMetadata = SeriesDisplayMetadata(),
+    scoringMode: String = "mass_start"
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
@@ -309,6 +312,7 @@ fun HomeScreen(
                     raceStatusDisplayText = raceStatusDisplayText,
                     raceDataReady = raceDataReady,
                     raceStartText = raceStartText,
+                    scoringMode = scoringMode,
                     inRace = inRace,
                     racePrefix = stringResource(R.string.race_prefix),
                     startPrefix = startPrefix,
@@ -333,7 +337,7 @@ fun HomeScreen(
                 noConnectionText = stringResource(R.string.status_no_connection)
             ),
             uploadColor = uploadColor,
-            regattaLinkConnected = regattaLinkConnected,
+            regattaLinkStatus = regattaLinkStatus,
             onRegattaLinkReconnect = onRegattaLinkReconnect,
             onRegattaLinkOpen = onRegattaLinkOpen
         )
@@ -350,7 +354,20 @@ fun HomeScreen(
         Spacer(modifier = Modifier.height(HomeGapMedium))
 
 
-        if (isRaceFinished(raceStatusCode, raceDataReady)) {
+        val raceFinished = isRaceFinished(raceStatusCode, raceDataReady)
+
+        if (!raceFinished) {
+            RacecourseRow(
+                raceDataReady = raceDataReady,
+                onCourse = onCourse,
+                onMap = onMap
+            )
+        }
+
+        if (raceFinished || dailyReentryEnabled) {
+            if (!raceFinished) {
+                Spacer(modifier = Modifier.height(HomeGapMedium))
+            }
             Button(
                 onClick = onResults,
                 enabled = raceDataReady,
@@ -364,12 +381,6 @@ fun HomeScreen(
             ) {
                 Text(stringResource(R.string.results))
             }
-        } else {
-            RacecourseRow(
-                raceDataReady = raceDataReady,
-                onCourse = onCourse,
-                onMap = onMap
-            )
         }
 
         Spacer(modifier = Modifier.height(HomeGapLarge))
@@ -704,7 +715,7 @@ fun StatusOverviewCard(
     raceColor: Color,
     uploadStatusText: String,
     uploadColor: Color,
-    regattaLinkConnected: Boolean,
+    regattaLinkStatus: RegattaLinkHomeStatus,
     onRegattaLinkReconnect: () -> Unit,
     onRegattaLinkOpen: () -> Unit
 ) {
@@ -731,7 +742,7 @@ fun StatusOverviewCard(
                 Spacer(modifier = Modifier.weight(1f))
                 Spacer(modifier = Modifier.weight(1f))
                 RegattaLinkStatusIndicator(
-                    connected = regattaLinkConnected,
+                    status = regattaLinkStatus,
                     onReconnect = onRegattaLinkReconnect,
                     onOpen = onRegattaLinkOpen,
                     modifier = Modifier.weight(1f)
@@ -785,7 +796,7 @@ private fun CompactStatusIndicator(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RegattaLinkStatusIndicator(
-    connected: Boolean,
+    status: RegattaLinkHomeStatus,
     onReconnect: () -> Unit,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier
@@ -793,7 +804,7 @@ private fun RegattaLinkStatusIndicator(
     Row(
         modifier = modifier.combinedClickable(
             onClick = {
-                if (!connected) {
+                if (status != RegattaLinkHomeStatus.CONNECTED) {
                     onReconnect()
                 }
             },
@@ -812,7 +823,11 @@ private fun RegattaLinkStatusIndicator(
                 .padding(start = 8.dp)
                 .size(16.dp)
                 .background(
-                    if (connected) RegattaGreen else RegattaRed,
+                    when (status) {
+                        RegattaLinkHomeStatus.CONNECTED -> RegattaGreen
+                        RegattaLinkHomeStatus.WAITING -> RegattaYellow
+                        RegattaLinkHomeStatus.ERROR -> RegattaRed
+                    },
                     CircleShape
                 )
         )
@@ -1286,7 +1301,8 @@ fun shortRaceStatusText(
     startedText: String,
     finishedText: String,
     postponedText: String,
-    cancelledText: String
+    cancelledText: String,
+    scoringMode: String = "mass_start"
 ): String {
     val cleaned = raceStatusCode.trim()
 
@@ -1302,6 +1318,9 @@ fun shortRaceStatusText(
     if (cleaned.equals("cancelled", ignoreCase = true)) return cancelledText
 
     if (inRace) {
+        if (isFlyingStart(scoringMode)) {
+            return activeText
+        }
         val startTime = extractStartClockTime(raceStartText, startPrefix)
         return if (startTime.isNotBlank()) startTime else activeText
     }

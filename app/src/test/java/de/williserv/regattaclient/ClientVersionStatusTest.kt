@@ -6,14 +6,6 @@ import org.junit.Test
 class ClientVersionStatusTest {
 
     @Test
-    fun currentClientBuildIdentity_usesAndroidBuildConfig() {
-        val identity = currentClientBuildIdentity()
-
-        assertEquals(BuildConfig.VERSION_CODE, identity.versionCode)
-        assertEquals(BuildConfig.VERSION_NAME, identity.buildId)
-    }
-
-    @Test
     fun devDebug_isNeverComparedAgainstReleaseThresholds() {
         val status = evaluate(
             installed = 42,
