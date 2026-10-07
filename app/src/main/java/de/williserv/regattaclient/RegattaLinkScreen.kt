@@ -144,7 +144,7 @@ internal val regattaLinkSetupMenuItems = listOf(
 )
 
 @Composable
-fun RegattaLinkScreen(
+internal fun RegattaLinkScreen(
     state: RegattaLinkClientState,
     deviceSelectionState: RegattaLinkDeviceSelectionState =
         RegattaLinkDeviceSelectionState(),
