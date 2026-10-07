@@ -426,6 +426,7 @@
     <string name="regattalink_status_waiting">En attente de RegattaLink</string>
     <string name="regattalink_status_bluetooth_off">Le Bluetooth est désactivé</string>
     <string name="regattalink_error_bluetooth_disabled">Activez le Bluetooth pour connecter RegattaLink.</string>
+    <string name="regattalink_error_pairing_required">RegattaLink doit être associé à nouveau.</string>
     <string name="regattalink_enable_bluetooth">Activer le Bluetooth</string>
     <string name="regattalink_search_connect">Rechercher / connecter</string>
     <string name="regattalink_disconnect">Déconnecter</string>
