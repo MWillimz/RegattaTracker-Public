@@ -50,6 +50,13 @@ internal data class RegattaLinkPhoneGnssSample(
     val utcTimeMs: Long? = null
 )
 
+internal fun regattaLinkRetainedPhoneGnssCog(
+    currentCogDeg: Double?,
+    previousCogDeg: Double?
+): Double? =
+    currentCogDeg?.takeIf(Double::isFinite)
+        ?: previousCogDeg?.takeIf(Double::isFinite)
+
 internal fun regattaLinkPhoneGnssSample(location: Location): RegattaLinkPhoneGnssSample =
     RegattaLinkPhoneGnssSample(
         observationElapsedRealtimeNanos = location.elapsedRealtimeNanos,
