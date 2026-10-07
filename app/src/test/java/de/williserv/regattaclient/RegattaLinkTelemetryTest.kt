@@ -69,6 +69,25 @@ class RegattaLinkTelemetryTest {
     }
 
     @Test
+    fun rawMagV3IsRecognizedAsKnownFastMotionRecord() {
+        val raw = ByteArray(REGATTALINK_TELEMETRY_RECORD_SIZE)
+        raw[0] = REGATTALINK_RAW_MAG_SCHEMA_VERSION.toByte()
+
+        assertEquals(
+            RegattaLinkFastMotionRecordKind.RAW_MAG,
+            regattaLinkFastMotionRecordKind(raw)
+        )
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rawMagV3StillRequiresCompleteFastMotionEnvelope() {
+        val raw = ByteArray(REGATTALINK_TELEMETRY_RECORD_SIZE - 1)
+        raw[0] = REGATTALINK_RAW_MAG_SCHEMA_VERSION.toByte()
+
+        regattaLinkFastMotionRecordKind(raw)
+    }
+
+    @Test
     fun rawImuFrontTiltUsesSensorFrameAccelDirection() {
         val level = RegattaLinkRawImu(1, 1, 0, 0, 8192, 0, 0, 0)
         val frontUp = RegattaLinkRawImu(2, 2, 5793, 0, 5793, 0, 0, 0)

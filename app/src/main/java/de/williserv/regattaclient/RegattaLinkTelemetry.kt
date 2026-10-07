@@ -8,6 +8,32 @@ import java.nio.ByteOrder
 internal const val REGATTALINK_TELEMETRY_RECORD_SIZE = 20
 internal const val REGATTALINK_TELEMETRY_SCHEMA_VERSION = 1
 internal const val REGATTALINK_RAW_IMU_SCHEMA_VERSION = 2
+internal const val REGATTALINK_RAW_MAG_SCHEMA_VERSION = 3
+
+internal enum class RegattaLinkFastMotionRecordKind {
+    MOTION,
+    RAW_IMU,
+    RAW_MAG
+}
+
+internal fun regattaLinkFastMotionRecordKind(
+    raw: ByteArray
+): RegattaLinkFastMotionRecordKind {
+    require(raw.size == REGATTALINK_TELEMETRY_RECORD_SIZE) {
+        "Invalid RegattaLink Fast Motion record length ${raw.size}"
+    }
+    return when (val version = raw[0].toInt() and 0xff) {
+        REGATTALINK_TELEMETRY_SCHEMA_VERSION ->
+            RegattaLinkFastMotionRecordKind.MOTION
+        REGATTALINK_RAW_IMU_SCHEMA_VERSION ->
+            RegattaLinkFastMotionRecordKind.RAW_IMU
+        REGATTALINK_RAW_MAG_SCHEMA_VERSION ->
+            RegattaLinkFastMotionRecordKind.RAW_MAG
+        else -> throw IllegalArgumentException(
+            "Unsupported RegattaLink Fast Motion schema $version"
+        )
+    }
+}
 internal const val REGATTALINK_UPRIGHT_MAX_FRONT_TILT_DEG = 10
 internal const val REGATTALINK_FAST_STALE_MS = 2_000L
 internal const val REGATTALINK_RAW_IMU_PREVIEW_STALE_MS = 500L
