@@ -771,4 +771,11 @@
     <string name="session_metric_acceleration_5s">Accélération (5 s)</string>
     <string name="session_metric_magnetic_heading">Cap magnétique</string>
     <string name="session_metric_true_heading">Cap vrai</string>
+
+    <string name="regattalink_devices">Mes RLinks</string>
+    <string name="regattalink_find">Rechercher un RLink</string>
+    <string name="regattalink_selected">Sélectionné</string>
+    <string name="regattalink_known">Connu</string>
+    <string name="regattalink_nearby">À proximité</string>
+    <string name="regattalink_no_known_devices">Aucun RLink connu</string>
 </resources>
