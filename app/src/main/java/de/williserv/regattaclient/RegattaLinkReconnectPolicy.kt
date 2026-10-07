@@ -22,9 +22,12 @@ enum class RegattaLinkHomeStatus {
 
 internal fun regattaLinkHomeStatus(
     state: RegattaLinkClientState,
-    pairingRequired: Boolean = false
+    pairingRequired: Boolean = false,
+    selectedStableId: String? = state.deviceInfo?.stableId
 ): RegattaLinkHomeStatus = when {
-    state.status == RegattaLinkConnectionStatus.CONNECTED ->
+    state.status == RegattaLinkConnectionStatus.CONNECTED &&
+        selectedStableId != null &&
+        state.deviceInfo?.stableId == selectedStableId ->
         RegattaLinkHomeStatus.CONNECTED
     state.status == RegattaLinkConnectionStatus.ERROR ||
         state.status == RegattaLinkConnectionStatus.BLUETOOTH_OFF ||
