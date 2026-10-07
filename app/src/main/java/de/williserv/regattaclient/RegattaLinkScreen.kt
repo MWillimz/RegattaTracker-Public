@@ -574,9 +574,12 @@ fun RegattaLinkScreen(
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Text(
-                            text = device.deviceName.ifBlank {
-                                stringResource(R.string.regattalink_title)
-                            },
+                            text =
+                                if (device.deviceName.isBlank()) {
+                                    stringResource(R.string.regattalink_title)
+                                } else {
+                                    device.deviceName
+                                },
                             fontWeight =
                                 if (isSelected) FontWeight.SemiBold
                                 else FontWeight.Normal
