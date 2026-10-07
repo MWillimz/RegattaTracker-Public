@@ -14,7 +14,7 @@ internal fun regattaLinkReconnectRemainingMs(
     nowElapsedMs: Long
 ): Long = (deadlineElapsedMs - nowElapsedMs).coerceAtLeast(0L)
 
-internal enum class RegattaLinkHomeStatus {
+enum class RegattaLinkHomeStatus {
     WAITING,
     ERROR,
     CONNECTED
