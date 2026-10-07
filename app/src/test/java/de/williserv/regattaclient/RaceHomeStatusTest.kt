@@ -135,6 +135,32 @@ class RaceHomeStatusTest {
     }
 
     @Test
+    fun flyingStartEnteredRace_doesNotShowEventStartAsPersonalStart() {
+        assertEquals(
+            "Active",
+            shortRaceStatusText(
+                raceStatusCode = "planned",
+                raceStatusDisplayText = "",
+                raceDataReady = true,
+                raceStartText = "Start: 10:30",
+                scoringMode = SCORING_MODE_FLYING_START,
+                inRace = true,
+                racePrefix = "Race:",
+                startPrefix = "Start:",
+                activeText = "Active",
+                notActiveText = "Not active",
+                loadedText = "Loaded",
+                plannedText = "Planned",
+                racingText = "Racing",
+                startedText = "Started",
+                finishedText = "Finished",
+                postponedText = "Postponed",
+                cancelledText = "Cancelled"
+            )
+        )
+    }
+
+    @Test
     fun terminalRace_keepsServerStatus() {
         assertEquals(
             RaceHomeStatus.SERVER_STATUS,

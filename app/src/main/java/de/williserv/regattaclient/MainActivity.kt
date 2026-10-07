@@ -622,6 +622,7 @@ class MainActivity : ComponentActivity() {
                             raceEvent = raceEvent.value,
                             seriesDisplayMetadata = raceSeriesDisplayMetadata.value,
                             raceStartText = raceStartText.value,
+                            scoringMode = raceScoringMode.value,
                             raceStopText = raceStopText.value,
                             raceCourseText = raceCourseText.value,
                             raceStartLineText = raceStartLineText.value,

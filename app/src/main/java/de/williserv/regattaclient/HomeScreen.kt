@@ -158,7 +158,8 @@ fun HomeScreen(
     onConfirmClearOldData: () -> Unit,
     onCancelClearOldData: () -> Unit,
     onToggleAdvanced: () -> Unit,
-    seriesDisplayMetadata: SeriesDisplayMetadata = SeriesDisplayMetadata()
+    seriesDisplayMetadata: SeriesDisplayMetadata = SeriesDisplayMetadata(),
+    scoringMode: String = "mass_start"
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
@@ -311,6 +312,7 @@ fun HomeScreen(
                     raceStatusDisplayText = raceStatusDisplayText,
                     raceDataReady = raceDataReady,
                     raceStartText = raceStartText,
+                    scoringMode = scoringMode,
                     inRace = inRace,
                     racePrefix = stringResource(R.string.race_prefix),
                     startPrefix = startPrefix,
@@ -1299,7 +1301,8 @@ fun shortRaceStatusText(
     startedText: String,
     finishedText: String,
     postponedText: String,
-    cancelledText: String
+    cancelledText: String,
+    scoringMode: String = "mass_start"
 ): String {
     val cleaned = raceStatusCode.trim()
 
@@ -1315,6 +1318,9 @@ fun shortRaceStatusText(
     if (cleaned.equals("cancelled", ignoreCase = true)) return cancelledText
 
     if (inRace) {
+        if (isFlyingStart(scoringMode)) {
+            return activeText
+        }
         val startTime = extractStartClockTime(raceStartText, startPrefix)
         return if (startTime.isNotBlank()) startTime else activeText
     }
