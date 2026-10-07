@@ -949,6 +949,21 @@ internal class RegattaLinkConnectionManager(
     internal fun requiresNewPairing(): Boolean =
         configuredDeviceStore.requiresNewPairing()
 
+    @SuppressLint("MissingPermission")
+    fun refreshBluetoothAvailability() {
+        if (!hasRequiredPermissions()) return
+        val enabled = runCatching {
+            val manager =
+                appContext.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+            manager.adapter?.isEnabled == true
+        }.getOrDefault(false)
+        if (enabled) {
+            client.onBluetoothAdapterEnabled()
+        } else {
+            client.onBluetoothAdapterDisabled()
+        }
+    }
+
     private fun hasRequiredPermissions(): Boolean =
         RegattaLinkBleClient.requiredPermissions().all { permission ->
             ContextCompat.checkSelfPermission(
