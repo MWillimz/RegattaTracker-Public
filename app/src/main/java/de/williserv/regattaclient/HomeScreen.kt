@@ -137,7 +137,7 @@ fun HomeScreen(
     sogText: String,
     gpsAccuracyText: String,
     gpsColor: Color,
-    regattaLinkConnected: Boolean,
+    regattaLinkStatus: RegattaLinkHomeStatus,
     showClearConfirmDialog: Boolean,
     showAdvanced: Boolean,
     modifier: Modifier = Modifier,
@@ -334,7 +334,7 @@ fun HomeScreen(
                 noConnectionText = stringResource(R.string.status_no_connection)
             ),
             uploadColor = uploadColor,
-            regattaLinkConnected = regattaLinkConnected,
+            regattaLinkStatus = regattaLinkStatus,
             onRegattaLinkReconnect = onRegattaLinkReconnect,
             onRegattaLinkOpen = onRegattaLinkOpen
         )
@@ -712,7 +712,7 @@ fun StatusOverviewCard(
     raceColor: Color,
     uploadStatusText: String,
     uploadColor: Color,
-    regattaLinkConnected: Boolean,
+    regattaLinkStatus: RegattaLinkHomeStatus,
     onRegattaLinkReconnect: () -> Unit,
     onRegattaLinkOpen: () -> Unit
 ) {
@@ -739,7 +739,7 @@ fun StatusOverviewCard(
                 Spacer(modifier = Modifier.weight(1f))
                 Spacer(modifier = Modifier.weight(1f))
                 RegattaLinkStatusIndicator(
-                    connected = regattaLinkConnected,
+                    status = regattaLinkStatus,
                     onReconnect = onRegattaLinkReconnect,
                     onOpen = onRegattaLinkOpen,
                     modifier = Modifier.weight(1f)
@@ -793,7 +793,7 @@ private fun CompactStatusIndicator(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RegattaLinkStatusIndicator(
-    connected: Boolean,
+    status: RegattaLinkHomeStatus,
     onReconnect: () -> Unit,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier
@@ -801,7 +801,7 @@ private fun RegattaLinkStatusIndicator(
     Row(
         modifier = modifier.combinedClickable(
             onClick = {
-                if (!connected) {
+                if (status != RegattaLinkHomeStatus.CONNECTED) {
                     onReconnect()
                 }
             },
@@ -820,7 +820,11 @@ private fun RegattaLinkStatusIndicator(
                 .padding(start = 8.dp)
                 .size(16.dp)
                 .background(
-                    if (connected) RegattaGreen else RegattaRed,
+                    when (status) {
+                        RegattaLinkHomeStatus.CONNECTED -> RegattaGreen
+                        RegattaLinkHomeStatus.WAITING -> RegattaOrange
+                        RegattaLinkHomeStatus.ERROR -> RegattaRed
+                    },
                     CircleShape
                 )
         )
