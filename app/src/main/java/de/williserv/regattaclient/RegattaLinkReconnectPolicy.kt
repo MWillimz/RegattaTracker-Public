@@ -14,6 +14,25 @@ internal fun regattaLinkReconnectRemainingMs(
     nowElapsedMs: Long
 ): Long = (deadlineElapsedMs - nowElapsedMs).coerceAtLeast(0L)
 
+internal enum class RegattaLinkHomeStatus {
+    WAITING,
+    ERROR,
+    CONNECTED
+}
+
+internal fun regattaLinkHomeStatus(
+    state: RegattaLinkClientState,
+    pairingRequired: Boolean = false
+): RegattaLinkHomeStatus = when {
+    state.status == RegattaLinkConnectionStatus.CONNECTED ->
+        RegattaLinkHomeStatus.CONNECTED
+    state.status == RegattaLinkConnectionStatus.ERROR ||
+        state.status == RegattaLinkConnectionStatus.BLUETOOTH_OFF ||
+        pairingRequired ->
+        RegattaLinkHomeStatus.ERROR
+    else ->
+        RegattaLinkHomeStatus.WAITING
+}
 
 internal fun shouldDeferRegattaLinkTerminalOtaState(
     otaOwnsConnection: Boolean,
