@@ -628,7 +628,8 @@ class RegattaLinkConnectionManagerTest {
 
         fakeClient.emitUnexpectedDisconnect()
         shadowOf(Looper.getMainLooper()).idle()
-        assertEquals(1, fakeClient.reconnectCalls)
+        assertEquals(1, fakeClient.autoConnectCalls)
+        assertEquals(0, fakeClient.reconnectCalls)
     }
 
     @Test
@@ -661,7 +662,8 @@ class RegattaLinkConnectionManagerTest {
         fakeClient.emitUnexpectedDisconnect()
         shadowOf(Looper.getMainLooper()).idle()
 
-        assertEquals(1, fakeClient.reconnectCalls)
+        assertEquals(1, fakeClient.autoConnectCalls)
+        assertEquals(0, fakeClient.reconnectCalls)
         assertEquals(configured, manager.configuredDevice())
     }
 
@@ -763,11 +765,12 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
-    fun unexpectedDisconnectReconnectsOnlyOutsideOtaOwnership() {
+    fun unexpectedDisconnectAutoConnectsOnlyOutsideOtaOwnership() {
         fakeClient.emitUnexpectedDisconnect()
         shadowOf(Looper.getMainLooper()).idle()
 
-        assertEquals(1, fakeClient.reconnectCalls)
+        assertEquals(1, fakeClient.autoConnectCalls)
+        assertEquals(0, fakeClient.reconnectCalls)
 
         fakeClient.emitOta(
             RegattaLinkOtaUiState(
@@ -777,7 +780,8 @@ class RegattaLinkConnectionManagerTest {
         fakeClient.emitUnexpectedDisconnect()
         shadowOf(Looper.getMainLooper()).idle()
 
-        assertEquals(1, fakeClient.reconnectCalls)
+        assertEquals(1, fakeClient.autoConnectCalls)
+        assertEquals(0, fakeClient.reconnectCalls)
     }
 
     @Test
