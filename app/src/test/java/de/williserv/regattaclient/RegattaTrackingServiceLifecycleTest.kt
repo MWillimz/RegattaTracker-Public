@@ -1104,6 +1104,14 @@ class RegattaTrackingServiceLifecycleTest {
             timeoutMs: Long
         ): Boolean = false
 
+        override fun startKnownDeviceAutoConnect(
+            deviceAddress: String,
+            expectedStableId: String?
+        ): Boolean = false
+
+        override fun onBluetoothAdapterDisabled() = Unit
+        override fun onBluetoothAdapterEnabled() = Unit
+
         override fun startDiscovery(): Boolean = false
         override fun disconnect() = Unit
         override fun startOta(artifact: RegattaLinkFirmwareArtifact) = Unit

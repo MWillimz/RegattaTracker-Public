@@ -8,8 +8,12 @@ internal fun regattaLinkUiMessageResource(
 ): Int = when (message) {
     RegattaLinkUiMessage.BLUETOOTH_PERMISSION_DENIED ->
         R.string.regattalink_permission_denied
+    RegattaLinkUiMessage.BLUETOOTH_DISABLED ->
+        R.string.regattalink_error_bluetooth_disabled
     RegattaLinkUiMessage.BLUETOOTH_UNAVAILABLE ->
         R.string.regattalink_error_bluetooth_unavailable
+    RegattaLinkUiMessage.PAIRING_REQUIRED ->
+        R.string.regattalink_error_pairing_required
     RegattaLinkUiMessage.CONNECTION_FAILED ->
         R.string.regattalink_status_error
     RegattaLinkUiMessage.CONNECTION_TIMEOUT ->

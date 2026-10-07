@@ -36,12 +36,14 @@ import java.util.concurrent.atomic.AtomicReference
 
 enum class RegattaLinkConnectionStatus {
     IDLE,
+    WAITING,
     SCANNING,
     BONDING,
     CONNECTING,
     DISCOVERING,
     READING_DEVICE_INFO,
     CONNECTED,
+    BLUETOOTH_OFF,
     ERROR
 }
 
@@ -147,6 +149,7 @@ internal class RegattaLinkBleClient(
     private enum class ScanPurpose {
         NORMAL,
         KNOWN_DEVICE_RECONNECT,
+        KNOWN_DEVICE_AUTOCONNECT,
         OTA_RECONNECT
     }
 
@@ -339,6 +342,10 @@ internal class RegattaLinkBleClient(
             reconnectFuture?.complete(null)
         } else if (scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT) {
             retryKnownDeviceReconnect("Configured RegattaLink connection timed out")
+        } else if (scanPurpose == ScanPurpose.KNOWN_DEVICE_AUTOCONNECT) {
+            finishKnownDeviceAutoConnectError(
+                "Configured RegattaLink connection setup timed out"
+            )
         } else if (device != null) {
             if (discoveryInProgress) {
                 retryDiscoveryAfterCandidateFailure()
@@ -618,6 +625,42 @@ internal class RegattaLinkBleClient(
                         "RegattaLink disconnected during GATT operation"
                     )
                 )
+
+                if (scanPurpose == ScanPurpose.KNOWN_DEVICE_AUTOCONNECT) {
+                    handler.removeCallbacks(gattTimeout)
+                    if (isRegattaLinkStaleBondSecurityGattStatus(status)) {
+                        callbackGatt.close()
+                        if (gatt === callbackGatt) {
+                            gatt = null
+                        }
+                        clearTelemetry()
+                        clearConfiguration()
+                        clearNmea()
+                        clearKnownDeviceReconnectState()
+                        emit(
+                            RegattaLinkClientState(
+                                status = RegattaLinkConnectionStatus.ERROR,
+                                deviceName = deviceName(callbackGatt.device),
+                                deviceAddress = callbackGatt.device.address,
+                                userMessage = RegattaLinkUiMessage.PAIRING_REQUIRED,
+                                error = REGATTALINK_STALE_ANDROID_BOND_ERROR
+                            )
+                        )
+                    } else {
+                        clearTelemetry()
+                        clearConfiguration()
+                        clearNmea()
+                        emit(
+                            RegattaLinkClientState(
+                                status = RegattaLinkConnectionStatus.WAITING,
+                                deviceName = deviceName(callbackGatt.device),
+                                deviceAddress = callbackGatt.device.address
+                            )
+                        )
+                    }
+                    return
+                }
+
                 callbackGatt.close()
                 if (gatt === callbackGatt) {
                     gatt = null
@@ -654,18 +697,27 @@ internal class RegattaLinkBleClient(
                                 isRegattaLinkStaleBondSecurityGattStatus(status)
                         )
                     } else {
-                        emitError(
-                            callbackGatt.device,
-                            "RegattaLink disconnected ($status)"
-                        )
-                        if (
+                        val shouldReconnect =
                             shouldStartRegattaLinkOutageReconnect(
                                 connectionWasReady = wasReadyConnection,
                                 otaOwnsConnection = otaRunning.get(),
                                 knownReconnectAlreadyActive = false
                             )
-                        ) {
+                        if (shouldReconnect) {
+                            Log.w(
+                                LOG_TAG,
+                                "RegattaLink disconnected ($status); waiting for known-device reconnect"
+                            )
+                            emitForDevice(
+                                callbackGatt.device,
+                                RegattaLinkConnectionStatus.WAITING
+                            )
                             handler.post { onUnexpectedDisconnect() }
+                        } else {
+                            emitError(
+                                callbackGatt.device,
+                                "RegattaLink disconnected ($status)"
+                            )
                         }
                     }
                 }
@@ -1020,7 +1072,11 @@ internal class RegattaLinkBleClient(
 
         val adapter = bluetoothManager.adapter
         if (adapter == null || !adapter.isEnabled) {
-            finishManualDiscovery("Bluetooth is disabled")
+            finishManualDiscovery(
+                message = "Bluetooth is disabled",
+                userMessage = RegattaLinkUiMessage.BLUETOOTH_DISABLED,
+                status = RegattaLinkConnectionStatus.BLUETOOTH_OFF
+            )
             return true
         }
 
@@ -1281,7 +1337,7 @@ internal class RegattaLinkBleClient(
         if (
             isConnected() &&
             lastState.status == RegattaLinkConnectionStatus.CONNECTED &&
-            lastState.deviceInfo?.stableId == expectedStableId
+            (expectedStableId == null || lastState.deviceInfo?.stableId == expectedStableId)
         ) {
             return true
         }
@@ -1321,6 +1377,124 @@ internal class RegattaLinkBleClient(
         return true
     }
 
+    override fun startKnownDeviceAutoConnect(
+        deviceAddress: String,
+        expectedStableId: String?
+    ): Boolean {
+        if (
+            otaRunning.get() ||
+            deviceAddress.isBlank() ||
+            (expectedStableId != null && expectedStableId.isBlank())
+        ) {
+            return false
+        }
+
+        if (
+            isConnected() &&
+            lastState.status == RegattaLinkConnectionStatus.CONNECTED &&
+            (expectedStableId == null || lastState.deviceInfo?.stableId == expectedStableId)
+        ) {
+            return true
+        }
+
+        if (
+            scanPurpose == ScanPurpose.KNOWN_DEVICE_AUTOCONNECT &&
+            knownReconnectAddress == deviceAddress &&
+            knownReconnectExpectedStableId == expectedStableId &&
+            gatt != null
+        ) {
+            return true
+        }
+
+        stopScan()
+        handler.removeCallbacks(knownReconnectRetry)
+        handler.removeCallbacks(bondPoll)
+        handler.removeCallbacks(gattTimeout)
+        closeGatt()
+        clearTelemetry()
+        clearConfiguration()
+        clearNmea()
+        currentDevice = null
+        discoveryInProgress = false
+        discoveryCandidateInProgress = false
+        discoveryCandidateBondingObserved = false
+        discoveryCandidateStartedBonded = false
+        discoveryStaleBondFailureObserved = false
+        discoveryDeadlineMs = 0L
+        attemptedDiscoveryAddresses.clear()
+        scanPurpose = ScanPurpose.KNOWN_DEVICE_AUTOCONNECT
+        knownReconnectAddress = deviceAddress
+        knownReconnectExpectedStableId = expectedStableId
+        knownReconnectDeadlineMs = 0L
+        knownReconnectLastError = ""
+
+        val adapter = bluetoothManager.adapter
+        if (adapter == null || !adapter.isEnabled) {
+            onBluetoothAdapterDisabled()
+            return true
+        }
+
+        val device = runCatching {
+            adapter.getRemoteDevice(deviceAddress)
+        }.getOrNull()
+        if (device == null) {
+            finishKnownDeviceAutoConnectError(
+                "Configured RegattaLink address is invalid"
+            )
+            return true
+        }
+        if (device.bondState != BluetoothDevice.BOND_BONDED) {
+            finishKnownDeviceAutoConnectError(
+                "Configured RegattaLink is no longer bonded; use Search in RegattaLink setup",
+                RegattaLinkUiMessage.PAIRING_REQUIRED
+            )
+            return true
+        }
+
+        connectGatt(device, autoConnect = true)
+        return true
+    }
+
+    override fun onBluetoothAdapterDisabled() {
+        clearPhoneGnssPending()
+        if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
+            reconnectFuture?.complete(null)
+        }
+        if (otaRunning.get()) {
+            cancelOta()
+        }
+        cancelKnownDeviceReconnect()
+        stopScan()
+        handler.removeCallbacks(bondPoll)
+        handler.removeCallbacks(gattTimeout)
+        closeGatt()
+        clearTelemetry()
+        clearConfiguration()
+        clearNmea()
+        diagnosticLogRunning.set(false)
+        deviceControlExecutionGuard.clear()
+        currentDevice = null
+        discoveryInProgress = false
+        discoveryCandidateInProgress = false
+        discoveryCandidateBondingObserved = false
+        discoveryCandidateStartedBonded = false
+        discoveryStaleBondFailureObserved = false
+        discoveryDeadlineMs = 0L
+        attemptedDiscoveryAddresses.clear()
+        emit(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.BLUETOOTH_OFF,
+                userMessage = RegattaLinkUiMessage.BLUETOOTH_DISABLED
+            )
+        )
+    }
+
+    override fun onBluetoothAdapterEnabled() {
+        if (lastState.status == RegattaLinkConnectionStatus.BLUETOOTH_OFF) {
+            emit(RegattaLinkClientState())
+        }
+    }
+
     private fun beginKnownDeviceReconnectDirect() {
         if (
             scanPurpose != ScanPurpose.KNOWN_DEVICE_RECONNECT ||
@@ -1340,13 +1514,16 @@ internal class RegattaLinkBleClient(
 
         val address = knownReconnectAddress
         if (address.isNullOrBlank()) {
-            finishKnownDeviceReconnect("Configured RegattaLink address is unavailable")
+            finishKnownDeviceReconnect(
+                message = "Configured RegattaLink address is unavailable",
+                terminal = true
+            )
             return
         }
 
         val adapter = bluetoothManager.adapter
         if (adapter == null || !adapter.isEnabled) {
-            retryKnownDeviceReconnect("Bluetooth is disabled")
+            onBluetoothAdapterDisabled()
             return
         }
 
@@ -1354,12 +1531,17 @@ internal class RegattaLinkBleClient(
             adapter.getRemoteDevice(address)
         }.getOrNull()
         if (device == null) {
-            finishKnownDeviceReconnect("Configured RegattaLink address is invalid")
+            finishKnownDeviceReconnect(
+                message = "Configured RegattaLink address is invalid",
+                terminal = true
+            )
             return
         }
         if (device.bondState != BluetoothDevice.BOND_BONDED) {
             finishKnownDeviceReconnect(
-                "Configured RegattaLink is no longer bonded; use Search in RegattaLink setup"
+                message = "Configured RegattaLink is no longer bonded; use Search in RegattaLink setup",
+                terminal = true,
+                userMessage = RegattaLinkUiMessage.PAIRING_REQUIRED
             )
             return
         }
@@ -1387,13 +1569,16 @@ internal class RegattaLinkBleClient(
 
         val address = knownReconnectAddress
         if (address.isNullOrBlank()) {
-            finishKnownDeviceReconnect("Configured RegattaLink address is unavailable")
+            finishKnownDeviceReconnect(
+                message = "Configured RegattaLink address is unavailable",
+                terminal = true
+            )
             return
         }
 
         val adapter = bluetoothManager.adapter
         if (adapter == null || !adapter.isEnabled) {
-            retryKnownDeviceReconnect("Bluetooth is disabled")
+            onBluetoothAdapterDisabled()
             return
         }
 
@@ -1427,6 +1612,15 @@ internal class RegattaLinkBleClient(
     private fun retryKnownDeviceReconnect(message: String) {
         if (scanPurpose != ScanPurpose.KNOWN_DEVICE_RECONNECT) return
 
+        if (message == REGATTALINK_STALE_ANDROID_BOND_ERROR) {
+            finishKnownDeviceReconnect(
+                message = message,
+                terminal = true,
+                userMessage = RegattaLinkUiMessage.PAIRING_REQUIRED
+            )
+            return
+        }
+
         knownReconnectLastError = message
         stopScan()
         handler.removeCallbacks(bondPoll)
@@ -1450,7 +1644,73 @@ internal class RegattaLinkBleClient(
         )
     }
 
-    private fun finishKnownDeviceReconnect(message: String) {
+    private fun finishKnownDeviceReconnect(
+        message: String,
+        terminal: Boolean = false,
+        userMessage: RegattaLinkUiMessage = RegattaLinkUiMessage.CONNECTION_FAILED
+    ) {
+        val address = knownReconnectAddress.orEmpty()
+        stopScan()
+        handler.removeCallbacks(knownReconnectRetry)
+        handler.removeCallbacks(bondPoll)
+        handler.removeCallbacks(gattTimeout)
+        closeGatt()
+        currentDevice = null
+        clearKnownDeviceReconnectState()
+        if (terminal) {
+            emit(
+                RegattaLinkClientState(
+                    status = RegattaLinkConnectionStatus.ERROR,
+                    deviceAddress = address,
+                    userMessage = userMessage,
+                    error = message
+                )
+            )
+        } else {
+            emit(
+                RegattaLinkClientState(
+                    status = RegattaLinkConnectionStatus.WAITING,
+                    deviceAddress = address
+                )
+            )
+            handler.post { onUnexpectedDisconnect() }
+        }
+    }
+
+    private fun completeKnownDeviceReconnect() {
+        handler.removeCallbacks(knownReconnectRetry)
+        clearKnownDeviceReconnectState()
+    }
+
+    private fun cancelKnownDeviceReconnect() {
+        if (
+            scanPurpose != ScanPurpose.KNOWN_DEVICE_RECONNECT &&
+            scanPurpose != ScanPurpose.KNOWN_DEVICE_AUTOCONNECT
+        ) {
+            return
+        }
+        stopScan()
+        handler.removeCallbacks(knownReconnectRetry)
+        clearKnownDeviceReconnectState()
+    }
+
+    private fun clearKnownDeviceReconnectState() {
+        knownReconnectAddress = null
+        knownReconnectExpectedStableId = null
+        knownReconnectDeadlineMs = 0L
+        knownReconnectLastError = ""
+        if (
+            scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT ||
+            scanPurpose == ScanPurpose.KNOWN_DEVICE_AUTOCONNECT
+        ) {
+            scanPurpose = ScanPurpose.NORMAL
+        }
+    }
+
+    private fun finishKnownDeviceAutoConnectError(
+        message: String,
+        userMessage: RegattaLinkUiMessage = RegattaLinkUiMessage.CONNECTION_FAILED
+    ) {
         val address = knownReconnectAddress.orEmpty()
         stopScan()
         handler.removeCallbacks(knownReconnectRetry)
@@ -1463,36 +1723,16 @@ internal class RegattaLinkBleClient(
             RegattaLinkClientState(
                 status = RegattaLinkConnectionStatus.ERROR,
                 deviceAddress = address,
+                userMessage = userMessage,
                 error = message
             )
         )
     }
 
-    private fun completeKnownDeviceReconnect() {
-        handler.removeCallbacks(knownReconnectRetry)
-        clearKnownDeviceReconnectState()
-    }
-
-    private fun cancelKnownDeviceReconnect() {
-        if (scanPurpose != ScanPurpose.KNOWN_DEVICE_RECONNECT) return
-        stopScan()
-        handler.removeCallbacks(knownReconnectRetry)
-        clearKnownDeviceReconnectState()
-    }
-
-    private fun clearKnownDeviceReconnectState() {
-        knownReconnectAddress = null
-        knownReconnectExpectedStableId = null
-        knownReconnectDeadlineMs = 0L
-        knownReconnectLastError = ""
-        if (scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT) {
-            scanPurpose = ScanPurpose.NORMAL
-        }
-    }
-
     private fun finishManualDiscovery(
         message: String,
-        userMessage: RegattaLinkUiMessage = RegattaLinkUiMessage.CONNECTION_FAILED
+        userMessage: RegattaLinkUiMessage = RegattaLinkUiMessage.CONNECTION_FAILED,
+        status: RegattaLinkConnectionStatus = RegattaLinkConnectionStatus.ERROR
     ) {
         stopScan()
         handler.removeCallbacks(bondPoll)
@@ -1508,7 +1748,7 @@ internal class RegattaLinkBleClient(
         attemptedDiscoveryAddresses.clear()
         emit(
             RegattaLinkClientState(
-                status = RegattaLinkConnectionStatus.ERROR,
+                status = status,
                 userMessage = userMessage,
                 error = message
             )
@@ -1575,12 +1815,15 @@ internal class RegattaLinkBleClient(
             }
 
             val adapter = bluetoothManager.adapter
-            val activeScanner =
-                if (adapter != null && adapter.isEnabled) {
-                    adapter.bluetoothLeScanner
-                } else {
-                    null
-                }
+            if (adapter == null || !adapter.isEnabled) {
+                finishManualDiscovery(
+                    message = "Bluetooth is disabled",
+                    userMessage = RegattaLinkUiMessage.BLUETOOTH_DISABLED,
+                    status = RegattaLinkConnectionStatus.BLUETOOTH_OFF
+                )
+                return@post
+            }
+            val activeScanner = adapter.bluetoothLeScanner
             if (activeScanner == null) {
                 finishManualDiscovery(
                     "Bluetooth LE is unavailable",
@@ -1695,15 +1938,25 @@ internal class RegattaLinkBleClient(
         handler.post(bondPoll)
     }
 
-    private fun connectGatt(device: BluetoothDevice) {
+    private fun connectGatt(
+        device: BluetoothDevice,
+        autoConnect: Boolean = false
+    ) {
         handler.removeCallbacks(bondPoll)
         closeGatt()
         resetGattSchemaReconciliationForNewConnection()
         currentDevice = device
-        emitForDevice(device, RegattaLinkConnectionStatus.CONNECTING)
+        emitForDevice(
+            device,
+            if (autoConnect) {
+                RegattaLinkConnectionStatus.WAITING
+            } else {
+                RegattaLinkConnectionStatus.CONNECTING
+            }
+        )
         gatt = device.connectGatt(
             appContext,
-            false,
+            autoConnect,
             gattCallback,
             BluetoothDevice.TRANSPORT_LE
         )
@@ -1712,6 +1965,11 @@ internal class RegattaLinkBleClient(
                 reconnectFuture?.complete(null)
             } else if (scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT) {
                 retryKnownDeviceReconnect("Could not open configured RegattaLink connection")
+            } else if (scanPurpose == ScanPurpose.KNOWN_DEVICE_AUTOCONNECT) {
+                finishKnownDeviceAutoConnectError(
+                    "Could not open configured RegattaLink connection",
+                    RegattaLinkUiMessage.CONNECTION_OPEN_FAILED
+                )
             } else if (discoveryInProgress) {
                 retryDiscoveryAfterCandidateFailure()
             } else {
@@ -1721,7 +1979,7 @@ internal class RegattaLinkBleClient(
                     RegattaLinkUiMessage.CONNECTION_OPEN_FAILED
                 )
             }
-        } else {
+        } else if (!autoConnect) {
             handler.postDelayed(gattTimeout, currentGattTimeoutMs())
         }
     }
@@ -1983,15 +2241,29 @@ internal class RegattaLinkBleClient(
         if (gatt !== callbackGatt || !connected) return
         val device = callbackGatt.device
 
-        if (scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT) {
+        if (
+            scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT ||
+            scanPurpose == ScanPurpose.KNOWN_DEVICE_AUTOCONNECT
+        ) {
+            val autoConnect =
+                scanPurpose == ScanPurpose.KNOWN_DEVICE_AUTOCONNECT
             val expectedStableId = knownReconnectExpectedStableId
             if (
                 expectedStableId != null &&
                 info.stableId != expectedStableId
             ) {
-                finishKnownDeviceReconnect(
-                    "Configured RegattaLink identity did not match the bonded device"
-                )
+                if (autoConnect) {
+                    finishKnownDeviceAutoConnectError(
+                        "Configured RegattaLink identity did not match the bonded device",
+                        RegattaLinkUiMessage.PAIRING_REQUIRED
+                    )
+                } else {
+                    finishKnownDeviceReconnect(
+                        message = "Configured RegattaLink identity did not match the bonded device",
+                        terminal = true,
+                        userMessage = RegattaLinkUiMessage.PAIRING_REQUIRED
+                    )
+                }
                 return
             }
             connectionSetupComplete = true
@@ -5733,6 +6005,29 @@ internal class RegattaLinkBleClient(
                     message
                 }
             )
+        } else if (scanPurpose == ScanPurpose.KNOWN_DEVICE_AUTOCONNECT) {
+            finishKnownDeviceAutoConnectError(
+                message =
+                    if (
+                        gattStatus?.let(
+                            ::isRegattaLinkStaleBondSecurityGattStatus
+                        ) == true
+                    ) {
+                        REGATTALINK_STALE_ANDROID_BOND_ERROR
+                    } else {
+                        message
+                    },
+                userMessage =
+                    if (
+                        gattStatus?.let(
+                            ::isRegattaLinkStaleBondSecurityGattStatus
+                        ) == true
+                    ) {
+                        RegattaLinkUiMessage.PAIRING_REQUIRED
+                    } else {
+                        RegattaLinkUiMessage.CONNECTION_FAILED
+                    }
+            )
         } else if (!otaRunning.get()) {
             if (discoveryInProgress) {
                 retryDiscoveryAfterCandidateFailure(
@@ -5742,15 +6037,24 @@ internal class RegattaLinkBleClient(
                         ) == true
                 )
             } else {
-                emitError(callbackGatt.device, message)
-                if (
+                val shouldReconnect =
                     shouldStartRegattaLinkOutageReconnect(
                         connectionWasReady = wasReadyConnection,
                         otaOwnsConnection = otaRunning.get(),
                         knownReconnectAlreadyActive = false
                     )
-                ) {
+                if (shouldReconnect) {
+                    Log.w(
+                        LOG_TAG,
+                        "$message; waiting for known-device reconnect"
+                    )
+                    emitForDevice(
+                        callbackGatt.device,
+                        RegattaLinkConnectionStatus.WAITING
+                    )
                     handler.post { onUnexpectedDisconnect() }
+                } else {
+                    emitError(callbackGatt.device, message)
                 }
             }
         }

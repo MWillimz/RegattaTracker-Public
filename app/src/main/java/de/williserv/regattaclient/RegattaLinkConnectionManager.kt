@@ -1,9 +1,13 @@
 package de.williserv.regattaclient
 
 import android.annotation.SuppressLint
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.location.Location
@@ -102,6 +106,14 @@ internal interface RegattaLinkConnectionClient {
         expectedStableId: String?,
         timeoutMs: Long
     ): Boolean
+
+    fun startKnownDeviceAutoConnect(
+        deviceAddress: String,
+        expectedStableId: String?
+    ): Boolean
+
+    fun onBluetoothAdapterDisabled()
+    fun onBluetoothAdapterEnabled()
 
     fun startDiscovery(): Boolean
     fun disconnect()
@@ -223,6 +235,9 @@ internal class RegattaLinkConnectionManager(
     private val startupReconnectRequested = AtomicBoolean(false)
 
     @Volatile
+    private var autoReconnectSuppressedByUser = false
+
+    @Volatile
     private var connectionState = RegattaLinkClientState()
 
     @Volatile
@@ -254,6 +269,26 @@ internal class RegattaLinkConnectionManager(
     @Volatile
     private var factoryResetPending = false
 
+    private val bluetoothStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != BluetoothAdapter.ACTION_STATE_CHANGED) return
+            when (
+                intent.getIntExtra(
+                    BluetoothAdapter.EXTRA_STATE,
+                    BluetoothAdapter.ERROR
+                )
+            ) {
+                BluetoothAdapter.STATE_OFF -> {
+                    client.onBluetoothAdapterDisabled()
+                }
+                BluetoothAdapter.STATE_ON -> {
+                    client.onBluetoothAdapterEnabled()
+                    ensureBackgroundConnectedIfPermitted()
+                }
+            }
+        }
+    }
+
     private val client = clientFactory.create(
         context = appContext,
         onStateChanged = ::handleConnectionState,
@@ -271,6 +306,15 @@ internal class RegattaLinkConnectionManager(
             }
         }
     )
+
+    init {
+        ContextCompat.registerReceiver(
+            appContext,
+            bluetoothStateReceiver,
+            IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+    }
 
     fun addListener(listener: RegattaLinkConnectionListener) {
         listeners.add(listener)
@@ -291,15 +335,48 @@ internal class RegattaLinkConnectionManager(
 
     fun requestForegroundStartupReconnectIfPermitted() {
         if (!startupReconnectRequested.compareAndSet(false, true)) return
-        ensureConnectedIfPermitted()
+        if (!hasRequiredPermissions()) return
+        ensureBackgroundConnectedIfPermitted()
     }
 
     fun ensureConnectedIfPermitted() {
-        if (!hasRequiredPermissions()) return
-        reconnectConfigured()
+        ensureBackgroundConnectedIfPermitted()
+    }
+
+    private fun ensureBackgroundConnectedIfPermitted(): Boolean {
+        if (
+            autoReconnectSuppressedByUser ||
+            otaState.isActive ||
+            explicitDiscoveryRequested ||
+            factoryResetPending ||
+            configuredDeviceStore.requiresNewPairing() ||
+            !hasRequiredPermissions()
+        ) {
+            return false
+        }
+        val configured = configuredDeviceStore.load()
+        if (configured != null) {
+            legacyBootstrapAddress = null
+            return client.startKnownDeviceAutoConnect(
+                deviceAddress = configured.deviceAddress,
+                expectedStableId = configured.stableId
+            )
+        }
+
+        val legacyAddress = legacyBondedAddressProvider(appContext) ?: return false
+        legacyBootstrapAddress = legacyAddress
+        val accepted = client.startKnownDeviceAutoConnect(
+            deviceAddress = legacyAddress,
+            expectedStableId = null
+        )
+        if (!accepted) {
+            legacyBootstrapAddress = null
+        }
+        return accepted
     }
 
     fun reconnectConfigured(): Boolean {
+        autoReconnectSuppressedByUser = false
         if (otaState.isActive || explicitDiscoveryRequested || factoryResetPending) return false
         if (configuredDeviceStore.requiresNewPairing()) return false
 
@@ -328,6 +405,7 @@ internal class RegattaLinkConnectionManager(
 
     fun startDiscovery(): Boolean {
         if (otaState.isActive || factoryResetPending) return false
+        autoReconnectSuppressedByUser = false
         legacyBootstrapAddress = null
         val accepted = client.startDiscovery()
         if (accepted) {
@@ -338,6 +416,7 @@ internal class RegattaLinkConnectionManager(
 
     fun disconnect() {
         if (factoryResetPending) return
+        autoReconnectSuppressedByUser = true
         explicitDiscoveryRequested = false
         legacyBootstrapAddress = null
         stopRawCanCapture(interrupted = true)
@@ -867,6 +946,24 @@ internal class RegattaLinkConnectionManager(
     internal fun configuredDevice(): RegattaLinkConfiguredDevice? =
         configuredDeviceStore.load()
 
+    internal fun requiresNewPairing(): Boolean =
+        configuredDeviceStore.requiresNewPairing()
+
+    @SuppressLint("MissingPermission")
+    fun refreshBluetoothAvailability() {
+        if (!hasRequiredPermissions()) return
+        val enabled = runCatching {
+            val manager =
+                appContext.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+            manager.adapter?.isEnabled == true
+        }.getOrDefault(false)
+        if (enabled) {
+            client.onBluetoothAdapterEnabled()
+        } else {
+            client.onBluetoothAdapterDisabled()
+        }
+    }
+
     private fun hasRequiredPermissions(): Boolean =
         RegattaLinkBleClient.requiredPermissions().all { permission ->
             ContextCompat.checkSelfPermission(
@@ -934,7 +1031,10 @@ internal class RegattaLinkConnectionManager(
             )
             explicitDiscoveryRequested = false
         } else if (
-            state.status == RegattaLinkConnectionStatus.ERROR &&
+            state.status in setOf(
+                RegattaLinkConnectionStatus.ERROR,
+                RegattaLinkConnectionStatus.BLUETOOTH_OFF
+            ) &&
             explicitDiscoveryRequested
         ) {
             explicitDiscoveryRequested = false

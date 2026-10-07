@@ -423,6 +423,11 @@
     <string name="regattalink_status_reading_device">Lettura delle informazioni del dispositivo…</string>
     <string name="regattalink_status_connected">Connesso</string>
     <string name="regattalink_status_error">Connessione non riuscita</string>
+    <string name="regattalink_status_waiting">In attesa di RegattaLink</string>
+    <string name="regattalink_status_bluetooth_off">Bluetooth è disattivato</string>
+    <string name="regattalink_error_bluetooth_disabled">Attiva il Bluetooth per connettere RegattaLink.</string>
+    <string name="regattalink_error_pairing_required">RegattaLink deve essere associato di nuovo.</string>
+    <string name="regattalink_enable_bluetooth">Attiva Bluetooth</string>
     <string name="regattalink_search_connect">Cerca / connetti</string>
     <string name="regattalink_disconnect">Disconnetti</string>
     <string name="regattalink_permission_denied">Autorizzazione Bluetooth negata.</string>
