@@ -698,6 +698,7 @@ class MainActivity : ComponentActivity() {
                                     regattaLinkManager.configuredDevice() == null ||
                                     homeStatus == RegattaLinkHomeStatus.ERROR
                                 ) {
+                                    regattaLinkManager.refreshBluetoothAvailability()
                                     regattaLinkReturnScreen = Screen.HOME
                                     currentScreen.value = Screen.REGATTALINK
                                 } else {
@@ -705,6 +706,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             onRegattaLinkOpen = {
+                                regattaLinkManager.refreshBluetoothAvailability()
                                 regattaLinkReturnScreen = Screen.HOME
                                 currentScreen.value = Screen.REGATTALINK
                             },
