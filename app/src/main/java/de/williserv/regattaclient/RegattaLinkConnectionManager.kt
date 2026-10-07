@@ -1031,7 +1031,10 @@ internal class RegattaLinkConnectionManager(
             )
             explicitDiscoveryRequested = false
         } else if (
-            state.status == RegattaLinkConnectionStatus.ERROR &&
+            state.status in setOf(
+                RegattaLinkConnectionStatus.ERROR,
+                RegattaLinkConnectionStatus.BLUETOOTH_OFF
+            ) &&
             explicitDiscoveryRequested
         ) {
             explicitDiscoveryRequested = false
