@@ -81,6 +81,7 @@ class RegattaLinkReconnectPolicyTest {
                         maxInflightBlocks = 0
                     )
                 ),
+                pairingRequired = false,
                 selectedStableId = "preferred"
             )
         )
