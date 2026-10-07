@@ -560,7 +560,11 @@ fun RegattaLinkScreen(
                 modifier = Modifier.padding(top = 6.dp)
             )
         } else {
-            deviceSelectionState.knownDevices.forEach { device ->
+            deviceSelectionState.knownDevices
+                .sortedBy {
+                    it.stableId != deviceSelectionState.selectedStableId
+                }
+                .forEach { device ->
                 val isConnected = connectedStableId == device.stableId
                 val isSelected =
                     deviceSelectionState.selectedStableId == device.stableId
@@ -569,6 +573,7 @@ fun RegattaLinkScreen(
                     enabled = !otaState.isActive &&
                         !configurationState.deviceControlBusy &&
                         !configurationState.factoryResetAwaitingDisconnect &&
+                        !configurationState.restartAwaitingDisconnect &&
                         !isConnected,
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -636,14 +641,18 @@ fun RegattaLinkScreen(
                     },
                     enabled = !otaState.isActive &&
                         !configurationState.deviceControlBusy &&
-                        !configurationState.factoryResetAwaitingDisconnect,
+                        !configurationState.factoryResetAwaitingDisconnect &&
+                        !configurationState.restartAwaitingDisconnect,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Text(
-                            text = device.deviceName.ifBlank {
-                                stringResource(R.string.regattalink_title)
-                            }
+                            text =
+                                if (device.deviceName.isBlank()) {
+                                    stringResource(R.string.regattalink_title)
+                                } else {
+                                    device.deviceName
+                                }
                         )
                         Text(
                             text =
@@ -873,6 +882,9 @@ fun RegattaLinkScreen(
                 enabled = !busy &&
                     !deviceSelectionState.discovery.scanning &&
                     !otaState.isActive &&
+                    !configurationState.deviceControlBusy &&
+                    !configurationState.restartAwaitingDisconnect &&
+                    !configurationState.factoryResetAwaitingDisconnect &&
                     state.status != RegattaLinkConnectionStatus.BLUETOOTH_OFF,
                 modifier = Modifier.weight(1f)
             ) {
