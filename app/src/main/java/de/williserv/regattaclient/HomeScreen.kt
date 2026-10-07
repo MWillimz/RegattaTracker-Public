@@ -108,6 +108,7 @@ fun HomeScreen(
     raceStatusDisplayText: String,
     raceEvent: String,
     raceStartText: String,
+    scoringMode: String = "mass_start",
     raceStopText: String,
     raceCourseText: String,
     raceStartLineText: String,
@@ -311,6 +312,7 @@ fun HomeScreen(
                     raceStatusDisplayText = raceStatusDisplayText,
                     raceDataReady = raceDataReady,
                     raceStartText = raceStartText,
+                    scoringMode = scoringMode,
                     inRace = inRace,
                     racePrefix = stringResource(R.string.race_prefix),
                     startPrefix = startPrefix,
@@ -1288,6 +1290,7 @@ fun shortRaceStatusText(
     raceStatusDisplayText: String = "",
     raceDataReady: Boolean = true,
     raceStartText: String,
+    scoringMode: String = "mass_start",
     inRace: Boolean,
     racePrefix: String,
     startPrefix: String,
@@ -1315,6 +1318,9 @@ fun shortRaceStatusText(
     if (cleaned.equals("cancelled", ignoreCase = true)) return cancelledText
 
     if (inRace) {
+        if (isFlyingStart(scoringMode)) {
+            return activeText
+        }
         val startTime = extractStartClockTime(raceStartText, startPrefix)
         return if (startTime.isNotBlank()) startTime else activeText
     }
