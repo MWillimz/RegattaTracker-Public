@@ -3556,10 +3556,8 @@ internal class RegattaLinkBleClient(
                 }
 
                 TELEMETRY_FAST_UUID -> {
-                    val version =
-                        value.firstOrNull()?.toInt()?.and(0xff) ?: -1
-                    when (version) {
-                        REGATTALINK_TELEMETRY_SCHEMA_VERSION -> {
+                    when (regattaLinkFastMotionRecordKind(value)) {
+                        RegattaLinkFastMotionRecordKind.MOTION -> {
                             val parsed = parseRegattaLinkFastMotion(value)
                             updateTelemetry {
                                 if (initialOnly && it.fast != null) {
@@ -3576,7 +3574,7 @@ internal class RegattaLinkBleClient(
                             }
                         }
 
-                        REGATTALINK_RAW_IMU_SCHEMA_VERSION -> {
+                        RegattaLinkFastMotionRecordKind.RAW_IMU -> {
                             val parsed = parseRegattaLinkRawImu(value)
                             updateTelemetry {
                                 it.copy(
@@ -3589,9 +3587,11 @@ internal class RegattaLinkBleClient(
                             }
                         }
 
-                        else -> throw IllegalArgumentException(
-                            "Unsupported RegattaLink Fast Motion schema $version"
-                        )
+                        RegattaLinkFastMotionRecordKind.RAW_MAG -> {
+                            // Raw MAG v3 shares 0021 with Raw IMU v2 while
+                            // sensor raw mode is active. Upright setup only
+                            // consumes IMU, so MAG is intentionally ignored.
+                        }
                     }
                 }
 
