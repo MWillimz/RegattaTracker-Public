@@ -146,6 +146,8 @@ internal val regattaLinkSetupMenuItems = listOf(
 @Composable
 fun RegattaLinkScreen(
     state: RegattaLinkClientState,
+    deviceSelectionState: RegattaLinkDeviceSelectionState =
+        RegattaLinkDeviceSelectionState(),
     firmwareState: RegattaLinkFirmwareUiState,
     otaState: RegattaLinkOtaUiState,
     telemetryState: RegattaLinkTelemetryState,
@@ -156,6 +158,8 @@ fun RegattaLinkScreen(
     phoneGpsRelayEnabled: Boolean = false,
     modifier: Modifier = Modifier,
     onSearch: () -> Unit,
+    onSelectKnownDevice: (String) -> Unit = {},
+    onConnectDiscoveredDevice: (String) -> Unit = {},
     onEnableBluetooth: () -> Unit = {},
     onCheckFirmware: () -> Unit,
     onFirmwareSourceSelected: (RegattaLinkFirmwareSource) -> Unit,
@@ -218,6 +222,7 @@ fun RegattaLinkScreen(
     var nameDraft by rememberSaveable { mutableStateOf("") }
 
     val connected = state.status == RegattaLinkConnectionStatus.CONNECTED
+    val connectedStableId = state.deviceInfo?.stableId.takeIf { connected }
     val firmwareSetupOpen =
         activeSetupDestination == RegattaLinkSetupDestination.FIRMWARE
     val displayedName = configurationState.deviceName.ifBlank { state.deviceName }
@@ -541,6 +546,125 @@ fun RegattaLinkScreen(
             )
         }
 
+        Text(
+            text = stringResource(R.string.regattalink_devices),
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(top = 18.dp)
+        )
+
+        if (deviceSelectionState.knownDevices.isEmpty()) {
+            Text(
+                text = stringResource(R.string.regattalink_no_known_devices),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+        } else {
+            deviceSelectionState.knownDevices.forEach { device ->
+                val isConnected = connectedStableId == device.stableId
+                val isSelected =
+                    deviceSelectionState.selectedStableId == device.stableId
+                TextButton(
+                    onClick = { onSelectKnownDevice(device.stableId) },
+                    enabled = !otaState.isActive &&
+                        !configurationState.deviceControlBusy &&
+                        !configurationState.factoryResetAwaitingDisconnect &&
+                        !isConnected,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = device.deviceName.ifBlank {
+                                stringResource(R.string.regattalink_title)
+                            },
+                            fontWeight =
+                                if (isSelected) FontWeight.SemiBold
+                                else FontWeight.Normal
+                        )
+                        Text(
+                            text = when {
+                                isConnected ->
+                                    stringResource(
+                                        R.string.regattalink_status_connected
+                                    )
+                                isSelected ->
+                                    stringResource(R.string.regattalink_selected)
+                                else ->
+                                    stringResource(R.string.regattalink_known)
+                            } + " · ID …" + device.stableId.takeLast(8),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        if (
+            deviceSelectionState.discovery.scanning ||
+            deviceSelectionState.discovery.devices.isNotEmpty()
+        ) {
+            Text(
+                text = stringResource(R.string.regattalink_nearby),
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 12.dp)
+            )
+            if (deviceSelectionState.discovery.scanning) {
+                Text(
+                    text = stringResource(R.string.regattalink_status_scanning),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+            deviceSelectionState.discovery.devices.forEach { device ->
+                val known = deviceSelectionState.knownDevices.firstOrNull {
+                    it.deviceAddress.equals(
+                        device.deviceAddress,
+                        ignoreCase = true
+                    )
+                }
+                TextButton(
+                    onClick = {
+                        if (known != null) {
+                            onSelectKnownDevice(known.stableId)
+                        } else {
+                            onConnectDiscoveredDevice(device.deviceAddress)
+                        }
+                    },
+                    enabled = !otaState.isActive &&
+                        !configurationState.deviceControlBusy &&
+                        !configurationState.factoryResetAwaitingDisconnect,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = device.deviceName.ifBlank {
+                                stringResource(R.string.regattalink_title)
+                            }
+                        )
+                        Text(
+                            text =
+                                (if (known != null) {
+                                    stringResource(R.string.regattalink_known)
+                                } else {
+                                    device.deviceAddress
+                                }),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+        } else if (!deviceSelectionState.discovery.scanning) {
+            deviceSelectionState.discovery.userMessage?.let { message ->
+                Text(
+                    text = stringResource(regattaLinkUiMessageResource(message)),
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
+        }
+
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -744,12 +868,12 @@ fun RegattaLinkScreen(
             Button(
                 onClick = onSearch,
                 enabled = !busy &&
+                    !deviceSelectionState.discovery.scanning &&
                     !otaState.isActive &&
-                    state.status != RegattaLinkConnectionStatus.CONNECTED &&
                     state.status != RegattaLinkConnectionStatus.BLUETOOTH_OFF,
                 modifier = Modifier.weight(1f)
             ) {
-                Text(stringResource(R.string.regattalink_search_connect))
+                Text(stringResource(R.string.regattalink_find))
             }
 
             Button(
