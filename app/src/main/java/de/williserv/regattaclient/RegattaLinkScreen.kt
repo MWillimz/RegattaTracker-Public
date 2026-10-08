@@ -1309,7 +1309,17 @@ private fun RegattaLinkBluetoothDevicesSheet(
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(top = 8.dp)
                     )
-                else -> Unit
+                RegattaLinkDeviceControlResult.NONE,
+                RegattaLinkDeviceControlResult.OK,
+                null -> Unit
+                else ->
+                    Text(
+                        text = stringResource(
+                            R.string.regattalink_error_configuration_failed
+                        ),
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
             }
 
             RegattaLinkTechnicalDetail(
