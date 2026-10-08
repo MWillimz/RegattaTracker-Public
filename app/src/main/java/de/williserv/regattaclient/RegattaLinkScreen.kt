@@ -196,6 +196,7 @@ internal fun RegattaLinkScreen(
     onSetHeadingTrimDeg: (Int) -> Unit = {},
     onSetLoadSensorAlias: (String, String) -> Unit = { _, _ -> },
     onDrainDiagnosticLog: () -> Unit,
+    onStopDiagnosticLog: () -> Unit = {},
     onDeviceControl: (RegattaLinkDeviceControlOpcode, Int) -> Unit,
     onSetImuRawPreviewEnabled: (Boolean) -> Unit = {},
     onRefreshPgnInventory: () -> Unit,
@@ -1189,6 +1190,21 @@ private fun RegattaLinkBluetoothDevicesSheet(
                     configurationState.deviceControlAcceptedOpcode ==
                     RegattaLinkDeviceControlOpcode.CALYPSO_SCAN
                 )
+    var scanSecondsRemaining by remember(deviceKey) { mutableStateOf<Int?>(null) }
+    LaunchedEffect(scanActive, deviceKey) {
+        if (!scanActive) {
+            scanSecondsRemaining = null
+        } else {
+            val deadline = SystemClock.elapsedRealtime() + 60_000L
+            while (true) {
+                val remaining = ((deadline - SystemClock.elapsedRealtime() + 999L) / 1000L)
+                    .coerceAtLeast(0L).toInt()
+                scanSecondsRemaining = remaining
+                if (remaining == 0) break
+                delay(250L)
+            }
+        }
+    }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -1305,6 +1321,14 @@ private fun RegattaLinkBluetoothDevicesSheet(
                             R.string.regattalink_calypso_scan
                         }
                     )
+                )
+            }
+
+            if (scanActive && scanSecondsRemaining != null) {
+                Text(
+                    text = "${scanSecondsRemaining} s",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp)
                 )
             }
 
@@ -2540,26 +2564,36 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
 
             if (configurationState.diagnosticLogSupported) {
                 Button(
-                    onClick = onDrainDiagnosticLog,
-                    enabled =
-                        configEnabled &&
-                            !configurationState.diagnosticLogLoading &&
-                            !configurationState.deviceControlBusy &&
-                            !nmeaState.rawCanReading,
+                    onClick = {
+                        if (configurationState.diagnosticLogStreaming) {
+                            onStopDiagnosticLog()
+                        } else {
+                            onDrainDiagnosticLog()
+                        }
+                    },
+                    enabled = configurationState.diagnosticLogStreaming ||
+                        (
+                            configEnabled &&
+                                !configurationState.deviceControlBusy &&
+                                !nmeaState.rawCanReading
+                        ),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp)
                 ) {
                     Text(
-                        stringResource(
-                            R.string.regattalink_read_diagnostic_log
-                        )
+                        if (configurationState.diagnosticLogStreaming) {
+                            "Stop reading"
+                        } else {
+                            stringResource(R.string.regattalink_read_diagnostic_log)
+                        }
                     )
                 }
                 if (configurationState.deviceControlSupported) {
                     Button(
                         onClick = onCanErrorTrace,
-                        enabled = deviceControlEnabled,
+                        enabled = deviceControlEnabled &&
+                            !configurationState.diagnosticLogStreaming,
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 8.dp)
