@@ -5051,6 +5051,46 @@ internal class RegattaLinkBleClient(
                 deviceControlExecutionGuard.release(execution)
             }
 
+            if (
+                opcode == RegattaLinkDeviceControlOpcode.CAN_ERROR_TRACE_60S &&
+                finalStatus?.phase?.isTerminal == true &&
+                finalStatus?.result == RegattaLinkDeviceControlResult.OK &&
+                gatt === activeGatt &&
+                connected
+            ) {
+                val traceEnd = SystemClock.elapsedRealtime() + 60_000L
+                updateConfiguration {
+                    it.copy(diagnosticTraceEndElapsedMs = traceEnd)
+                }
+                if (drainDiagnosticLog()) {
+                    handler.postDelayed({
+                        if (
+                            gatt === activeGatt &&
+                            lastConfigurationState.diagnosticTraceEndElapsedMs == traceEnd
+                        ) {
+                            // Give queued diagnostic entries an additional read window.
+                            handler.postDelayed({
+                                if (
+                                    gatt === activeGatt &&
+                                    lastConfigurationState.diagnosticTraceEndElapsedMs == traceEnd
+                                ) {
+                                    stopDiagnosticLog()
+                                    updateConfiguration {
+                                        it.copy(diagnosticTraceEndElapsedMs = 0L)
+                                    }
+                                }
+                            }, 1000L)
+                        }
+                    }, 60_000L)
+                } else {
+                    updateConfiguration {
+                        it.copy(
+                            diagnosticTraceEndElapsedMs = 0L,
+                            diagnosticLogError = "Could not start CAN error trace log reader"
+                        )
+                    }
+                }
+            }
             if (refreshCalypsoStatusAfterScan) {
                 executeDeviceControl(
                     RegattaLinkDeviceControlOpcode.CALYPSO_STATUS,
