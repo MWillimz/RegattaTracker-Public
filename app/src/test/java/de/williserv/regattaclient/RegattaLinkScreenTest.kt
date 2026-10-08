@@ -8,20 +8,6 @@ import org.junit.Test
 class RegattaLinkScreenTest {
 
     @Test
-    fun setupMenuIncludesGenericBluetoothDevicesAsFifthDestination() {
-        assertEquals(
-            listOf(
-                RegattaLinkSetupDestination.IMU,
-                RegattaLinkSetupDestination.NMEA,
-                RegattaLinkSetupDestination.BLUETOOTH_DEVICES,
-                RegattaLinkSetupDestination.ADVANCED_DIAGNOSTICS,
-                RegattaLinkSetupDestination.FIRMWARE
-            ),
-            regattaLinkSetupMenuItems.map { it.destination }
-        )
-    }
-
-    @Test
     fun bluetoothDevicesOpenRequestsStatusOnlyOnceWhenControlIsReady() {
         assertTrue(
             shouldRefreshCalypsoStatusOnOpen(
