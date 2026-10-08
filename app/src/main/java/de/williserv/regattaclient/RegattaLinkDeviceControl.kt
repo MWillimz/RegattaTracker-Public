@@ -29,7 +29,8 @@ enum class RegattaLinkDeviceControlOpcode(val wireValue: Int) {
     ADJUST_PITCH(4),
     FACTORY_RESET(5),
     RESTART(6),
-    IMU_RAW_MODE(7);
+    IMU_RAW_MODE(7),
+    CAN_ERROR_TRACE_60S(8);
 
     companion object {
         fun fromWire(value: Int): RegattaLinkDeviceControlOpcode? =
@@ -445,7 +446,8 @@ internal fun buildRegattaLinkDeviceControlRequest(
     if (
         opcode == RegattaLinkDeviceControlOpcode.SET_UPRIGHT ||
         opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET ||
-        opcode == RegattaLinkDeviceControlOpcode.RESTART
+        opcode == RegattaLinkDeviceControlOpcode.RESTART ||
+        opcode == RegattaLinkDeviceControlOpcode.CAN_ERROR_TRACE_60S
     ) {
         require(value == 0) { "$opcode requires value 0" }
     }
