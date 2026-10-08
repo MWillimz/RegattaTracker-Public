@@ -492,10 +492,7 @@ internal fun RegattaLinkScreen(
                     activeSetupDestination = null
                     resetDialogOpen = true
                 },
-                onDismiss = {
-                    onStopDiagnosticLog()
-                    activeSetupDestination = null
-                }
+                onDismiss = { activeSetupDestination = null }
             )
         }
         RegattaLinkSetupDestination.FIRMWARE -> {
@@ -2317,8 +2314,11 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
             !configurationState.deviceControlBusy &&
             !configurationState.diagnosticLogLoading &&
             !nmeaState.rawCanReading
-    DisposableEffect(Unit) {
-        onDispose { onStopDiagnosticLog() }
+    DisposableEffect(configurationState.diagnosticTraceEndElapsedMs > 0L) {
+        val traceActive = configurationState.diagnosticTraceEndElapsedMs > 0L
+        onDispose {
+            if (!traceActive) onStopDiagnosticLog()
+        }
     }
     val diagnosticListState = rememberLazyListState()
     var previousLogCount by remember { mutableStateOf(0) }
