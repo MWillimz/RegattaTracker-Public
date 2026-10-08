@@ -518,10 +518,13 @@ internal fun regattaLinkApplyObservedDeviceControlStatus(
     state: RegattaLinkConfigurationState,
     status: RegattaLinkDeviceControlStatus
 ): RegattaLinkConfigurationState =
-    if (status.calypso != null) {
-        regattaLinkApplyCalypsoControlStatus(state, status)
-    } else {
-        state.copy(deviceControlStatus = status)
+    when {
+        status.calypso != null ->
+            regattaLinkApplyCalypsoControlStatus(state, status)
+        status.opcode.isCalypsoCommand() ->
+            state
+        else ->
+            state.copy(deviceControlStatus = status)
     }
 
 internal fun parseRegattaLinkHeadingTrim(raw: ByteArray): Int {
