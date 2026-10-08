@@ -14,6 +14,7 @@ internal const val REGATTALINK_DEVICE_CONTROL_VERSION = 1
 internal const val REGATTALINK_DEVICE_CONTROL_POLL_MS = 100L
 internal const val REGATTALINK_SENSOR_RAW_MODE_RENEW_INTERVAL_MS = 400L
 internal const val REGATTALINK_DEVICE_CONTROL_CLIENT_TIMEOUT_MS = 12_000L
+internal const val REGATTALINK_CALYPSO_SCAN_CLIENT_TIMEOUT_MS = 60_000L
 internal const val REGATTALINK_FACTORY_RESET_FINALIZATION_TIMEOUT_MS = 10_000L
 internal const val REGATTALINK_FACTORY_RESET_DISCONNECT_MARGIN_MS = 20_000L
 
@@ -30,7 +31,9 @@ enum class RegattaLinkDeviceControlOpcode(val wireValue: Int) {
     FACTORY_RESET(5),
     RESTART(6),
     IMU_RAW_MODE(7),
-    CAN_ERROR_TRACE_60S(8);
+    CAN_ERROR_TRACE_60S(8),
+    CALYPSO_SCAN(9),
+    CALYPSO_STATUS(10);
 
     companion object {
         fun fromWire(value: Int): RegattaLinkDeviceControlOpcode? =
@@ -176,13 +179,24 @@ enum class RegattaLinkDeviceControlResult(val wireValue: Int) {
     CONFIG_ERROR(7),
     BOND_RESET_ERROR(8),
     INTERNAL_ERROR(9),
-    TIMEOUT(10);
+    TIMEOUT(10),
+    NOT_FOUND(11),
+    AMBIGUOUS(12),
+    VERIFY_FAILED(13);
 
     companion object {
         fun fromWire(value: Int): RegattaLinkDeviceControlResult? =
             entries.firstOrNull { it.wireValue == value }
     }
 }
+
+data class RegattaLinkCalypsoControlStatus(
+    val boundId: String?,
+    val bound: Boolean,
+    val connected: Boolean,
+    val scanning: Boolean,
+    val detail: Int
+)
 
 data class RegattaLinkDeviceControlStatus(
     val opcode: RegattaLinkDeviceControlOpcode?,
@@ -196,8 +210,33 @@ data class RegattaLinkDeviceControlStatus(
     val gyroBiasValid: Boolean,
     val mountingEpoch: UInt,
     val factoryResetBondsCleared: Boolean = false,
-    val applicationErrorCode: Int? = null
+    val applicationErrorCode: Int? = null,
+    val calypso: RegattaLinkCalypsoControlStatus? = null
 )
+
+internal fun regattaLinkDeviceControlClientTimeoutMs(
+    opcode: RegattaLinkDeviceControlOpcode
+): Long =
+    if (opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN) {
+        REGATTALINK_CALYPSO_SCAN_CLIENT_TIMEOUT_MS
+    } else {
+        REGATTALINK_DEVICE_CONTROL_CLIENT_TIMEOUT_MS
+    }
+
+private const val REGATTALINK_CALYPSO_FLAG_BOUND = 1 shl 3
+private const val REGATTALINK_CALYPSO_FLAG_CONNECTED = 1 shl 4
+private const val REGATTALINK_CALYPSO_FLAG_SCANNING = 1 shl 5
+private const val REGATTALINK_CALYPSO_FLAG_MASK =
+    REGATTALINK_CALYPSO_FLAG_BOUND or
+        REGATTALINK_CALYPSO_FLAG_CONNECTED or
+        REGATTALINK_CALYPSO_FLAG_SCANNING
+
+internal fun formatRegattaLinkCalypsoId(bytes: ByteArray): String {
+    require(bytes.size == 6) { "Calypso ID must be exactly six bytes" }
+    return bytes.joinToString(":") { byte ->
+        "%02X".format(byte.toInt() and 0xff)
+    }
+}
 
 internal fun regattaLinkFactoryResetContinuesToBondReset(
     status: RegattaLinkDeviceControlStatus
@@ -447,7 +486,9 @@ internal fun buildRegattaLinkDeviceControlRequest(
         opcode == RegattaLinkDeviceControlOpcode.SET_UPRIGHT ||
         opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET ||
         opcode == RegattaLinkDeviceControlOpcode.RESTART ||
-        opcode == RegattaLinkDeviceControlOpcode.CAN_ERROR_TRACE_60S
+        opcode == RegattaLinkDeviceControlOpcode.CAN_ERROR_TRACE_60S ||
+        opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN ||
+        opcode == RegattaLinkDeviceControlOpcode.CALYPSO_STATUS
     ) {
         require(value == 0) { "$opcode requires value 0" }
     }
@@ -476,6 +517,14 @@ internal fun parseRegattaLinkDeviceControlStatus(
     }
 
     val opcodeValue = raw[1].toInt() and 0xff
+    val opcode = if (opcodeValue == 0) {
+        null
+    } else {
+        RegattaLinkDeviceControlOpcode.fromWire(opcodeValue)
+            ?: throw IllegalArgumentException(
+                "Unsupported RegattaLink Device Control opcode $opcodeValue"
+            )
+    }
     val phaseValue = raw[2].toInt() and 0xff
     val resultValue = raw[3].toInt() and 0xff
     val phase = RegattaLinkDeviceControlPhase.fromWire(phaseValue)
@@ -488,6 +537,67 @@ internal fun parseRegattaLinkDeviceControlStatus(
         )
     val buffer = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
     val flags = raw[14].toInt() and 0xff
+    val detail = raw[15].toInt() and 0xff
+    val calypsoCommand =
+        opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN ||
+            opcode == RegattaLinkDeviceControlOpcode.CALYPSO_STATUS
+
+    if (calypsoCommand) {
+        require(flags and REGATTALINK_CALYPSO_FLAG_MASK.inv() == 0) {
+            "Unsupported RegattaLink Calypso status flags"
+        }
+        require(buffer.getInt(16) == 0) {
+            "RegattaLink Calypso status reserved bytes must be zero"
+        }
+
+        val bound = flags and REGATTALINK_CALYPSO_FLAG_BOUND != 0
+        val connected = flags and REGATTALINK_CALYPSO_FLAG_CONNECTED != 0
+        val scanning = flags and REGATTALINK_CALYPSO_FLAG_SCANNING != 0
+        require(!connected || bound) {
+            "Connected Calypso status requires a bound sensor"
+        }
+
+        val idBytes = raw.copyOfRange(8, 14)
+        if (!bound) {
+            require(idBytes.all { it == 0.toByte() }) {
+                "Unbound Calypso status must not contain an ID"
+            }
+        }
+
+        val applicationErrorCode =
+            detail.takeIf {
+                it != 0 &&
+                    phase == RegattaLinkDeviceControlPhase.ERROR &&
+                    result in setOf(
+                        RegattaLinkDeviceControlResult.BUSY,
+                        RegattaLinkDeviceControlResult.INVALID
+                    )
+            }
+
+        return RegattaLinkDeviceControlStatus(
+            opcode = opcode,
+            phase = phase,
+            result = result,
+            requestId = buffer.getInt(4).toUInt(),
+            forwardTrimDeg = 0,
+            heelTrimDeg = 0,
+            pitchTrimDeg = 0,
+            boatFrameValid = false,
+            gyroBiasValid = false,
+            mountingEpoch = 0u,
+            applicationErrorCode = applicationErrorCode,
+            calypso = RegattaLinkCalypsoControlStatus(
+                boundId = idBytes
+                    .takeIf { bound }
+                    ?.let(::formatRegattaLinkCalypsoId),
+                bound = bound,
+                connected = connected,
+                scanning = scanning,
+                detail = detail
+            )
+        )
+    }
+
     require(flags and 0xf8 == 0) {
         "Unsupported RegattaLink Device Control flags"
     }
@@ -499,8 +609,7 @@ internal fun parseRegattaLinkDeviceControlStatus(
             "Factory Reset bonds-cleared flag requires terminal Factory Reset status"
         }
     }
-    val applicationErrorCode =
-        (raw[15].toInt() and 0xff).takeIf { it != 0 }
+    val applicationErrorCode = detail.takeIf { it != 0 }
     if (applicationErrorCode != null) {
         require(
             phase == RegattaLinkDeviceControlPhase.ERROR &&
@@ -514,14 +623,7 @@ internal fun parseRegattaLinkDeviceControlStatus(
     }
 
     return RegattaLinkDeviceControlStatus(
-        opcode = if (opcodeValue == 0) {
-            null
-        } else {
-            RegattaLinkDeviceControlOpcode.fromWire(opcodeValue)
-                ?: throw IllegalArgumentException(
-                    "Unsupported RegattaLink Device Control opcode $opcodeValue"
-                )
-        },
+        opcode = opcode,
         phase = phase,
         result = result,
         requestId = buffer.getInt(4).toUInt(),
@@ -580,6 +682,12 @@ internal fun regattaLinkDeviceControlFailureText(
         "RegattaLink Device Control failed internally"
     RegattaLinkDeviceControlResult.TIMEOUT ->
         "RegattaLink calibration timed out"
+    RegattaLinkDeviceControlResult.NOT_FOUND ->
+        "No Calypso sensor found"
+    RegattaLinkDeviceControlResult.AMBIGUOUS ->
+        "Multiple Calypso sensors found"
+    RegattaLinkDeviceControlResult.VERIFY_FAILED ->
+        "Calypso sensor verification failed"
 }
 
 
@@ -619,6 +727,12 @@ internal fun regattaLinkDeviceControlUiMessage(
                 RegattaLinkUiMessage.DEVICE_CONTROL_INTERNAL_FAILED
             RegattaLinkDeviceControlResult.TIMEOUT ->
                 RegattaLinkUiMessage.CALIBRATION_TIMEOUT
+            RegattaLinkDeviceControlResult.NOT_FOUND ->
+                RegattaLinkUiMessage.CALYPSO_NOT_FOUND
+            RegattaLinkDeviceControlResult.AMBIGUOUS ->
+                RegattaLinkUiMessage.CALYPSO_AMBIGUOUS
+            RegattaLinkDeviceControlResult.VERIFY_FAILED ->
+                RegattaLinkUiMessage.CALYPSO_VERIFY_FAILED
             RegattaLinkDeviceControlResult.NONE,
             RegattaLinkDeviceControlResult.OK ->
                 RegattaLinkUiMessage.CONFIGURATION_FAILED
