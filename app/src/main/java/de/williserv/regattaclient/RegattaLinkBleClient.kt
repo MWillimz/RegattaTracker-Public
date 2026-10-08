@@ -3235,7 +3235,10 @@ internal class RegattaLinkBleClient(
                     )
                 )
             }.onSuccess { status ->
-                next = next.copy(deviceControlStatus = status)
+                next = regattaLinkApplyObservedDeviceControlStatus(
+                    next,
+                    status
+                )
             }.onFailure { error ->
                 if (errorMessage.isBlank()) {
                     errorMessage = error.message
@@ -4576,14 +4579,27 @@ internal class RegattaLinkBleClient(
 
             try {
                 val requestId = nextDeviceControlRequestId()
-            updateConfiguration {
-                it.copy(
-                    deviceControlBusy = true,
-                    deviceControlAcceptedOpcode = null,
-                    deviceControlAcceptedRequestId = null,
-                    factoryResetWriteAcceptedRequestId = null,
-                    deviceControlError = ""
-                )
+            updateConfiguration { current ->
+                if (
+                    opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN ||
+                    opcode == RegattaLinkDeviceControlOpcode.CALYPSO_STATUS
+                ) {
+                    current.copy(
+                        deviceControlBusy = true,
+                        deviceControlAcceptedOpcode = null,
+                        deviceControlAcceptedRequestId = null,
+                        factoryResetWriteAcceptedRequestId = null,
+                        calypso = current.calypso.copy(error = "")
+                    )
+                } else {
+                    current.copy(
+                        deviceControlBusy = true,
+                        deviceControlAcceptedOpcode = null,
+                        deviceControlAcceptedRequestId = null,
+                        factoryResetWriteAcceptedRequestId = null,
+                        deviceControlError = ""
+                    )
+                }
             }
 
             var finalStatus: RegattaLinkDeviceControlStatus? = null
@@ -4637,7 +4653,7 @@ internal class RegattaLinkBleClient(
                 var requestAcceptanceObserved = false
                 val commandDeadline =
                     SystemClock.elapsedRealtime() +
-                        REGATTALINK_DEVICE_CONTROL_CLIENT_TIMEOUT_MS
+                        regattaLinkDeviceControlClientTimeoutMs(opcode)
                 while (true) {
                     val now = SystemClock.elapsedRealtime()
                     val activeDeadline =
@@ -4727,11 +4743,20 @@ internal class RegattaLinkBleClient(
 
                         RegattaLinkDeviceControlPollDecision.CONTINUE -> {
                             finalStatus = status
-                            updateConfiguration {
-                                it.copy(
-                                    deviceControlSupported = true,
-                                    deviceControlStatus = status,
-                                    deviceControlError = ""
+                            updateConfiguration { current ->
+                                regattaLinkApplyObservedDeviceControlStatus(
+                                    current.copy(
+                                        deviceControlSupported = true,
+                                        deviceControlError =
+                                            if (status.calypso == null) "" else current.deviceControlError,
+                                        calypso =
+                                            if (status.calypso != null) {
+                                                current.calypso.copy(error = "")
+                                            } else {
+                                                current.calypso
+                                            }
+                                    ),
+                                    status
                                 )
                             }
                         }
@@ -4765,11 +4790,20 @@ internal class RegattaLinkBleClient(
                                     )
                                 }
                             } else {
-                                updateConfiguration {
-                                    it.copy(
-                                        deviceControlSupported = true,
-                                        deviceControlStatus = status,
-                                        deviceControlError = ""
+                                updateConfiguration { current ->
+                                    regattaLinkApplyObservedDeviceControlStatus(
+                                        current.copy(
+                                            deviceControlSupported = true,
+                                            deviceControlError =
+                                                if (status.calypso == null) "" else current.deviceControlError,
+                                            calypso =
+                                                if (status.calypso != null) {
+                                                    current.calypso.copy(error = "")
+                                                } else {
+                                                    current.calypso
+                                                }
+                                        ),
+                                        status
                                     )
                                 }
                                 break
@@ -4793,12 +4827,15 @@ internal class RegattaLinkBleClient(
                                     )
                                 }
                             } else {
-                                updateConfiguration {
-                                    it.copy(
-                                        deviceControlSupported = true,
-                                        factoryResetAwaitingDisconnect = false,
-                                        deviceControlStatus = status,
-                                        deviceControlError = ""
+                                updateConfiguration { current ->
+                                    regattaLinkApplyObservedDeviceControlStatus(
+                                        current.copy(
+                                            deviceControlSupported = true,
+                                            factoryResetAwaitingDisconnect = false,
+                                            deviceControlError =
+                                                if (status.calypso == null) "" else current.deviceControlError
+                                        ),
+                                        status
                                     )
                                 }
                                 throw RegattaLinkOtaTransportException(
@@ -4913,15 +4950,59 @@ internal class RegattaLinkBleClient(
                             opcode == RegattaLinkDeviceControlOpcode.RESTART &&
                                 finalStatus?.phase == RegattaLinkDeviceControlPhase.SUCCESS &&
                                 finalStatus?.result == RegattaLinkDeviceControlResult.OK,
-                            deviceControlStatus = finalStatus,
-                            deviceControlError = errorMessage
-                        )
+                            deviceControlStatus =
+                                if (finalStatus?.calypso == null) {
+                                    finalStatus
+                                } else {
+                                    current.deviceControlStatus
+                                },
+                            deviceControlError =
+                                if (
+                                    opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN ||
+                                    opcode == RegattaLinkDeviceControlOpcode.CALYPSO_STATUS
+                                ) {
+                                    current.deviceControlError
+                                } else {
+                                    errorMessage
+                                },
+                            calypso =
+                                if (
+                                    opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN ||
+                                    opcode == RegattaLinkDeviceControlOpcode.CALYPSO_STATUS
+                                ) {
+                                    current.calypso.copy(error = errorMessage)
+                                } else {
+                                    current.calypso
+                                }
+                        ).let { base ->
+                            finalStatus
+                                ?.takeIf { it.calypso != null }
+                                ?.let {
+                                    regattaLinkApplyCalypsoControlStatus(
+                                        base,
+                                        it
+                                    )
+                                }
+                                ?: base
+                        }
                     }
                 }
             }
 
             } finally {
                 deviceControlExecutionGuard.release(execution)
+            }
+
+            if (
+                opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN &&
+                finalStatus?.phase?.isTerminal == true &&
+                gatt === activeGatt &&
+                connected
+            ) {
+                executeDeviceControl(
+                    RegattaLinkDeviceControlOpcode.CALYPSO_STATUS,
+                    0
+                )
             }
         }
         return true
