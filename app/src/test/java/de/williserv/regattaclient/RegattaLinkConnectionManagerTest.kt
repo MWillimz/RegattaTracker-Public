@@ -380,7 +380,7 @@ class RegattaLinkConnectionManagerTest {
         fakeClient.emitConnection(RegattaLinkClientState())
 
         assertEquals(null, store.load())
-        assertFalse(store.requiresNewPairing())
+        assertTrue(store.requiresNewPairing())
         assertFalse(manager.reconnectConfigured())
         assertEquals(0, fakeClient.reconnectCalls)
     }
@@ -421,6 +421,102 @@ class RegattaLinkConnectionManagerTest {
         assertEquals(0, fakeClient.reconnectCalls)
         assertTrue(manager.startDiscovery())
         assertEquals(1, fakeClient.discoveryCalls)
+    }
+
+    @Test
+    fun confirmedFactoryResetBlocksLegacyAutoconnectAfterProcessRestart() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress,
+                deviceName = configured.deviceName,
+                deviceInfo = testDeviceInfo(configured.stableId)
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                deviceControlAcceptedOpcode =
+                    RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                deviceControlAcceptedRequestId = 51u
+            )
+        )
+        fakeClient.emitConnection(RegattaLinkClientState())
+
+        assertTrue(
+            RegattaLinkConfiguredDeviceStore(context)
+                .requiresNewPairing()
+        )
+
+        manager = createManager { configured.deviceAddress }
+
+        manager.requestForegroundStartupReconnectIfPermitted()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(0, fakeClient.autoConnectCalls)
+        assertFalse(manager.reconnectConfigured())
+        assertEquals(0, fakeClient.reconnectCalls)
+        assertTrue(manager.startDiscovery())
+        assertEquals(1, fakeClient.discoveryCalls)
+    }
+
+    @Test
+    fun resetMarkerForADoesNotBlockExplicitlySelectedBReconnect() {
+        val second = RegattaLinkConfiguredDevice(
+            stableId = "8899aabbccddeeff",
+            deviceAddress = "44:B1:76:48:31:CE",
+            deviceName = "RegattaLink-31CE"
+        )
+        val store = RegattaLinkConfiguredDeviceStore(context)
+        store.upsert(second)
+
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress,
+                deviceName = configured.deviceName,
+                deviceInfo = testDeviceInfo(configured.stableId)
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                deviceControlAcceptedOpcode =
+                    RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                deviceControlAcceptedRequestId = 52u
+            )
+        )
+        fakeClient.emitConnection(RegattaLinkClientState())
+
+        assertTrue(store.select(second.stableId))
+        assertFalse(store.requiresNewPairing())
+
+        manager = createManager { configured.deviceAddress }
+
+        assertTrue(manager.reconnectConfigured())
+        assertEquals(1, fakeClient.reconnectCalls)
+        assertEquals(second.deviceAddress, fakeClient.lastReconnectAddress)
+        assertEquals(second.stableId, fakeClient.lastReconnectStableId)
     }
 
     @Test

@@ -3,7 +3,9 @@ package de.williserv.regattaclient
 import android.content.Context
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -118,6 +120,44 @@ class RegattaLinkConfiguredDeviceStoreTest {
         )
         assertEquals(migrated, store.selected())
         assertEquals(listOf(migrated), store.all())
+    }
+
+    @Test
+    fun resetPairingRequirementSurvivesRemovalOfResetDevice() {
+        val resetDevice = RegattaLinkConfiguredDevice(
+            stableId = "reset",
+            deviceAddress = "44:B1:76:48:31:B2",
+            deviceName = "Reset me"
+        )
+        store.save(resetDevice)
+        store.markResetRecoveryPending(resetDevice.stableId)
+
+        store.remove(resetDevice.stableId)
+
+        assertNull(store.selected())
+        assertTrue(store.requiresNewPairing())
+    }
+
+    @Test
+    fun resetPairingRequirementForADoesNotBlockSelectedB() {
+        val first = RegattaLinkConfiguredDevice(
+            stableId = "first",
+            deviceAddress = "44:B1:76:48:31:B2",
+            deviceName = "First"
+        )
+        val second = RegattaLinkConfiguredDevice(
+            stableId = "second",
+            deviceAddress = "44:B1:76:48:31:CE",
+            deviceName = "Second"
+        )
+        store.save(first)
+        store.upsert(second)
+        store.markResetRecoveryPending(first.stableId)
+        store.remove(first.stableId)
+
+        assertTrue(store.select(second.stableId))
+        assertFalse(store.requiresNewPairing())
+        assertEquals(second, store.selected())
     }
 
     @Test
