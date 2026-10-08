@@ -4590,7 +4590,12 @@ internal class RegattaLinkBleClient(
                         deviceControlAcceptedOpcode = null,
                         deviceControlAcceptedRequestId = null,
                         factoryResetWriteAcceptedRequestId = null,
-                        calypso = current.calypso.copy(error = "")
+                        calypso =
+                            if (opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN) {
+                                current.calypso.copy(error = "")
+                            } else {
+                                current.calypso
+                            }
                     )
                 } else {
                     current.copy(
@@ -4751,7 +4756,10 @@ internal class RegattaLinkBleClient(
                                         deviceControlError =
                                             if (status.calypso == null) "" else current.deviceControlError,
                                         calypso =
-                                            if (status.calypso != null) {
+                                            if (
+                                                status.calypso != null &&
+                                                opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN
+                                            ) {
                                                 current.calypso.copy(error = "")
                                             } else {
                                                 current.calypso
@@ -4967,13 +4975,21 @@ internal class RegattaLinkBleClient(
                                     errorMessage
                                 },
                             calypso =
-                                if (
-                                    opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN ||
-                                    opcode == RegattaLinkDeviceControlOpcode.CALYPSO_STATUS
-                                ) {
-                                    current.calypso.copy(error = errorMessage)
-                                } else {
-                                    current.calypso
+                                when {
+                                    opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN &&
+                                        finalStatus?.result in setOf(
+                                            RegattaLinkDeviceControlResult.NOT_FOUND,
+                                            RegattaLinkDeviceControlResult.AMBIGUOUS,
+                                            RegattaLinkDeviceControlResult.VERIFY_FAILED
+                                        ) ->
+                                        current.calypso.copy(error = "")
+                                    opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN ->
+                                        current.calypso.copy(error = errorMessage)
+                                    opcode == RegattaLinkDeviceControlOpcode.CALYPSO_STATUS &&
+                                        errorMessage.isNotBlank() ->
+                                        current.calypso.copy(error = errorMessage)
+                                    else ->
+                                        current.calypso
                                 }
                         ).let { base ->
                             finalStatus
