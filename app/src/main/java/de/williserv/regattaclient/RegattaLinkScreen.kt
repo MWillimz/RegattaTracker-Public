@@ -225,7 +225,8 @@ internal fun RegattaLinkScreen(
     }
     var calypsoStatusRequestedForOpen by remember(
         state.deviceInfo?.stableId ?: state.deviceAddress,
-        activeSetupDestination
+        activeSetupDestination,
+        connected
     ) {
         mutableStateOf(false)
     }
