@@ -39,6 +39,7 @@ data class RegattaLinkConfigurationState(
     val diagnosticLogSupported: Boolean = false,
     val diagnosticLogLoading: Boolean = false,
     val diagnosticLogStreaming: Boolean = false,
+    val diagnosticTraceEndElapsedMs: Long = 0L,
     val diagnosticLogEntries: List<RegattaLinkDiagnosticLogEntry> = emptyList(),
     val diagnosticLogError: String = "",
     val deviceControlSupported: Boolean = false,
