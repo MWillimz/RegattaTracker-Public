@@ -36,6 +36,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -2314,10 +2315,13 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
             !configurationState.deviceControlBusy &&
             !configurationState.diagnosticLogLoading &&
             !nmeaState.rawCanReading
-    DisposableEffect(configurationState.diagnosticTraceEndElapsedMs > 0L) {
-        val traceActive = configurationState.diagnosticTraceEndElapsedMs > 0L
+    val traceInProgress by rememberUpdatedState(
+        configurationState.diagnosticTraceEndElapsedMs > 0L
+    )
+    val stopReaderOnDismiss by rememberUpdatedState(onStopDiagnosticLog)
+    DisposableEffect(Unit) {
         onDispose {
-            if (!traceActive) onStopDiagnosticLog()
+            if (!traceInProgress) stopReaderOnDismiss()
         }
     }
     val diagnosticListState = rememberLazyListState()
