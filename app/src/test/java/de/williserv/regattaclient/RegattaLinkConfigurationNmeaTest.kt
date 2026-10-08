@@ -976,6 +976,26 @@ class RegattaLinkConfigurationNmeaTest {
         assertEquals(225.0, parsed.windAngleDeg!!, 0.001)
     }
 
+    @Test
+    fun diagnosticLogKeepsNewestTwoThousandAndAllowsRepeatedMessages() {
+        val entries = mutableListOf<RegattaLinkDiagnosticLogEntry>()
+        for (i in 0 until 2_010) {
+            regattaLinkAppendDiagnosticEntry(
+                entries,
+                RegattaLinkDiagnosticLogEntry(timestamp10ms = i, message = "CAN")
+            )
+        }
+        assertEquals(2_000, entries.size)
+        assertEquals(10, entries.first().timestamp10ms)
+        assertEquals(2_009, entries.last().timestamp10ms)
+
+        val repeated = entries.last()
+        regattaLinkAppendDiagnosticEntry(entries, repeated)
+        assertEquals(2_000, entries.size)
+        assertEquals(repeated, entries.last())
+        assertEquals(repeated, entries[entries.lastIndex - 1])
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun rejectsWrongBoatStateSize() {
         parseRegattaLinkBoatState(ByteArray(79))
