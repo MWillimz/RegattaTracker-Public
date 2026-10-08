@@ -1110,9 +1110,16 @@ private fun ReplayTrackCanvas(
     modifier: Modifier = Modifier
 ) {
     val selected = samples[selectedIndex]
-    val coursePoints = remember(selected.raceContextId, selected.courseJson) {
+    val effectiveCourseJson = replayCourseJsonForSample(
+        sample = selected,
+        background = mapBackground
+    )
+    val coursePoints = remember(
+        mapBackground?.candidate?.key,
+        effectiveCourseJson
+    ) {
         parseCourseOverlayPoints(
-            courseJson = selected.courseJson.orEmpty(),
+            courseJson = effectiveCourseJson.orEmpty(),
             courseShortened = false
         )
     }
@@ -1135,10 +1142,31 @@ private fun ReplayTrackCanvas(
     var viewport by remember(
         samples.firstOrNull()?.localId,
         samples.lastOrNull()?.localId,
-        samples.size,
-        mapBackground?.candidate?.key
+        samples.size
     ) {
         mutableStateOf(ReplayViewport())
+    }
+    var displayedMapKey by remember(
+        samples.firstOrNull()?.localId,
+        samples.lastOrNull()?.localId,
+        samples.size
+    ) {
+        mutableStateOf<ReplayMapContextKey?>(null)
+    }
+    val currentMapKey = mapBackground?.candidate?.key
+
+    LaunchedEffect(currentMapKey) {
+        if (
+            shouldResetReplayViewportForMapChange(
+                previous = displayedMapKey,
+                next = currentMapKey
+            )
+        ) {
+            viewport = ReplayViewport()
+        }
+        if (currentMapKey != null) {
+            displayedMapKey = currentMapKey
+        }
     }
 
     Box(
@@ -1149,32 +1177,7 @@ private fun ReplayTrackCanvas(
             )
             .clipToBounds()
     ) {
-        mapBackground?.let { background ->
-            Image(
-                bitmap = background.bitmap.asImageBitmap(),
-                contentDescription = null,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(4.dp)
-                    .graphicsLayer(
-                        scaleX = viewport.zoom,
-                        scaleY = viewport.zoom,
-                        translationX = viewport.panX,
-                        translationY = viewport.panY
-                    )
-            )
-        }
-
-        if (validSamples.isEmpty()) {
-            Text(
-                text = stringResource(R.string.session_replay_no_position),
-                modifier = Modifier.align(Alignment.Center),
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
-        Canvas(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(4.dp)
@@ -1193,6 +1196,33 @@ private fun ReplayTrackCanvas(
                     }
                 }
         ) {
+            mapBackground?.let { background ->
+                Image(
+                    bitmap = background.bitmap.asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer(
+                            scaleX = viewport.zoom,
+                            scaleY = viewport.zoom,
+                            translationX = viewport.panX,
+                            translationY = viewport.panY
+                        )
+                )
+            }
+
+            if (validSamples.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.session_replay_no_position),
+                    modifier = Modifier.align(Alignment.Center),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Canvas(
+                modifier = Modifier.fillMaxSize()
+            ) {
             val localProjection = if (mapBackground == null) {
                 val geoPoints = buildList {
                     validSamples.forEach { add(OwnShipGeoPoint(it.lat, it.lon)) }
@@ -1397,6 +1427,7 @@ private fun ReplayTrackCanvas(
                     )
                 }
             }
+        }
         }
 
         if (
@@ -1748,6 +1779,14 @@ internal data class ReplayViewport(
     val panX: Float = 0f,
     val panY: Float = 0f
 )
+
+internal fun shouldResetReplayViewportForMapChange(
+    previous: ReplayMapContextKey?,
+    next: ReplayMapContextKey?
+): Boolean =
+    previous != null &&
+        next != null &&
+        previous != next
 
 internal fun updateReplayViewport(
     viewport: ReplayViewport,

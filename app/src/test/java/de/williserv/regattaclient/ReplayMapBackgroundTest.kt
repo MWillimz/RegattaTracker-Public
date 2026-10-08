@@ -46,6 +46,81 @@ class ReplayMapBackgroundTest {
     }
 
     @Test
+    fun mapCandidateCarriesCourseFromSameRaceContext() {
+        val session = session()
+        val sample = sample(
+            id = 1,
+            raceContextId = 10,
+            event = "Run 1",
+            generation = "g1",
+            courseJson = """{"marks":[1]}"""
+        )
+
+        val candidate = replayMapCandidates(session, listOf(sample)).single()
+
+        assertEquals("""{"marks":[1]}""", candidate.courseJson)
+    }
+
+    @Test
+    fun contextlessTailSampleUsesCourseFromSingleResolvedBackground() {
+        val session = session()
+        val contextSample = sample(
+            id = 1,
+            raceContextId = 10,
+            event = "Run 1",
+            generation = "g1",
+            courseJson = """{"marks":[1]}"""
+        )
+        val candidate = replayMapCandidates(session, listOf(contextSample)).single()
+        val background = ReplayMapBackground(
+            candidate = candidate,
+            bitmap = Bitmap.createBitmap(400, 300, Bitmap.Config.ARGB_8888)
+        )
+        val tailSample = sample(
+            id = 2,
+            raceContextId = null,
+            event = null,
+            generation = null,
+            courseJson = null
+        )
+
+        assertEquals(
+            """{"marks":[1]}""",
+            replayCourseJsonForSample(tailSample, background)
+        )
+    }
+
+    @Test
+    fun activeBackgroundNeverBorrowsCourseFromDifferentSampleContext() {
+        val session = session()
+        val candidate = replayMapCandidates(
+            session,
+            listOf(
+                sample(
+                    id = 1,
+                    raceContextId = 10,
+                    event = "Run 1",
+                    generation = "g1",
+                    courseJson = null
+                )
+            )
+        ).single()
+        val background = ReplayMapBackground(
+            candidate = candidate,
+            bitmap = Bitmap.createBitmap(400, 300, Bitmap.Config.ARGB_8888)
+        )
+        val unrelatedSample = sample(
+            id = 2,
+            raceContextId = null,
+            event = null,
+            generation = null,
+            courseJson = """{"marks":[99]}"""
+        )
+
+        assertNull(replayCourseJsonForSample(unrelatedSample, background))
+    }
+
+    @Test
     fun repeatedSamplesOfSameRaceContextProduceOneCandidate() {
         val session = session()
         val samples = listOf(
@@ -166,6 +241,7 @@ class ReplayMapBackgroundTest {
     fun legacySessionMetadataProvidesSingleFallbackCandidate() {
         val session = session(
             resolvedEventName = "Legacy Run",
+            courseJson = """{"marks":[7]}""",
             courseMapViewportJson = viewportJson("legacy")
         )
 
@@ -174,6 +250,7 @@ class ReplayMapBackgroundTest {
         assertEquals(null, candidate.key.raceContextId)
         assertEquals("Legacy Run", candidate.key.resolvedEventName)
         assertEquals("legacy", candidate.key.generationId)
+        assertEquals("""{"marks":[7]}""", candidate.courseJson)
     }
 
     @Test
@@ -207,6 +284,7 @@ class ReplayMapBackgroundTest {
         mode: String = "race",
         accessContextId: Long? = 5L,
         resolvedEventName: String? = null,
+        courseJson: String? = null,
         courseMapViewportJson: String? = null
     ): TrackingSession = TrackingSession(
         id = 1L,
@@ -216,6 +294,7 @@ class ReplayMapBackgroundTest {
         accessContextId = accessContextId,
         displayName = "Session",
         resolvedEventName = resolvedEventName,
+        courseJson = courseJson,
         courseMapViewportJson = courseMapViewportJson
     )
 
@@ -223,7 +302,8 @@ class ReplayMapBackgroundTest {
         id: Long,
         raceContextId: Long?,
         event: String?,
-        generation: String?
+        generation: String?,
+        courseJson: String? = null
     ): SessionTrackingSample = SessionTrackingSample(
         localId = id,
         timestamp = "2026-10-04T12:00:00",
@@ -235,6 +315,7 @@ class ReplayMapBackgroundTest {
         sog = 3f,
         raceContextId = raceContextId,
         resolvedEventName = event,
+        courseJson = courseJson,
         courseMapViewportJson = generation?.let(::viewportJson)
     )
 
