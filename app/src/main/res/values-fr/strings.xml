@@ -691,6 +691,7 @@
     <string name="regattalink_not_valid">Non valide</string>
     <string name="regattalink_factory_reset">Réinitialisation d’usine</string>
     <string name="regattalink_factory_reset_warning">Cela réinitialise le nom du RegattaLink, la luminosité des LED, l’amortissement du mouvement, l’étalonnage et les associations Bluetooth. La connexion sera coupée et l’appareil devra être réassocié. Si Android affiche encore l’ancienne association, supprimez RegattaLink dans les paramètres Bluetooth Android puis relancez la recherche.</string>
+    <string name="regattalink_can_error_trace_60s">Trace CAN 60 s</string>
     <string name="regattalink_read_diagnostic_log">Lire le journal de diagnostic</string>
     <string name="regattalink_loading_diagnostic_log">Lecture du journal de diagnostic…</string>
     <string name="regattalink_load_precision">Résolution des capteurs de charge</string>
