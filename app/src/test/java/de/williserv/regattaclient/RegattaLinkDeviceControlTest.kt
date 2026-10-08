@@ -130,6 +130,101 @@ class RegattaLinkDeviceControlTest {
     }
 
     @Test
+    fun canErrorTraceUsesOpcodeEightAndRequiresZeroValue() {
+        val raw = buildRegattaLinkDeviceControlRequest(
+            opcode = RegattaLinkDeviceControlOpcode.CAN_ERROR_TRACE_60S,
+            requestId = 11u,
+            value = 0
+        )
+
+        assertEquals(
+            RegattaLinkDeviceControlOpcode.CAN_ERROR_TRACE_60S,
+            RegattaLinkDeviceControlOpcode.fromWire(8)
+        )
+        assertEquals(8, raw[1].toInt() and 0xff)
+        assertEquals(
+            0,
+            ByteBuffer.wrap(raw)
+                .order(ByteOrder.LITTLE_ENDIAN)
+                .getShort(6)
+                .toInt()
+        )
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun canErrorTraceRejectsNonZeroValue() {
+        buildRegattaLinkDeviceControlRequest(
+            opcode = RegattaLinkDeviceControlOpcode.CAN_ERROR_TRACE_60S,
+            requestId = 12u,
+            value = 1
+        )
+    }
+
+    @Test
+    fun canErrorTraceStatusParsesThroughGenericDeviceControlContract() {
+        val raw = ByteArray(REGATTALINK_DEVICE_CONTROL_STATUS_SIZE)
+        val buffer = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
+        raw[0] = REGATTALINK_DEVICE_CONTROL_VERSION.toByte()
+        raw[1] =
+            RegattaLinkDeviceControlOpcode.CAN_ERROR_TRACE_60S.wireValue.toByte()
+        raw[2] = RegattaLinkDeviceControlPhase.SUCCESS.wireValue.toByte()
+        raw[3] = RegattaLinkDeviceControlResult.OK.wireValue.toByte()
+        buffer.putInt(4, 13)
+
+        val parsed = parseRegattaLinkDeviceControlStatus(raw)
+
+        assertEquals(
+            RegattaLinkDeviceControlOpcode.CAN_ERROR_TRACE_60S,
+            parsed.opcode
+        )
+        assertEquals(RegattaLinkDeviceControlPhase.SUCCESS, parsed.phase)
+        assertEquals(RegattaLinkDeviceControlResult.OK, parsed.result)
+        assertEquals(13u, parsed.requestId)
+    }
+
+    @Test
+    fun canErrorTraceDiagnosticLinesRemainRawAsciiMessages() {
+        val messages = listOf(
+            "CANe RS DAT X0R8",
+            "CANf 19F80123 D8",
+            "CANd0102030405060708",
+            "CANp 19F80123 D8",
+            "CANtrace drop3"
+        )
+
+        messages.forEachIndexed { index, message ->
+            val raw = ByteArray(REGATTALINK_DIAGNOSTIC_LOG_RECORD_SIZE)
+            ByteBuffer.wrap(raw)
+                .order(ByteOrder.LITTLE_ENDIAN)
+                .putShort(0, index.toShort())
+            message.toByteArray(Charsets.US_ASCII)
+                .copyInto(raw, destinationOffset = 2)
+
+            val parsed = requireNotNull(
+                parseRegattaLinkDiagnosticLogEntry(raw)
+            )
+
+            assertEquals(index, parsed.timestamp10ms)
+            assertEquals(message, parsed.message)
+        }
+    }
+
+    @Test
+    fun existingDeviceControlOpcodeWireValuesRemainStable() {
+        assertEquals(1, RegattaLinkDeviceControlOpcode.SET_UPRIGHT.wireValue)
+        assertEquals(2, RegattaLinkDeviceControlOpcode.ADJUST_FORWARD.wireValue)
+        assertEquals(3, RegattaLinkDeviceControlOpcode.ADJUST_HEEL.wireValue)
+        assertEquals(4, RegattaLinkDeviceControlOpcode.ADJUST_PITCH.wireValue)
+        assertEquals(5, RegattaLinkDeviceControlOpcode.FACTORY_RESET.wireValue)
+        assertEquals(6, RegattaLinkDeviceControlOpcode.RESTART.wireValue)
+        assertEquals(7, RegattaLinkDeviceControlOpcode.IMU_RAW_MODE.wireValue)
+        assertEquals(
+            8,
+            RegattaLinkDeviceControlOpcode.CAN_ERROR_TRACE_60S.wireValue
+        )
+    }
+
+    @Test
     fun deviceControlStatusParsesSignedTrimsFlagsAndUnsignedFields() {
         val raw = ByteArray(REGATTALINK_DEVICE_CONTROL_STATUS_SIZE)
         val buffer = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
