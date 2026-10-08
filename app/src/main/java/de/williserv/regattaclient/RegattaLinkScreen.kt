@@ -223,19 +223,19 @@ internal fun RegattaLinkScreen(
     var pgnInventoryAutoRefreshRequested by remember(state.deviceAddress) {
         mutableStateOf(false)
     }
-    var calypsoStatusRequestedForOpen by remember(
-        state.deviceInfo?.stableId ?: state.deviceAddress,
-        activeSetupDestination,
-        connected
-    ) {
-        mutableStateOf(false)
-    }
     var nameDialogOpen by rememberSaveable { mutableStateOf(false) }
     var resetDialogOpen by rememberSaveable { mutableStateOf(false) }
     var nameDraft by rememberSaveable { mutableStateOf("") }
 
     val connected = state.status == RegattaLinkConnectionStatus.CONNECTED
     val deviceKey = state.deviceInfo?.stableId ?: state.deviceAddress
+    var calypsoStatusRequestedForOpen by remember(
+        deviceKey,
+        activeSetupDestination,
+        connected
+    ) {
+        mutableStateOf(false)
+    }
     val connectedStableId = state.deviceInfo?.stableId.takeIf { connected }
     val firmwareSetupOpen =
         activeSetupDestination == RegattaLinkSetupDestination.FIRMWARE
