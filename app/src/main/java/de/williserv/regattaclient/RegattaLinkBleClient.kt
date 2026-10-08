@@ -4600,6 +4600,7 @@ internal class RegattaLinkBleClient(
             }
 
             var refreshCalypsoStatusAfterScan = false
+            var finalStatus: RegattaLinkDeviceControlStatus? = null
             try {
                 val requestId = nextDeviceControlRequestId()
             updateConfiguration { current ->
@@ -4630,7 +4631,6 @@ internal class RegattaLinkBleClient(
                 }
             }
 
-            var finalStatus: RegattaLinkDeviceControlStatus? = null
             var errorMessage = ""
             var factoryResetFinalizationDeadline: Long? = null
             var factoryResetWriteAccepted = false
