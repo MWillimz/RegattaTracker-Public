@@ -2613,7 +2613,7 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
                 ) {
                     Text(
                         if (configurationState.diagnosticLogStreaming) {
-                            "Stop reading"
+                            stringResource(R.string.regattalink_stop_reading)
                         } else {
                             stringResource(R.string.regattalink_read_diagnostic_log)
                         }
@@ -2637,7 +2637,10 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
                 }
                 if (traceRemainingSeconds > 0) {
                     Text(
-                        text = "CAN error trace: ${traceRemainingSeconds} s",
+                        text = stringResource(
+                            R.string.regattalink_raw_capture_remaining,
+                            traceRemainingSeconds
+                        ),
                         modifier = Modifier.padding(top = 6.dp)
                     )
                 }
