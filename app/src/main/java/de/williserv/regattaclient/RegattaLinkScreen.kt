@@ -115,6 +115,7 @@ internal fun prepareRegattaLinkConfigSliderSubmission(
 internal enum class RegattaLinkSetupDestination {
     IMU,
     NMEA,
+    BLUETOOTH_DEVICES,
     ADVANCED_DIAGNOSTICS,
     FIRMWARE
 }
@@ -132,6 +133,10 @@ internal val regattaLinkSetupMenuItems = listOf(
     RegattaLinkSetupMenuItem(
         RegattaLinkSetupDestination.NMEA,
         R.string.regattalink_setup_nmea
+    ),
+    RegattaLinkSetupMenuItem(
+        RegattaLinkSetupDestination.BLUETOOTH_DEVICES,
+        R.string.regattalink_bluetooth_devices
     ),
     RegattaLinkSetupMenuItem(
         RegattaLinkSetupDestination.ADVANCED_DIAGNOSTICS,
@@ -170,6 +175,7 @@ internal fun RegattaLinkScreen(
     onSetMotionDamping: (Int) -> Unit,
     onSetLoadPrecisionX10: (Boolean) -> Unit = {},
     onApplyTxConfigAndRestart: (UInt) -> Unit = {},
+    onApplyBluetoothConfigAndRestart: (UInt) -> Unit = {},
     onSetPhoneGpsRelayEnabled: (Boolean) -> Unit = {},
     onSetNmea0183Baud: (Int) -> Unit = {},
     onSetMagBackgroundLearningEnabled: (Boolean) -> Unit = {},
@@ -217,11 +223,18 @@ internal fun RegattaLinkScreen(
     var pgnInventoryAutoRefreshRequested by remember(state.deviceAddress) {
         mutableStateOf(false)
     }
+    var calypsoStatusRequestedForOpen by remember(
+        state.deviceInfo?.stableId ?: state.deviceAddress,
+        activeSetupDestination
+    ) {
+        mutableStateOf(false)
+    }
     var nameDialogOpen by rememberSaveable { mutableStateOf(false) }
     var resetDialogOpen by rememberSaveable { mutableStateOf(false) }
     var nameDraft by rememberSaveable { mutableStateOf("") }
 
     val connected = state.status == RegattaLinkConnectionStatus.CONNECTED
+    val deviceKey = state.deviceInfo?.stableId ?: state.deviceAddress
     val connectedStableId = state.deviceInfo?.stableId.takeIf { connected }
     val firmwareSetupOpen =
         activeSetupDestination == RegattaLinkSetupDestination.FIRMWARE
@@ -274,6 +287,31 @@ internal fun RegattaLinkScreen(
     val nmeaSetupOpen =
         activeSetupDestination == RegattaLinkSetupDestination.NMEA &&
             connected
+    val bluetoothDevicesOpen =
+        activeSetupDestination ==
+            RegattaLinkSetupDestination.BLUETOOTH_DEVICES
+
+    LaunchedEffect(
+        bluetoothDevicesOpen,
+        connected,
+        configurationState.deviceControlSupported,
+        deviceControlEnabled,
+        deviceKey
+    ) {
+        if (
+            bluetoothDevicesOpen &&
+            connected &&
+            configurationState.deviceControlSupported &&
+            deviceControlEnabled &&
+            !calypsoStatusRequestedForOpen
+        ) {
+            calypsoStatusRequestedForOpen = true
+            onDeviceControl(
+                RegattaLinkDeviceControlOpcode.CALYPSO_STATUS,
+                0
+            )
+        }
+    }
 
     LaunchedEffect(
         firmwareSetupOpen,
@@ -356,7 +394,7 @@ internal fun RegattaLinkScreen(
             RegattaLinkNmeaSetupSheet(
                 nmeaState = nmeaState,
                 configurationState = configurationState,
-                deviceKey = state.deviceInfo?.stableId ?: state.deviceAddress,
+                deviceKey = deviceKey,
                 connected = connected,
                 configEnabled = configEnabled,
                 otaActive = otaState.isActive,
@@ -371,6 +409,24 @@ internal fun RegattaLinkScreen(
                 },
                 onSetLoadSensorAlias = onSetLoadSensorAlias,
                 onRefreshPgnInventory = onRefreshPgnInventory,
+                onDismiss = { activeSetupDestination = null }
+            )
+        }
+        RegattaLinkSetupDestination.BLUETOOTH_DEVICES -> {
+            RegattaLinkBluetoothDevicesSheet(
+                configurationState = configurationState,
+                deviceKey = deviceKey,
+                connected = connected,
+                configEnabled = configEnabled,
+                deviceControlEnabled = deviceControlEnabled,
+                onScanCalypso = {
+                    onDeviceControl(
+                        RegattaLinkDeviceControlOpcode.CALYPSO_SCAN,
+                        0
+                    )
+                },
+                onApplyBluetoothConfigAndRestart =
+                    onApplyBluetoothConfigAndRestart,
                 onDismiss = { activeSetupDestination = null }
             )
         }
@@ -1066,6 +1122,214 @@ private fun RegattaLinkBoatDataSelectorRow(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+private fun RegattaLinkBluetoothDevicesSheet(
+    configurationState: RegattaLinkConfigurationState,
+    deviceKey: String,
+    connected: Boolean,
+    configEnabled: Boolean,
+    deviceControlEnabled: Boolean,
+    onScanCalypso: () -> Unit,
+    onApplyBluetoothConfigAndRestart: (UInt) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val selectionFromDevice =
+        configurationState.configWord
+            ?.and(REGATTALINK_CONFIG_BLUETOOTH_DEVICE_MASK)
+    var baseline by remember(deviceKey, connected) {
+        mutableStateOf(selectionFromDevice)
+    }
+    var draft by remember(deviceKey, connected) {
+        mutableStateOf(selectionFromDevice)
+    }
+    LaunchedEffect(deviceKey, connected, selectionFromDevice) {
+        if (baseline == null && selectionFromDevice != null) {
+            baseline = selectionFromDevice
+            draft = selectionFromDevice
+        }
+    }
+
+    val dirty =
+        baseline != null &&
+            draft != null &&
+            baseline != draft
+    val calypsoEnabledDraft =
+        regattaLinkConfigDraftBit(
+            draft,
+            REGATTALINK_CONFIG_CALYPSO_ENABLE
+        )
+    val calypso = configurationState.calypso
+    val scanActive =
+        calypso.scanning ||
+            (
+                configurationState.deviceControlBusy &&
+                    configurationState.deviceControlAcceptedOpcode ==
+                    RegattaLinkDeviceControlOpcode.CALYPSO_SCAN
+                )
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 24.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
+            Text(
+                text = stringResource(R.string.regattalink_bluetooth_devices),
+                fontSize = 22.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = stringResource(
+                    R.string.regattalink_calypso_wind_sensor
+                ),
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 18.dp)
+            )
+
+            telemetryValue(
+                label = stringResource(
+                    R.string.regattalink_calypso_bound_sensor
+                ),
+                value = when {
+                    !calypso.statusKnown -> "—"
+                    calypso.boundId != null -> calypso.boundId
+                    else -> stringResource(
+                        R.string.regattalink_calypso_not_bound
+                    )
+                }
+            )
+            telemetryValue(
+                label = stringResource(
+                    R.string.regattalink_calypso_runtime
+                ),
+                value = when {
+                    !calypso.statusKnown -> "—"
+                    calypso.connected ->
+                        stringResource(R.string.regattalink_status_connected)
+                    else ->
+                        stringResource(
+                            R.string.regattalink_calypso_disconnected
+                        )
+                }
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(
+                            R.string.regattalink_calypso_enable
+                        ),
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.regattalink_applies_after_restart
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = calypsoEnabledDraft == true,
+                    onCheckedChange = { enabled ->
+                        draft = regattaLinkConfigDraftWithBit(
+                            draft,
+                            REGATTALINK_CONFIG_CALYPSO_ENABLE,
+                            enabled
+                        )
+                    },
+                    enabled = configEnabled && calypsoEnabledDraft != null
+                )
+            }
+
+            if (dirty && draft != null) {
+                Button(
+                    onClick = {
+                        onApplyBluetoothConfigAndRestart(draft!!)
+                    },
+                    enabled =
+                        configEnabled &&
+                            configurationState.deviceControlSupported,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp)
+                ) {
+                    Text(stringResource(R.string.regattalink_apply_restart))
+                }
+            }
+
+            Button(
+                onClick = onScanCalypso,
+                enabled = connected && deviceControlEnabled,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 18.dp)
+            ) {
+                Text(
+                    stringResource(
+                        if (scanActive) {
+                            R.string.regattalink_calypso_scanning
+                        } else {
+                            R.string.regattalink_calypso_scan
+                        }
+                    )
+                )
+            }
+
+            when (calypso.lastScanResult) {
+                RegattaLinkDeviceControlResult.NOT_FOUND ->
+                    Text(
+                        text = stringResource(
+                            R.string.regattalink_calypso_not_found
+                        ),
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                RegattaLinkDeviceControlResult.AMBIGUOUS ->
+                    Text(
+                        text = stringResource(
+                            R.string.regattalink_calypso_ambiguous
+                        ),
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                RegattaLinkDeviceControlResult.VERIFY_FAILED ->
+                    Text(
+                        text = stringResource(
+                            R.string.regattalink_calypso_verify_failed
+                        ),
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                else -> Unit
+            }
+
+            RegattaLinkTechnicalDetail(
+                detail = calypso.error,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .align(Alignment.End)
+                    .padding(top = 12.dp)
+            ) {
+                Text(stringResource(R.string.close))
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 private fun RegattaLinkNmeaSetupSheet(
     nmeaState: RegattaLinkNmeaState,
     configurationState: RegattaLinkConfigurationState,
@@ -1119,6 +1383,11 @@ private fun RegattaLinkNmeaSetupSheet(
         regattaLinkConfigDraftBit(txDraft, REGATTALINK_CONFIG_TX_PHONE_GPS)
     val txCompassDraft =
         regattaLinkConfigDraftBit(txDraft, REGATTALINK_CONFIG_TX_COMPASS)
+    val txCalypsoWindDraft =
+        regattaLinkConfigDraftBit(
+            txDraft,
+            REGATTALINK_CONFIG_TX_CALYPSO_WIND
+        )
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -1423,6 +1692,36 @@ private fun RegattaLinkNmeaSetupSheet(
                         txDraft = regattaLinkConfigDraftWithBit(
                             txDraft,
                             REGATTALINK_CONFIG_TX_PHONE_GPS,
+                            enabled
+                        )
+                    }
+                )
+            }
+
+            if (
+                connected &&
+                canAvailable &&
+                configurationState.configWordSupported
+            ) {
+                RegattaLinkBoatDataSelectorRow(
+                    title = stringResource(
+                        R.string.regattalink_calypso_wind_tx
+                    ),
+                    desired = configurationState.calypsoWindTxEnabled,
+                    draft = txCalypsoWindDraft,
+                    draftChanged = regattaLinkConfigDraftBitChanged(
+                        txBaseline,
+                        txDraft,
+                        REGATTALINK_CONFIG_TX_CALYPSO_WIND
+                    ),
+                    bootMask = configurationState.nmeaBootOutputMask,
+                    activeMask = configurationState.nmeaActiveOutputMask,
+                    runtimeBit = REGATTALINK_TX_OUTPUT_CALYPSO_WIND,
+                    enabled = configEnabled,
+                    onCheckedChange = { enabled ->
+                        txDraft = regattaLinkConfigDraftWithBit(
+                            txDraft,
+                            REGATTALINK_CONFIG_TX_CALYPSO_WIND,
                             enabled
                         )
                     }
