@@ -604,6 +604,7 @@ internal class RegattaLinkConnectionManager(
             deviceAddress.isBlank() ||
             otaState.isActive ||
             factoryResetPending ||
+            configurationState.busy ||
             configurationState.deviceControlBusy ||
             configurationState.restartAwaitingDisconnect ||
             !hasRequiredPermissions()
@@ -629,6 +630,7 @@ internal class RegattaLinkConnectionManager(
         if (
             otaState.isActive ||
             factoryResetPending ||
+            configurationState.busy ||
             configurationState.deviceControlBusy ||
             configurationState.factoryResetAwaitingDisconnect ||
             configurationState.restartAwaitingDisconnect ||

@@ -650,6 +650,7 @@ internal fun RegattaLinkScreen(
                 TextButton(
                     onClick = { onSelectKnownDevice(device.stableId) },
                     enabled = !otaState.isActive &&
+                        !configurationState.busy &&
                         !configurationState.deviceControlBusy &&
                         !configurationState.factoryResetAwaitingDisconnect &&
                         !configurationState.restartAwaitingDisconnect &&
@@ -719,6 +720,7 @@ internal fun RegattaLinkScreen(
                         }
                     },
                     enabled = !otaState.isActive &&
+                        !configurationState.busy &&
                         !configurationState.deviceControlBusy &&
                         !configurationState.factoryResetAwaitingDisconnect &&
                         !configurationState.restartAwaitingDisconnect,
