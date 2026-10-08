@@ -179,7 +179,8 @@ internal class RegattaLinkConfiguredDeviceStore(context: Context) {
         val pendingStableId =
             prefs.getString(KEY_RESET_PENDING_STABLE_ID, "").orEmpty()
         if (pendingStableId.isBlank()) return true
-        return selected()?.stableId == pendingStableId
+        val selectedStableId = selected()?.stableId
+        return selectedStableId == null || selectedStableId == pendingStableId
     }
 
     private fun knownStableIds(): Set<String> =
