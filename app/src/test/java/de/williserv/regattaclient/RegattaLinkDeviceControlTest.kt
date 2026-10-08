@@ -791,6 +791,7 @@ class RegattaLinkDeviceControlTest {
             listOf(
                 RegattaLinkSetupDestination.IMU,
                 RegattaLinkSetupDestination.NMEA,
+                RegattaLinkSetupDestination.BLUETOOTH_DEVICES,
                 RegattaLinkSetupDestination.ADVANCED_DIAGNOSTICS,
                 RegattaLinkSetupDestination.FIRMWARE
             ),
@@ -800,6 +801,7 @@ class RegattaLinkDeviceControlTest {
             listOf(
                 R.string.regattalink_setup_imu,
                 R.string.regattalink_setup_nmea,
+                R.string.regattalink_bluetooth_devices,
                 R.string.regattalink_advanced_diagnostics,
                 R.string.regattalink_firmware_title
             ),
