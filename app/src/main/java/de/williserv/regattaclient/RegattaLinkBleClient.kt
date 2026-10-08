@@ -3106,6 +3106,7 @@ internal class RegattaLinkBleClient(
             service?.getCharacteristic(DEVICE_CONTROL_UUID)
 
         var next = RegattaLinkConfigurationState(
+            diagnosticLogEntries = diagnosticLogBuffer.toList(),
             deviceNameSupported = nameCharacteristic != null,
             ledBrightnessSupported = brightnessCharacteristic != null,
             motionDampingSupported = dampingCharacteristic != null,
@@ -4382,6 +4383,13 @@ internal class RegattaLinkBleClient(
         phoneGnssPending.set(null)
     }
 
+    private val diagnosticStreamRequested = AtomicBoolean(false)
+    private val diagnosticLogBuffer = mutableListOf<RegattaLinkDiagnosticLogEntry>()
+
+    override fun stopDiagnosticLog() {
+        diagnosticStreamRequested.set(false)
+    }
+
     override fun drainDiagnosticLog(): Boolean {
         if (
             !lastConfigurationState.diagnosticLogSupported ||
@@ -4399,27 +4407,17 @@ internal class RegattaLinkBleClient(
             diagnosticLogRunning.set(false)
             return false
         }
-
+        diagnosticStreamRequested.set(true)
         updateConfiguration {
             it.copy(
                 diagnosticLogLoading = true,
-                diagnosticLogEntries = emptyList(),
+                diagnosticLogStreaming = true,
+                diagnosticLogEntries = diagnosticLogBuffer.toList(),
                 diagnosticLogError = ""
             )
         }
 
         otaExecutor.execute {
-            if (!optionalFeatureWorkAllowed(activeGatt)) {
-                diagnosticLogRunning.set(false)
-                if (gatt === activeGatt && connected) {
-                    updateConfiguration {
-                        it.copy(diagnosticLogLoading = false)
-                    }
-                }
-                return@execute
-            }
-
-            val entries = mutableListOf<RegattaLinkDiagnosticLogEntry>()
             var errorMessage = ""
             try {
                 val characteristic = activeGatt.getService(CONFIG_SERVICE_UUID)
@@ -4428,29 +4426,49 @@ internal class RegattaLinkBleClient(
                         "RegattaLink diagnostic log is unavailable",
                         ambiguous = false
                     )
-
-                for (readIndex in 0 until REGATTALINK_DIAGNOSTIC_LOG_MAX_READS) {
-                    if (!optionalFeatureWorkAllowed(activeGatt)) break
+                while (
+                    diagnosticStreamRequested.get() &&
+                    gatt === activeGatt &&
+                    connected &&
+                    optionalFeatureWorkAllowed(activeGatt) &&
+                    !deviceControlExecutionGuard.isActive() &&
+                    !configurationMutationRunning.get() &&
+                    !otaRunning.get() &&
+                    !rawCaptureRunning.get()
+                ) {
                     val parsed = parseRegattaLinkDiagnosticLogEntry(
                         readCharacteristicBlocking(activeGatt, characteristic)
-                    ) ?: break
-                    entries += parsed
+                    )
+                    if (parsed == null) {
+                        Thread.sleep(100L)
+                    } else {
+                        diagnosticLogBuffer.add(parsed)
+                        if (diagnosticLogBuffer.size > 2000) {
+                            diagnosticLogBuffer.subList(
+                                0, diagnosticLogBuffer.size - 2000
+                            ).clear()
+                        }
+                        if (gatt === activeGatt && connected) {
+                            updateConfiguration {
+                                it.copy(diagnosticLogEntries = diagnosticLogBuffer.toList())
+                            }
+                        }
+                    }
                 }
             } catch (error: Exception) {
-                errorMessage =
-                    error.message ?: "Could not read RegattaLink diagnostic log"
+                errorMessage = error.message ?: "Could not read RegattaLink diagnostic log"
             } finally {
+                diagnosticStreamRequested.set(false)
                 diagnosticLogRunning.set(false)
-            }
-
-            if (gatt === activeGatt && connected) {
-                updateConfiguration {
-                    it.copy(
-                        diagnosticLogSupported = true,
-                        diagnosticLogLoading = false,
-                        diagnosticLogEntries = entries,
-                        diagnosticLogError = errorMessage
-                    )
+                if (gatt === activeGatt && connected) {
+                    updateConfiguration {
+                        it.copy(
+                            diagnosticLogLoading = false,
+                            diagnosticLogStreaming = false,
+                            diagnosticLogEntries = diagnosticLogBuffer.toList(),
+                            diagnosticLogError = errorMessage
+                        )
+                    }
                 }
             }
         }
