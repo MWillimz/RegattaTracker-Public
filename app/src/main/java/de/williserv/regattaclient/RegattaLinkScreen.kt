@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -2309,6 +2310,18 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
             !configurationState.deviceControlBusy &&
             !configurationState.diagnosticLogLoading &&
             !nmeaState.rawCanReading
+    val diagnosticListState = rememberLazyListState()
+    var previousLogCount by remember { mutableStateOf(0) }
+    val logEntries = configurationState.diagnosticLogEntries
+    LaunchedEffect(logEntries.size) {
+        val wasAtEnd = previousLogCount == 0 ||
+            diagnosticListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
+                ?.let { it >= previousLogCount - 1 } != false
+        if (logEntries.isNotEmpty() && wasAtEnd) {
+            diagnosticListState.scrollToItem(logEntries.lastIndex)
+        }
+        previousLogCount = logEntries.size
+    }
     val traceDeadline = configurationState.diagnosticTraceEndElapsedMs
     var traceRemainingSeconds by remember { mutableStateOf(0) }
     LaunchedEffect(traceDeadline) {
@@ -2636,11 +2649,20 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
                         modifier = Modifier.padding(top = 6.dp)
                     )
                 }
-                configurationState.diagnosticLogEntries.forEach { entry ->
-                    Text(
-                        "${entry.timestamp10ms * 10} ms  ${entry.message}",
-                        modifier = Modifier.padding(top = 3.dp)
-                    )
+                if (logEntries.isNotEmpty()) {
+                    LazyColumn(
+                        state = diagnosticListState,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(240.dp)
+                    ) {
+                        items(logEntries) { entry ->
+                            Text(
+                                "${entry.timestamp10ms * 10} ms  ${entry.message}",
+                                modifier = Modifier.padding(top = 3.dp)
+                            )
+                        }
+                    }
                 }
                 RegattaLinkTechnicalDetail(
                     detail = configurationState.diagnosticLogError,
