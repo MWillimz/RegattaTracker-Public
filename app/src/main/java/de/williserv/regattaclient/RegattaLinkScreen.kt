@@ -393,6 +393,12 @@ internal fun RegattaLinkScreen(
                 onApplySubsystemConfigAndRestart =
                     onApplySubsystemConfigAndRestart,
                 onDrainDiagnosticLog = onDrainDiagnosticLog,
+                onCanErrorTrace = {
+                    onDeviceControl(
+                        RegattaLinkDeviceControlOpcode.CAN_ERROR_TRACE_60S,
+                        0
+                    )
+                },
                 onReadRawFrames = onReadRawFrames,
                 onStartRawCapture = onStartRawCapture,
                 onStopRawCapture = onStopRawCapture,
@@ -1883,6 +1889,7 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
     onSetLedBrightness: (Int) -> Unit,
     onApplySubsystemConfigAndRestart: (UInt) -> Unit,
     onDrainDiagnosticLog: () -> Unit,
+    onCanErrorTrace: () -> Unit,
     onReadRawFrames: () -> Unit,
     onStartRawCapture: () -> Unit,
     onStopRawCapture: () -> Unit,
@@ -2197,6 +2204,21 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
                             R.string.regattalink_read_diagnostic_log
                         )
                     )
+                }
+                if (configurationState.deviceControlSupported) {
+                    Button(
+                        onClick = onCanErrorTrace,
+                        enabled = deviceControlEnabled,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                    ) {
+                        Text(
+                            stringResource(
+                                R.string.regattalink_can_error_trace_60s
+                            )
+                        )
+                    }
                 }
                 if (configurationState.diagnosticLogLoading) {
                     Text(
