@@ -223,6 +223,10 @@ internal fun regattaLinkDeviceControlClientTimeoutMs(
         REGATTALINK_DEVICE_CONTROL_CLIENT_TIMEOUT_MS
     }
 
+internal fun RegattaLinkDeviceControlOpcode?.isCalypsoCommand(): Boolean =
+    this == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN ||
+        this == RegattaLinkDeviceControlOpcode.CALYPSO_STATUS
+
 private const val REGATTALINK_CALYPSO_FLAG_BOUND = 1 shl 3
 private const val REGATTALINK_CALYPSO_FLAG_CONNECTED = 1 shl 4
 private const val REGATTALINK_CALYPSO_FLAG_SCANNING = 1 shl 5
@@ -538,9 +542,33 @@ internal fun parseRegattaLinkDeviceControlStatus(
     val buffer = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
     val flags = raw[14].toInt() and 0xff
     val detail = raw[15].toInt() and 0xff
-    val calypsoCommand =
-        opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN ||
-            opcode == RegattaLinkDeviceControlOpcode.CALYPSO_STATUS
+    val calypsoCommand = opcode.isCalypsoCommand()
+    val calypsoApplicationErrorCode =
+        detail.takeIf {
+            calypsoCommand &&
+                it != 0 &&
+                phase == RegattaLinkDeviceControlPhase.ERROR &&
+                result in setOf(
+                    RegattaLinkDeviceControlResult.BUSY,
+                    RegattaLinkDeviceControlResult.INVALID
+                )
+        }
+
+    if (calypsoCommand && calypsoApplicationErrorCode != null) {
+        return RegattaLinkDeviceControlStatus(
+            opcode = opcode,
+            phase = phase,
+            result = result,
+            requestId = buffer.getInt(4).toUInt(),
+            forwardTrimDeg = 0,
+            heelTrimDeg = 0,
+            pitchTrimDeg = 0,
+            boatFrameValid = false,
+            gyroBiasValid = false,
+            mountingEpoch = 0u,
+            applicationErrorCode = calypsoApplicationErrorCode
+        )
+    }
 
     if (calypsoCommand) {
         require(flags and REGATTALINK_CALYPSO_FLAG_MASK.inv() == 0) {
@@ -564,16 +592,6 @@ internal fun parseRegattaLinkDeviceControlStatus(
             }
         }
 
-        val applicationErrorCode =
-            detail.takeIf {
-                it != 0 &&
-                    phase == RegattaLinkDeviceControlPhase.ERROR &&
-                    result in setOf(
-                        RegattaLinkDeviceControlResult.BUSY,
-                        RegattaLinkDeviceControlResult.INVALID
-                    )
-            }
-
         return RegattaLinkDeviceControlStatus(
             opcode = opcode,
             phase = phase,
@@ -585,7 +603,6 @@ internal fun parseRegattaLinkDeviceControlStatus(
             boatFrameValid = false,
             gyroBiasValid = false,
             mountingEpoch = 0u,
-            applicationErrorCode = applicationErrorCode,
             calypso = RegattaLinkCalypsoControlStatus(
                 boundId = idBytes
                     .takeIf { bound }
