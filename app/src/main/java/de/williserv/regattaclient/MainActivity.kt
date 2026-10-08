@@ -977,6 +977,9 @@ class MainActivity : ComponentActivity() {
                             onDrainDiagnosticLog = {
                                 regattaLinkManager.drainDiagnosticLog()
                             },
+                            onStopDiagnosticLog = {
+                                regattaLinkManager.stopDiagnosticLog()
+                            },
                             onDeviceControl = { opcode, value ->
                                 regattaLinkManager.executeDeviceControl(opcode, value)
                             },
