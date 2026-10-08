@@ -368,6 +368,28 @@ class RegattaLinkDeviceControlTest {
     }
 
     @Test
+    fun rejectedCalypsoCommandDoesNotRequireAValidCalypsoPayload() {
+        val raw = ByteArray(REGATTALINK_DEVICE_CONTROL_STATUS_SIZE)
+        val buffer = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
+        raw[0] = REGATTALINK_DEVICE_CONTROL_VERSION.toByte()
+        raw[1] = RegattaLinkDeviceControlOpcode.CALYPSO_SCAN.wireValue.toByte()
+        raw[2] = RegattaLinkDeviceControlPhase.ERROR.wireValue.toByte()
+        raw[3] = RegattaLinkDeviceControlResult.BUSY.wireValue.toByte()
+        buffer.putInt(4, 25)
+        buffer.putShort(8, 99)
+        raw[14] = 0x01
+        raw[15] = 3
+        buffer.putInt(16, 1234)
+
+        val parsed = parseRegattaLinkDeviceControlStatus(raw)
+
+        assertEquals(RegattaLinkDeviceControlOpcode.CALYPSO_SCAN, parsed.opcode)
+        assertEquals(RegattaLinkDeviceControlResult.BUSY, parsed.result)
+        assertEquals(3, parsed.applicationErrorCode)
+        assertNull(parsed.calypso)
+    }
+
+    @Test
     fun calypsoResultCodesAndTimeoutPolicyMatchFirmwareContract() {
         assertEquals(
             RegattaLinkDeviceControlResult.NOT_FOUND,
