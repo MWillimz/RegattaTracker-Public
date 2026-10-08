@@ -4419,6 +4419,7 @@ internal class RegattaLinkBleClient(
 
         otaExecutor.execute {
             var errorMessage = ""
+            var lastUiPublishMs = SystemClock.elapsedRealtime()
             try {
                 val characteristic = activeGatt.getService(CONFIG_SERVICE_UUID)
                     ?.getCharacteristic(DIAGNOSTIC_LOG_UUID)
@@ -4447,16 +4448,13 @@ internal class RegattaLinkBleClient(
                         }
                         Thread.sleep(100L)
                     } else {
-                        diagnosticLogBuffer.add(parsed)
-                        if (diagnosticLogBuffer.size > 2000) {
-                            diagnosticLogBuffer.subList(
-                                0, diagnosticLogBuffer.size - 2000
-                            ).clear()
-                        }
-                        if (gatt === activeGatt && connected) {
-                            updateConfiguration {
-                                it.copy(diagnosticLogEntries = diagnosticLogBuffer.toList())
-                            }
+                        regattaLinkAppendDiagnosticEntry(diagnosticLogBuffer, parsed)
+                    }
+                    val now = SystemClock.elapsedRealtime()
+                    if (now - lastUiPublishMs >= 100L && gatt === activeGatt && connected) {
+                        lastUiPublishMs = now
+                        updateConfiguration {
+                            it.copy(diagnosticLogEntries = diagnosticLogBuffer.toList())
                         }
                     }
                 }
