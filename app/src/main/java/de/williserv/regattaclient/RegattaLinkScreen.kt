@@ -471,6 +471,7 @@ internal fun RegattaLinkScreen(
                 onApplySubsystemConfigAndRestart =
                     onApplySubsystemConfigAndRestart,
                 onDrainDiagnosticLog = onDrainDiagnosticLog,
+                onStopDiagnosticLog = onStopDiagnosticLog,
                 onCanErrorTrace = {
                     onDeviceControl(
                         RegattaLinkDeviceControlOpcode.CAN_ERROR_TRACE_60S,
@@ -2264,6 +2265,7 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
     onSetLedBrightness: (Int) -> Unit,
     onApplySubsystemConfigAndRestart: (UInt) -> Unit,
     onDrainDiagnosticLog: () -> Unit,
+    onStopDiagnosticLog: () -> Unit,
     onCanErrorTrace: () -> Unit,
     onReadRawFrames: () -> Unit,
     onStartRawCapture: () -> Unit,
@@ -2307,6 +2309,21 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
             !configurationState.deviceControlBusy &&
             !configurationState.diagnosticLogLoading &&
             !nmeaState.rawCanReading
+    val traceDeadline = configurationState.diagnosticTraceEndElapsedMs
+    var traceRemainingSeconds by remember { mutableStateOf(0) }
+    LaunchedEffect(traceDeadline) {
+        if (traceDeadline == 0L) {
+            traceRemainingSeconds = 0
+        } else {
+            while (true) {
+                traceRemainingSeconds = (
+                    (traceDeadline - SystemClock.elapsedRealtime() + 999L) / 1000L
+                ).coerceAtLeast(0L).toInt()
+                if (traceRemainingSeconds == 0) break
+                delay(250L)
+            }
+        }
+    }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -2604,6 +2621,12 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
                             )
                         )
                     }
+                }
+                if (traceRemainingSeconds > 0) {
+                    Text(
+                        text = "CAN error trace: ${traceRemainingSeconds} s",
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
                 }
                 if (configurationState.diagnosticLogLoading) {
                     Text(
