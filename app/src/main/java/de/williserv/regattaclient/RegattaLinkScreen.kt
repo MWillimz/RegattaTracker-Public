@@ -304,9 +304,11 @@ internal fun RegattaLinkScreen(
     val bluetoothDevicesOpen =
         activeSetupDestination ==
             RegattaLinkSetupDestination.BLUETOOTH_DEVICES
+    // A valid Calypso STATUS response confirms firmware support.
+    val calypsoSupported = connected && configurationState.calypso.statusKnown
 
     LaunchedEffect(
-        bluetoothDevicesOpen,
+        bluetoothDevicesOpen || nmeaSetupOpen,
         connected,
         configurationState.deviceControlSupported,
         deviceControlEnabled,
@@ -314,7 +316,7 @@ internal fun RegattaLinkScreen(
     ) {
         if (
             shouldRefreshCalypsoStatusOnOpen(
-                bluetoothDevicesOpen = bluetoothDevicesOpen,
+                bluetoothDevicesOpen = bluetoothDevicesOpen || nmeaSetupOpen,
                 connected = connected,
                 deviceControlSupported =
                     configurationState.deviceControlSupported,
@@ -436,6 +438,7 @@ internal fun RegattaLinkScreen(
                 connected = connected,
                 configEnabled = configEnabled,
                 deviceControlEnabled = deviceControlEnabled,
+                calypsoSupported = calypsoSupported,
                 onScanCalypso = {
                     onDeviceControl(
                         RegattaLinkDeviceControlOpcode.CALYPSO_SCAN,
@@ -1147,6 +1150,7 @@ private fun RegattaLinkBluetoothDevicesSheet(
     connected: Boolean,
     configEnabled: Boolean,
     deviceControlEnabled: Boolean,
+    calypsoSupported: Boolean,
     onScanCalypso: () -> Unit,
     onApplyBluetoothConfigAndRestart: (UInt) -> Unit,
     onDismiss: () -> Unit
@@ -1264,7 +1268,7 @@ private fun RegattaLinkBluetoothDevicesSheet(
                             enabled
                         )
                     },
-                    enabled = configEnabled && calypsoEnabledDraft != null
+                    enabled = configEnabled && calypsoSupported && calypsoEnabledDraft != null
                 )
             }
 
@@ -1275,7 +1279,8 @@ private fun RegattaLinkBluetoothDevicesSheet(
                     },
                     enabled =
                         configEnabled &&
-                            configurationState.deviceControlSupported,
+                            configurationState.deviceControlSupported &&
+                            calypsoSupported,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 10.dp)
@@ -1286,7 +1291,7 @@ private fun RegattaLinkBluetoothDevicesSheet(
 
             Button(
                 onClick = onScanCalypso,
-                enabled = connected && deviceControlEnabled,
+                enabled = connected && deviceControlEnabled && calypsoSupported,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 18.dp)
@@ -1745,7 +1750,8 @@ private fun RegattaLinkNmeaSetupSheet(
             if (
                 connected &&
                 canAvailable &&
-                configurationState.configWordSupported
+                configurationState.configWordSupported &&
+                calypsoSupported
             ) {
                 RegattaLinkBoatDataSelectorRow(
                     title = stringResource(
@@ -1761,7 +1767,7 @@ private fun RegattaLinkNmeaSetupSheet(
                     bootMask = configurationState.nmeaBootOutputMask,
                     activeMask = configurationState.nmeaActiveOutputMask,
                     runtimeBit = REGATTALINK_TX_OUTPUT_CALYPSO_WIND,
-                    enabled = configEnabled,
+                    enabled = configEnabled && calypsoSupported,
                     onCheckedChange = { enabled ->
                         txDraft = regattaLinkConfigDraftWithBit(
                             txDraft,
