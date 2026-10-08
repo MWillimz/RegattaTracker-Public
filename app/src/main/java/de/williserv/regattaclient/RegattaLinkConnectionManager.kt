@@ -1390,7 +1390,17 @@ internal class RegattaLinkConnectionManager(
         }
     }
 
-    private fun handleConfigurationState(state: RegattaLinkConfigurationState) {
+    private fun handleConfigurationState(incoming: RegattaLinkConfigurationState) {
+        val state = if (
+            incoming.diagnosticLogEntries.isEmpty() &&
+            configurationState.diagnosticLogEntries.isNotEmpty()
+        ) {
+            incoming.copy(
+                diagnosticLogEntries = configurationState.diagnosticLogEntries
+            )
+        } else {
+            incoming
+        }
         configurationState = state
 
         if (
