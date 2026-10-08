@@ -8,6 +8,16 @@ internal const val REGATTALINK_BOAT_STATE_RECORD_SIZE = 80
 internal const val REGATTALINK_BOAT_STATE_NOTIFICATION_MTU = 83
 internal const val REGATTALINK_MAX_RAW_CAN_READS = 128
 
+data class RegattaLinkCalypsoState(
+    val statusKnown: Boolean = false,
+    val boundId: String? = null,
+    val connected: Boolean = false,
+    val scanning: Boolean = false,
+    val lastScanResult: RegattaLinkDeviceControlResult? = null,
+    val detail: Int = 0,
+    val error: String = ""
+)
+
 data class RegattaLinkConfigurationState(
     val deviceNameSupported: Boolean = false,
     val deviceName: String = "",
@@ -38,6 +48,7 @@ data class RegattaLinkConfigurationState(
     val factoryResetAwaitingDisconnect: Boolean = false,
     val deviceControlStatus: RegattaLinkDeviceControlStatus? = null,
     val deviceControlError: String = "",
+    val calypso: RegattaLinkCalypsoState = RegattaLinkCalypsoState(),
     val busy: Boolean = false,
     val error: String = "",
     val userMessage: RegattaLinkUiMessage? = null
@@ -79,6 +90,16 @@ data class RegattaLinkConfigurationState(
     val compassTxEnabled: Boolean?
         get() = configWord?.let {
             it and REGATTALINK_CONFIG_TX_COMPASS != 0u
+        }
+
+    val calypsoEnabled: Boolean?
+        get() = configWord?.let {
+            it and REGATTALINK_CONFIG_CALYPSO_ENABLE != 0u
+        }
+
+    val calypsoWindTxEnabled: Boolean?
+        get() = configWord?.let {
+            it and REGATTALINK_CONFIG_TX_CALYPSO_WIND != 0u
         }
 
     val magBackgroundLearningEnabled: Boolean?
@@ -318,7 +339,11 @@ internal const val REGATTALINK_CONFIG_TX_NMEA0183: UInt = 0x00000004u
 internal const val REGATTALINK_CONFIG_TX_PHONE_GPS: UInt = 0x00000008u
 internal const val REGATTALINK_CONFIG_TX_COMPASS: UInt = 0x00000010u
 internal const val REGATTALINK_CONFIG_TX_LOAD: UInt = 0x00000020u
-internal const val REGATTALINK_CONFIG_TX_SELECTION_MASK: UInt = 0x0000001fu
+internal const val REGATTALINK_CONFIG_CALYPSO_ENABLE: UInt = 0x00000040u
+internal const val REGATTALINK_CONFIG_TX_CALYPSO_WIND: UInt = 0x00000080u
+internal const val REGATTALINK_CONFIG_TX_SELECTION_MASK: UInt = 0x0000009fu
+internal const val REGATTALINK_CONFIG_BLUETOOTH_DEVICE_MASK: UInt =
+    REGATTALINK_CONFIG_CALYPSO_ENABLE
 internal const val REGATTALINK_CONFIG_LOAD_PRECISION_X10: UInt = 0x00000100u
 internal const val REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING: UInt = 0x00000200u
 internal const val REGATTALINK_CONFIG_NMEA0183_BAUD_MASK: UInt = 0x0000c000u
@@ -454,6 +479,54 @@ internal fun regattaLinkApplyConfigWord(
         configWord = word
     )
 
+internal fun regattaLinkApplyCalypsoControlStatus(
+    state: RegattaLinkConfigurationState,
+    status: RegattaLinkDeviceControlStatus
+): RegattaLinkConfigurationState {
+    val payload = requireNotNull(status.calypso) {
+        "Calypso state requires a Calypso Device Control status"
+    }
+    require(
+        status.opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN ||
+            status.opcode == RegattaLinkDeviceControlOpcode.CALYPSO_STATUS
+    ) {
+        "Calypso state requires a Calypso Device Control opcode"
+    }
+
+    val lastScanResult = when {
+        status.opcode != RegattaLinkDeviceControlOpcode.CALYPSO_SCAN ->
+            state.calypso.lastScanResult
+        !status.phase.isTerminal ->
+            null
+        else ->
+            status.result
+    }
+
+    return state.copy(
+        calypso = state.calypso.copy(
+            statusKnown = true,
+            boundId = payload.boundId,
+            connected = payload.connected,
+            scanning = payload.scanning,
+            lastScanResult = lastScanResult,
+            detail = payload.detail
+        )
+    )
+}
+
+internal fun regattaLinkApplyObservedDeviceControlStatus(
+    state: RegattaLinkConfigurationState,
+    status: RegattaLinkDeviceControlStatus
+): RegattaLinkConfigurationState =
+    when {
+        status.calypso != null ->
+            regattaLinkApplyCalypsoControlStatus(state, status)
+        status.opcode.isCalypsoCommand() ->
+            state
+        else ->
+            state.copy(deviceControlStatus = status)
+    }
+
 internal fun parseRegattaLinkHeadingTrim(raw: ByteArray): Int {
     require(raw.size == 2) {
         "RegattaLink heading trim must be exactly two bytes"
@@ -483,6 +556,7 @@ internal const val REGATTALINK_TX_OUTPUT_NMEA0183 = 1 shl 1
 internal const val REGATTALINK_TX_OUTPUT_PHONE_GPS = 1 shl 2
 internal const val REGATTALINK_TX_OUTPUT_COMPASS = 1 shl 3
 internal const val REGATTALINK_TX_OUTPUT_LOAD = 1 shl 4
+internal const val REGATTALINK_TX_OUTPUT_CALYPSO_WIND = 1 shl 5
 
 data class RegattaLinkNmeaTxRuntimeStatus(
     val bootMasterSelected: Boolean,
@@ -572,6 +646,11 @@ internal fun regattaLinkNmeaRestartRequired(
             state,
             REGATTALINK_CONFIG_TX_COMPASS,
             REGATTALINK_TX_OUTPUT_COMPASS
+        ) ||
+        regattaLinkOutputRestartRequired(
+            state,
+            REGATTALINK_CONFIG_TX_CALYPSO_WIND,
+            REGATTALINK_TX_OUTPUT_CALYPSO_WIND
         )
 
 internal fun regattaLinkNmeaAppliedStateUnknown(

@@ -190,6 +190,37 @@ class RegattaLinkConfigurationNmeaTest {
     }
 
     @Test
+    fun configWordDecodesCalypsoEnableAndTxBits() {
+        val state = regattaLinkApplyConfigWord(
+            RegattaLinkConfigurationState(),
+            REGATTALINK_CONFIG_CALYPSO_ENABLE or
+                REGATTALINK_CONFIG_TX_CALYPSO_WIND
+        )
+
+        assertEquals(true, state.calypsoEnabled)
+        assertEquals(true, state.calypsoWindTxEnabled)
+    }
+
+    @Test
+    fun bluetoothDeviceDraftOwnsOnlyCalypsoEnableBit() {
+        val original =
+            0xa5a00000u or
+                REGATTALINK_CONFIG_TX_CALYPSO_WIND or
+                REGATTALINK_CONFIG_TX_LOAD
+        val changed = regattaLinkConfigWordWithMask(
+            current = original,
+            mask = REGATTALINK_CONFIG_BLUETOOTH_DEVICE_MASK,
+            encodedBits = REGATTALINK_CONFIG_CALYPSO_ENABLE
+        )
+
+        assertTrue(changed and REGATTALINK_CONFIG_CALYPSO_ENABLE != 0u)
+        assertEquals(
+            original and REGATTALINK_CONFIG_BLUETOOTH_DEVICE_MASK.inv(),
+            changed and REGATTALINK_CONFIG_BLUETOOTH_DEVICE_MASK.inv()
+        )
+    }
+
+    @Test
     fun decodesSubsystemSessionAvailabilityFromConfigWord() {
         val state = regattaLinkApplyConfigWord(
             RegattaLinkConfigurationState(),
@@ -316,13 +347,19 @@ class RegattaLinkConfigurationNmeaTest {
                 REGATTALINK_CONFIG_TX_IMU or
                 REGATTALINK_CONFIG_TX_NMEA0183 or
                 REGATTALINK_CONFIG_TX_PHONE_GPS or
-                REGATTALINK_CONFIG_TX_COMPASS,
+                REGATTALINK_CONFIG_TX_COMPASS or
+                REGATTALINK_CONFIG_TX_CALYPSO_WIND,
             REGATTALINK_CONFIG_TX_SELECTION_MASK
         )
         assertEquals(
             0u,
             REGATTALINK_CONFIG_TX_SELECTION_MASK and
                 REGATTALINK_CONFIG_TX_LOAD
+        )
+        assertEquals(
+            0u,
+            REGATTALINK_CONFIG_TX_SELECTION_MASK and
+                REGATTALINK_CONFIG_CALYPSO_ENABLE
         )
     }
 
@@ -331,6 +368,7 @@ class RegattaLinkConfigurationNmeaTest {
         val original =
             0xa5a00000u or
                 REGATTALINK_CONFIG_TX_LOAD or
+                REGATTALINK_CONFIG_CALYPSO_ENABLE or
                 REGATTALINK_CONFIG_LOAD_PRECISION_X10 or
                 REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING or
                 RegattaLinkNmea0183Baud.BAUD_38400.encodedBits
@@ -492,7 +530,9 @@ class RegattaLinkConfigurationNmeaTest {
             REGATTALINK_CONFIG_TX_IMU to REGATTALINK_TX_OUTPUT_IMU,
             REGATTALINK_CONFIG_TX_NMEA0183 to REGATTALINK_TX_OUTPUT_NMEA0183,
             REGATTALINK_CONFIG_TX_PHONE_GPS to REGATTALINK_TX_OUTPUT_PHONE_GPS,
-            REGATTALINK_CONFIG_TX_COMPASS to REGATTALINK_TX_OUTPUT_COMPASS
+            REGATTALINK_CONFIG_TX_COMPASS to REGATTALINK_TX_OUTPUT_COMPASS,
+            REGATTALINK_CONFIG_TX_CALYPSO_WIND to
+                REGATTALINK_TX_OUTPUT_CALYPSO_WIND
         )
 
         cases.forEach { (configBit, runtimeBit) ->
@@ -510,6 +550,95 @@ class RegattaLinkConfigurationNmeaTest {
             )
             assertFalse(regattaLinkNmeaRestartRequired(applied))
         }
+    }
+
+    @Test
+    fun calypsoControlStatusUpdatesDedicatedStateWithoutReplacingCalibrationStatus() {
+        val calibrationStatus = RegattaLinkDeviceControlStatus(
+            opcode = RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
+            phase = RegattaLinkDeviceControlPhase.SUCCESS,
+            result = RegattaLinkDeviceControlResult.OK,
+            requestId = 1u,
+            forwardTrimDeg = 1,
+            heelTrimDeg = 2,
+            pitchTrimDeg = 3,
+            boatFrameValid = true,
+            gyroBiasValid = true,
+            mountingEpoch = 4u
+        )
+        val calypsoStatus = RegattaLinkDeviceControlStatus(
+            opcode = RegattaLinkDeviceControlOpcode.CALYPSO_STATUS,
+            phase = RegattaLinkDeviceControlPhase.SUCCESS,
+            result = RegattaLinkDeviceControlResult.OK,
+            requestId = 2u,
+            forwardTrimDeg = 0,
+            heelTrimDeg = 0,
+            pitchTrimDeg = 0,
+            boatFrameValid = false,
+            gyroBiasValid = false,
+            mountingEpoch = 0u,
+            calypso = RegattaLinkCalypsoControlStatus(
+                boundId = "AA:BB:CC:DD:EE:FF",
+                bound = true,
+                connected = true,
+                scanning = false,
+                detail = 0
+            )
+        )
+
+        val state = regattaLinkApplyObservedDeviceControlStatus(
+            RegattaLinkConfigurationState(
+                deviceControlStatus = calibrationStatus
+            ),
+            calypsoStatus
+        )
+
+        assertEquals(calibrationStatus, state.deviceControlStatus)
+        assertTrue(state.calypso.statusKnown)
+        assertEquals("AA:BB:CC:DD:EE:FF", state.calypso.boundId)
+        assertTrue(state.calypso.connected)
+    }
+
+    @Test
+    fun failedCalypsoScanKeepsReportedOldBindingAndSurvivesStatusRefresh() {
+        val failed = RegattaLinkDeviceControlStatus(
+            opcode = RegattaLinkDeviceControlOpcode.CALYPSO_SCAN,
+            phase = RegattaLinkDeviceControlPhase.ERROR,
+            result = RegattaLinkDeviceControlResult.AMBIGUOUS,
+            requestId = 3u,
+            forwardTrimDeg = 0,
+            heelTrimDeg = 0,
+            pitchTrimDeg = 0,
+            boatFrameValid = false,
+            gyroBiasValid = false,
+            mountingEpoch = 0u,
+            calypso = RegattaLinkCalypsoControlStatus(
+                boundId = "11:22:33:44:55:66",
+                bound = true,
+                connected = false,
+                scanning = false,
+                detail = 0
+            )
+        )
+        val afterFailure = regattaLinkApplyCalypsoControlStatus(
+            RegattaLinkConfigurationState(),
+            failed
+        )
+        val refreshed = regattaLinkApplyCalypsoControlStatus(
+            afterFailure,
+            failed.copy(
+                opcode = RegattaLinkDeviceControlOpcode.CALYPSO_STATUS,
+                phase = RegattaLinkDeviceControlPhase.SUCCESS,
+                result = RegattaLinkDeviceControlResult.OK,
+                requestId = 4u
+            )
+        )
+
+        assertEquals(
+            RegattaLinkDeviceControlResult.AMBIGUOUS,
+            refreshed.calypso.lastScanResult
+        )
+        assertEquals("11:22:33:44:55:66", refreshed.calypso.boundId)
     }
 
     @Test

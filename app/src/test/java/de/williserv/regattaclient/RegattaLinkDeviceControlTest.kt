@@ -222,6 +222,205 @@ class RegattaLinkDeviceControlTest {
             8,
             RegattaLinkDeviceControlOpcode.CAN_ERROR_TRACE_60S.wireValue
         )
+        assertEquals(9, RegattaLinkDeviceControlOpcode.CALYPSO_SCAN.wireValue)
+        assertEquals(10, RegattaLinkDeviceControlOpcode.CALYPSO_STATUS.wireValue)
+    }
+
+    @Test
+    fun calypsoCommandsRequireZeroValueAndUseFrozenOpcodes() {
+        val scan = buildRegattaLinkDeviceControlRequest(
+            RegattaLinkDeviceControlOpcode.CALYPSO_SCAN,
+            21u,
+            0
+        )
+        val status = buildRegattaLinkDeviceControlRequest(
+            RegattaLinkDeviceControlOpcode.CALYPSO_STATUS,
+            22u,
+            0
+        )
+
+        assertEquals(9, scan[1].toInt() and 0xff)
+        assertEquals(10, status[1].toInt() and 0xff)
+        assertEquals(
+            RegattaLinkDeviceControlOpcode.CALYPSO_SCAN,
+            RegattaLinkDeviceControlOpcode.fromWire(9)
+        )
+        assertEquals(
+            RegattaLinkDeviceControlOpcode.CALYPSO_STATUS,
+            RegattaLinkDeviceControlOpcode.fromWire(10)
+        )
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun calypsoScanRejectsNonZeroValue() {
+        buildRegattaLinkDeviceControlRequest(
+            RegattaLinkDeviceControlOpcode.CALYPSO_SCAN,
+            23u,
+            1
+        )
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun calypsoStatusRejectsNonZeroValue() {
+        buildRegattaLinkDeviceControlRequest(
+            RegattaLinkDeviceControlOpcode.CALYPSO_STATUS,
+            24u,
+            -1
+        )
+    }
+
+    @Test
+    fun calypsoStatusParsesCanonicalIdAndRuntimeFlags() {
+        val raw = ByteArray(REGATTALINK_DEVICE_CONTROL_STATUS_SIZE)
+        val buffer = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
+        raw[0] = REGATTALINK_DEVICE_CONTROL_VERSION.toByte()
+        raw[1] = RegattaLinkDeviceControlOpcode.CALYPSO_STATUS.wireValue.toByte()
+        raw[2] = RegattaLinkDeviceControlPhase.SUCCESS.wireValue.toByte()
+        raw[3] = RegattaLinkDeviceControlResult.OK.wireValue.toByte()
+        buffer.putInt(4, 0x10203040)
+        byteArrayOf(
+            0xaa.toByte(),
+            0xbb.toByte(),
+            0xcc.toByte(),
+            0xdd.toByte(),
+            0xee.toByte(),
+            0xff.toByte()
+        ).copyInto(raw, destinationOffset = 8)
+        raw[14] = 0x18
+        raw[15] = 7
+
+        val parsed = parseRegattaLinkDeviceControlStatus(raw)
+        val calypso = requireNotNull(parsed.calypso)
+
+        assertEquals("AA:BB:CC:DD:EE:FF", calypso.boundId)
+        assertTrue(calypso.bound)
+        assertTrue(calypso.connected)
+        assertFalse(calypso.scanning)
+        assertEquals(7, calypso.detail)
+        assertNull(parsed.applicationErrorCode)
+        assertEquals(0, parsed.forwardTrimDeg)
+        assertEquals(0u, parsed.mountingEpoch)
+    }
+
+    @Test
+    fun unboundCalypsoStatusIsSuccessfulWithNoId() {
+        val raw = ByteArray(REGATTALINK_DEVICE_CONTROL_STATUS_SIZE)
+        raw[0] = REGATTALINK_DEVICE_CONTROL_VERSION.toByte()
+        raw[1] = RegattaLinkDeviceControlOpcode.CALYPSO_STATUS.wireValue.toByte()
+        raw[2] = RegattaLinkDeviceControlPhase.SUCCESS.wireValue.toByte()
+        raw[3] = RegattaLinkDeviceControlResult.OK.wireValue.toByte()
+
+        val parsed = parseRegattaLinkDeviceControlStatus(raw)
+        val calypso = requireNotNull(parsed.calypso)
+
+        assertFalse(calypso.bound)
+        assertFalse(calypso.connected)
+        assertNull(calypso.boundId)
+        assertEquals(RegattaLinkDeviceControlResult.OK, parsed.result)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun connectedCalypsoRequiresBoundFlag() {
+        val raw = ByteArray(REGATTALINK_DEVICE_CONTROL_STATUS_SIZE)
+        raw[0] = REGATTALINK_DEVICE_CONTROL_VERSION.toByte()
+        raw[1] = RegattaLinkDeviceControlOpcode.CALYPSO_STATUS.wireValue.toByte()
+        raw[2] = RegattaLinkDeviceControlPhase.SUCCESS.wireValue.toByte()
+        raw[3] = RegattaLinkDeviceControlResult.OK.wireValue.toByte()
+        raw[14] = 0x10
+
+        parseRegattaLinkDeviceControlStatus(raw)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun unboundCalypsoRejectsNonZeroId() {
+        val raw = ByteArray(REGATTALINK_DEVICE_CONTROL_STATUS_SIZE)
+        raw[0] = REGATTALINK_DEVICE_CONTROL_VERSION.toByte()
+        raw[1] = RegattaLinkDeviceControlOpcode.CALYPSO_STATUS.wireValue.toByte()
+        raw[2] = RegattaLinkDeviceControlPhase.SUCCESS.wireValue.toByte()
+        raw[3] = RegattaLinkDeviceControlResult.OK.wireValue.toByte()
+        raw[8] = 1
+
+        parseRegattaLinkDeviceControlStatus(raw)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun calypsoStatusRejectsNonZeroReservedTail() {
+        val raw = ByteArray(REGATTALINK_DEVICE_CONTROL_STATUS_SIZE)
+        raw[0] = REGATTALINK_DEVICE_CONTROL_VERSION.toByte()
+        raw[1] = RegattaLinkDeviceControlOpcode.CALYPSO_STATUS.wireValue.toByte()
+        raw[2] = RegattaLinkDeviceControlPhase.SUCCESS.wireValue.toByte()
+        raw[3] = RegattaLinkDeviceControlResult.OK.wireValue.toByte()
+        raw[16] = 1
+
+        parseRegattaLinkDeviceControlStatus(raw)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun legacyDeviceControlStillRejectsCalypsoFlags() {
+        val raw = ByteArray(REGATTALINK_DEVICE_CONTROL_STATUS_SIZE)
+        raw[0] = REGATTALINK_DEVICE_CONTROL_VERSION.toByte()
+        raw[1] = RegattaLinkDeviceControlOpcode.ADJUST_HEEL.wireValue.toByte()
+        raw[2] = RegattaLinkDeviceControlPhase.SUCCESS.wireValue.toByte()
+        raw[3] = RegattaLinkDeviceControlResult.OK.wireValue.toByte()
+        raw[14] = 0x08
+
+        parseRegattaLinkDeviceControlStatus(raw)
+    }
+
+    @Test
+    fun rejectedCalypsoCommandDoesNotRequireAValidCalypsoPayload() {
+        val raw = ByteArray(REGATTALINK_DEVICE_CONTROL_STATUS_SIZE)
+        val buffer = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
+        raw[0] = REGATTALINK_DEVICE_CONTROL_VERSION.toByte()
+        raw[1] = RegattaLinkDeviceControlOpcode.CALYPSO_SCAN.wireValue.toByte()
+        raw[2] = RegattaLinkDeviceControlPhase.ERROR.wireValue.toByte()
+        raw[3] = RegattaLinkDeviceControlResult.BUSY.wireValue.toByte()
+        buffer.putInt(4, 25)
+        buffer.putShort(8, 99)
+        raw[14] = 0x01
+        raw[15] = 3
+        buffer.putInt(16, 1234)
+
+        val parsed = parseRegattaLinkDeviceControlStatus(raw)
+
+        assertEquals(RegattaLinkDeviceControlOpcode.CALYPSO_SCAN, parsed.opcode)
+        assertEquals(RegattaLinkDeviceControlResult.BUSY, parsed.result)
+        assertEquals(3, parsed.applicationErrorCode)
+        assertNull(parsed.calypso)
+    }
+
+    @Test
+    fun calypsoResultCodesAndTimeoutPolicyMatchFirmwareContract() {
+        assertEquals(
+            RegattaLinkDeviceControlResult.NOT_FOUND,
+            RegattaLinkDeviceControlResult.fromWire(11)
+        )
+        assertEquals(
+            RegattaLinkDeviceControlResult.AMBIGUOUS,
+            RegattaLinkDeviceControlResult.fromWire(12)
+        )
+        assertEquals(
+            RegattaLinkDeviceControlResult.VERIFY_FAILED,
+            RegattaLinkDeviceControlResult.fromWire(13)
+        )
+        assertEquals(
+            60_000L,
+            regattaLinkDeviceControlClientTimeoutMs(
+                RegattaLinkDeviceControlOpcode.CALYPSO_SCAN
+            )
+        )
+        assertEquals(
+            12_000L,
+            regattaLinkDeviceControlClientTimeoutMs(
+                RegattaLinkDeviceControlOpcode.CALYPSO_STATUS
+            )
+        )
+        assertEquals(
+            12_000L,
+            regattaLinkDeviceControlClientTimeoutMs(
+                RegattaLinkDeviceControlOpcode.RESTART
+            )
+        )
     }
 
     @Test
@@ -592,6 +791,7 @@ class RegattaLinkDeviceControlTest {
             listOf(
                 RegattaLinkSetupDestination.IMU,
                 RegattaLinkSetupDestination.NMEA,
+                RegattaLinkSetupDestination.BLUETOOTH_DEVICES,
                 RegattaLinkSetupDestination.ADVANCED_DIAGNOSTICS,
                 RegattaLinkSetupDestination.FIRMWARE
             ),
@@ -601,6 +801,7 @@ class RegattaLinkDeviceControlTest {
             listOf(
                 R.string.regattalink_setup_imu,
                 R.string.regattalink_setup_nmea,
+                R.string.regattalink_bluetooth_devices,
                 R.string.regattalink_advanced_diagnostics,
                 R.string.regattalink_firmware_title
             ),

@@ -947,6 +947,10 @@ class MainActivity : ComponentActivity() {
                                 regattaLinkManager
                                     .applyTxSelectionAndRestart(encodedBits)
                             },
+                            onApplyBluetoothConfigAndRestart = { encodedBits ->
+                                regattaLinkManager
+                                    .applyBluetoothDeviceConfigAndRestart(encodedBits)
+                            },
                             onSetPhoneGpsRelayEnabled = { enabled ->
                                 setRegattaLinkPhoneGpsRelayEnabled(enabled)
                             },

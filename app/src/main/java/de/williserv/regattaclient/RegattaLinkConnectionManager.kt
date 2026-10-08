@@ -829,6 +829,12 @@ internal class RegattaLinkConnectionManager(
             encodedBits = encodedBits
         )
 
+    fun applyBluetoothDeviceConfigAndRestart(encodedBits: UInt): Boolean =
+        applyConfigBitsAndRestart(
+            mask = REGATTALINK_CONFIG_BLUETOOTH_DEVICE_MASK,
+            encodedBits = encodedBits
+        )
+
     fun applySubsystemSelectionAndRestart(encodedBits: UInt): Boolean =
         applyConfigBitsAndRestart(
             mask = REGATTALINK_CONFIG_SESSION_SUBSYSTEM_MASK,
