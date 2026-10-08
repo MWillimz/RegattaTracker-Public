@@ -706,6 +706,7 @@
     <string name="regattalink_factory_reset_warning">Esto restablece el nombre del RegattaLink, el brillo de los LED, la amortiguación de movimiento, la calibración y las vinculaciones Bluetooth. La conexión se cerrará y habrá que volver a vincular el dispositivo. Si Android sigue mostrando la vinculación anterior, elimina RegattaLink en los ajustes de Bluetooth de Android y vuelve a buscar.</string>
     <string name="regattalink_can_error_trace_60s">Traza CAN 60 s</string>
     <string name="regattalink_read_diagnostic_log">Leer registro de diagnóstico</string>
+    <string name="regattalink_stop_reading">Detener lectura</string>
     <string name="regattalink_loading_diagnostic_log">Leyendo registro de diagnóstico…</string>
     <string name="regattalink_load_precision">Resolución de los sensores de carga</string>
     <string name="regattalink_load_precision_x1">×1 · resolución de 1 kg</string>
