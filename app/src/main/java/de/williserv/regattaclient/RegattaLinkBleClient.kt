@@ -4440,6 +4440,11 @@ internal class RegattaLinkBleClient(
                         readCharacteristicBlocking(activeGatt, characteristic)
                     )
                     if (parsed == null) {
+                        val traceEnd = lastConfigurationState.diagnosticTraceEndElapsedMs
+                        if (traceEnd > 0L && SystemClock.elapsedRealtime() >= traceEnd) {
+                            // The capture interval has ended and the firmware FIFO is empty.
+                            break
+                        }
                         Thread.sleep(100L)
                     } else {
                         diagnosticLogBuffer.add(parsed)
@@ -4465,6 +4470,7 @@ internal class RegattaLinkBleClient(
                         it.copy(
                             diagnosticLogLoading = false,
                             diagnosticLogStreaming = false,
+                            diagnosticTraceEndElapsedMs = 0L,
                             diagnosticLogEntries = diagnosticLogBuffer.toList(),
                             diagnosticLogError = errorMessage
                         )
@@ -5062,27 +5068,7 @@ internal class RegattaLinkBleClient(
                 updateConfiguration {
                     it.copy(diagnosticTraceEndElapsedMs = traceEnd)
                 }
-                if (drainDiagnosticLog()) {
-                    handler.postDelayed({
-                        if (
-                            gatt === activeGatt &&
-                            lastConfigurationState.diagnosticTraceEndElapsedMs == traceEnd
-                        ) {
-                            // Give queued diagnostic entries an additional read window.
-                            handler.postDelayed({
-                                if (
-                                    gatt === activeGatt &&
-                                    lastConfigurationState.diagnosticTraceEndElapsedMs == traceEnd
-                                ) {
-                                    stopDiagnosticLog()
-                                    updateConfiguration {
-                                        it.copy(diagnosticTraceEndElapsedMs = 0L)
-                                    }
-                                }
-                            }, 1000L)
-                        }
-                    }, 60_000L)
-                } else {
+                if (!drainDiagnosticLog()) {
                     updateConfiguration {
                         it.copy(
                             diagnosticTraceEndElapsedMs = 0L,
