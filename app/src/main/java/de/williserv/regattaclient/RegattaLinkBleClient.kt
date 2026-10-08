@@ -4577,6 +4577,7 @@ internal class RegattaLinkBleClient(
                 return@execute
             }
 
+            var refreshCalypsoStatusAfterScan = false
             try {
                 val requestId = nextDeviceControlRequestId()
             updateConfiguration { current ->
@@ -4987,18 +4988,19 @@ internal class RegattaLinkBleClient(
                         }
                     }
                 }
+
+                refreshCalypsoStatusAfterScan =
+                    opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN &&
+                        finalStatus?.phase?.isTerminal == true &&
+                        gatt === activeGatt &&
+                        connected
             }
 
             } finally {
                 deviceControlExecutionGuard.release(execution)
             }
 
-            if (
-                opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN &&
-                finalStatus?.phase?.isTerminal == true &&
-                gatt === activeGatt &&
-                connected
-            ) {
+            if (refreshCalypsoStatusAfterScan) {
                 executeDeviceControl(
                     RegattaLinkDeviceControlOpcode.CALYPSO_STATUS,
                     0
