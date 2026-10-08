@@ -69,6 +69,7 @@ internal class RegattaLinkBleClient(
     private val onTelemetryStateChanged: (RegattaLinkTelemetryState) -> Unit = {},
     private val onConfigurationStateChanged: (RegattaLinkConfigurationState) -> Unit = {},
     private val onNmeaStateChanged: (RegattaLinkNmeaState) -> Unit = {},
+    private val onDiscoveryStateChanged: (RegattaLinkDiscoveryState) -> Unit = {},
     private val onFactoryResetRecoveryStateChanged: (Boolean) -> Unit = {},
     private val onUnexpectedDisconnect: () -> Unit = {}
 ) : RegattaLinkOtaTransport, RegattaLinkConnectionClient {
@@ -303,6 +304,8 @@ internal class RegattaLinkBleClient(
     @Volatile private var otaReconnectExpectedStableId: String? = null
     @Volatile private var otaOnlyPostBootConnection = false
     private var selectedDeviceAddress: String? = null
+    private val discoveredDevices =
+        linkedMapOf<String, RegattaLinkDiscoveredDevice>()
     private val attemptedDiscoveryAddresses = mutableSetOf<String>()
     private var discoveryInProgress = false
     private var discoveryCandidateInProgress = false
@@ -325,6 +328,11 @@ internal class RegattaLinkBleClient(
             reconnectFuture?.complete(null)
         } else if (scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT) {
             retryKnownDeviceReconnect("Configured RegattaLink was not found")
+        } else if (
+            scanPurpose == ScanPurpose.NORMAL &&
+            discoveryInProgress
+        ) {
+            finishDeviceDiscovery()
         } else {
             finishManualDiscovery(
                 regattaLinkManualDiscoveryExhaustedMessage(
@@ -347,7 +355,7 @@ internal class RegattaLinkBleClient(
                 "Configured RegattaLink connection setup timed out"
             )
         } else if (device != null) {
-            if (discoveryInProgress) {
+            if (discoveryInProgress && discoveryCandidateInProgress) {
                 retryDiscoveryAfterCandidateFailure()
             } else {
                 emitError(
@@ -537,9 +545,18 @@ internal class RegattaLinkBleClient(
             if (!scanActive) return
             val device = result.device
             if (scanPurpose == ScanPurpose.NORMAL && discoveryInProgress) {
-                if (discoveryCandidateInProgress) return
-                if (!attemptedDiscoveryAddresses.add(device.address)) return
-                discoveryCandidateInProgress = true
+                discoveredDevices[device.address] = RegattaLinkDiscoveredDevice(
+                    deviceAddress = device.address,
+                    deviceName = deviceName(device),
+                    bonded = device.bondState == BluetoothDevice.BOND_BONDED
+                )
+                emitDiscovery(
+                    RegattaLinkDiscoveryState(
+                        scanning = true,
+                        devices = discoveredDevices.values.toList()
+                    )
+                )
+                return
             }
             if (
                 scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT &&
@@ -559,6 +576,11 @@ internal class RegattaLinkBleClient(
                 reconnectFuture?.complete(null)
             } else if (scanPurpose == ScanPurpose.KNOWN_DEVICE_RECONNECT) {
                 retryKnownDeviceReconnect("Bluetooth scan failed ($errorCode)")
+            } else if (
+                scanPurpose == ScanPurpose.NORMAL &&
+                discoveryInProgress
+            ) {
+                finishDeviceDiscovery(RegattaLinkUiMessage.CONNECTION_FAILED)
             } else {
                 finishManualDiscovery("Bluetooth scan failed ($errorCode)")
             }
@@ -1047,15 +1069,22 @@ internal class RegattaLinkBleClient(
 
     override fun startDiscovery(): Boolean {
         if (otaRunning.get()) return false
-        factoryResetDisconnectTracker.clearAll()
-        restartDisconnectTracker.clearAll()
+
+        val keepEstablishedConnection =
+            establishedConnection &&
+                connected &&
+                gatt != null &&
+                lastState.status == RegattaLinkConnectionStatus.CONNECTED
+
         cancelKnownDeviceReconnect()
-        clearTelemetry()
-        clearConfiguration()
-        clearNmea()
-        diagnosticLogRunning.set(false)
-        deviceControlExecutionGuard.clear()
-        selectedDeviceAddress = null
+        stopScan()
+        handler.removeCallbacks(bondPoll)
+        if (!keepEstablishedConnection) {
+            closeGatt()
+            currentDevice = null
+        }
+
+        discoveredDevices.clear()
         attemptedDiscoveryAddresses.clear()
         discoveryInProgress = true
         discoveryCandidateInProgress = false
@@ -1064,18 +1093,16 @@ internal class RegattaLinkBleClient(
         discoveryStaleBondFailureObserved = false
         discoveryDeadlineMs =
             SystemClock.elapsedRealtime() + REGATTALINK_MANUAL_DISCOVERY_TIMEOUT_MS
-        stopScan()
-        handler.removeCallbacks(bondPoll)
-        closeGatt()
-        currentDevice = null
         scanPurpose = ScanPurpose.NORMAL
 
         val adapter = bluetoothManager.adapter
         if (adapter == null || !adapter.isEnabled) {
-            finishManualDiscovery(
-                message = "Bluetooth is disabled",
-                userMessage = RegattaLinkUiMessage.BLUETOOTH_DISABLED,
-                status = RegattaLinkConnectionStatus.BLUETOOTH_OFF
+            finishDeviceDiscovery(RegattaLinkUiMessage.BLUETOOTH_DISABLED)
+            emit(
+                RegattaLinkClientState(
+                    status = RegattaLinkConnectionStatus.BLUETOOTH_OFF,
+                    userMessage = RegattaLinkUiMessage.BLUETOOTH_DISABLED
+                )
             )
             return true
         }
@@ -1083,16 +1110,14 @@ internal class RegattaLinkBleClient(
         scanner = adapter.bluetoothLeScanner
         val activeScanner = scanner
         if (activeScanner == null) {
-            finishManualDiscovery(
-                "Bluetooth LE is unavailable",
-                RegattaLinkUiMessage.BLUETOOTH_UNAVAILABLE
-            )
+            finishDeviceDiscovery(RegattaLinkUiMessage.BLUETOOTH_UNAVAILABLE)
             return true
         }
 
-        emit(
-            RegattaLinkClientState(
-                status = RegattaLinkConnectionStatus.SCANNING
+        emitDiscovery(
+            RegattaLinkDiscoveryState(
+                scanning = true,
+                devices = emptyList()
             )
         )
         startFilteredScan(
@@ -1102,6 +1127,43 @@ internal class RegattaLinkBleClient(
                 SystemClock.elapsedRealtime()
             ).coerceAtLeast(1L)
         )
+        return true
+    }
+
+    override fun connectDiscoveredDevice(deviceAddress: String): Boolean {
+        if (otaRunning.get() || deviceAddress.isBlank()) return false
+        val candidate = discoveredDevices[deviceAddress] ?: return false
+        val adapter = bluetoothManager.adapter
+        if (adapter == null || !adapter.isEnabled) return false
+
+        val device = runCatching {
+            adapter.getRemoteDevice(candidate.deviceAddress)
+        }.getOrNull() ?: return false
+
+        stopScan()
+        discoveryInProgress = false
+        discoveryCandidateInProgress = false
+        discoveryDeadlineMs = 0L
+        emitDiscovery(
+            RegattaLinkDiscoveryState(
+                scanning = false,
+                devices = discoveredDevices.values.toList()
+            )
+        )
+
+        cancelKnownDeviceReconnect()
+        handler.removeCallbacks(bondPoll)
+        handler.removeCallbacks(gattTimeout)
+        stopRawCanCapture(RegattaLinkRawCaptureStopReason.INTERRUPTED)
+        closeGatt()
+        clearTelemetry()
+        clearConfiguration()
+        clearNmea()
+        diagnosticLogRunning.set(false)
+        deviceControlExecutionGuard.clear()
+        currentDevice = null
+        scanPurpose = ScanPurpose.NORMAL
+        prepareDevice(device)
         return true
     }
 
@@ -1292,6 +1354,8 @@ internal class RegattaLinkBleClient(
         discoveryStaleBondFailureObserved = false
         discoveryDeadlineMs = 0L
         attemptedDiscoveryAddresses.clear()
+        discoveredDevices.clear()
+        emitDiscovery(RegattaLinkDiscoveryState())
         emit(RegattaLinkClientState())
     }
 
@@ -1481,6 +1545,12 @@ internal class RegattaLinkBleClient(
         discoveryStaleBondFailureObserved = false
         discoveryDeadlineMs = 0L
         attemptedDiscoveryAddresses.clear()
+        discoveredDevices.clear()
+        emitDiscovery(
+            RegattaLinkDiscoveryState(
+                userMessage = RegattaLinkUiMessage.BLUETOOTH_DISABLED
+            )
+        )
         emit(
             RegattaLinkClientState(
                 status = RegattaLinkConnectionStatus.BLUETOOTH_OFF,
@@ -1729,6 +1799,26 @@ internal class RegattaLinkBleClient(
         )
     }
 
+    private fun finishDeviceDiscovery(
+        userMessage: RegattaLinkUiMessage? = null
+    ) {
+        stopScan()
+        discoveryInProgress = false
+        discoveryCandidateInProgress = false
+        discoveryCandidateBondingObserved = false
+        discoveryCandidateStartedBonded = false
+        discoveryStaleBondFailureObserved = false
+        discoveryDeadlineMs = 0L
+        attemptedDiscoveryAddresses.clear()
+        emitDiscovery(
+            RegattaLinkDiscoveryState(
+                scanning = false,
+                devices = discoveredDevices.values.toList(),
+                userMessage = userMessage
+            )
+        )
+    }
+
     private fun finishManualDiscovery(
         message: String,
         userMessage: RegattaLinkUiMessage = RegattaLinkUiMessage.CONNECTION_FAILED,
@@ -1917,7 +2007,7 @@ internal class RegattaLinkBleClient(
         if (!device.createBond()) {
             if (scanPurpose == ScanPurpose.OTA_RECONNECT) {
                 reconnectFuture?.complete(null)
-            } else if (discoveryInProgress) {
+            } else if (discoveryInProgress && discoveryCandidateInProgress) {
                 retryDiscoveryAfterCandidateFailure()
             } else {
                 emitError(
@@ -1970,7 +2060,7 @@ internal class RegattaLinkBleClient(
                     "Could not open configured RegattaLink connection",
                     RegattaLinkUiMessage.CONNECTION_OPEN_FAILED
                 )
-            } else if (discoveryInProgress) {
+            } else if (discoveryInProgress && discoveryCandidateInProgress) {
                 retryDiscoveryAfterCandidateFailure()
             } else {
                 emitError(
@@ -3145,7 +3235,10 @@ internal class RegattaLinkBleClient(
                     )
                 )
             }.onSuccess { status ->
-                next = next.copy(deviceControlStatus = status)
+                next = regattaLinkApplyObservedDeviceControlStatus(
+                    next,
+                    status
+                )
             }.onFailure { error ->
                 if (errorMessage.isBlank()) {
                     errorMessage = error.message
@@ -4484,16 +4577,35 @@ internal class RegattaLinkBleClient(
                 return@execute
             }
 
+            var refreshCalypsoStatusAfterScan = false
             try {
                 val requestId = nextDeviceControlRequestId()
-            updateConfiguration {
-                it.copy(
-                    deviceControlBusy = true,
-                    deviceControlAcceptedOpcode = null,
-                    deviceControlAcceptedRequestId = null,
-                    factoryResetWriteAcceptedRequestId = null,
-                    deviceControlError = ""
-                )
+            updateConfiguration { current ->
+                if (
+                    opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN ||
+                    opcode == RegattaLinkDeviceControlOpcode.CALYPSO_STATUS
+                ) {
+                    current.copy(
+                        deviceControlBusy = true,
+                        deviceControlAcceptedOpcode = null,
+                        deviceControlAcceptedRequestId = null,
+                        factoryResetWriteAcceptedRequestId = null,
+                        calypso =
+                            if (opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN) {
+                                current.calypso.copy(error = "")
+                            } else {
+                                current.calypso
+                            }
+                    )
+                } else {
+                    current.copy(
+                        deviceControlBusy = true,
+                        deviceControlAcceptedOpcode = null,
+                        deviceControlAcceptedRequestId = null,
+                        factoryResetWriteAcceptedRequestId = null,
+                        deviceControlError = ""
+                    )
+                }
             }
 
             var finalStatus: RegattaLinkDeviceControlStatus? = null
@@ -4547,7 +4659,7 @@ internal class RegattaLinkBleClient(
                 var requestAcceptanceObserved = false
                 val commandDeadline =
                     SystemClock.elapsedRealtime() +
-                        REGATTALINK_DEVICE_CONTROL_CLIENT_TIMEOUT_MS
+                        regattaLinkDeviceControlClientTimeoutMs(opcode)
                 while (true) {
                     val now = SystemClock.elapsedRealtime()
                     val activeDeadline =
@@ -4637,11 +4749,23 @@ internal class RegattaLinkBleClient(
 
                         RegattaLinkDeviceControlPollDecision.CONTINUE -> {
                             finalStatus = status
-                            updateConfiguration {
-                                it.copy(
-                                    deviceControlSupported = true,
-                                    deviceControlStatus = status,
-                                    deviceControlError = ""
+                            updateConfiguration { current ->
+                                regattaLinkApplyObservedDeviceControlStatus(
+                                    current.copy(
+                                        deviceControlSupported = true,
+                                        deviceControlError =
+                                            if (status.calypso == null) "" else current.deviceControlError,
+                                        calypso =
+                                            if (
+                                                status.calypso != null &&
+                                                opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN
+                                            ) {
+                                                current.calypso.copy(error = "")
+                                            } else {
+                                                current.calypso
+                                            }
+                                    ),
+                                    status
                                 )
                             }
                         }
@@ -4675,11 +4799,20 @@ internal class RegattaLinkBleClient(
                                     )
                                 }
                             } else {
-                                updateConfiguration {
-                                    it.copy(
-                                        deviceControlSupported = true,
-                                        deviceControlStatus = status,
-                                        deviceControlError = ""
+                                updateConfiguration { current ->
+                                    regattaLinkApplyObservedDeviceControlStatus(
+                                        current.copy(
+                                            deviceControlSupported = true,
+                                            deviceControlError =
+                                                if (status.calypso == null) "" else current.deviceControlError,
+                                            calypso =
+                                                if (status.calypso != null) {
+                                                    current.calypso.copy(error = "")
+                                                } else {
+                                                    current.calypso
+                                                }
+                                        ),
+                                        status
                                     )
                                 }
                                 break
@@ -4703,12 +4836,15 @@ internal class RegattaLinkBleClient(
                                     )
                                 }
                             } else {
-                                updateConfiguration {
-                                    it.copy(
-                                        deviceControlSupported = true,
-                                        factoryResetAwaitingDisconnect = false,
-                                        deviceControlStatus = status,
-                                        deviceControlError = ""
+                                updateConfiguration { current ->
+                                    regattaLinkApplyObservedDeviceControlStatus(
+                                        current.copy(
+                                            deviceControlSupported = true,
+                                            factoryResetAwaitingDisconnect = false,
+                                            deviceControlError =
+                                                if (status.calypso == null) "" else current.deviceControlError
+                                        ),
+                                        status
                                     )
                                 }
                                 throw RegattaLinkOtaTransportException(
@@ -4823,15 +4959,68 @@ internal class RegattaLinkBleClient(
                             opcode == RegattaLinkDeviceControlOpcode.RESTART &&
                                 finalStatus?.phase == RegattaLinkDeviceControlPhase.SUCCESS &&
                                 finalStatus?.result == RegattaLinkDeviceControlResult.OK,
-                            deviceControlStatus = finalStatus,
-                            deviceControlError = errorMessage
-                        )
+                            deviceControlStatus =
+                                if (finalStatus?.opcode.isCalypsoCommand()) {
+                                    current.deviceControlStatus
+                                } else {
+                                    finalStatus
+                                },
+                            deviceControlError =
+                                if (
+                                    opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN ||
+                                    opcode == RegattaLinkDeviceControlOpcode.CALYPSO_STATUS
+                                ) {
+                                    current.deviceControlError
+                                } else {
+                                    errorMessage
+                                },
+                            calypso =
+                                when {
+                                    opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN &&
+                                        finalStatus?.result in setOf(
+                                            RegattaLinkDeviceControlResult.NOT_FOUND,
+                                            RegattaLinkDeviceControlResult.AMBIGUOUS,
+                                            RegattaLinkDeviceControlResult.VERIFY_FAILED
+                                        ) ->
+                                        current.calypso.copy(error = "")
+                                    opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN ->
+                                        current.calypso.copy(error = errorMessage)
+                                    opcode == RegattaLinkDeviceControlOpcode.CALYPSO_STATUS &&
+                                        errorMessage.isNotBlank() ->
+                                        current.calypso.copy(error = errorMessage)
+                                    else ->
+                                        current.calypso
+                                }
+                        ).let { base ->
+                            finalStatus
+                                ?.takeIf { it.calypso != null }
+                                ?.let {
+                                    regattaLinkApplyCalypsoControlStatus(
+                                        base,
+                                        it
+                                    )
+                                }
+                                ?: base
+                        }
                     }
                 }
+
+                refreshCalypsoStatusAfterScan =
+                    opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN &&
+                        finalStatus?.phase?.isTerminal == true &&
+                        gatt === activeGatt &&
+                        connected
             }
 
             } finally {
                 deviceControlExecutionGuard.release(execution)
+            }
+
+            if (refreshCalypsoStatusAfterScan) {
+                executeDeviceControl(
+                    RegattaLinkDeviceControlOpcode.CALYPSO_STATUS,
+                    0
+                )
             }
         }
         return true
@@ -6029,7 +6218,7 @@ internal class RegattaLinkBleClient(
                     }
             )
         } else if (!otaRunning.get()) {
-            if (discoveryInProgress) {
+            if (discoveryInProgress && discoveryCandidateInProgress) {
                 retryDiscoveryAfterCandidateFailure(
                     staleBondSecurityFailure =
                         gattStatus?.let(
@@ -6091,6 +6280,12 @@ internal class RegattaLinkBleClient(
 
     private fun deviceName(device: BluetoothDevice): String =
         runCatching { device.name }.getOrNull().orEmpty()
+
+    private fun emitDiscovery(state: RegattaLinkDiscoveryState) {
+        handler.post {
+            onDiscoveryStateChanged(state)
+        }
+    }
 
     private fun emit(state: RegattaLinkClientState) {
         lastState = state

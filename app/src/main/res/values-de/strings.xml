@@ -588,6 +588,19 @@
     <string name="regattalink_settings_title">Einstellungen</string>
     <string name="regattalink_setup">Einrichten</string>
     <string name="regattalink_setup_imu">IMU einrichten</string>
+    <string name="regattalink_bluetooth_devices">Bluetooth-Geräte</string>
+    <string name="regattalink_calypso_wind_sensor">Calypso-Windsensor</string>
+    <string name="regattalink_calypso_bound_sensor">Gebundener Sensor</string>
+    <string name="regattalink_calypso_not_bound">Nicht gebunden</string>
+    <string name="regattalink_calypso_runtime">Status</string>
+    <string name="regattalink_calypso_disconnected">Getrennt</string>
+    <string name="regattalink_calypso_enable">Calypso-Windsensor aktivieren</string>
+    <string name="regattalink_calypso_scan">Nach Calypso suchen</string>
+    <string name="regattalink_calypso_scanning">Suche läuft…</string>
+    <string name="regattalink_calypso_not_found">Kein Calypso-Sensor gefunden.</string>
+    <string name="regattalink_calypso_ambiguous">Mehrere Calypso-Sensoren gefunden. Unerwünschte Sensoren ausschalten oder entfernen und erneut suchen.</string>
+    <string name="regattalink_calypso_verify_failed">Der Calypso-Sensor konnte nicht verifiziert werden.</string>
+    <string name="regattalink_calypso_wind_tx">Calypso-Wind an Boat Data weiterleiten</string>
     <string name="regattalink_setup_nmea">TX einrichten</string>
     <string name="regattalink_advanced_diagnostics">Erweitert / Diagnose</string>
     <string name="regattalink_device_settings">Geräteeinstellungen</string>
@@ -691,6 +704,7 @@
     <string name="regattalink_not_valid">Ungültig</string>
     <string name="regattalink_factory_reset">Werkseinstellungen</string>
     <string name="regattalink_factory_reset_warning">Dabei werden RegattaLink-Name, LED-Helligkeit, Bewegungsdämpfung, Kalibrierung und Bluetooth-Kopplungen zurückgesetzt. Die Verbindung wird getrennt und das Gerät muss neu gekoppelt werden. Falls Android die alte Kopplung weiterhin anzeigt, RegattaLink in den Android-Bluetooth-Einstellungen entfernen und danach erneut suchen.</string>
+    <string name="regattalink_can_error_trace_60s">CAN-Trace 60 s</string>
     <string name="regattalink_read_diagnostic_log">Diagnoseprotokoll lesen</string>
     <string name="regattalink_loading_diagnostic_log">Diagnoseprotokoll wird gelesen…</string>
     <string name="regattalink_load_precision">Auflösung der Lastsensoren</string>
@@ -771,4 +785,11 @@
     <string name="session_metric_acceleration_5s">Beschleunigung (5 s)</string>
     <string name="session_metric_magnetic_heading">Magnetischer Steuerkurs</string>
     <string name="session_metric_true_heading">Rechtweisender Steuerkurs</string>
+
+    <string name="regattalink_devices">Meine RLinks</string>
+    <string name="regattalink_find">RLink suchen</string>
+    <string name="regattalink_selected">Ausgewählt</string>
+    <string name="regattalink_known">Bekannt</string>
+    <string name="regattalink_nearby">In der Nähe</string>
+    <string name="regattalink_no_known_devices">Keine bekannten RLinks</string>
 </resources>

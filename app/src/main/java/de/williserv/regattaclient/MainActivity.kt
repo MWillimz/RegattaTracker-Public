@@ -76,7 +76,9 @@ private enum class PendingTrackingAction {
 
 private enum class PendingRegattaLinkPermissionAction {
     DISCOVER_NEW,
-    RECONNECT_CONFIGURED
+    RECONNECT_CONFIGURED,
+    SELECT_KNOWN,
+    CONNECT_DISCOVERED
 }
 
 
@@ -162,6 +164,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var regattaLinkPhoneGpsRelayStore: RegattaLinkPhoneGpsRelayStore
     private val regattaLinkPhoneGpsRelayEnabled = mutableStateOf(false)
     private val regattaLinkState = mutableStateOf(RegattaLinkClientState())
+    private val regattaLinkDeviceSelectionState =
+        mutableStateOf(RegattaLinkDeviceSelectionState())
     private val regattaLinkFirmwareClient = RegattaLinkFirmwareClient()
     private val regattaLinkFirmwareState = mutableStateOf(RegattaLinkFirmwareUiState())
     private var regattaLinkFirmwareProductionManifest: RegattaLinkFirmwareManifest? = null
@@ -178,12 +182,22 @@ class MainActivity : ComponentActivity() {
     private val regattaLinkRawCaptureState =
         mutableStateOf(RegattaLinkRawCaptureState())
     private var pendingRegattaLinkPermissionAction: PendingRegattaLinkPermissionAction? = null
+    private var pendingRegattaLinkKnownStableId: String? = null
+    private var pendingRegattaLinkDiscoveredAddress: String? = null
     private var regattaLinkReturnScreen: Screen = Screen.BOAT_DATA
 
     private val regattaLinkListener = object : RegattaLinkConnectionListener {
         override fun onConnectionStateChanged(state: RegattaLinkClientState) {
             if (asyncLifetime.isActive()) {
                 regattaLinkState.value = state
+            }
+        }
+
+        override fun onDeviceSelectionStateChanged(
+            state: RegattaLinkDeviceSelectionState
+        ) {
+            if (asyncLifetime.isActive()) {
+                regattaLinkDeviceSelectionState.value = state
             }
         }
 
@@ -486,9 +500,23 @@ class MainActivity : ComponentActivity() {
                     PendingRegattaLinkPermissionAction.RECONNECT_CONFIGURED ->
                         regattaLinkManager.reconnectConfigured()
 
+                    PendingRegattaLinkPermissionAction.SELECT_KNOWN ->
+                        pendingRegattaLinkKnownStableId?.let {
+                            regattaLinkManager.selectKnownDevice(it)
+                        }
+
+                    PendingRegattaLinkPermissionAction.CONNECT_DISCOVERED ->
+                        pendingRegattaLinkDiscoveredAddress?.let {
+                            regattaLinkManager.connectDiscoveredDevice(it)
+                        }
+
                     null -> Unit
                 }
+                pendingRegattaLinkKnownStableId = null
+                pendingRegattaLinkDiscoveredAddress = null
             } else {
+                pendingRegattaLinkKnownStableId = null
+                pendingRegattaLinkDiscoveredAddress = null
                 regattaLinkState.value = RegattaLinkClientState(
                     status = RegattaLinkConnectionStatus.ERROR,
                     userMessage = RegattaLinkUiMessage.BLUETOOTH_PERMISSION_DENIED
@@ -657,7 +685,10 @@ class MainActivity : ComponentActivity() {
                                 regattaLinkHomeStatus(
                                     state = regattaLinkState.value,
                                     pairingRequired =
-                                        regattaLinkManager.requiresNewPairing()
+                                        regattaLinkManager.requiresNewPairing(),
+                                    selectedStableId =
+                                        regattaLinkDeviceSelectionState.value
+                                            .selectedStableId
                                 ),
                             showClearConfirmDialog = showClearConfirmDialog.value,
                             showAdvanced = showAdvanced.value,
@@ -694,7 +725,10 @@ class MainActivity : ComponentActivity() {
                                     regattaLinkHomeStatus(
                                         state = regattaLinkState.value,
                                         pairingRequired =
-                                            regattaLinkManager.requiresNewPairing()
+                                            regattaLinkManager.requiresNewPairing(),
+                                        selectedStableId =
+                                            regattaLinkDeviceSelectionState.value
+                                                .selectedStableId
                                     )
                                 if (
                                     regattaLinkManager.configuredDevice() == null ||
@@ -870,6 +904,8 @@ class MainActivity : ComponentActivity() {
 
                         Screen.REGATTALINK -> RegattaLinkScreen(
                             state = regattaLinkState.value,
+                            deviceSelectionState =
+                                regattaLinkDeviceSelectionState.value,
                             firmwareState = regattaLinkFirmwareState.value,
                             otaState = regattaLinkOtaState.value,
                             telemetryState = regattaLinkTelemetryState.value,
@@ -884,6 +920,10 @@ class MainActivity : ComponentActivity() {
                                 regattaLinkPhoneGpsRelayEnabled.value,
                             modifier = Modifier.padding(innerPadding),
                             onSearch = ::startRegattaLinkConnection,
+                            onSelectKnownDevice =
+                                ::startRegattaLinkKnownDeviceSelection,
+                            onConnectDiscoveredDevice =
+                                ::startRegattaLinkDiscoveredDeviceConnection,
                             onEnableBluetooth = ::requestEnableRegattaLinkBluetooth,
                             onCheckFirmware = ::loadRegattaLinkFirmware,
                             onFirmwareSourceSelected = ::selectRegattaLinkFirmwareSource,
@@ -906,6 +946,10 @@ class MainActivity : ComponentActivity() {
                             onApplyTxConfigAndRestart = { encodedBits ->
                                 regattaLinkManager
                                     .applyTxSelectionAndRestart(encodedBits)
+                            },
+                            onApplyBluetoothConfigAndRestart = { encodedBits ->
+                                regattaLinkManager
+                                    .applyBluetoothDeviceConfigAndRestart(encodedBits)
                             },
                             onSetPhoneGpsRelayEnabled = { enabled ->
                                 setRegattaLinkPhoneGpsRelayEnabled(enabled)
@@ -3439,6 +3483,26 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    private fun startRegattaLinkKnownDeviceSelection(stableId: String) {
+        if (regattaLinkOtaState.value.isActive) return
+        invalidateRegattaLinkFirmwareSelection()
+        pendingRegattaLinkKnownStableId = stableId
+        runRegattaLinkActionWithPermissions(
+            PendingRegattaLinkPermissionAction.SELECT_KNOWN
+        )
+    }
+
+    private fun startRegattaLinkDiscoveredDeviceConnection(
+        deviceAddress: String
+    ) {
+        if (regattaLinkOtaState.value.isActive) return
+        invalidateRegattaLinkFirmwareSelection()
+        pendingRegattaLinkDiscoveredAddress = deviceAddress
+        runRegattaLinkActionWithPermissions(
+            PendingRegattaLinkPermissionAction.CONNECT_DISCOVERED
+        )
+    }
+
     private fun runRegattaLinkActionWithPermissions(
         action: PendingRegattaLinkPermissionAction
     ) {
@@ -3457,7 +3521,19 @@ class MainActivity : ComponentActivity() {
 
                 PendingRegattaLinkPermissionAction.RECONNECT_CONFIGURED ->
                     regattaLinkManager.reconnectConfigured()
+
+                PendingRegattaLinkPermissionAction.SELECT_KNOWN ->
+                    pendingRegattaLinkKnownStableId?.let {
+                        regattaLinkManager.selectKnownDevice(it)
+                    }
+
+                PendingRegattaLinkPermissionAction.CONNECT_DISCOVERED ->
+                    pendingRegattaLinkDiscoveredAddress?.let {
+                        regattaLinkManager.connectDiscoveredDevice(it)
+                    }
             }
+            pendingRegattaLinkKnownStableId = null
+            pendingRegattaLinkDiscoveredAddress = null
         } else {
             pendingRegattaLinkPermissionAction = action
             regattaLinkPermissionLauncher.launch(missing.toTypedArray())

@@ -52,6 +52,12 @@ internal fun regattaLinkUiMessageResource(
         R.string.regattalink_error_device_control_internal_failed
     RegattaLinkUiMessage.CALIBRATION_TIMEOUT ->
         R.string.regattalink_error_calibration_timeout
+    RegattaLinkUiMessage.CALYPSO_NOT_FOUND ->
+        R.string.regattalink_calypso_not_found
+    RegattaLinkUiMessage.CALYPSO_AMBIGUOUS ->
+        R.string.regattalink_calypso_ambiguous
+    RegattaLinkUiMessage.CALYPSO_VERIFY_FAILED ->
+        R.string.regattalink_calypso_verify_failed
     RegattaLinkUiMessage.NAME_CHANGE_FAILED ->
         R.string.regattalink_error_name_change_failed
     RegattaLinkUiMessage.LED_BRIGHTNESS_RANGE ->

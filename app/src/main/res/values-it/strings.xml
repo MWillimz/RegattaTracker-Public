@@ -588,6 +588,19 @@
     <string name="regattalink_settings_title">Impostazioni</string>
     <string name="regattalink_setup">Configura</string>
     <string name="regattalink_setup_imu">Configura IMU</string>
+    <string name="regattalink_bluetooth_devices">Dispositivi Bluetooth</string>
+    <string name="regattalink_calypso_wind_sensor">Sensore del vento Calypso</string>
+    <string name="regattalink_calypso_bound_sensor">Sensore associato</string>
+    <string name="regattalink_calypso_not_bound">Non associato</string>
+    <string name="regattalink_calypso_runtime">Stato</string>
+    <string name="regattalink_calypso_disconnected">Disconnesso</string>
+    <string name="regattalink_calypso_enable">Abilita sensore del vento Calypso</string>
+    <string name="regattalink_calypso_scan">Cerca Calypso</string>
+    <string name="regattalink_calypso_scanning">Ricerca…</string>
+    <string name="regattalink_calypso_not_found">Nessun sensore Calypso trovato.</string>
+    <string name="regattalink_calypso_ambiguous">Sono stati trovati più sensori Calypso. Spegni o allontana i sensori indesiderati e riprova.</string>
+    <string name="regattalink_calypso_verify_failed">Verifica del sensore Calypso non riuscita.</string>
+    <string name="regattalink_calypso_wind_tx">Inoltra vento Calypso a Boat Data</string>
     <string name="regattalink_setup_nmea">Configura TX</string>
     <string name="regattalink_advanced_diagnostics">Avanzate / Diagnostica</string>
     <string name="regattalink_device_settings">Impostazioni dispositivo</string>
@@ -691,6 +704,7 @@
     <string name="regattalink_not_valid">Non valido</string>
     <string name="regattalink_factory_reset">Ripristino di fabbrica</string>
     <string name="regattalink_factory_reset_warning">Questa operazione ripristina nome del RegattaLink, luminosità LED, smorzamento del movimento, calibrazione e abbinamenti Bluetooth. La connessione verrà chiusa e il dispositivo dovrà essere abbinato di nuovo. Se Android mostra ancora il vecchio abbinamento, rimuovi RegattaLink nelle impostazioni Bluetooth di Android e avvia nuovamente la ricerca.</string>
+    <string name="regattalink_can_error_trace_60s">Traccia CAN 60 s</string>
     <string name="regattalink_read_diagnostic_log">Leggi registro diagnostico</string>
     <string name="regattalink_loading_diagnostic_log">Lettura del registro diagnostico…</string>
     <string name="regattalink_load_precision">Risoluzione dei sensori di carico</string>
@@ -771,4 +785,11 @@
     <string name="session_metric_acceleration_5s">Accelerazione (5 s)</string>
     <string name="session_metric_magnetic_heading">Prua magnetica</string>
     <string name="session_metric_true_heading">Prua vera</string>
+
+    <string name="regattalink_devices">I miei RLink</string>
+    <string name="regattalink_find">Trova RLink</string>
+    <string name="regattalink_selected">Selezionato</string>
+    <string name="regattalink_known">Conosciuto</string>
+    <string name="regattalink_nearby">Nelle vicinanze</string>
+    <string name="regattalink_no_known_devices">Nessun RLink conosciuto</string>
 </resources>
