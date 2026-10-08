@@ -2313,7 +2313,7 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
     val diagnosticListState = rememberLazyListState()
     var previousLogCount by remember { mutableStateOf(0) }
     val logEntries = configurationState.diagnosticLogEntries
-    LaunchedEffect(logEntries.size) {
+    LaunchedEffect(logEntries.size, logEntries.lastOrNull()) {
         val wasAtEnd = previousLogCount == 0 ||
             diagnosticListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
                 ?.let { it >= previousLogCount - 1 } != false
