@@ -4984,7 +4984,14 @@ internal class RegattaLinkBleClient(
                                         ) ->
                                         current.calypso.copy(error = "")
                                     opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN ->
-                                        current.calypso.copy(error = errorMessage)
+                                        current.calypso.copy(
+                                            error = errorMessage,
+                                            scanning = if (finalStatus?.phase?.isTerminal == true) {
+                                                current.calypso.scanning
+                                            } else {
+                                                false
+                                            }
+                                        )
                                     opcode == RegattaLinkDeviceControlOpcode.CALYPSO_STATUS &&
                                         errorMessage.isNotBlank() ->
                                         current.calypso.copy(error = errorMessage)
@@ -4999,6 +5006,16 @@ internal class RegattaLinkBleClient(
                                         base,
                                         it
                                     )
+                                }
+                                ?.let { applied ->
+                                    if (
+                                        opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN &&
+                                        finalStatus?.phase?.isTerminal != true
+                                    ) {
+                                        applied.copy(calypso = applied.calypso.copy(scanning = false))
+                                    } else {
+                                        applied
+                                    }
                                 }
                                 ?: base
                         }
