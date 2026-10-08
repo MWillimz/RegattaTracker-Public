@@ -4951,10 +4951,10 @@ internal class RegattaLinkBleClient(
                                 finalStatus?.phase == RegattaLinkDeviceControlPhase.SUCCESS &&
                                 finalStatus?.result == RegattaLinkDeviceControlResult.OK,
                             deviceControlStatus =
-                                if (finalStatus?.calypso == null) {
-                                    finalStatus
-                                } else {
+                                if (finalStatus?.opcode.isCalypsoCommand()) {
                                     current.deviceControlStatus
+                                } else {
+                                    finalStatus
                                 },
                             deviceControlError =
                                 if (
