@@ -472,6 +472,18 @@ internal fun regattaLinkConfigDraftBitChanged(
         draft != null &&
         ((baseline xor draft) and bitMask) != 0u
 
+internal fun regattaLinkAppendDiagnosticEntry(
+    entries: MutableList<RegattaLinkDiagnosticLogEntry>,
+    entry: RegattaLinkDiagnosticLogEntry,
+    limit: Int = 2000
+) {
+    require(limit > 0)
+    entries.add(entry)
+    if (entries.size > limit) {
+        entries.subList(0, entries.size - limit).clear()
+    }
+}
+
 internal fun regattaLinkApplyConfigWord(
     state: RegattaLinkConfigurationState,
     word: UInt
