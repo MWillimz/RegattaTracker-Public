@@ -70,6 +70,19 @@ internal data class RegattaLinkConfigSliderSubmission(
     val confirmedDraft: Float
 )
 
+internal fun shouldRefreshCalypsoStatusOnOpen(
+    bluetoothDevicesOpen: Boolean,
+    connected: Boolean,
+    deviceControlSupported: Boolean,
+    deviceControlEnabled: Boolean,
+    alreadyRequested: Boolean
+): Boolean =
+    bluetoothDevicesOpen &&
+        connected &&
+        deviceControlSupported &&
+        deviceControlEnabled &&
+        !alreadyRequested
+
 @Composable
 private fun regattaLinkRuntimeMessageText(
     userMessage: RegattaLinkUiMessage?,
@@ -300,11 +313,14 @@ internal fun RegattaLinkScreen(
         deviceKey
     ) {
         if (
-            bluetoothDevicesOpen &&
-            connected &&
-            configurationState.deviceControlSupported &&
-            deviceControlEnabled &&
-            !calypsoStatusRequestedForOpen
+            shouldRefreshCalypsoStatusOnOpen(
+                bluetoothDevicesOpen = bluetoothDevicesOpen,
+                connected = connected,
+                deviceControlSupported =
+                    configurationState.deviceControlSupported,
+                deviceControlEnabled = deviceControlEnabled,
+                alreadyRequested = calypsoStatusRequestedForOpen
+            )
         ) {
             calypsoStatusRequestedForOpen = true
             onDeviceControl(
