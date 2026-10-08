@@ -180,6 +180,40 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun configMutationBlocksBothDeviceSwitchPathsUntilFinished() {
+        val second = RegattaLinkConfiguredDevice(
+            stableId = "8899aabbccddeeff",
+            deviceAddress = "44:B1:76:48:31:CE",
+            deviceName = "RegattaLink-31CE"
+        )
+        RegattaLinkConfiguredDeviceStore(context).upsert(second)
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress,
+                deviceInfo = testDeviceInfo(configured.stableId)
+            )
+        )
+        fakeClient.emitConfiguration(RegattaLinkConfigurationState(busy = true))
+
+        assertFalse(manager.selectKnownDevice(second.stableId))
+        assertFalse(manager.connectDiscoveredDevice(second.deviceAddress))
+        assertEquals(configured.stableId, manager.configuredDevice()?.stableId)
+        assertEquals(0, fakeClient.disconnectCalls)
+        assertEquals(0, fakeClient.autoConnectCalls)
+        assertEquals(0, fakeClient.discoveredConnectCalls)
+
+        fakeClient.emitConfiguration(RegattaLinkConfigurationState(busy = false))
+
+        assertTrue(manager.selectKnownDevice(second.stableId))
+        assertEquals(1, fakeClient.disconnectCalls)
+        assertEquals(1, fakeClient.autoConnectCalls)
+        assertEquals(second.stableId, manager.configuredDevice()?.stableId)
+        assertTrue(manager.connectDiscoveredDevice(second.deviceAddress))
+        assertEquals(1, fakeClient.discoveredConnectCalls)
+    }
+
+    @Test
     fun validatedDiscoveredDeviceBecomesKnownAndPreferred() {
         val address = "44:B1:76:48:31:CE"
         val stableId = "8899aabbccddeeff"
