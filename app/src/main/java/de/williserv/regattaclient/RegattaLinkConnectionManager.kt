@@ -285,6 +285,7 @@ internal interface RegattaLinkConnectionClient {
     fun offerPhoneGnss(sample: RegattaLinkPhoneGnssSample): Boolean = false
     fun clearPhoneGnss() = Unit
     fun drainDiagnosticLog(): Boolean = false
+    fun stopDiagnosticLog() = Unit
     fun executeDeviceControl(
         opcode: RegattaLinkDeviceControlOpcode,
         value: Int
@@ -935,6 +936,10 @@ internal class RegattaLinkConnectionManager(
         return true
     }
 
+    fun stopDiagnosticLog() {
+        client.stopDiagnosticLog()
+    }
+
     fun drainDiagnosticLog(): Boolean {
         if (
             !configurationState.diagnosticLogSupported ||
@@ -949,7 +954,7 @@ internal class RegattaLinkConnectionManager(
             handleConfigurationState(
                 configurationState.copy(
                     diagnosticLogLoading = true,
-                    diagnosticLogEntries = emptyList(),
+                    diagnosticLogStreaming = true,
                     diagnosticLogError = ""
                 )
             )
