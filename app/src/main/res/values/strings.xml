@@ -734,6 +734,7 @@
     <string name="regattalink_not_valid">Not valid</string>
     <string name="regattalink_factory_reset">Factory reset</string>
     <string name="regattalink_factory_reset_warning">This resets the RegattaLink name, LED brightness, motion damping, calibration and Bluetooth pairings. The connection will close and the device must be paired again. If Android still shows the old pairing, remove RegattaLink in Android Bluetooth settings before searching again.</string>
+    <string name="regattalink_can_error_trace_60s">CAN trace 60s</string>
     <string name="regattalink_read_diagnostic_log">Read diagnostic log</string>
     <string name="regattalink_loading_diagnostic_log">Reading diagnostic log…</string>
     <string name="regattalink_load_precision">Load sensor resolution</string>
