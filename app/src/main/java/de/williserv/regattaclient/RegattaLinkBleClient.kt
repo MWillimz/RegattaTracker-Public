@@ -4442,6 +4442,9 @@ internal class RegattaLinkBleClient(
                         readCharacteristicBlocking(activeGatt, characteristic)
                     )
                     if (parsed == null) {
+                        // Stop only between reads. An already submitted GATT read finishes
+                        // normally, but must not trigger another poll or idle delay.
+                        if (!diagnosticStreamRequested.get()) break
                         val traceEnd = lastConfigurationState.diagnosticTraceEndElapsedMs
                         if (traceEnd > 0L && SystemClock.elapsedRealtime() >= traceEnd) {
                             // The capture interval has ended and the firmware FIFO is empty.
@@ -4469,8 +4472,9 @@ internal class RegattaLinkBleClient(
             } catch (error: Exception) {
                 errorMessage = error.message ?: "Could not read RegattaLink diagnostic log"
             } finally {
+                // Keep the admission guard held until the last in-flight GATT read
+                // has completed and its result is retained in the phone buffer.
                 diagnosticStreamRequested.set(false)
-                diagnosticLogRunning.set(false)
                 if (gatt === activeGatt && connected) {
                     updateConfiguration {
                         it.copy(
@@ -4482,6 +4486,7 @@ internal class RegattaLinkBleClient(
                         )
                     }
                 }
+                diagnosticLogRunning.set(false)
             }
         }
         return true
