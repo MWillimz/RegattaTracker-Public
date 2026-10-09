@@ -129,6 +129,14 @@ fun HomeScreen(
     hasRaceInfo: Boolean,
     raceStartFlags: RaceStartFlags,
     millisToStart: Long?,
+    raceStartEpochMillis: Long?,
+    onboardingEventKey: String?,
+    onboardingEnteredRace: Boolean,
+    onboardingUploadConfirmed: Boolean,
+    onboardingEvidenceReady: Boolean,
+    onboardingHidden: Boolean,
+    onHideOnboarding: () -> Unit,
+    canEnterRace: Boolean,
     startPanelText: String,
     startPanelMode: String,
     lastCsvLine: String,
@@ -220,6 +228,25 @@ fun HomeScreen(
     val distancePrefix = stringResource(R.string.distance_prefix)
     val dtlPrefix = stringResource(R.string.dtl_prefix)
     val gpsStatus = ""
+    val onboardingNow by produceState(
+        initialValue = System.currentTimeMillis(),
+        onboardingEventKey
+    ) {
+        while (true) {
+            value = System.currentTimeMillis()
+            delay(30_000L)
+        }
+    }
+    val onboardingState = eventOnboardingState(
+        boatSetupConfirmed = setupConfirmed,
+        eventKnown = onboardingEventKey != null,
+        registered = raceRegistered,
+        enteredRace = onboardingEnteredRace,
+        trackingUploadConfirmed = onboardingUploadConfirmed,
+        raceStartEpochMillis = raceStartEpochMillis,
+        canEnterRace = canEnterRace,
+        nowEpochMillis = onboardingNow
+    )
 
     Column(
         modifier = modifier
@@ -232,6 +259,26 @@ fun HomeScreen(
             raceDataReady = raceDataReady,
             seriesDisplayMetadata = seriesDisplayMetadata
         )
+
+        if (
+            !onboardingHidden &&
+            (onboardingEventKey == null || onboardingEvidenceReady)
+        ) {
+            EventOnboardingCard(
+                state = onboardingState,
+                eventKey = onboardingEventKey,
+                suppressed = onboardingHidden,
+                onSuppress = onHideOnboarding,
+                onOpenStep = { step ->
+                    when (step) {
+                        OnboardingStep.BOAT_SETUP -> onBoatData()
+                        OnboardingStep.REGISTER,
+                        OnboardingStep.ENTER_RACE,
+                        OnboardingStep.UPLOAD_CHECK -> onRace()
+                    }
+                }
+            )
+        }
 
         Spacer(modifier = Modifier.height(HomeGapSmall))
 
