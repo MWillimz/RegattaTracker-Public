@@ -120,6 +120,7 @@ fun HomeScreen(
     raceDataReady: Boolean,
     dailyReentryEnabled: Boolean = false,
     raceRegistered: Boolean,
+    onboardingRegistered: Boolean,
     localRaceFinished: Boolean,
     dtlText: String,
     ttlText: String,
@@ -243,7 +244,7 @@ fun HomeScreen(
     val onboardingState = eventOnboardingState(
         boatSetupConfirmed = setupConfirmed,
         eventKnown = onboardingEventKey != null,
-        registered = raceRegistered,
+        registered = onboardingRegistered,
         enteredRace = onboardingEnteredRace,
         trackingUploadConfirmed = onboardingUploadConfirmed,
         raceStartEpochMillis = raceStartEpochMillis,
