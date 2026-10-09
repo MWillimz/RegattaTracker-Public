@@ -852,20 +852,24 @@ class TrackingDbHelper(context: Context) :
                 ON contexts.id = samples.access_context_id
             INNER JOIN tracking_sessions AS sessions
                 ON sessions.id = samples.session_id
-            INNER JOIN race_contexts AS races
+            LEFT JOIN race_contexts AS races
                 ON races.id = samples.race_context_id
             WHERE samples.uploaded = 1
               AND sessions.mode = 'race'
+              AND sessions.access_context_id = contexts.id
               AND contexts.server_url = ?
               AND contexts.access_identifier = ?
               AND contexts.access_secret = ?
-              AND races.resolved_event_name = ?
-              AND races.access_context_id = contexts.id
+              AND (
+                  (races.resolved_event_name = ? AND
+                      races.access_context_id = contexts.id)
+                  OR (races.id IS NULL AND sessions.resolved_event_name = ?)
+              )
             LIMIT 1
             """.trimIndent(),
             arrayOf(
                 key.serverUrl, key.accessIdentifier,
-                key.accessSecret, resolved
+                key.accessSecret, resolved, resolved
             )
         ).use { cursor -> return cursor.moveToFirst() }
     }
