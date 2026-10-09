@@ -856,4 +856,8 @@
     <string name="onboarding_upload_detail">Await a confirmed tracking upload</string>
     <string name="onboarding_dont_show">Do not show</string>
     <string name="onboarding_progress">%1$d of %2$d completed</string>
+    <string name="onboarding_status_done">Done</string>
+    <string name="onboarding_status_current">Next step</string>
+    <string name="onboarding_status_urgent">Time-sensitive</string>
+    <string name="onboarding_status_future">Later</string>
 </resources>
