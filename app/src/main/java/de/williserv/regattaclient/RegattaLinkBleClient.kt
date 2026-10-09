@@ -3106,6 +3106,7 @@ internal class RegattaLinkBleClient(
             service?.getCharacteristic(DEVICE_CONTROL_UUID)
 
         var next = RegattaLinkConfigurationState(
+            diagnosticLogEntries = diagnosticLogBuffer.toList(),
             deviceNameSupported = nameCharacteristic != null,
             ledBrightnessSupported = brightnessCharacteristic != null,
             motionDampingSupported = dampingCharacteristic != null,
@@ -4382,6 +4383,13 @@ internal class RegattaLinkBleClient(
         phoneGnssPending.set(null)
     }
 
+    private val diagnosticStreamRequested = AtomicBoolean(false)
+    private val diagnosticLogBuffer = mutableListOf<RegattaLinkDiagnosticLogEntry>()
+
+    override fun stopDiagnosticLog() {
+        diagnosticStreamRequested.set(false)
+    }
+
     override fun drainDiagnosticLog(): Boolean {
         if (
             !lastConfigurationState.diagnosticLogSupported ||
@@ -4399,28 +4407,20 @@ internal class RegattaLinkBleClient(
             diagnosticLogRunning.set(false)
             return false
         }
-
+        diagnosticStreamRequested.set(true)
         updateConfiguration {
             it.copy(
                 diagnosticLogLoading = true,
-                diagnosticLogEntries = emptyList(),
+                diagnosticLogStreaming = true,
+                diagnosticLogEntries = diagnosticLogBuffer.toList(),
                 diagnosticLogError = ""
             )
         }
 
         otaExecutor.execute {
-            if (!optionalFeatureWorkAllowed(activeGatt)) {
-                diagnosticLogRunning.set(false)
-                if (gatt === activeGatt && connected) {
-                    updateConfiguration {
-                        it.copy(diagnosticLogLoading = false)
-                    }
-                }
-                return@execute
-            }
-
-            val entries = mutableListOf<RegattaLinkDiagnosticLogEntry>()
             var errorMessage = ""
+            var lastUiPublishMs = SystemClock.elapsedRealtime()
+            var unpublishedEntries = false
             try {
                 val characteristic = activeGatt.getService(CONFIG_SERVICE_UUID)
                     ?.getCharacteristic(DIAGNOSTIC_LOG_UUID)
@@ -4428,30 +4428,65 @@ internal class RegattaLinkBleClient(
                         "RegattaLink diagnostic log is unavailable",
                         ambiguous = false
                     )
-
-                for (readIndex in 0 until REGATTALINK_DIAGNOSTIC_LOG_MAX_READS) {
-                    if (!optionalFeatureWorkAllowed(activeGatt)) break
+                while (
+                    diagnosticStreamRequested.get() &&
+                    gatt === activeGatt &&
+                    connected &&
+                    optionalFeatureWorkAllowed(activeGatt) &&
+                    !deviceControlExecutionGuard.isActive() &&
+                    !configurationMutationRunning.get() &&
+                    !otaRunning.get() &&
+                    !rawCaptureRunning.get()
+                ) {
                     val parsed = parseRegattaLinkDiagnosticLogEntry(
                         readCharacteristicBlocking(activeGatt, characteristic)
-                    ) ?: break
-                    entries += parsed
+                    )
+                    if (parsed == null) {
+                        // Stop only between reads. An already submitted GATT read finishes
+                        // normally, but must not trigger another poll or idle delay.
+                        if (!diagnosticStreamRequested.get()) break
+                        val traceEnd = lastConfigurationState.diagnosticTraceEndElapsedMs
+                        if (traceEnd > 0L && SystemClock.elapsedRealtime() >= traceEnd) {
+                            // The capture interval has ended and the firmware FIFO is empty.
+                            break
+                        }
+                        Thread.sleep(100L)
+                    } else {
+                        regattaLinkAppendDiagnosticEntry(diagnosticLogBuffer, parsed)
+                        unpublishedEntries = true
+                    }
+                    val now = SystemClock.elapsedRealtime()
+                    if (
+                        unpublishedEntries &&
+                        now - lastUiPublishMs >= 100L &&
+                        gatt === activeGatt &&
+                        connected
+                    ) {
+                        lastUiPublishMs = now
+                        unpublishedEntries = false
+                        updateConfiguration {
+                            it.copy(diagnosticLogEntries = diagnosticLogBuffer.toList())
+                        }
+                    }
                 }
             } catch (error: Exception) {
-                errorMessage =
-                    error.message ?: "Could not read RegattaLink diagnostic log"
+                errorMessage = error.message ?: "Could not read RegattaLink diagnostic log"
             } finally {
-                diagnosticLogRunning.set(false)
-            }
-
-            if (gatt === activeGatt && connected) {
-                updateConfiguration {
-                    it.copy(
-                        diagnosticLogSupported = true,
-                        diagnosticLogLoading = false,
-                        diagnosticLogEntries = entries,
-                        diagnosticLogError = errorMessage
-                    )
+                // Keep the admission guard held until the last in-flight GATT read
+                // has completed and its result is retained in the phone buffer.
+                diagnosticStreamRequested.set(false)
+                if (gatt === activeGatt && connected) {
+                    updateConfiguration {
+                        it.copy(
+                            diagnosticLogLoading = false,
+                            diagnosticLogStreaming = false,
+                            diagnosticTraceEndElapsedMs = 0L,
+                            diagnosticLogEntries = diagnosticLogBuffer.toList(),
+                            diagnosticLogError = errorMessage
+                        )
+                    }
                 }
+                diagnosticLogRunning.set(false)
             }
         }
         return true
@@ -4578,6 +4613,7 @@ internal class RegattaLinkBleClient(
             }
 
             var refreshCalypsoStatusAfterScan = false
+            var finalStatus: RegattaLinkDeviceControlStatus? = null
             try {
                 val requestId = nextDeviceControlRequestId()
             updateConfiguration { current ->
@@ -4608,7 +4644,6 @@ internal class RegattaLinkBleClient(
                 }
             }
 
-            var finalStatus: RegattaLinkDeviceControlStatus? = null
             var errorMessage = ""
             var factoryResetFinalizationDeadline: Long? = null
             var factoryResetWriteAccepted = false
@@ -5033,6 +5068,26 @@ internal class RegattaLinkBleClient(
                 deviceControlExecutionGuard.release(execution)
             }
 
+            if (
+                opcode == RegattaLinkDeviceControlOpcode.CAN_ERROR_TRACE_60S &&
+                finalStatus?.phase?.isTerminal == true &&
+                finalStatus?.result == RegattaLinkDeviceControlResult.OK &&
+                gatt === activeGatt &&
+                connected
+            ) {
+                val traceEnd = SystemClock.elapsedRealtime() + 60_000L
+                updateConfiguration {
+                    it.copy(diagnosticTraceEndElapsedMs = traceEnd)
+                }
+                if (!drainDiagnosticLog()) {
+                    updateConfiguration {
+                        it.copy(
+                            diagnosticTraceEndElapsedMs = 0L,
+                            diagnosticLogError = "Could not start CAN error trace log reader"
+                        )
+                    }
+                }
+            }
             if (refreshCalypsoStatusAfterScan) {
                 executeDeviceControl(
                     RegattaLinkDeviceControlOpcode.CALYPSO_STATUS,

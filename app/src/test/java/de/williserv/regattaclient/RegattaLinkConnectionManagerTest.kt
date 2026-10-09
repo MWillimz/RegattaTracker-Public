@@ -1567,6 +1567,37 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun diagnosticEntriesRemainVisibleAfterDeviceConfigurationResets() {
+        val entry = RegattaLinkDiagnosticLogEntry(
+            timestamp10ms = 123,
+            message = "CAN ACK"
+        )
+        var observed: RegattaLinkConfigurationState? = null
+        manager.addListener(
+            object : RegattaLinkConnectionListener {
+                override fun onConfigurationStateChanged(state: RegattaLinkConfigurationState) {
+                    observed = state
+                }
+            }
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                diagnosticLogSupported = true,
+                diagnosticLogEntries = listOf(entry)
+            )
+        )
+        fakeClient.emitConfiguration(RegattaLinkConfigurationState())
+
+        assertEquals(listOf(entry), observed?.diagnosticLogEntries)
+    }
+
+    @Test
+    fun stoppingDiagnosticStreamDelegatesToClient() {
+        manager.stopDiagnosticLog()
+        assertEquals(1, fakeClient.diagnosticStopCalls)
+    }
+
+    @Test
     fun acceptedOptionalWorkImmediatelyReservesRawCaptureAdmission() {
         fakeClient.emitConnection(
             RegattaLinkClientState(
@@ -1910,6 +1941,7 @@ class RegattaLinkConnectionManagerTest {
         var setNmeaAttitudeTxCalls = 0
         var applyConfigBitsAndRestartCalls = 0
         var diagnosticDrainCalls = 0
+        var diagnosticStopCalls = 0
         var deviceControlCalls = 0
         var refreshPgnCalls = 0
         var rawReadCalls = 0
@@ -2018,6 +2050,10 @@ class RegattaLinkConnectionManagerTest {
             lastAppliedConfigMask = mask
             lastAppliedConfigBits = encodedBits
             return true
+        }
+
+        override fun stopDiagnosticLog() {
+            diagnosticStopCalls += 1
         }
 
         override fun drainDiagnosticLog(): Boolean {
