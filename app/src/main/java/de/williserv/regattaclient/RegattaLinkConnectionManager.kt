@@ -179,7 +179,8 @@ internal class RegattaLinkConfiguredDeviceStore(context: Context) {
         val pendingStableId =
             prefs.getString(KEY_RESET_PENDING_STABLE_ID, "").orEmpty()
         if (pendingStableId.isBlank()) return true
-        return selected()?.stableId == pendingStableId
+        val selectedStableId = selected()?.stableId
+        return selectedStableId == null || selectedStableId == pendingStableId
     }
 
     private fun knownStableIds(): Set<String> =
@@ -284,6 +285,7 @@ internal interface RegattaLinkConnectionClient {
     fun offerPhoneGnss(sample: RegattaLinkPhoneGnssSample): Boolean = false
     fun clearPhoneGnss() = Unit
     fun drainDiagnosticLog(): Boolean = false
+    fun stopDiagnosticLog() = Unit
     fun executeDeviceControl(
         opcode: RegattaLinkDeviceControlOpcode,
         value: Int
@@ -603,6 +605,7 @@ internal class RegattaLinkConnectionManager(
             deviceAddress.isBlank() ||
             otaState.isActive ||
             factoryResetPending ||
+            configurationState.busy ||
             configurationState.deviceControlBusy ||
             configurationState.restartAwaitingDisconnect ||
             !hasRequiredPermissions()
@@ -628,6 +631,7 @@ internal class RegattaLinkConnectionManager(
         if (
             otaState.isActive ||
             factoryResetPending ||
+            configurationState.busy ||
             configurationState.deviceControlBusy ||
             configurationState.factoryResetAwaitingDisconnect ||
             configurationState.restartAwaitingDisconnect ||
@@ -932,6 +936,10 @@ internal class RegattaLinkConnectionManager(
         return true
     }
 
+    fun stopDiagnosticLog() {
+        client.stopDiagnosticLog()
+    }
+
     fun drainDiagnosticLog(): Boolean {
         if (
             !configurationState.diagnosticLogSupported ||
@@ -946,7 +954,7 @@ internal class RegattaLinkConnectionManager(
             handleConfigurationState(
                 configurationState.copy(
                     diagnosticLogLoading = true,
-                    diagnosticLogEntries = emptyList(),
+                    diagnosticLogStreaming = true,
                     diagnosticLogError = ""
                 )
             )
@@ -1382,7 +1390,17 @@ internal class RegattaLinkConnectionManager(
         }
     }
 
-    private fun handleConfigurationState(state: RegattaLinkConfigurationState) {
+    private fun handleConfigurationState(incoming: RegattaLinkConfigurationState) {
+        val state = if (
+            incoming.diagnosticLogEntries.isEmpty() &&
+            configurationState.diagnosticLogEntries.isNotEmpty()
+        ) {
+            incoming.copy(
+                diagnosticLogEntries = configurationState.diagnosticLogEntries
+            )
+        } else {
+            incoming
+        }
         configurationState = state
 
         if (

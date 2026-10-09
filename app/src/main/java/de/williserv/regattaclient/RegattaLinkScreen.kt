@@ -6,11 +6,15 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -32,6 +36,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -196,6 +201,7 @@ internal fun RegattaLinkScreen(
     onSetHeadingTrimDeg: (Int) -> Unit = {},
     onSetLoadSensorAlias: (String, String) -> Unit = { _, _ -> },
     onDrainDiagnosticLog: () -> Unit,
+    onStopDiagnosticLog: () -> Unit = {},
     onDeviceControl: (RegattaLinkDeviceControlOpcode, Int) -> Unit,
     onSetImuRawPreviewEnabled: (Boolean) -> Unit = {},
     onRefreshPgnInventory: () -> Unit,
@@ -304,9 +310,11 @@ internal fun RegattaLinkScreen(
     val bluetoothDevicesOpen =
         activeSetupDestination ==
             RegattaLinkSetupDestination.BLUETOOTH_DEVICES
+    // A valid Calypso STATUS response confirms firmware support.
+    val calypsoSupported = connected && configurationState.calypso.statusKnown
 
     LaunchedEffect(
-        bluetoothDevicesOpen,
+        bluetoothDevicesOpen || nmeaSetupOpen,
         connected,
         configurationState.deviceControlSupported,
         deviceControlEnabled,
@@ -314,7 +322,7 @@ internal fun RegattaLinkScreen(
     ) {
         if (
             shouldRefreshCalypsoStatusOnOpen(
-                bluetoothDevicesOpen = bluetoothDevicesOpen,
+                bluetoothDevicesOpen = bluetoothDevicesOpen || nmeaSetupOpen,
                 connected = connected,
                 deviceControlSupported =
                     configurationState.deviceControlSupported,
@@ -414,6 +422,7 @@ internal fun RegattaLinkScreen(
                 deviceKey = deviceKey,
                 connected = connected,
                 configEnabled = configEnabled,
+                calypsoSupported = calypsoSupported,
                 otaActive = otaState.isActive,
                 rawCaptureActive = rawCaptureState.isActive,
                 onSetLoadPrecisionX10 = onSetLoadPrecisionX10,
@@ -436,6 +445,7 @@ internal fun RegattaLinkScreen(
                 connected = connected,
                 configEnabled = configEnabled,
                 deviceControlEnabled = deviceControlEnabled,
+                calypsoSupported = calypsoSupported,
                 onScanCalypso = {
                     onDeviceControl(
                         RegattaLinkDeviceControlOpcode.CALYPSO_SCAN,
@@ -466,6 +476,7 @@ internal fun RegattaLinkScreen(
                 onApplySubsystemConfigAndRestart =
                     onApplySubsystemConfigAndRestart,
                 onDrainDiagnosticLog = onDrainDiagnosticLog,
+                onStopDiagnosticLog = onStopDiagnosticLog,
                 onCanErrorTrace = {
                     onDeviceControl(
                         RegattaLinkDeviceControlOpcode.CAN_ERROR_TRACE_60S,
@@ -478,6 +489,7 @@ internal fun RegattaLinkScreen(
                 onExportRawCapture = onExportRawCapture,
                 onDiscardRawCapture = onDiscardRawCapture,
                 onFactoryReset = {
+                    onStopDiagnosticLog()
                     activeSetupDestination = null
                     resetDialogOpen = true
                 },
@@ -650,6 +662,7 @@ internal fun RegattaLinkScreen(
                 TextButton(
                     onClick = { onSelectKnownDevice(device.stableId) },
                     enabled = !otaState.isActive &&
+                        !configurationState.busy &&
                         !configurationState.deviceControlBusy &&
                         !configurationState.factoryResetAwaitingDisconnect &&
                         !configurationState.restartAwaitingDisconnect &&
@@ -719,6 +732,7 @@ internal fun RegattaLinkScreen(
                         }
                     },
                     enabled = !otaState.isActive &&
+                        !configurationState.busy &&
                         !configurationState.deviceControlBusy &&
                         !configurationState.factoryResetAwaitingDisconnect &&
                         !configurationState.restartAwaitingDisconnect,
@@ -1145,6 +1159,7 @@ private fun RegattaLinkBluetoothDevicesSheet(
     connected: Boolean,
     configEnabled: Boolean,
     deviceControlEnabled: Boolean,
+    calypsoSupported: Boolean,
     onScanCalypso: () -> Unit,
     onApplyBluetoothConfigAndRestart: (UInt) -> Unit,
     onDismiss: () -> Unit
@@ -1182,6 +1197,21 @@ private fun RegattaLinkBluetoothDevicesSheet(
                     configurationState.deviceControlAcceptedOpcode ==
                     RegattaLinkDeviceControlOpcode.CALYPSO_SCAN
                 )
+    var scanSecondsRemaining by remember(deviceKey) { mutableStateOf<Int?>(null) }
+    LaunchedEffect(scanActive, deviceKey) {
+        if (!scanActive) {
+            scanSecondsRemaining = null
+        } else {
+            val deadline = SystemClock.elapsedRealtime() + 60_000L
+            while (true) {
+                val remaining = ((deadline - SystemClock.elapsedRealtime() + 999L) / 1000L)
+                    .coerceAtLeast(0L).toInt()
+                scanSecondsRemaining = remaining
+                if (remaining == 0) break
+                delay(250L)
+            }
+        }
+    }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -1262,7 +1292,7 @@ private fun RegattaLinkBluetoothDevicesSheet(
                             enabled
                         )
                     },
-                    enabled = configEnabled && calypsoEnabledDraft != null
+                    enabled = configEnabled && calypsoSupported && calypsoEnabledDraft != null
                 )
             }
 
@@ -1273,7 +1303,8 @@ private fun RegattaLinkBluetoothDevicesSheet(
                     },
                     enabled =
                         configEnabled &&
-                            configurationState.deviceControlSupported,
+                            configurationState.deviceControlSupported &&
+                            calypsoSupported,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 10.dp)
@@ -1284,7 +1315,7 @@ private fun RegattaLinkBluetoothDevicesSheet(
 
             Button(
                 onClick = onScanCalypso,
-                enabled = connected && deviceControlEnabled,
+                enabled = connected && deviceControlEnabled && calypsoSupported,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 18.dp)
@@ -1297,6 +1328,14 @@ private fun RegattaLinkBluetoothDevicesSheet(
                             R.string.regattalink_calypso_scan
                         }
                     )
+                )
+            }
+
+            if (scanActive && scanSecondsRemaining != null) {
+                Text(
+                    text = "${scanSecondsRemaining} s",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp)
                 )
             }
 
@@ -1378,6 +1417,7 @@ private fun RegattaLinkNmeaSetupSheet(
     deviceKey: String,
     connected: Boolean,
     configEnabled: Boolean,
+    calypsoSupported: Boolean,
     otaActive: Boolean,
     rawCaptureActive: Boolean,
     onSetLoadPrecisionX10: (Boolean) -> Unit,
@@ -1743,7 +1783,8 @@ private fun RegattaLinkNmeaSetupSheet(
             if (
                 connected &&
                 canAvailable &&
-                configurationState.configWordSupported
+                configurationState.configWordSupported &&
+                calypsoSupported
             ) {
                 RegattaLinkBoatDataSelectorRow(
                     title = stringResource(
@@ -1759,7 +1800,7 @@ private fun RegattaLinkNmeaSetupSheet(
                     bootMask = configurationState.nmeaBootOutputMask,
                     activeMask = configurationState.nmeaActiveOutputMask,
                     runtimeBit = REGATTALINK_TX_OUTPUT_CALYPSO_WIND,
-                    enabled = configEnabled,
+                    enabled = configEnabled && calypsoSupported,
                     onCheckedChange = { enabled ->
                         txDraft = regattaLinkConfigDraftWithBit(
                             txDraft,
@@ -2230,6 +2271,7 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
     onSetLedBrightness: (Int) -> Unit,
     onApplySubsystemConfigAndRestart: (UInt) -> Unit,
     onDrainDiagnosticLog: () -> Unit,
+    onStopDiagnosticLog: () -> Unit,
     onCanErrorTrace: () -> Unit,
     onReadRawFrames: () -> Unit,
     onStartRawCapture: () -> Unit,
@@ -2273,6 +2315,42 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
             !configurationState.deviceControlBusy &&
             !configurationState.diagnosticLogLoading &&
             !nmeaState.rawCanReading
+    val traceInProgress by rememberUpdatedState(
+        configurationState.diagnosticTraceEndElapsedMs > 0L
+    )
+    val stopReaderOnDismiss by rememberUpdatedState(onStopDiagnosticLog)
+    DisposableEffect(Unit) {
+        onDispose {
+            if (!traceInProgress) stopReaderOnDismiss()
+        }
+    }
+    val diagnosticListState = rememberLazyListState()
+    var previousLogCount by remember { mutableStateOf(0) }
+    val logEntries = configurationState.diagnosticLogEntries
+    LaunchedEffect(logEntries.size, logEntries.lastOrNull()) {
+        val wasAtEnd = previousLogCount == 0 ||
+            diagnosticListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
+                ?.let { it >= previousLogCount - 1 } != false
+        if (logEntries.isNotEmpty() && wasAtEnd) {
+            diagnosticListState.scrollToItem(logEntries.lastIndex)
+        }
+        previousLogCount = logEntries.size
+    }
+    val traceDeadline = configurationState.diagnosticTraceEndElapsedMs
+    var traceRemainingSeconds by remember { mutableStateOf(0) }
+    LaunchedEffect(traceDeadline) {
+        if (traceDeadline == 0L) {
+            traceRemainingSeconds = 0
+        } else {
+            while (true) {
+                traceRemainingSeconds = (
+                    (traceDeadline - SystemClock.elapsedRealtime() + 999L) / 1000L
+                ).coerceAtLeast(0L).toInt()
+                if (traceRemainingSeconds == 0) break
+                delay(250L)
+            }
+        }
+    }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -2530,26 +2608,36 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
 
             if (configurationState.diagnosticLogSupported) {
                 Button(
-                    onClick = onDrainDiagnosticLog,
-                    enabled =
-                        configEnabled &&
-                            !configurationState.diagnosticLogLoading &&
-                            !configurationState.deviceControlBusy &&
-                            !nmeaState.rawCanReading,
+                    onClick = {
+                        if (configurationState.diagnosticLogStreaming) {
+                            onStopDiagnosticLog()
+                        } else {
+                            onDrainDiagnosticLog()
+                        }
+                    },
+                    enabled = configurationState.diagnosticLogStreaming ||
+                        (
+                            configEnabled &&
+                                !configurationState.deviceControlBusy &&
+                                !nmeaState.rawCanReading
+                        ),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp)
                 ) {
                     Text(
-                        stringResource(
-                            R.string.regattalink_read_diagnostic_log
-                        )
+                        if (configurationState.diagnosticLogStreaming) {
+                            stringResource(R.string.regattalink_stop_reading)
+                        } else {
+                            stringResource(R.string.regattalink_read_diagnostic_log)
+                        }
                     )
                 }
                 if (configurationState.deviceControlSupported) {
                     Button(
                         onClick = onCanErrorTrace,
-                        enabled = deviceControlEnabled,
+                        enabled = deviceControlEnabled &&
+                            !configurationState.diagnosticLogStreaming,
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 8.dp)
@@ -2561,6 +2649,15 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
                         )
                     }
                 }
+                if (traceRemainingSeconds > 0) {
+                    Text(
+                        text = stringResource(
+                            R.string.regattalink_raw_capture_remaining,
+                            traceRemainingSeconds
+                        ),
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
                 if (configurationState.diagnosticLogLoading) {
                     Text(
                         stringResource(
@@ -2569,11 +2666,20 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
                         modifier = Modifier.padding(top = 6.dp)
                     )
                 }
-                configurationState.diagnosticLogEntries.forEach { entry ->
-                    Text(
-                        "${entry.timestamp10ms * 10} ms  ${entry.message}",
-                        modifier = Modifier.padding(top = 3.dp)
-                    )
+                if (logEntries.isNotEmpty()) {
+                    LazyColumn(
+                        state = diagnosticListState,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(240.dp)
+                    ) {
+                        items(logEntries) { entry ->
+                            Text(
+                                "${entry.timestamp10ms * 10} ms  ${entry.message}",
+                                modifier = Modifier.padding(top = 3.dp)
+                            )
+                        }
+                    }
                 }
                 RegattaLinkTechnicalDetail(
                     detail = configurationState.diagnosticLogError,

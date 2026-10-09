@@ -38,6 +38,8 @@ data class RegattaLinkConfigurationState(
     val restartAwaitingDisconnect: Boolean = false,
     val diagnosticLogSupported: Boolean = false,
     val diagnosticLogLoading: Boolean = false,
+    val diagnosticLogStreaming: Boolean = false,
+    val diagnosticTraceEndElapsedMs: Long = 0L,
     val diagnosticLogEntries: List<RegattaLinkDiagnosticLogEntry> = emptyList(),
     val diagnosticLogError: String = "",
     val deviceControlSupported: Boolean = false,
@@ -469,6 +471,18 @@ internal fun regattaLinkConfigDraftBitChanged(
     baseline != null &&
         draft != null &&
         ((baseline xor draft) and bitMask) != 0u
+
+internal fun regattaLinkAppendDiagnosticEntry(
+    entries: MutableList<RegattaLinkDiagnosticLogEntry>,
+    entry: RegattaLinkDiagnosticLogEntry,
+    limit: Int = 2000
+) {
+    require(limit > 0)
+    entries.add(entry)
+    if (entries.size > limit) {
+        entries.subList(0, entries.size - limit).clear()
+    }
+}
 
 internal fun regattaLinkApplyConfigWord(
     state: RegattaLinkConfigurationState,
