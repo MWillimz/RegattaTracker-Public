@@ -51,13 +51,15 @@ private const val ONBOARDING_COMPLETION_ANIMATION_MS = 1_500
 internal fun EventOnboardingCard(
     state: EventOnboardingState,
     eventKey: String?,
+    previouslyObservedMask: Int?,
+    onObserveMask: (String?, Int) -> Unit,
     suppressed: Boolean,
     onSuppress: () -> Unit,
     onOpenStep: (OnboardingStep) -> Unit
 ) {
     var expanded by rememberSaveable(eventKey) { mutableStateOf(false) }
     var previousMask by remember(eventKey) {
-        mutableIntStateOf(state.completedMask)
+        mutableIntStateOf(previouslyObservedMask ?: state.completedMask)
     }
     var celebratingMask by remember(eventKey) { mutableIntStateOf(0) }
     var keepVisible by remember(eventKey) { mutableStateOf(!state.complete) }
@@ -66,6 +68,7 @@ internal fun EventOnboardingCard(
     LaunchedEffect(eventKey, state.completedMask) {
         val newMask = eventOnboardingNewlyCompleted(previousMask, state.completedMask)
         previousMask = state.completedMask
+        onObserveMask(eventKey, state.completedMask)
         if (newMask != 0 && !suppressed) {
             celebratingMask = newMask
             expanded = true
