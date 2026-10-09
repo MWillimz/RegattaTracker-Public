@@ -813,10 +813,26 @@ private fun RegattaLinkStatusIndicator(
         horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AutoSizedSingleLineText(
-            text = stringResource(R.string.regattalink_short_label),
-            minFontSize = 9.sp,
-            maxFontSize = 16.sp
+        Text(
+            text = buildAnnotatedString {
+                append(stringResource(R.string.regattalink_short_label))
+                withStyle(
+                    SpanStyle(
+                        fontSize = 9.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                ) {
+                    append(" (beta)")
+                }
+            },
+            modifier = Modifier.weight(1f, fill = false),
+            maxLines = 1,
+            softWrap = false,
+            autoSize = TextAutoSize.StepBased(
+                minFontSize = 9.sp,
+                maxFontSize = 16.sp,
+                stepSize = 0.5.sp
+            )
         )
         Box(
             modifier = Modifier
