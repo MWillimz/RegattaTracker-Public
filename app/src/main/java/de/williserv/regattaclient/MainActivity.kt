@@ -325,6 +325,10 @@ class MainActivity : ComponentActivity() {
     private val raceDataRequestGate = EventRequestGate()
 
     private val raceRegistered = mutableStateOf(false)
+    private val onboardingHidden = mutableStateOf(false)
+    private val onboardingEnteredKey = mutableStateOf("")
+    private val onboardingUploadEvidence =
+        mutableStateOf<Pair<String, Boolean>?>(null)
     private val statusText = mutableStateOf("")
     private val rowCountText = mutableStateOf("")
     private val uploadStatusText = mutableStateOf("")
@@ -598,6 +602,10 @@ class MainActivity : ComponentActivity() {
         loadBoatSetup()
         loadRaceSetup()
         loadAppState()
+        onboardingHidden.value = getSharedPreferences(
+            "event_onboarding", Context.MODE_PRIVATE
+        ).getBoolean("hidden", false)
+        if (inRace.value) markOnboardingRaceEntered()
 
         val appStatePrefs =
             getSharedPreferences(appStatePrefsName, Context.MODE_PRIVATE)
@@ -674,6 +682,20 @@ class MainActivity : ComponentActivity() {
                             hasRaceInfo = rawRaceInfo.trim().let { it.isNotBlank() && it != "--" },
                             raceStartFlags = raceStartFlags.value,
                             millisToStart = raceStartEpochMillis?.let { it - System.currentTimeMillis() },
+                            raceStartEpochMillis = raceStartEpochMillis,
+                            onboardingEventKey = currentOnboardingEventKey(),
+                            onboardingEnteredRace = onboardingEnteredForCurrentEvent(),
+                            onboardingUploadConfirmed =
+                                onboardingUploadEvidence.value?.let {
+                                    it.first == currentOnboardingEventKey() && it.second
+                                } == true,
+                            onboardingEvidenceReady =
+                                currentOnboardingEventKey() == null ||
+                                    onboardingUploadEvidence.value?.first ==
+                                        currentOnboardingEventKey(),
+                            onboardingHidden = onboardingHidden.value,
+                            onHideOnboarding = ::suppressEventOnboarding,
+                            canEnterRace = canEnterRaceNow(),
                             startPanelText = startPanelText.value,
                             startPanelMode = startPanelMode.value,
                             lastCsvLine = lastCsvLine.value,
@@ -1720,6 +1742,38 @@ class MainActivity : ComponentActivity() {
             .apply()
 
         updateStartPanelStatus()
+    }
+
+    private fun currentOnboardingEventKey(): String? =
+        eventOnboardingKey(
+            serverUrl = raceServer.value,
+            eventName = raceEvent.value,
+            secret = raceSecret.value,
+            resolvedEventName = resolvedEventName.value
+        )
+
+    private fun onboardingEnteredForCurrentEvent(): Boolean {
+        val eventKey = currentOnboardingEventKey() ?: return false
+        return onboardingEnteredKey.value == eventKey ||
+            getSharedPreferences("event_onboarding", Context.MODE_PRIVATE)
+                .getBoolean("entered_$eventKey", false)
+    }
+
+    private fun markOnboardingRaceEntered() {
+        val eventKey = currentOnboardingEventKey() ?: return
+        onboardingEnteredKey.value = eventKey
+        getSharedPreferences("event_onboarding", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("entered_$eventKey", true)
+            .apply()
+    }
+
+    private fun suppressEventOnboarding() {
+        onboardingHidden.value = true
+        getSharedPreferences("event_onboarding", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("hidden", true)
+            .apply()
     }
 
     private fun setRaceRegistered(registered: Boolean) {
@@ -2899,7 +2953,10 @@ class MainActivity : ComponentActivity() {
 
                 runOnUiThread {
                     if (!asyncLifetime.isActive()) return@runOnUiThread
-                    if (currentBoatSetupValues() != registrationBoatSetup) {
+                    if (
+                        currentBoatSetupValues() != registrationBoatSetup ||
+                        currentEventAccessKey() != access
+                    ) {
                         return@runOnUiThread
                     }
 
@@ -2918,7 +2975,10 @@ class MainActivity : ComponentActivity() {
                 }
                 runOnUiThread {
                     if (!asyncLifetime.isActive()) return@runOnUiThread
-                    if (currentBoatSetupValues() != registrationBoatSetup) {
+                    if (
+                        currentBoatSetupValues() != registrationBoatSetup ||
+                        currentEventAccessKey() != access
+                    ) {
                         return@runOnUiThread
                     }
                     updateConnectionUiState()
@@ -3625,6 +3685,7 @@ class MainActivity : ComponentActivity() {
         }
 
         inRace.value = true
+        markOnboardingRaceEntered()
         refreshRetirementReportedState()
         statusText.value = getString(R.string.in_race)
         serviceStatusText.value = getString(R.string.service_starting)
@@ -4566,11 +4627,25 @@ class MainActivity : ComponentActivity() {
             return
         }
 
+        // Capture event identity before the DB task. Late results from an
+        // earlier QR/event must never complete onboarding for a new event.
+        val access = currentEventAccessKey()
+        val resolvedName = resolvedEventName.value
+        val onboardingKey = currentOnboardingEventKey()
         thread(name = "regatta-storage-count-refresh") {
-            val counts = runCatching {
+            val result = runCatching {
                 val helper = TrackingDbHelper(applicationContext)
                 try {
-                    helper.getStorageCounts()
+                    val counts = helper.getStorageCounts()
+                    val confirmed = if (access != null) {
+                        helper.hasConfirmedTrackingUploadForEvent(
+                            serverUrl = access.server,
+                            eventName = access.event,
+                            secret = access.secret,
+                            resolvedEventName = resolvedName
+                        )
+                    } else false
+                    counts to confirmed
                 } finally {
                     helper.close()
                 }
@@ -4580,8 +4655,14 @@ class MainActivity : ComponentActivity() {
                 val forceFollowUp =
                     storageCountRefreshGate.finishAndTakeForcedFollowUp()
 
-                if (asyncLifetime.isActive() && counts != null) {
-                    applyStorageCounts(counts)
+                if (asyncLifetime.isActive() && result != null) {
+                    applyStorageCounts(result.first)
+                    if (onboardingKey != null &&
+                        onboardingKey == currentOnboardingEventKey()
+                    ) {
+                        onboardingUploadEvidence.value =
+                            onboardingKey to result.second
+                    }
                 }
 
                 if (asyncLifetime.isActive() && forceFollowUp) {
