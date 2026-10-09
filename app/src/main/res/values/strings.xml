@@ -630,7 +630,7 @@
     <string name="regattalink_confidence">Confidence</string>
     <string name="regattalink_settings_title">Settings</string>
     <string name="regattalink_setup">Setup</string>
-    <string name="regattalink_setup_imu">Setup IMU</string>
+    <string name="regattalink_setup_imu">Internal Sensor</string>
     <string name="regattalink_bluetooth_devices">Bluetooth devices</string>
     <string name="regattalink_calypso_wind_sensor">Calypso wind sensor</string>
     <string name="regattalink_calypso_bound_sensor">Bound sensor</string>
@@ -644,7 +644,7 @@
     <string name="regattalink_calypso_ambiguous">Multiple Calypso sensors found. Turn off or remove unwanted sensors and try again.</string>
     <string name="regattalink_calypso_verify_failed">Calypso sensor verification failed.</string>
     <string name="regattalink_calypso_wind_tx">Forward Calypso wind to Boat Data</string>
-    <string name="regattalink_setup_nmea">Setup TX</string>
+    <string name="regattalink_setup_nmea">NMEA Setup</string>
     <string name="regattalink_advanced_diagnostics">Advanced / Diagnostics</string>
     <string name="regattalink_device_settings">Device settings</string>
     <string name="regattalink_subsystems">Hardware subsystems</string>
@@ -788,6 +788,7 @@
     <string name="regattalink_phone_gps_tx">Forward Phone GPS</string>
     <string name="regattalink_compass_tx">Forward Heading</string>
     <string name="regattalink_phone_gps_relay">Forward Phone GPS without tracking</string>
+    <string name="regattalink_phone_gps_relay_short">Also without tracking</string>
     <string name="regattalink_phone_gps_relay_hint">Keeps phone GPS forwarding active even when race or manual tracking is stopped.</string>
     <string name="regattalink_phone_gps_relay_notification_title">Phone GPS forwarding</string>
     <string name="regattalink_phone_gps_relay_active">Forwarding Phone GPS to RegattaLink</string>
