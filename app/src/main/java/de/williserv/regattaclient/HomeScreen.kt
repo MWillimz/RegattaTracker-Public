@@ -23,6 +23,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -131,6 +132,8 @@ fun HomeScreen(
     millisToStart: Long?,
     raceStartEpochMillis: Long?,
     onboardingEventKey: String?,
+    onboardingPreviouslyObservedMask: Int?,
+    onOnboardingMaskObserved: (String?, Int) -> Unit,
     onboardingEnteredRace: Boolean,
     onboardingUploadConfirmed: Boolean,
     onboardingEvidenceReady: Boolean,
@@ -267,6 +270,8 @@ fun HomeScreen(
             EventOnboardingCard(
                 state = onboardingState,
                 eventKey = onboardingEventKey,
+                previouslyObservedMask = onboardingPreviouslyObservedMask,
+                onObserveMask = onOnboardingMaskObserved,
                 suppressed = onboardingHidden,
                 onSuppress = onHideOnboarding,
                 onOpenStep = { step ->
