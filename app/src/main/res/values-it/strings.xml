@@ -644,7 +644,7 @@
     <string name="regattalink_nmea_available">Diagnostica Boat Data disponibile</string>
     <string name="regattalink_nmea_unavailable">Diagnostica Boat Data non disponibile</string>
     <string name="regattalink_pgns_seen">PGN osservati</string>
-    <string name="regattalink_boat_state_title">Stato barca</string>
+    <string name="regattalink_boat_state_title">Dati barca</string>
     <string name="regattalink_boat_state_snapshot_only">Le notifiche live non sono disponibili con l’attuale MTU BLE; le letture snapshot continuano a funzionare.</string>
     <string name="regattalink_boat_state_waiting">In attesa dello stato barca…</string>
     <string name="regattalink_boat_state_no_data">Lo stato barca è disponibile, ma al momento nessun valore Boat Data è valido.</string>
