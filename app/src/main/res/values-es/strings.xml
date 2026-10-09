@@ -587,7 +587,7 @@
     <string name="regattalink_confidence">Confianza</string>
     <string name="regattalink_settings_title">Ajustes</string>
     <string name="regattalink_setup">Configurar</string>
-    <string name="regattalink_setup_imu">Configurar IMU</string>
+    <string name="regattalink_setup_imu">Internal Sensor</string>
     <string name="regattalink_bluetooth_devices">Dispositivos Bluetooth</string>
     <string name="regattalink_calypso_wind_sensor">Sensor de viento Calypso</string>
     <string name="regattalink_calypso_bound_sensor">Sensor vinculado</string>
@@ -601,7 +601,7 @@
     <string name="regattalink_calypso_ambiguous">Se encontraron varios sensores Calypso. Apaga o retira los sensores no deseados y vuelve a intentarlo.</string>
     <string name="regattalink_calypso_verify_failed">No se pudo verificar el sensor Calypso.</string>
     <string name="regattalink_calypso_wind_tx">Reenviar viento Calypso a Boat Data</string>
-    <string name="regattalink_setup_nmea">Configurar TX</string>
+    <string name="regattalink_setup_nmea">NMEA Setup</string>
     <string name="regattalink_advanced_diagnostics">Avanzado / Diagnóstico</string>
     <string name="regattalink_device_settings">Ajustes del dispositivo</string>
     <string name="regattalink_subsystems">Subsistemas de hardware</string>
@@ -745,6 +745,7 @@
     <string name="regattalink_phone_gps_tx">Reenviar GPS del teléfono</string>
     <string name="regattalink_compass_tx">Reenviar rumbo</string>
     <string name="regattalink_phone_gps_relay">Reenviar GPS sin seguimiento</string>
+    <string name="regattalink_phone_gps_relay_short">También sin seguimiento</string>
     <string name="regattalink_phone_gps_relay_hint">Mantiene el reenvío del GPS del teléfono aunque el seguimiento de regata o manual esté detenido.</string>
     <string name="regattalink_phone_gps_relay_notification_title">Reenvío de GPS del teléfono</string>
     <string name="regattalink_phone_gps_relay_active">Reenviando GPS del teléfono a RegattaLink</string>

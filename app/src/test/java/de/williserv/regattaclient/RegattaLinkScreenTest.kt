@@ -87,4 +87,127 @@ class RegattaLinkScreenTest {
         assertTrue(isRegattaLinkTelemetryFresh(receivedAt, REGATTALINK_NMEA_STALE_MS, 70_000L))
         assertFalse(isRegattaLinkTelemetryFresh(receivedAt, REGATTALINK_NMEA_STALE_MS, 70_001L))
     }
+    @Test
+    fun nmeaSetupHidesSourcesWithUnknownOrDisabledCurrentSession() {
+        val sensors = RegattaLinkNmeaState(
+            loadSupported = true,
+            loadSensors = listOf(
+                RegattaLinkLoadSensor(
+                    identityKey = "load:1",
+                    measurementKey = "nmea.load.1",
+                    defaultLabel = "Load 1",
+                    loadKg = 12.3,
+                    stableIdentity = true
+                )
+            )
+        )
+        val unknown = regattaLinkNmeaSetupVisibility(
+            RegattaLinkConfigurationState(configWordSupported = true),
+            sensors,
+            connected = true,
+            calypsoSupported = true
+        )
+        assertFalse(unknown.enableTx)
+        assertFalse(unknown.forward0183)
+        assertFalse(unknown.forwardAttitude)
+        assertFalse(unknown.forwardCompass)
+        assertFalse(unknown.forwardPhoneGps)
+        assertFalse(unknown.forwardCalypsoWind)
+        assertFalse(unknown.baudRate)
+        assertFalse(unknown.loadSensors)
+
+        val disabled = regattaLinkNmeaSetupVisibility(
+            RegattaLinkConfigurationState(
+                configWordSupported = true,
+                configWord = REGATTALINK_CONFIG_TX_MASTER or
+                    REGATTALINK_CONFIG_TX_NMEA0183 or
+                    REGATTALINK_CONFIG_TX_IMU
+            ),
+            sensors,
+            connected = true,
+            calypsoSupported = true
+        )
+        assertFalse(disabled.enableTx)
+        assertFalse(disabled.forward0183)
+        assertFalse(disabled.forwardAttitude)
+        assertFalse(disabled.forwardPhoneGps)
+        assertFalse(disabled.loadSensors)
+    }
+
+    @Test
+    fun nmeaSetupKeepsSwitchesForActiveSourcesEvenWhenTxOff() {
+        val activeSessions = REGATTALINK_CONFIG_SESSION_CAN or
+            REGATTALINK_CONFIG_SESSION_NMEA0183 or
+            REGATTALINK_CONFIG_SESSION_IMU or
+            REGATTALINK_CONFIG_SESSION_MAG or
+            REGATTALINK_CONFIG_CALYPSO_ENABLE
+        val config = RegattaLinkConfigurationState(
+            configWordSupported = true,
+            configWord = activeSessions
+        )
+        val namedSensor = RegattaLinkLoadSensor(
+            identityKey = "load:1",
+            measurementKey = "nmea.load.1",
+            defaultLabel = "Load 1",
+            alias = "Backstay",
+            loadKg = 12.3,
+            stableIdentity = true
+        )
+        val nmea = RegattaLinkNmeaState(
+            loadSupported = true,
+            loadSensors = listOf(namedSensor)
+        )
+        val shown = regattaLinkNmeaSetupVisibility(
+            config, nmea, connected = true, calypsoSupported = true
+        )
+        assertTrue(shown.enableTx)
+        assertTrue(shown.forward0183)
+        assertTrue(shown.forwardAttitude)
+        assertTrue(shown.forwardCompass)
+        assertTrue(shown.forwardPhoneGps)
+        assertTrue(shown.forwardCalypsoWind)
+        assertTrue(shown.baudRate)
+        assertTrue(shown.loadSensors)
+        assertEquals("Backstay", namedSensor.label)
+
+        val noSensors = regattaLinkNmeaSetupVisibility(
+            config, nmea.copy(loadSensors = emptyList()),
+            connected = true, calypsoSupported = true
+        )
+        assertFalse(noSensors.loadSensors)
+        assertTrue(noSensors.forwardPhoneGps)
+
+        val noCalypsoStatus = regattaLinkNmeaSetupVisibility(
+            config, nmea, connected = true, calypsoSupported = false
+        )
+        assertFalse(noCalypsoStatus.forwardCalypsoWind)
+        val disabledCalypso = regattaLinkNmeaSetupVisibility(
+            config.copy(configWord = activeSessions and
+                REGATTALINK_CONFIG_CALYPSO_ENABLE.inv()),
+            nmea, connected = true, calypsoSupported = true
+        )
+        assertFalse(disabledCalypso.forwardCalypsoWind)
+
+        val disconnected = regattaLinkNmeaSetupVisibility(
+            config, nmea, connected = false, calypsoSupported = true
+        )
+        assertFalse(disconnected.enableTx)
+        assertFalse(disconnected.loadSensors)
+    }
+
+    @Test
+    fun nmea0183BaudRemainsAvailableWhenCanSessionIsOff() {
+        val config = RegattaLinkConfigurationState(
+            configWordSupported = true,
+            configWord = REGATTALINK_CONFIG_SESSION_NMEA0183
+        )
+        val shown = regattaLinkNmeaSetupVisibility(
+            config, RegattaLinkNmeaState(),
+            connected = true, calypsoSupported = false
+        )
+        assertTrue(shown.baudRate)
+        assertFalse(shown.enableTx)
+        assertFalse(shown.forward0183)
+    }
+
 }
