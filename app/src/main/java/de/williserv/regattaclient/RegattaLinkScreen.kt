@@ -330,6 +330,9 @@ internal fun RegattaLinkScreen(
     val nmeaSetupOpen =
         activeSetupDestination == RegattaLinkSetupDestination.NMEA &&
             connected
+    val advancedDiagnosticsOpen =
+        activeSetupDestination == RegattaLinkSetupDestination.ADVANCED_DIAGNOSTICS &&
+            connected
     val bluetoothDevicesOpen =
         activeSetupDestination ==
             RegattaLinkSetupDestination.BLUETOOTH_DEVICES
@@ -372,7 +375,7 @@ internal fun RegattaLinkScreen(
     }
 
     LaunchedEffect(
-        nmeaSetupOpen,
+        advancedDiagnosticsOpen,
         nmeaState.pgnInventorySupported,
         nmeaState.pgnInventoryLoading,
         configurationState.canSessionAvailable,
@@ -380,8 +383,8 @@ internal fun RegattaLinkScreen(
         state.deviceAddress
     ) {
         if (
-            !nmeaSetupOpen ||
-            configurationState.canSessionAvailable == false
+            !advancedDiagnosticsOpen ||
+            configurationState.canSessionAvailable != true
         ) {
             pgnInventoryAutoRefreshRequested = false
             return@LaunchedEffect
@@ -389,7 +392,7 @@ internal fun RegattaLinkScreen(
 
         if (
             shouldAutoRefreshPgnInventory(
-                detailsExpanded = nmeaSetupOpen,
+                detailsExpanded = advancedDiagnosticsOpen,
                 inventorySupported = nmeaState.pgnInventorySupported,
                 inventoryEmpty = nmeaState.pgnInventory.isEmpty(),
                 inventoryLoading = nmeaState.pgnInventoryLoading,
@@ -446,8 +449,6 @@ internal fun RegattaLinkScreen(
                 connected = connected,
                 configEnabled = configEnabled,
                 calypsoSupported = calypsoSupported,
-                otaActive = otaState.isActive,
-                rawCaptureActive = rawCaptureState.isActive,
                 onSetLoadPrecisionX10 = onSetLoadPrecisionX10,
                 onApplyTxConfigAndRestart = onApplyTxConfigAndRestart,
                 phoneGpsRelayEnabled = phoneGpsRelayEnabled,
@@ -457,7 +458,6 @@ internal fun RegattaLinkScreen(
                     onDeviceControl(RegattaLinkDeviceControlOpcode.RESTART, 0)
                 },
                 onSetLoadSensorAlias = onSetLoadSensorAlias,
-                onRefreshPgnInventory = onRefreshPgnInventory,
                 onDismiss = { activeSetupDestination = null }
             )
         }
@@ -506,6 +506,7 @@ internal fun RegattaLinkScreen(
                         0
                     )
                 },
+                onRefreshPgnInventory = onRefreshPgnInventory,
                 onReadRawFrames = onReadRawFrames,
                 onStartRawCapture = onStartRawCapture,
                 onStopRawCapture = onStopRawCapture,
@@ -775,6 +776,14 @@ internal fun RegattaLinkScreen(
                         } else {
                             RegattaLinkBoatDataOverview(liveBoatState)
                         }
+                        if (
+                            configurationState.canSessionAvailable == true &&
+                            nmeaState.loadSupported &&
+                            nmeaState.loadSensors.isNotEmpty() &&
+                            !nmeaState.pausedForOta
+                        ) {
+                            RegattaLinkLoadDataOverview(nmeaState.loadSensors)
+                        }
                     }
 
                 regattaLinkRuntimeMessageText(
@@ -1036,6 +1045,41 @@ internal fun regattaLinkBoatValidNumber(
 internal fun regattaLinkBoatKnots(metersPerSecond: Double): Double =
     metersPerSecond * 1.9438444924
 
+internal data class RegattaLinkNmeaSetupVisibility(
+    val enableTx: Boolean,
+    val forward0183: Boolean,
+    val forwardAttitude: Boolean,
+    val forwardCompass: Boolean,
+    val forwardPhoneGps: Boolean,
+    val forwardCalypsoWind: Boolean,
+    val baudRate: Boolean,
+    val loadSensors: Boolean
+)
+
+internal fun regattaLinkNmeaSetupVisibility(
+    config: RegattaLinkConfigurationState,
+    nmea: RegattaLinkNmeaState,
+    connected: Boolean,
+    calypsoSupported: Boolean
+): RegattaLinkNmeaSetupVisibility {
+    val canTx = connected && config.canSessionAvailable == true &&
+        config.nmeaTxSupported
+    return RegattaLinkNmeaSetupVisibility(
+        enableTx = canTx,
+        forward0183 = canTx && config.nmea0183SessionAvailable == true,
+        forwardAttitude = canTx && config.imuSessionAvailable == true &&
+            config.nmeaAttitudeTxSupported,
+        forwardCompass = canTx && config.magSessionAvailable == true,
+        forwardPhoneGps = canTx,
+        forwardCalypsoWind = canTx && calypsoSupported &&
+            config.calypsoEnabled == true,
+        baudRate = connected && config.nmea0183SessionAvailable == true &&
+            config.configWordSupported,
+        loadSensors = connected && config.canSessionAvailable == true &&
+            nmea.loadSupported && nmea.loadSensors.isNotEmpty()
+    )
+}
+
 internal enum class RegattaLinkWindLabelKind {
     APPARENT,
     TRUE,
@@ -1190,6 +1234,19 @@ private fun RegattaLinkBoatDataOverview(state: RegattaLinkBoatState) {
             modifier = Modifier.padding(top = 6.dp)
         )
     }
+}
+
+@Composable
+private fun RegattaLinkLoadDataOverview(sensors: List<RegattaLinkLoadSensor>) {
+    RegattaLinkBoatDataGroup(
+        stringResource(R.string.regattalink_load_sensors),
+        sensors.filter { it.loadKg.isFinite() }.map {
+            RegattaLinkBoatDisplayValue(
+                label = it.label,
+                value = formatTelemetry(it.loadKg, " kg", 1)
+            )
+        }
+    )
 }
 
 @Composable
@@ -1643,8 +1700,6 @@ private fun RegattaLinkNmeaSetupSheet(
     connected: Boolean,
     configEnabled: Boolean,
     calypsoSupported: Boolean,
-    otaActive: Boolean,
-    rawCaptureActive: Boolean,
     onSetLoadPrecisionX10: (Boolean) -> Unit,
     onApplyTxConfigAndRestart: (UInt) -> Unit,
     phoneGpsRelayEnabled: Boolean,
@@ -1652,14 +1707,14 @@ private fun RegattaLinkNmeaSetupSheet(
     onSetNmea0183Baud: (Int) -> Unit,
     onRestart: () -> Unit,
     onSetLoadSensorAlias: (String, String) -> Unit,
-    onRefreshPgnInventory: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val canAvailable = configurationState.canSessionAvailable != false
+    val visibility = regattaLinkNmeaSetupVisibility(
+        configurationState, nmeaState, connected, calypsoSupported
+    )
+    val canAvailable = configurationState.canSessionAvailable == true
     val nmea0183Available =
-        configurationState.nmea0183SessionAvailable != false
-    val imuAvailable = configurationState.imuSessionAvailable != false
-    val magAvailable = configurationState.magSessionAvailable != false
+        configurationState.nmea0183SessionAvailable == true
     val nmeaAvailable =
         connected && (canAvailable || nmea0183Available)
     val txSelectionFromDevice =
@@ -1742,9 +1797,7 @@ private fun RegattaLinkNmeaSetupSheet(
                 }
 
             if (
-                connected &&
-                canAvailable &&
-                configurationState.nmeaTxSupported
+                visibility.enableTx
             ) {
                 val masterDraftChanged =
                     regattaLinkConfigDraftBitChanged(
@@ -1827,10 +1880,7 @@ private fun RegattaLinkNmeaSetupSheet(
             }
 
             if (
-                connected &&
-                canAvailable &&
-                nmea0183Available &&
-                configurationState.configWordSupported
+                visibility.forward0183
             ) {
                 RegattaLinkBoatDataSelectorRow(
                     title = stringResource(
@@ -1858,10 +1908,7 @@ private fun RegattaLinkNmeaSetupSheet(
             }
 
             if (
-                connected &&
-                canAvailable &&
-                imuAvailable &&
-                configurationState.nmeaAttitudeTxSupported
+                visibility.forwardAttitude
             ) {
                 val attitudeDraftChanged =
                     regattaLinkConfigDraftBitChanged(
@@ -1945,10 +1992,7 @@ private fun RegattaLinkNmeaSetupSheet(
             }
 
             if (
-                connected &&
-                canAvailable &&
-                magAvailable &&
-                configurationState.configWordSupported
+                visibility.forwardCompass
             ) {
                 RegattaLinkBoatDataSelectorRow(
                     title = stringResource(
@@ -1976,9 +2020,7 @@ private fun RegattaLinkNmeaSetupSheet(
             }
 
             if (
-                connected &&
-                canAvailable &&
-                configurationState.configWordSupported
+                visibility.forwardPhoneGps
             ) {
                 RegattaLinkBoatDataSelectorRow(
                     title = stringResource(
@@ -2003,13 +2045,28 @@ private fun RegattaLinkNmeaSetupSheet(
                         )
                     }
                 )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 24.dp, top = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.regattalink_phone_gps_relay_short),
+                        modifier = Modifier.weight(1f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 14.sp
+                    )
+                    Switch(
+                        checked = phoneGpsRelayEnabled,
+                        onCheckedChange = onSetPhoneGpsRelayEnabled
+                    )
+                }
             }
 
             if (
-                connected &&
-                canAvailable &&
-                configurationState.configWordSupported &&
-                calypsoSupported
+                visibility.forwardCalypsoWind
             ) {
                 RegattaLinkBoatDataSelectorRow(
                     title = stringResource(
@@ -2036,39 +2093,8 @@ private fun RegattaLinkNmeaSetupSheet(
                 )
             }
 
-            if (canAvailable) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp, top = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(
-                                R.string.regattalink_phone_gps_relay
-                            ),
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = stringResource(
-                                R.string.regattalink_phone_gps_relay_hint
-                            ),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = phoneGpsRelayEnabled,
-                        onCheckedChange = onSetPhoneGpsRelayEnabled
-                    )
-                }
-            }
-
             if (
-                connected &&
-                nmea0183Available &&
-                configurationState.configWordSupported
+                visibility.baudRate
             ) {
                 var baudMenuExpanded by remember {
                     mutableStateOf(false)
@@ -2238,46 +2264,7 @@ private fun RegattaLinkNmeaSetupSheet(
                 modifier = Modifier.padding(top = 4.dp)
             )
 
-            if (
-                connected &&
-                canAvailable &&
-                configurationState.loadPrecisionSupported
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 18.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(
-                                R.string.regattalink_load_precision
-                            ),
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = stringResource(
-                                if (configurationState.loadPrecisionX10 == true) {
-                                    R.string.regattalink_load_precision_x10
-                                } else {
-                                    R.string.regattalink_load_precision_x1
-                                }
-                            ),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked =
-                            configurationState.loadPrecisionX10 == true,
-                        onCheckedChange = onSetLoadPrecisionX10,
-                        enabled = configEnabled
-                    )
-                }
-            }
-
-            if (connected && canAvailable && nmeaState.loadSupported) {
+            if (visibility.loadSensors) {
                 Text(
                     text = stringResource(
                         R.string.regattalink_load_sensors
@@ -2286,6 +2273,41 @@ private fun RegattaLinkNmeaSetupSheet(
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(top = 18.dp)
                 )
+
+                if (configurationState.loadPrecisionSupported) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 18.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(
+                                    R.string.regattalink_load_precision
+                                ),
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = stringResource(
+                                    if (configurationState.loadPrecisionX10 == true) {
+                                        R.string.regattalink_load_precision_x10
+                                    } else {
+                                        R.string.regattalink_load_precision_x1
+                                    }
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked =
+                                configurationState.loadPrecisionX10 == true,
+                            onCheckedChange = onSetLoadPrecisionX10,
+                            enabled = configEnabled
+                        )
+                    }
+                }
 
                 if (
                     nmeaRuntimeKnown &&
@@ -2297,23 +2319,6 @@ private fun RegattaLinkNmeaSetupSheet(
                         ),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 12.sp,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                }
-
-                if (!nmeaState.loadSubscribed) {
-                    Text(
-                        text = stringResource(
-                            R.string.regattalink_load_not_subscribed
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                } else if (nmeaState.loadSensors.isEmpty()) {
-                    Text(
-                        text = stringResource(
-                            R.string.regattalink_load_waiting
-                        ),
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
@@ -2389,51 +2394,6 @@ private fun RegattaLinkNmeaSetupSheet(
                 }
             }
 
-            if (
-                connected &&
-                canAvailable &&
-                nmeaState.pgnInventorySupported
-            ) {
-                Text(
-                    text = stringResource(R.string.regattalink_pgns_seen),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(top = 18.dp)
-                )
-                telemetryValue(
-                    label = stringResource(R.string.regattalink_pgns_seen),
-                    value = nmeaState.pgnInventory.size.toString()
-                )
-                Button(
-                    onClick = onRefreshPgnInventory,
-                    enabled = !otaActive &&
-                        !rawCaptureActive &&
-                        !nmeaState.pgnInventoryLoading,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 10.dp)
-                ) {
-                    Text(
-                        if (nmeaState.pgnInventoryLoading) {
-                            stringResource(R.string.regattalink_refreshing)
-                        } else {
-                            stringResource(R.string.regattalink_refresh_pgns)
-                        }
-                    )
-                }
-                nmeaState.pgnInventory
-                    .sortedBy { it.pgn }
-                    .forEach { entry ->
-                        telemetryValue(
-                            label = "PGN " + entry.pgn,
-                            value = stringResource(
-                                R.string.regattalink_last_seen_ms,
-                                entry.lastSeenMs
-                            )
-                        )
-                    }
-            }
-
             regattaLinkRuntimeMessageText(
                 userMessage = nmeaState.userMessage,
                 hasTechnicalError = nmeaState.error.isNotBlank(),
@@ -2475,6 +2435,7 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
     onDrainDiagnosticLog: () -> Unit,
     onStopDiagnosticLog: () -> Unit,
     onCanErrorTrace: () -> Unit,
+    onRefreshPgnInventory: () -> Unit,
     onReadRawFrames: () -> Unit,
     onStartRawCapture: () -> Unit,
     onStopRawCapture: () -> Unit,
@@ -2887,6 +2848,51 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
                     detail = configurationState.diagnosticLogError,
                     modifier = Modifier.padding(top = 6.dp)
                 )
+            }
+
+            if (
+                connected &&
+                configurationState.canSessionAvailable == true &&
+                nmeaState.pgnInventorySupported
+            ) {
+                Text(
+                    text = stringResource(R.string.regattalink_pgns_seen),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 18.dp)
+                )
+                telemetryValue(
+                    label = stringResource(R.string.regattalink_pgns_seen),
+                    value = nmeaState.pgnInventory.size.toString()
+                )
+                Button(
+                    onClick = onRefreshPgnInventory,
+                    enabled = !otaActive &&
+                        !rawCaptureState.isActive &&
+                        !nmeaState.pgnInventoryLoading,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp)
+                ) {
+                    Text(
+                        if (nmeaState.pgnInventoryLoading) {
+                            stringResource(R.string.regattalink_refreshing)
+                        } else {
+                            stringResource(R.string.regattalink_refresh_pgns)
+                        }
+                    )
+                }
+                nmeaState.pgnInventory
+                    .sortedBy { it.pgn }
+                    .forEach { entry ->
+                        telemetryValue(
+                            label = "PGN " + entry.pgn,
+                            value = stringResource(
+                                R.string.regattalink_last_seen_ms,
+                                entry.lastSeenMs
+                            )
+                        )
+                    }
             }
 
             if (
