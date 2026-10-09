@@ -1084,9 +1084,7 @@ private fun RegattaLinkBoatDataOverview(state: RegattaLinkBoatState) {
             )
         },
         valid(7, state.speedThroughWaterMps)?.let {
-            RegattaLinkBoatDisplayValue(
-                stringResource(R.string.regattalink_nmea_stw), speed(it)
-            )
+            RegattaLinkBoatDisplayValue("STW", speed(it))
         }
     )
 
@@ -1199,7 +1197,11 @@ private fun RegattaLinkBoatDataGroup(
         fontSize = 12.sp,
         modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
     )
-    val columns = if (values.size == 2 || values.size == 4) 2 else 3
+    val columns = when (values.size) {
+        1 -> 1
+        2, 4 -> 2
+        else -> 3
+    }
     values.chunked(columns).forEach { rowValues ->
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -3750,6 +3752,17 @@ private fun RegattaLinkImuSetupSheet(
                 Text(
                     text = it,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
+            regattaLinkRuntimeMessageText(
+                userMessage = telemetryState.userMessage,
+                hasTechnicalError = telemetryState.error.isNotBlank(),
+                fallback = RegattaLinkUiMessage.TELEMETRY_FAILED
+            )?.let { message ->
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(top = 6.dp)
                 )
             }
