@@ -828,6 +828,48 @@ class TrackingDbHelper(context: Context) :
         }
     }
 
+    /**
+     * Only server-acknowledged, real race-session tracking samples qualify.
+     * A registration HTTP request is never stored here; the pre-race entry
+     * sample has no session_id and cannot satisfy this query.
+     */
+    fun hasConfirmedTrackingUploadForEvent(
+        serverUrl: String,
+        eventName: String,
+        secret: String,
+        resolvedEventName: String
+    ): Boolean {
+        val key = normalizeAccessContextKey(serverUrl, eventName, secret)
+            ?: return false
+        val resolved = resolvedEventName.trim()
+        if (resolved.isEmpty()) return false
+
+        readableDatabase.rawQuery(
+            """
+            SELECT 1
+            FROM tracking_samples AS samples
+            INNER JOIN access_contexts AS contexts
+                ON contexts.id = samples.access_context_id
+            INNER JOIN tracking_sessions AS sessions
+                ON sessions.id = samples.session_id
+            INNER JOIN race_contexts AS races
+                ON races.id = samples.race_context_id
+            WHERE samples.uploaded = 1
+              AND sessions.mode = 'race'
+              AND contexts.server_url = ?
+              AND contexts.access_identifier = ?
+              AND contexts.access_secret = ?
+              AND races.resolved_event_name = ?
+              AND races.access_context_id = contexts.id
+            LIMIT 1
+            """.trimIndent(),
+            arrayOf(
+                key.serverUrl, key.accessIdentifier,
+                key.accessSecret, resolved
+            )
+        ).use { cursor -> return cursor.moveToFirst() }
+    }
+
     fun markUploaded(localId: Long) {
         val values = ContentValues().apply {
             put("uploaded", 1)
