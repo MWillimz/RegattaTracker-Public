@@ -257,6 +257,7 @@ internal fun RegattaLinkScreen(
     ) {
         mutableStateOf(false)
     }
+    val displayedName = configurationState.deviceName.ifBlank { state.deviceName }
     val connectedStableId = state.deviceInfo?.stableId.takeIf { connected }
     val noKnownRLink = !connected && deviceSelectionState.knownDevices.isEmpty()
     val selectedRLinkName = if (connected) {
@@ -281,7 +282,6 @@ internal fun RegattaLinkScreen(
             !configurationState.restartAwaitingDisconnect
     val firmwareSetupOpen =
         activeSetupDestination == RegattaLinkSetupDestination.FIRMWARE
-    val displayedName = configurationState.deviceName.ifBlank { state.deviceName }
     val configEnabled =
         connected &&
             !otaState.isActive &&
@@ -697,7 +697,7 @@ internal fun RegattaLinkScreen(
                 Text(
                     text = statusText,
                     color = if (connected) {
-                        MaterialTheme.colorScheme.primary
+                        androidx.compose.ui.graphics.Color(0xFF2E7D32)
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     },
