@@ -88,3 +88,23 @@ private fun isEventOnboardingUrgent(
 
 internal fun eventOnboardingNewlyCompleted(previousMask: Int, currentMask: Int): Int =
     currentMask and previousMask.inv()
+
+/**
+ * A stable, opaque event identity: changing the event, credentials or resolved
+ * series occurrence invalidates event-specific onboarding progress.
+ */
+internal fun eventOnboardingKey(
+    serverUrl: String,
+    eventName: String,
+    secret: String,
+    resolvedEventName: String
+): String? {
+    val key = normalizeAccessContextKey(serverUrl, eventName, secret) ?: return null
+    val canonical = listOf(
+        key.serverUrl, key.accessIdentifier, key.accessSecret,
+        resolvedEventName.trim()
+    ).joinToString("\u0000")
+    val digest = java.security.MessageDigest.getInstance("SHA-256")
+        .digest(canonical.toByteArray(Charsets.UTF_8))
+    return digest.joinToString("") { "%02x".format(it.toInt() and 0xff) }
+}
