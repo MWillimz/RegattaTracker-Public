@@ -813,4 +813,8 @@
     <string name="onboarding_upload_detail">Espera la confirmación de envío de datos</string>
     <string name="onboarding_dont_show">No volver a mostrar</string>
     <string name="onboarding_progress">%1$d de %2$d completados</string>
+    <string name="onboarding_status_done">Completado</string>
+    <string name="onboarding_status_current">Siguiente paso</string>
+    <string name="onboarding_status_urgent">Prioritario</string>
+    <string name="onboarding_status_future">Más adelante</string>
 </resources>
