@@ -802,4 +802,15 @@
     <string name="regattalink_boat_group_depth">Profundidad y temperatura</string>
     <string name="regattalink_boat_group_motion">Movimiento</string>
     <string name="regattalink_boat_wind_direction">Dirección del viento</string>
+    <string name="onboarding_title">Primeros pasos</string>
+    <string name="onboarding_boat">Datos del barco</string>
+    <string name="onboarding_register">Inscripción</string>
+    <string name="onboarding_enter">Entrar en regata</string>
+    <string name="onboarding_upload">Comprobar envío</string>
+    <string name="onboarding_boat_detail">Confirma los datos del barco</string>
+    <string name="onboarding_register_detail">Escanea el QR y acepta las condiciones del evento</string>
+    <string name="onboarding_enter_detail">Inicia la participación en la regata</string>
+    <string name="onboarding_upload_detail">Espera la confirmación de envío de datos</string>
+    <string name="onboarding_dont_show">No volver a mostrar</string>
+    <string name="onboarding_progress">%1$d de %2$d completados</string>
 </resources>
