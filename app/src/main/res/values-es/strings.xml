@@ -644,7 +644,7 @@
     <string name="regattalink_nmea_available">Diagnóstico de Boat Data disponible</string>
     <string name="regattalink_nmea_unavailable">Diagnóstico de Boat Data no disponible</string>
     <string name="regattalink_pgns_seen">PGN observados</string>
-    <string name="regattalink_boat_state_title">Estado del barco</string>
+    <string name="regattalink_boat_state_title">Datos del barco</string>
     <string name="regattalink_boat_state_snapshot_only">Las notificaciones en vivo no están disponibles con el MTU BLE actual; las lecturas de snapshot siguen funcionando.</string>
     <string name="regattalink_boat_state_waiting">Esperando estado del barco…</string>
     <string name="regattalink_boat_state_no_data">El estado del barco está disponible, pero actualmente no hay valores Boat Data válidos.</string>
@@ -793,4 +793,12 @@
     <string name="regattalink_known">Conocido</string>
     <string name="regattalink_nearby">Cerca</string>
     <string name="regattalink_no_known_devices">No hay RLinks conocidos</string>
+    <string name="regattalink_pair">Emparejar</string>
+    <string name="regattalink_switch">Cambiar</string>
+    <string name="regattalink_pair_another">Emparejar otro RLink</string>
+    <string name="regattalink_boat_group_course">Rumbo y velocidad</string>
+    <string name="regattalink_boat_group_wind">Viento</string>
+    <string name="regattalink_boat_group_depth">Profundidad y temperatura</string>
+    <string name="regattalink_boat_group_motion">Movimiento</string>
+    <string name="regattalink_boat_wind_direction">Dirección del viento</string>
 </resources>

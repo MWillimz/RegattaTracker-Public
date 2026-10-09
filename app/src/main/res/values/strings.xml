@@ -687,7 +687,7 @@
     <string name="regattalink_nmea_available">Boat Data diagnostics available</string>
     <string name="regattalink_nmea_unavailable">Boat Data diagnostics unavailable</string>
     <string name="regattalink_pgns_seen">Observed PGNs</string>
-    <string name="regattalink_boat_state_title">Boat state</string>
+    <string name="regattalink_boat_state_title">Boat data</string>
     <string name="regattalink_boat_state_snapshot_only">Live notifications are unavailable at the current BLE MTU; snapshot reads still work.</string>
     <string name="regattalink_boat_state_waiting">Waiting for Boat State…</string>
     <string name="regattalink_boat_state_no_data">Boat State is available, but no Boat Data values are currently valid.</string>
@@ -836,4 +836,12 @@
     <string name="regattalink_known">Known</string>
     <string name="regattalink_nearby">Nearby</string>
     <string name="regattalink_no_known_devices">No known RLinks</string>
+    <string name="regattalink_pair">Pair</string>
+    <string name="regattalink_switch">Switch</string>
+    <string name="regattalink_pair_another">Pair another RLink</string>
+    <string name="regattalink_boat_group_course">Course &amp; speed</string>
+    <string name="regattalink_boat_group_wind">Wind</string>
+    <string name="regattalink_boat_group_depth">Depth &amp; temperature</string>
+    <string name="regattalink_boat_group_motion">Motion</string>
+    <string name="regattalink_boat_wind_direction">Wind direction</string>
 </resources>
