@@ -760,8 +760,15 @@ internal fun RegattaLinkScreen(
                                 )
                         }
                         if (liveBoatState == null) {
+                            val message = when {
+                                !nmeaState.boatStateSupported ->
+                                    R.string.regattalink_unavailable
+                                nmeaState.pausedForOta ->
+                                    R.string.regattalink_telemetry_paused_ota
+                                else -> R.string.regattalink_boat_state_waiting
+                            }
                             Text(
-                                text = stringResource(R.string.regattalink_boat_state_waiting),
+                                text = stringResource(message),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 12.sp
                             )
