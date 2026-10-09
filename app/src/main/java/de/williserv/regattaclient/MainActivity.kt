@@ -326,6 +326,7 @@ class MainActivity : ComponentActivity() {
     private val raceDataRequestGate = EventRequestGate()
 
     private val raceRegistered = mutableStateOf(false)
+    private val onboardingRegisteredKey = mutableStateOf("")
     private val onboardingHidden = mutableStateOf(false)
     private val onboardingEnteredKey = mutableStateOf("")
     private val onboardingUploadEvidence =
@@ -682,6 +683,10 @@ class MainActivity : ComponentActivity() {
                             raceDataReady = raceDataReady.value,
                             dailyReentryEnabled = dailyReentryEnabled.value,
                             raceRegistered = raceRegistered.value,
+                            onboardingRegistered =
+                                raceRegistered.value &&
+                                    onboardingRegisteredKey.value ==
+                                        currentOnboardingEventKey(),
                             localRaceFinished = localRaceFinished,
                             dtlText = dtlText.value,
                             ttlText = ttlText.value,
@@ -1383,6 +1388,17 @@ class MainActivity : ComponentActivity() {
             .ifBlank { "mass_start" }
         dailyReentryEnabled.value = prefs.getBoolean("daily_reentry_enabled", false)
         raceRegistered.value = prefs.getBoolean("race_registered", false)
+        onboardingRegisteredKey.value =
+            prefs.getString("onboarding_registered_event_key", "").orEmpty()
+        // Upgrade existing confirmed registrations without forcing a
+        // redundant server registration after an app update.
+        if (raceRegistered.value && onboardingRegisteredKey.value.isBlank()) {
+            onboardingRegisteredKey.value = currentOnboardingEventKey().orEmpty()
+            prefs.edit().putString(
+                "onboarding_registered_event_key",
+                onboardingRegisteredKey.value
+            ).apply()
+        }
 
         raceDataReady.value = prefs.getBoolean("race_data_ready", false)
         if (resolvedEventName.value.isBlank()) {
@@ -1795,9 +1811,15 @@ class MainActivity : ComponentActivity() {
 
     private fun setRaceRegistered(registered: Boolean) {
         raceRegistered.value = registered
+        onboardingRegisteredKey.value =
+            if (registered) currentOnboardingEventKey().orEmpty() else ""
         getSharedPreferences(racePrefsName, Context.MODE_PRIVATE)
             .edit()
             .putBoolean("race_registered", registered)
+            .putString(
+                "onboarding_registered_event_key",
+                onboardingRegisteredKey.value
+            )
             .apply()
     }
 
@@ -1814,6 +1836,10 @@ class MainActivity : ComponentActivity() {
             .putString("race_scoring_mode", raceScoringMode.value)
             .putBoolean("daily_reentry_enabled", dailyReentryEnabled.value)
             .putBoolean("race_registered", raceRegistered.value)
+            .putString(
+                "onboarding_registered_event_key",
+                onboardingRegisteredKey.value
+            )
             .putInt("race_raw_state_version", RACE_RAW_STATE_VERSION)
             .putString("race_status_raw", rawRaceStatus)
             .putString("race_start_raw", rawRaceStart)
