@@ -793,4 +793,12 @@
     <string name="regattalink_known">Conocido</string>
     <string name="regattalink_nearby">Cerca</string>
     <string name="regattalink_no_known_devices">No hay RLinks conocidos</string>
+    <string name="regattalink_pair">Emparejar</string>
+    <string name="regattalink_switch">Cambiar</string>
+    <string name="regattalink_pair_another">Emparejar otro RLink</string>
+    <string name="regattalink_boat_group_course">Rumbo y velocidad</string>
+    <string name="regattalink_boat_group_wind">Viento</string>
+    <string name="regattalink_boat_group_depth">Profundidad y temperatura</string>
+    <string name="regattalink_boat_group_motion">Movimiento</string>
+    <string name="regattalink_boat_wind_direction">Dirección del viento</string>
 </resources>
