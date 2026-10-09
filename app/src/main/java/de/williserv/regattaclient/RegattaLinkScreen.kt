@@ -1213,7 +1213,7 @@ private fun RegattaLinkBoatDataGroup(
                         text = field.label,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp,
-                        maxLines = 1
+                        maxLines = 2
                     )
                     Text(
                         text = field.value,
