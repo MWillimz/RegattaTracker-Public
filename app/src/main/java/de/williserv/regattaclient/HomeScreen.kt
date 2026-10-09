@@ -23,6 +23,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -119,6 +120,7 @@ fun HomeScreen(
     raceDataReady: Boolean,
     dailyReentryEnabled: Boolean = false,
     raceRegistered: Boolean,
+    onboardingRegistered: Boolean,
     localRaceFinished: Boolean,
     dtlText: String,
     ttlText: String,
@@ -129,6 +131,16 @@ fun HomeScreen(
     hasRaceInfo: Boolean,
     raceStartFlags: RaceStartFlags,
     millisToStart: Long?,
+    raceStartEpochMillis: Long?,
+    onboardingEventKey: String?,
+    onboardingPreviouslyObservedMask: Int?,
+    onOnboardingMaskObserved: (String?, Int) -> Unit,
+    onboardingEnteredRace: Boolean,
+    onboardingUploadConfirmed: Boolean,
+    onboardingEvidenceReady: Boolean,
+    onboardingHidden: Boolean,
+    onHideOnboarding: () -> Unit,
+    canEnterRace: Boolean,
     startPanelText: String,
     startPanelMode: String,
     lastCsvLine: String,
@@ -220,6 +232,27 @@ fun HomeScreen(
     val distancePrefix = stringResource(R.string.distance_prefix)
     val dtlPrefix = stringResource(R.string.dtl_prefix)
     val gpsStatus = ""
+    val onboardingNow by produceState(
+        initialValue = System.currentTimeMillis(),
+        onboardingEventKey
+    ) {
+        while (true) {
+            value = System.currentTimeMillis()
+            delay(30_000L)
+        }
+    }
+    val onboardingState = eventOnboardingState(
+        boatSetupConfirmed = setupConfirmed,
+        eventKnown = onboardingEventKey != null,
+        registered = onboardingRegistered,
+        // A confirmed real race-session upload also proves this event
+        // was entered, including for sessions predating the onboarding UI.
+        enteredRace = onboardingEnteredRace || onboardingUploadConfirmed,
+        trackingUploadConfirmed = onboardingUploadConfirmed,
+        raceStartEpochMillis = raceStartEpochMillis,
+        canEnterRace = canEnterRace,
+        nowEpochMillis = onboardingNow
+    )
 
     Column(
         modifier = modifier
@@ -232,6 +265,28 @@ fun HomeScreen(
             raceDataReady = raceDataReady,
             seriesDisplayMetadata = seriesDisplayMetadata
         )
+
+        if (
+            !onboardingHidden &&
+            (onboardingEventKey == null || onboardingEvidenceReady)
+        ) {
+            EventOnboardingCard(
+                state = onboardingState,
+                eventKey = onboardingEventKey,
+                previouslyObservedMask = onboardingPreviouslyObservedMask,
+                onObserveMask = onOnboardingMaskObserved,
+                suppressed = onboardingHidden,
+                onSuppress = onHideOnboarding,
+                onOpenStep = { step ->
+                    when (step) {
+                        OnboardingStep.BOAT_SETUP -> onBoatData()
+                        OnboardingStep.REGISTER,
+                        OnboardingStep.ENTER_RACE,
+                        OnboardingStep.UPLOAD_CHECK -> onRace()
+                    }
+                }
+            )
+        }
 
         Spacer(modifier = Modifier.height(HomeGapSmall))
 
