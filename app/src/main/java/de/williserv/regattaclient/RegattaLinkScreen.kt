@@ -260,11 +260,11 @@ internal fun RegattaLinkScreen(
     val displayedName = configurationState.deviceName.ifBlank { state.deviceName }
     val connectedStableId = state.deviceInfo?.stableId.takeIf { connected }
     val noKnownRLink = !connected && deviceSelectionState.knownDevices.isEmpty()
-    val selectedRLinkName = if (connected) {
+    val selectedRLinkName = (if (connected) {
         displayedName
     } else {
         deviceSelectionState.selectedDevice?.deviceName.orEmpty()
-    }.ifBlank { stringResource(R.string.regattalink_title) }
+    }).ifBlank { stringResource(R.string.regattalink_title) }
     val canSearchRLinks =
         !busy &&
             !deviceSelectionState.discovery.scanning &&
