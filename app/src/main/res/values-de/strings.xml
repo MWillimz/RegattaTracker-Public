@@ -796,9 +796,9 @@
     <string name="regattalink_pair">Koppeln</string>
     <string name="regattalink_switch">Wechseln</string>
     <string name="regattalink_pair_another">Weiteren RLink koppeln</string>
-    <string name="regattalink_boat_group_course">Kurs & Fahrt</string>
+    <string name="regattalink_boat_group_course">Kurs &amp; Fahrt</string>
     <string name="regattalink_boat_group_wind">Wind</string>
-    <string name="regattalink_boat_group_depth">Tiefe & Temperatur</string>
+    <string name="regattalink_boat_group_depth">Tiefe &amp; Temperatur</string>
     <string name="regattalink_boat_group_motion">Bewegung</string>
     <string name="regattalink_boat_wind_direction">Windrichtung</string>
 </resources>
