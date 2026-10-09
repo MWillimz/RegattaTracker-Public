@@ -805,7 +805,7 @@
     <string name="onboarding_title">Erste Schritte</string>
     <string name="onboarding_boat">Bootsdaten</string>
     <string name="onboarding_register">Anmelden</string>
-    <string name="onboarding_enter">Enter Race</string>
+    <string name="onboarding_enter">Teilnahme starten</string>
     <string name="onboarding_upload">Upload prüfen</string>
     <string name="onboarding_boat_detail">Bootsdaten bestätigen</string>
     <string name="onboarding_register_detail">QR-Code scannen und Eventbedingungen akzeptieren</string>
@@ -813,4 +813,8 @@
     <string name="onboarding_upload_detail">Bestätigten Tracking-Upload abwarten</string>
     <string name="onboarding_dont_show">Nicht mehr anzeigen</string>
     <string name="onboarding_progress">%1$d von %2$d erledigt</string>
+    <string name="onboarding_status_done">Erledigt</string>
+    <string name="onboarding_status_current">Nächster Schritt</string>
+    <string name="onboarding_status_urgent">Jetzt dringend</string>
+    <string name="onboarding_status_future">Später</string>
 </resources>
