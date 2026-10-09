@@ -245,7 +245,9 @@ fun HomeScreen(
         boatSetupConfirmed = setupConfirmed,
         eventKnown = onboardingEventKey != null,
         registered = onboardingRegistered,
-        enteredRace = onboardingEnteredRace,
+        // A confirmed real race-session upload also proves this event
+        // was entered, including for sessions predating the onboarding UI.
+        enteredRace = onboardingEnteredRace || onboardingUploadConfirmed,
         trackingUploadConfirmed = onboardingUploadConfirmed,
         raceStartEpochMillis = raceStartEpochMillis,
         canEnterRace = canEnterRace,
