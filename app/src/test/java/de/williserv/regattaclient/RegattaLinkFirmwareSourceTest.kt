@@ -171,10 +171,10 @@ class RegattaLinkFirmwareSourceTest {
             )
         )
         assertEquals(
-            0L,
+            4_000L,
             regattaLinkEventFirmwareRevealDelayMs(
                 probeStartedAtElapsedMs = 1_000L,
-                completedAtElapsedMs = 6_000L
+                completedAtElapsedMs = 2_000L
             )
         )
         assertEquals(
