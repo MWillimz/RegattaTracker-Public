@@ -62,6 +62,9 @@ internal fun EventOnboardingCard(
         mutableIntStateOf(previouslyObservedMask ?: state.completedMask)
     }
     var celebratingMask by remember(eventKey) { mutableIntStateOf(0) }
+    var visualMask by remember(eventKey) {
+        mutableIntStateOf(previouslyObservedMask ?: state.completedMask)
+    }
     var keepVisible by remember(eventKey) { mutableStateOf(!state.complete) }
 
     // Never replay progress on initial composition, event switch or page revisit.
@@ -73,13 +76,20 @@ internal fun EventOnboardingCard(
             celebratingMask = newMask
             expanded = true
             keepVisible = true
-            delay(ONBOARDING_COMPLETION_ANIMATION_MS.toLong())
+            // A completion on another page must first render its previous
+            // blue/orange dot before transitioning to green on Home.
+            delay(40L)
+            visualMask = state.completedMask
+            delay(ONBOARDING_COMPLETION_ANIMATION_MS - 40L)
             celebratingMask = 0
             delay(1_800L)
             expanded = false
             if (state.complete) keepVisible = false
-        } else if (state.complete && newMask == 0 && celebratingMask == 0) {
-            keepVisible = false
+        } else {
+            visualMask = state.completedMask
+            if (state.complete && celebratingMask == 0) {
+                keepVisible = false
+            }
         }
     }
 
@@ -123,8 +133,10 @@ internal fun EventOnboardingCard(
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.weight(1f)
                     )
-                    state.statuses.forEach { status ->
-                        OnboardingDot(status)
+                    state.statuses.forEachIndexed { index, status ->
+                        OnboardingDot(
+                            onboardingVisualStatus(status, visualMask, index)
+                        )
                     }
                 }
 
@@ -161,7 +173,9 @@ internal fun EventOnboardingCard(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    OnboardingDot(status)
+                                    OnboardingDot(
+                                        onboardingVisualStatus(status, visualMask, index)
+                                    )
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             text = stringResource(step.titleRes()),
@@ -244,3 +258,14 @@ private fun OnboardingStatus.accessibilityRes(): Int = when (this) {
     OnboardingStatus.URGENT -> R.string.onboarding_status_urgent
     OnboardingStatus.FUTURE -> R.string.onboarding_status_future
 }
+
+private fun onboardingVisualStatus(
+    actual: OnboardingStatus,
+    completedVisualMask: Int,
+    index: Int
+): OnboardingStatus =
+    if (actual == OnboardingStatus.DONE &&
+        completedVisualMask and (1 shl index) == 0
+    ) {
+        OnboardingStatus.CURRENT
+    } else actual
