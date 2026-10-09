@@ -587,7 +587,7 @@
     <string name="regattalink_confidence">Confiance</string>
     <string name="regattalink_settings_title">Paramètres</string>
     <string name="regattalink_setup">Configurer</string>
-    <string name="regattalink_setup_imu">Configurer l’IMU</string>
+    <string name="regattalink_setup_imu">Internal Sensor</string>
     <string name="regattalink_bluetooth_devices">Appareils Bluetooth</string>
     <string name="regattalink_calypso_wind_sensor">Capteur de vent Calypso</string>
     <string name="regattalink_calypso_bound_sensor">Capteur associé</string>
@@ -601,7 +601,7 @@
     <string name="regattalink_calypso_ambiguous">Plusieurs capteurs Calypso ont été trouvés. Éteignez ou éloignez les capteurs indésirables puis réessayez.</string>
     <string name="regattalink_calypso_verify_failed">La vérification du capteur Calypso a échoué.</string>
     <string name="regattalink_calypso_wind_tx">Transmettre le vent Calypso vers Boat Data</string>
-    <string name="regattalink_setup_nmea">Configurer TX</string>
+    <string name="regattalink_setup_nmea">NMEA Setup</string>
     <string name="regattalink_advanced_diagnostics">Avancé / Diagnostic</string>
     <string name="regattalink_device_settings">Paramètres de l’appareil</string>
     <string name="regattalink_subsystems">Sous-systèmes matériels</string>
@@ -745,6 +745,7 @@
     <string name="regattalink_phone_gps_tx">Transmettre le GPS du téléphone</string>
     <string name="regattalink_compass_tx">Transmettre le cap</string>
     <string name="regattalink_phone_gps_relay">Transmettre le GPS sans suivi</string>
+    <string name="regattalink_phone_gps_relay_short">Aussi sans suivi</string>
     <string name="regattalink_phone_gps_relay_hint">Maintient la transmission du GPS du téléphone même lorsque le suivi de course ou manuel est arrêté.</string>
     <string name="regattalink_phone_gps_relay_notification_title">Transmission GPS du téléphone</string>
     <string name="regattalink_phone_gps_relay_active">Transmission du GPS du téléphone vers RegattaLink</string>
