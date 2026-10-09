@@ -1,9 +1,7 @@
 package de.williserv.regattaclient
 
 import android.content.Context
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -147,7 +145,6 @@ fun HomeScreen(
     onCourse: () -> Unit,
     onMap: () -> Unit,
     onResults: () -> Unit,
-    onRegattaLinkReconnect: () -> Unit,
     onRegattaLinkOpen: () -> Unit,
     onLegal: () -> Unit,
     onOcsPanelClick: () -> Unit,
@@ -338,7 +335,6 @@ fun HomeScreen(
             ),
             uploadColor = uploadColor,
             regattaLinkStatus = regattaLinkStatus,
-            onRegattaLinkReconnect = onRegattaLinkReconnect,
             onRegattaLinkOpen = onRegattaLinkOpen
         )
 
@@ -716,7 +712,6 @@ fun StatusOverviewCard(
     uploadStatusText: String,
     uploadColor: Color,
     regattaLinkStatus: RegattaLinkHomeStatus,
-    onRegattaLinkReconnect: () -> Unit,
     onRegattaLinkOpen: () -> Unit
 ) {
     Card(
@@ -743,7 +738,6 @@ fun StatusOverviewCard(
                 Spacer(modifier = Modifier.weight(1f))
                 RegattaLinkStatusIndicator(
                     status = regattaLinkStatus,
-                    onReconnect = onRegattaLinkReconnect,
                     onOpen = onRegattaLinkOpen,
                     modifier = Modifier.weight(1f)
                 )
@@ -793,30 +787,37 @@ private fun CompactStatusIndicator(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RegattaLinkStatusIndicator(
     status: RegattaLinkHomeStatus,
-    onReconnect: () -> Unit,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Row(
-        modifier = modifier.combinedClickable(
-            onClick = {
-                if (status != RegattaLinkHomeStatus.CONNECTED) {
-                    onReconnect()
-                }
-            },
-            onLongClick = onOpen
-        ),
+        modifier = modifier.clickable(onClick = onOpen),
         horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AutoSizedSingleLineText(
-            text = stringResource(R.string.regattalink_short_label),
-            minFontSize = 9.sp,
-            maxFontSize = 16.sp
+        Text(
+            text = buildAnnotatedString {
+                append(stringResource(R.string.regattalink_short_label))
+                withStyle(
+                    SpanStyle(
+                        fontSize = 9.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                ) {
+                    append(" (beta)")
+                }
+            },
+            modifier = Modifier.weight(1f, fill = false),
+            maxLines = 1,
+            softWrap = false,
+            autoSize = TextAutoSize.StepBased(
+                minFontSize = 9.sp,
+                maxFontSize = 16.sp,
+                stepSize = 0.5.sp
+            )
         )
         Box(
             modifier = Modifier

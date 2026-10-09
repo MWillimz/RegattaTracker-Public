@@ -720,27 +720,6 @@ class MainActivity : ComponentActivity() {
                                     fetchEventResults()
                                 }
                             },
-                            onRegattaLinkReconnect = {
-                                val homeStatus =
-                                    regattaLinkHomeStatus(
-                                        state = regattaLinkState.value,
-                                        pairingRequired =
-                                            regattaLinkManager.requiresNewPairing(),
-                                        selectedStableId =
-                                            regattaLinkDeviceSelectionState.value
-                                                .selectedStableId
-                                    )
-                                if (
-                                    regattaLinkManager.configuredDevice() == null ||
-                                    homeStatus == RegattaLinkHomeStatus.ERROR
-                                ) {
-                                    regattaLinkManager.refreshBluetoothAvailability()
-                                    regattaLinkReturnScreen = Screen.HOME
-                                    currentScreen.value = Screen.REGATTALINK
-                                } else {
-                                    startRegattaLinkReconnect()
-                                }
-                            },
                             onRegattaLinkOpen = {
                                 regattaLinkManager.refreshBluetoothAvailability()
                                 regattaLinkReturnScreen = Screen.HOME
