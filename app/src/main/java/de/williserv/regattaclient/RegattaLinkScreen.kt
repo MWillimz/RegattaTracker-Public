@@ -1997,6 +1997,22 @@ private fun RegattaLinkNmeaSetupSheet(
                 )
             }
 
+            regattaLinkRuntimeMessageText(
+                userMessage = configurationState.userMessage,
+                hasTechnicalError = configurationState.error.isNotBlank(),
+                fallback = RegattaLinkUiMessage.CONFIGURATION_FAILED
+            )?.let { message ->
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+            RegattaLinkTechnicalDetail(
+                detail = configurationState.error,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+
             if (
                 connected &&
                 canAvailable &&
