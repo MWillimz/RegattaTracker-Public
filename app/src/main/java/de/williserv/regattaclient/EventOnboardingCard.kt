@@ -93,10 +93,16 @@ internal fun EventOnboardingCard(
         val progress = stringResource(
             R.string.onboarding_progress, state.completedCount, 4
         )
+        val accessibleSteps = OnboardingStep.entries.mapIndexed { index, step ->
+            stringResource(step.titleRes()) + ": " +
+                stringResource(state.statuses[index].accessibilityRes())
+        }.joinToString("; ")
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .semantics { contentDescription = "$title, $progress" },
+                .semantics {
+                    contentDescription = "$title, $progress. $accessibleSteps"
+                },
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surface
@@ -230,4 +236,11 @@ private fun OnboardingStep.detailRes(): Int = when (this) {
     OnboardingStep.REGISTER -> R.string.onboarding_register_detail
     OnboardingStep.ENTER_RACE -> R.string.onboarding_enter_detail
     OnboardingStep.UPLOAD_CHECK -> R.string.onboarding_upload_detail
+}
+
+private fun OnboardingStatus.accessibilityRes(): Int = when (this) {
+    OnboardingStatus.DONE -> R.string.onboarding_status_done
+    OnboardingStatus.CURRENT -> R.string.onboarding_status_current
+    OnboardingStatus.URGENT -> R.string.onboarding_status_urgent
+    OnboardingStatus.FUTURE -> R.string.onboarding_status_future
 }
