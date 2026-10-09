@@ -98,6 +98,19 @@ class EventOnboardingUploadTest {
     }
 
     @Test
+    fun olderAcknowledgedRaceSessionWithoutRaceContextStillCounts() {
+        val accessId = requireNotNull(
+            db.getOrCreateAccessContext("https://example.test", "Event A", "secret")
+        )
+        val sessionId = requireNotNull(
+            db.createTrackingSession(100L, "race", accessId, "Event A", "Race 1")
+        )
+        db.markUploaded(sample(accessId, null, sessionId, 10L))
+        assertTrue(acknowledged(event = "Race 1"))
+        assertFalse(acknowledged(event = "Race 2"))
+    }
+
+    @Test
     fun uploadFromAnotherRaceDoesNotCompleteNewRaceAndPersistsAfterReopen() {
         val accessId = requireNotNull(
             db.getOrCreateAccessContext("https://example.test", "Event A", "secret")
