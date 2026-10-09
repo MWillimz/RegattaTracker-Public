@@ -162,16 +162,16 @@ class RegattaLinkFirmwareSourceTest {
     }
 
     @Test
-    fun eventFirmwareRevealAlwaysWaitsUntilTwentySecondsFromProbeStart() {
+    fun eventFirmwareRevealAlwaysWaitsUntilFiveSecondsFromProbeStart() {
         assertEquals(
-            20_000L,
+            5_000L,
             regattaLinkEventFirmwareRevealDelayMs(
                 probeStartedAtElapsedMs = 1_000L,
                 completedAtElapsedMs = 1_000L
             )
         )
         assertEquals(
-            15_000L,
+            0L,
             regattaLinkEventFirmwareRevealDelayMs(
                 probeStartedAtElapsedMs = 1_000L,
                 completedAtElapsedMs = 6_000L
@@ -181,11 +181,11 @@ class RegattaLinkFirmwareSourceTest {
             0L,
             regattaLinkEventFirmwareRevealDelayMs(
                 probeStartedAtElapsedMs = 1_000L,
-                completedAtElapsedMs = 21_000L
+                completedAtElapsedMs = 6_000L
             )
         )
         assertEquals(
-            20_000L,
+            5_000L,
             regattaLinkEventFirmwareRevealDelayMs(
                 probeStartedAtElapsedMs = 5_000L,
                 completedAtElapsedMs = 4_000L
