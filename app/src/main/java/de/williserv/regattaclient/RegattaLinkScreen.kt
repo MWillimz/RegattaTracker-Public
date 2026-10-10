@@ -2060,7 +2060,11 @@ private fun RegattaLinkNmeaSetupSheet(
                     )
                     Switch(
                         checked = phoneGpsRelayEnabled,
-                        onCheckedChange = onSetPhoneGpsRelayEnabled
+                        onCheckedChange = onSetPhoneGpsRelayEnabled,
+                        // This local background mode is meaningful only while
+                        // the RLink's TX master is actually enabled.
+                        enabled = configurationState.nmeaTxEnabled == true &&
+                            txMasterDraft == true
                     )
                 }
             }
