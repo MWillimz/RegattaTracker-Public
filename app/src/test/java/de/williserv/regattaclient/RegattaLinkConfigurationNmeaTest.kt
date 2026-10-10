@@ -535,7 +535,7 @@ class RegattaLinkConfigurationNmeaTest {
         val state = RegattaLinkConfigurationState(
             configWordSupported = true,
             configWord =
-                REGATTALINK_CONFIG_CAN_STATUS_MIRROR or
+                REGATTALINK_CONFIG_SESSION_CAN or
                     REGATTALINK_CONFIG_TX_PHONE_GPS,
             configRestartRequired = false,
             nmeaTxRuntimeStatusSupported = true,
@@ -693,6 +693,21 @@ class RegattaLinkConfigurationNmeaTest {
     }
 
     @Test
+    fun runtimeFlagsDistinguishCanBootEnableFromActiveNode() {
+        val canBootOnly = parseRegattaLinkNmeaTxRuntimeStatus(
+            byteArrayOf(2, 0x01, 0, 0)
+        )
+        assertTrue(canBootOnly.canInterfaceBootEnabled)
+        assertFalse(canBootOnly.activeNode)
+
+        val activeNodeOnly = parseRegattaLinkNmeaTxRuntimeStatus(
+            byteArrayOf(2, 0x02, 0, 0)
+        )
+        assertFalse(activeNodeOnly.canInterfaceBootEnabled)
+        assertTrue(activeNodeOnly.activeNode)
+    }
+
+    @Test
     fun individualTxSelectionAndBootAppliedStateRemainSeparateAcrossRestartLifecycle() {
         val bootOff = regattaLinkApplyNmeaTxRuntimeStatus(
             regattaLinkApplyConfigWord(
@@ -710,7 +725,7 @@ class RegattaLinkConfigurationNmeaTest {
 
         val selectedOn = regattaLinkApplyConfigWord(
             bootOff,
-            REGATTALINK_CONFIG_CAN_STATUS_MIRROR or REGATTALINK_CONFIG_TX_IMU
+            REGATTALINK_CONFIG_SESSION_CAN or REGATTALINK_CONFIG_TX_IMU
         )
         assertTrue(selectedOn.nmeaAttitudeTxRestartRequired)
 
