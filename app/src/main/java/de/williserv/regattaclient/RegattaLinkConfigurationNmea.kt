@@ -14,6 +14,7 @@ data class RegattaLinkCalypsoState(
     val connected: Boolean = false,
     val scanning: Boolean = false,
     val lastScanResult: RegattaLinkDeviceControlResult? = null,
+    val lastDeleteResult: RegattaLinkDeviceControlResult? = null,
     val detail: Int = 0,
     val error: String = ""
 )
@@ -502,7 +503,8 @@ internal fun regattaLinkApplyCalypsoControlStatus(
     }
     require(
         status.opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN ||
-            status.opcode == RegattaLinkDeviceControlOpcode.CALYPSO_STATUS
+            status.opcode == RegattaLinkDeviceControlOpcode.CALYPSO_STATUS ||
+            status.opcode == RegattaLinkDeviceControlOpcode.CALYPSO_DELETE
     ) {
         "Calypso state requires a Calypso Device Control opcode"
     }
@@ -516,6 +518,10 @@ internal fun regattaLinkApplyCalypsoControlStatus(
             status.result
     }
 
+    val lastDeleteResult = if (
+        status.opcode == RegattaLinkDeviceControlOpcode.CALYPSO_DELETE && status.phase.isTerminal
+    ) status.result else state.calypso.lastDeleteResult
+
     return state.copy(
         calypso = state.calypso.copy(
             statusKnown = true,
@@ -523,6 +529,7 @@ internal fun regattaLinkApplyCalypsoControlStatus(
             connected = payload.connected,
             scanning = payload.scanning,
             lastScanResult = lastScanResult,
+            lastDeleteResult = lastDeleteResult,
             detail = payload.detail
         )
     )
