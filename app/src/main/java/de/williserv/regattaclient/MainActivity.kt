@@ -719,13 +719,10 @@ class MainActivity : ComponentActivity() {
                             },
                             onboardingEnteredRace = onboardingEnteredForCurrentEvent(),
                             onboardingUploadConfirmed =
-                                onboardingUploadEvidence.value?.let {
-                                    it.first == currentOnboardingEventKey() && it.second
-                                } == true,
-                            onboardingEvidenceReady =
-                                currentOnboardingEventKey() == null ||
-                                    onboardingUploadEvidence.value?.first ==
-                                        currentOnboardingEventKey(),
+                                isEventOnboardingUploadConfirmed(
+                                    evidence = onboardingUploadEvidence.value,
+                                    eventKey = currentOnboardingEventKey()
+                                ),
                             onboardingHidden = onboardingHidden.value,
                             onHideOnboarding = ::suppressEventOnboarding,
                             canEnterRace = canEnterRaceNow(),
