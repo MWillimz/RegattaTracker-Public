@@ -818,4 +818,8 @@
     <string name="onboarding_status_urgent">Jetzt dringend</string>
     <string name="onboarding_status_future">Später</string>
     <string name="onboarding_reset">Erste Schritte zurücksetzen</string>
+    <string name="regattalink_calypso_delete">Calypso entfernen</string>
+    <string name="regattalink_calypso_delete_confirm">Gespeicherten Calypso-Sensor %1$s entfernen? Der Sensor wird getrennt und seine Bindung gelöscht.</string>
+    <string name="regattalink_calypso_deleting">Calypso wird entfernt…</string>
+    <string name="regattalink_calypso_delete_failed">Calypso konnte nicht entfernt werden. Die Bindung bleibt bestehen.</string>
 </resources>
