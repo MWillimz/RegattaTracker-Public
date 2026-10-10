@@ -817,4 +817,5 @@
     <string name="onboarding_status_current">Prochaine étape</string>
     <string name="onboarding_status_urgent">À faire rapidement</string>
     <string name="onboarding_status_future">Plus tard</string>
+    <string name="onboarding_reset">Réinitialiser les premiers pas</string>
 </resources>

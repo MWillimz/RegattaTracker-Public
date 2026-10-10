@@ -860,4 +860,5 @@
     <string name="onboarding_status_current">Next step</string>
     <string name="onboarding_status_urgent">Time-sensitive</string>
     <string name="onboarding_status_future">Later</string>
+    <string name="onboarding_reset">Reset Getting Started</string>
 </resources>
