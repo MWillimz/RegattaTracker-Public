@@ -1849,7 +1849,7 @@ private fun RegattaLinkNmeaSetupSheet(
 
             val nmeaRuntimeKnown =
                 configurationState.nmeaTxRuntimeStatusSupported &&
-                    configurationState.nmeaTxBootSelected != null &&
+                    configurationState.nmeaCanBootEnabled != null &&
                     configurationState.nmeaTxActive != null
             val nmeaAttitudeBootSelected =
                 configurationState.nmeaBootOutputMask?.let {
