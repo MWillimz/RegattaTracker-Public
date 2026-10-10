@@ -147,7 +147,6 @@ class RegattaLinkScreenTest {
             connected = true,
             calypsoSupported = true
         )
-        assertFalse(unknown.enableTx)
         assertFalse(unknown.forward0183)
         assertFalse(unknown.forwardAttitude)
         assertFalse(unknown.forwardCompass)
@@ -159,7 +158,7 @@ class RegattaLinkScreenTest {
         val disabled = regattaLinkNmeaSetupVisibility(
             RegattaLinkConfigurationState(
                 configWordSupported = true,
-                configWord = REGATTALINK_CONFIG_TX_MASTER or
+                configWord = REGATTALINK_CONFIG_CAN_STATUS_MIRROR or
                     REGATTALINK_CONFIG_TX_NMEA0183 or
                     REGATTALINK_CONFIG_TX_IMU
             ),
@@ -167,7 +166,6 @@ class RegattaLinkScreenTest {
             connected = true,
             calypsoSupported = true
         )
-        assertFalse(disabled.enableTx)
         assertFalse(disabled.forward0183)
         assertFalse(disabled.forwardAttitude)
         assertFalse(disabled.forwardPhoneGps)
@@ -200,7 +198,6 @@ class RegattaLinkScreenTest {
         val shown = regattaLinkNmeaSetupVisibility(
             config, nmea, connected = true, calypsoSupported = true
         )
-        assertTrue(shown.enableTx)
         assertTrue(shown.forward0183)
         assertTrue(shown.forwardAttitude)
         assertTrue(shown.forwardCompass)
@@ -231,7 +228,6 @@ class RegattaLinkScreenTest {
         val disconnected = regattaLinkNmeaSetupVisibility(
             config, nmea, connected = false, calypsoSupported = true
         )
-        assertFalse(disconnected.enableTx)
         assertFalse(disconnected.loadSensors)
     }
 
@@ -246,7 +242,6 @@ class RegattaLinkScreenTest {
             connected = true, calypsoSupported = false
         )
         assertTrue(shown.baudRate)
-        assertFalse(shown.enableTx)
         assertFalse(shown.forward0183)
     }
 
