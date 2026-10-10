@@ -337,6 +337,7 @@ class MainActivity : ComponentActivity() {
     private val raceDataRequestGate = EventRequestGate()
 
     private val raceRegistered = mutableStateOf(false)
+    private val registrationRequestGate = RaceRegistrationRequestGate()
     private val onboardingRegisteredKey = mutableStateOf("")
     private val onboardingHidden = mutableStateOf(false)
     private val onboardingEnteredKey = mutableStateOf("")
@@ -1818,6 +1819,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun setRaceRegistered(registered: Boolean) {
+        if (!registered) registrationRequestGate.invalidate()
         raceRegistered.value = registered
         onboardingRegisteredKey.value =
             if (registered) currentOnboardingEventKey().orEmpty() else ""
@@ -2948,6 +2950,7 @@ class MainActivity : ComponentActivity() {
 
         val access = currentEventAccessKey() ?: return
         val registrationBoatSetup = currentBoatSetupValues()
+        val registrationGeneration = registrationRequestGate.begin()
         registerRaceStatusText.value = getString(R.string.registering)
 
         thread {
@@ -3005,6 +3008,7 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     if (!asyncLifetime.isActive()) return@runOnUiThread
                     if (
+                        !registrationRequestGate.isCurrent(registrationGeneration) ||
                         currentBoatSetupValues() != registrationBoatSetup ||
                         currentEventAccessKey() != access
                     ) {
@@ -3027,6 +3031,7 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     if (!asyncLifetime.isActive()) return@runOnUiThread
                     if (
+                        !registrationRequestGate.isCurrent(registrationGeneration) ||
                         currentBoatSetupValues() != registrationBoatSetup ||
                         currentEventAccessKey() != access
                     ) {
