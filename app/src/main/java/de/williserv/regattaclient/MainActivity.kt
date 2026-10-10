@@ -340,6 +340,7 @@ class MainActivity : ComponentActivity() {
     private val registrationRequestGate = RaceRegistrationRequestGate()
     private val onboardingRegisteredKey = mutableStateOf("")
     private val onboardingHidden = mutableStateOf(false)
+    private val onboardingResetCounter = mutableIntStateOf(0)
     private val onboardingEnteredKey = mutableStateOf("")
     private val onboardingUploadEvidence =
         mutableStateOf<Pair<String, Boolean>?>(null)
@@ -726,6 +727,8 @@ class MainActivity : ComponentActivity() {
                                     eventKey = currentOnboardingEventKey()
                                 ),
                             onboardingHidden = onboardingHidden.value,
+                            onboardingResetCounter = onboardingResetCounter.intValue,
+                            onResetOnboarding = ::resetOnboardingDisplay,
                             onHideOnboarding = ::suppressEventOnboarding,
                             canEnterRace = canEnterRaceNow(),
                             startPanelText = startPanelText.value,
@@ -1809,6 +1812,15 @@ class MainActivity : ComponentActivity() {
             .edit()
             .putBoolean("entered_$eventKey", true)
             .apply()
+    }
+
+    private fun resetOnboardingDisplay() {
+        // Reset only UI suppression and animation state; never touch race/session data.
+        getSharedPreferences("event_onboarding", Context.MODE_PRIVATE)
+            .edit().remove("hidden").apply()
+        onboardingObservedStates.clear()
+        onboardingResetCounter.intValue += 1
+        onboardingHidden.value = false
     }
 
     private fun suppressEventOnboarding() {
