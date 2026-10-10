@@ -482,6 +482,9 @@ internal fun RegattaLinkScreen(
                         0
                     )
                 },
+                onDeleteCalypso = {
+                    onDeviceControl(RegattaLinkDeviceControlOpcode.CALYPSO_DELETE, 0)
+                },
                 onApplyBluetoothConfigAndRestart =
                     onApplyBluetoothConfigAndRestart,
                 onDismiss = { activeSetupDestination = null }
@@ -1461,6 +1464,7 @@ private fun RegattaLinkBluetoothDevicesSheet(
     deviceControlEnabled: Boolean,
     calypsoSupported: Boolean,
     onScanCalypso: () -> Unit,
+    onDeleteCalypso: () -> Unit,
     onApplyBluetoothConfigAndRestart: (UInt) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -1490,6 +1494,10 @@ private fun RegattaLinkBluetoothDevicesSheet(
             REGATTALINK_CONFIG_CALYPSO_ENABLE
         )
     val calypso = configurationState.calypso
+    var confirmCalypsoDelete by remember(deviceKey) { mutableStateOf(false) }
+    val deleteActive = configurationState.deviceControlBusy &&
+        configurationState.deviceControlAcceptedOpcode ==
+            RegattaLinkDeviceControlOpcode.CALYPSO_DELETE
     val scanActive =
         calypso.scanning ||
             (
@@ -1513,6 +1521,26 @@ private fun RegattaLinkBluetoothDevicesSheet(
         }
     }
 
+    if (confirmCalypsoDelete && calypso.boundId != null) {
+        AlertDialog(
+            onDismissRequest = { confirmCalypsoDelete = false },
+            title = { Text(stringResource(R.string.regattalink_calypso_delete)) },
+            text = { Text(stringResource(R.string.regattalink_calypso_delete_confirm, calypso.boundId!!)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmCalypsoDelete = false
+                    onDeleteCalypso()
+                }, enabled = connected && deviceControlEnabled && !configurationState.deviceControlBusy) {
+                    Text(stringResource(R.string.regattalink_calypso_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmCalypsoDelete = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
@@ -1546,6 +1574,28 @@ private fun RegattaLinkBluetoothDevicesSheet(
                         R.string.regattalink_calypso_not_bound
                     )
                 }
+            )
+            if (calypso.statusKnown && calypso.boundId != null && calypsoSupported) {
+                TextButton(
+                    onClick = { confirmCalypsoDelete = true },
+                    enabled = connected && deviceControlEnabled && !configurationState.deviceControlBusy,
+                    modifier = Modifier.padding(top = 2.dp)
+                ) {
+                    Text(stringResource(R.string.regattalink_calypso_delete))
+                }
+            }
+            if (deleteActive) {
+                Text(stringResource(R.string.regattalink_calypso_deleting))
+            }
+            if (calypso.lastDeleteResult != null &&
+                calypso.lastDeleteResult != RegattaLinkDeviceControlResult.OK) {
+                Text(
+                    text = stringResource(R.string.regattalink_calypso_delete_failed),
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+            RegattaLinkTechnicalDetail(
+                detail = if (calypso.lastDeleteResult != null) calypso.error else ""
             )
             telemetryValue(
                 label = stringResource(

@@ -33,7 +33,8 @@ enum class RegattaLinkDeviceControlOpcode(val wireValue: Int) {
     IMU_RAW_MODE(7),
     CAN_ERROR_TRACE_60S(8),
     CALYPSO_SCAN(9),
-    CALYPSO_STATUS(10);
+    CALYPSO_STATUS(10),
+    CALYPSO_DELETE(11);
 
     companion object {
         fun fromWire(value: Int): RegattaLinkDeviceControlOpcode? =
@@ -225,7 +226,8 @@ internal fun regattaLinkDeviceControlClientTimeoutMs(
 
 internal fun RegattaLinkDeviceControlOpcode?.isCalypsoCommand(): Boolean =
     this == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN ||
-        this == RegattaLinkDeviceControlOpcode.CALYPSO_STATUS
+        this == RegattaLinkDeviceControlOpcode.CALYPSO_STATUS ||
+        this == RegattaLinkDeviceControlOpcode.CALYPSO_DELETE
 
 private const val REGATTALINK_CALYPSO_FLAG_BOUND = 1 shl 3
 private const val REGATTALINK_CALYPSO_FLAG_CONNECTED = 1 shl 4
@@ -492,7 +494,8 @@ internal fun buildRegattaLinkDeviceControlRequest(
         opcode == RegattaLinkDeviceControlOpcode.RESTART ||
         opcode == RegattaLinkDeviceControlOpcode.CAN_ERROR_TRACE_60S ||
         opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN ||
-        opcode == RegattaLinkDeviceControlOpcode.CALYPSO_STATUS
+        opcode == RegattaLinkDeviceControlOpcode.CALYPSO_STATUS ||
+        opcode == RegattaLinkDeviceControlOpcode.CALYPSO_DELETE
     ) {
         require(value == 0) { "$opcode requires value 0" }
     }

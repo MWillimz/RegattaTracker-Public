@@ -818,4 +818,8 @@
     <string name="onboarding_status_urgent">Prioritario</string>
     <string name="onboarding_status_future">Más adelante</string>
     <string name="onboarding_reset">Restablecer primeros pasos</string>
+    <string name="regattalink_calypso_delete">Eliminar Calypso</string>
+    <string name="regattalink_calypso_delete_confirm">¿Eliminar el sensor Calypso %1$s? Se desconectará y se borrará su vinculación.</string>
+    <string name="regattalink_calypso_deleting">Eliminando Calypso…</string>
+    <string name="regattalink_calypso_delete_failed">No se pudo eliminar Calypso. Se conserva la vinculación.</string>
 </resources>
