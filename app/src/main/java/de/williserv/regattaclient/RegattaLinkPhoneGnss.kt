@@ -33,9 +33,9 @@ internal class RegattaLinkPhoneGpsRelayStore(context: Context) {
 }
 
 /**
- * A confirmed, connected RLink with TX disabled cannot use the independent
- * phone-GPS background relay. Do not reset the preference on BLE disconnect
- * or while the firmware config is still unknown.
+ * A confirmed, connected RLink without a CAN session cannot use the
+ * independent phone-GPS background relay. Preserve the preference across
+ * BLE disconnects or while the firmware configuration is unknown.
  */
 internal fun shouldDisablePhoneGpsRelayForTxState(
     relayEnabled: Boolean,
@@ -46,8 +46,7 @@ internal fun shouldDisablePhoneGpsRelayForTxState(
         return false
     }
     val word = configurationState.configWord ?: return false
-    return word and REGATTALINK_CONFIG_TX_MASTER == 0u ||
-        word and REGATTALINK_CONFIG_SESSION_CAN == 0u
+    return word and REGATTALINK_CONFIG_SESSION_CAN == 0u
 }
 
 internal const val REGATTALINK_PHONE_GNSS_VALID_POSITION = 1 shl 0
@@ -189,7 +188,6 @@ internal fun regattaLinkPhoneGnssForwardingGate(
         !configurationState.factoryResetAwaitingDisconnect &&
         configurationState.factoryResetWriteAcceptedRequestId == null &&
         configWord and REGATTALINK_CONFIG_SESSION_CAN != 0u &&
-        configWord and REGATTALINK_CONFIG_TX_MASTER != 0u &&
         configWord and REGATTALINK_CONFIG_TX_PHONE_GPS != 0u
 }
 
