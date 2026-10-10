@@ -45,6 +45,40 @@ class EventOnboardingTest {
     }
 
     @Test
+    fun enteringRaceAlsoCompletesRegisterWithoutSeparateRegistration() {
+        val before = state(boat = true)
+        val after = state(boat = true, entered = true)
+
+        assertEquals(
+            listOf(
+                OnboardingStatus.DONE,
+                OnboardingStatus.DONE,
+                OnboardingStatus.DONE,
+                OnboardingStatus.FUTURE
+            ),
+            after.statuses
+        )
+        assertEquals(0b0110, eventOnboardingNewlyCompleted(
+            before.completedMask, after.completedMask
+        ))
+    }
+
+    @Test
+    fun registrationWithoutEntryCompletesOnlyRegisterAndNotEnterRace() {
+        val registeredOnly = state(boat = true, registered = true)
+        assertEquals(OnboardingStatus.DONE, registeredOnly.statuses[1])
+        assertEquals(OnboardingStatus.CURRENT, registeredOnly.statuses[2])
+
+        val notRegisteredOrEntered = state(boat = true)
+        assertEquals(OnboardingStatus.CURRENT, notRegisteredOrEntered.statuses[1])
+        assertEquals(OnboardingStatus.FUTURE, notRegisteredOrEntered.statuses[2])
+
+        val noEvent = state(boat = true, event = false, entered = true)
+        assertEquals(OnboardingStatus.CURRENT, noEvent.statuses[1])
+        assertEquals(OnboardingStatus.FUTURE, noEvent.statuses[2])
+    }
+
+    @Test
     fun missingOrStaleUploadEvidenceNeverHidesEarlierProgressOrCompletesUpload() {
         // On app launch, or after an SQLite read failure, no evidence
         // is available. This is NOT a confirmed server upload.
