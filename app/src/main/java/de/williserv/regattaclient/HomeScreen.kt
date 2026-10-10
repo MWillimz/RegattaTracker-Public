@@ -137,7 +137,6 @@ fun HomeScreen(
     onOnboardingMaskObserved: (String?, Int) -> Unit,
     onboardingEnteredRace: Boolean,
     onboardingUploadConfirmed: Boolean,
-    onboardingEvidenceReady: Boolean,
     onboardingHidden: Boolean,
     onHideOnboarding: () -> Unit,
     canEnterRace: Boolean,
@@ -266,10 +265,9 @@ fun HomeScreen(
             seriesDisplayMetadata = seriesDisplayMetadata
         )
 
-        if (
-            !onboardingHidden &&
-            (onboardingEventKey == null || onboardingEvidenceReady)
-        ) {
+        // Boot/setup/registration/entry stay usable even if upload evidence
+        // has not yet been read or the tracking database read has failed.
+        if (!onboardingHidden) {
             EventOnboardingCard(
                 state = onboardingState,
                 eventKey = onboardingEventKey,
