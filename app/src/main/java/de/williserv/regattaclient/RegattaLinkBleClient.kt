@@ -5006,7 +5006,7 @@ internal class RegattaLinkBleClient(
                                 if (
                                     opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN ||
                                     opcode == RegattaLinkDeviceControlOpcode.CALYPSO_STATUS ||
-                    opcode == RegattaLinkDeviceControlOpcode.CALYPSO_DELETE
+                                    opcode == RegattaLinkDeviceControlOpcode.CALYPSO_DELETE
                                 ) {
                                     current.deviceControlError
                                 } else {
@@ -5029,6 +5029,13 @@ internal class RegattaLinkBleClient(
                                             } else {
                                                 false
                                             }
+                                        )
+                                    opcode == RegattaLinkDeviceControlOpcode.CALYPSO_DELETE ->
+                                        current.calypso.copy(
+                                            error = errorMessage,
+                                            lastDeleteResult =
+                                                finalStatus?.takeIf { it.phase.isTerminal }?.result
+                                                    ?: RegattaLinkDeviceControlResult.INTERNAL_ERROR
                                         )
                                     opcode.isCalypsoCommand() &&
                                         errorMessage.isNotBlank() ->
