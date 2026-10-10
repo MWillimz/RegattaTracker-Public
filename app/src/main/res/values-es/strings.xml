@@ -817,4 +817,5 @@
     <string name="onboarding_status_current">Siguiente paso</string>
     <string name="onboarding_status_urgent">Prioritario</string>
     <string name="onboarding_status_future">Más adelante</string>
+    <string name="onboarding_reset">Restablecer primeros pasos</string>
 </resources>
