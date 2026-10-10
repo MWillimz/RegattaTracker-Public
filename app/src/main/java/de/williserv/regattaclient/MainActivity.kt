@@ -698,10 +698,10 @@ class MainActivity : ComponentActivity() {
                             raceDataReady = raceDataReady.value,
                             dailyReentryEnabled = dailyReentryEnabled.value,
                             raceRegistered = raceRegistered.value,
-                            onboardingRegistered =
-                                raceRegistered.value &&
-                                    onboardingRegisteredKey.value ==
-                                        currentOnboardingEventKey(),
+                            // Registration is already scoped to the current race by
+                            // setRaceRegistered(false) on event/run changes. The
+                            // onboarding key can differ after resolving an event name.
+                            onboardingRegistered = raceRegistered.value,
                             localRaceFinished = localRaceFinished,
                             dtlText = dtlText.value,
                             ttlText = ttlText.value,
