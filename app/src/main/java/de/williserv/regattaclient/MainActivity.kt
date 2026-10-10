@@ -2995,9 +2995,6 @@ class MainActivity : ComponentActivity() {
 
                 val responseCode = connection.responseCode
                 serverResponded = true
-                if (asyncLifetime.isActive()) {
-                    ServerConnectionStateStore.markReachable(this, access.server)
-                }
                 val body = if (responseCode in 200..299) {
                     connection.inputStream.bufferedReader().use { it.readText() }
                 } else {
@@ -3016,6 +3013,7 @@ class MainActivity : ComponentActivity() {
                         return@runOnUiThread
                     }
 
+                    ServerConnectionStateStore.markReachable(this, access.server)
                     if (responseCode in 200..299) {
                         setRaceRegistered(true)
                         registerRaceStatusText.value = getString(R.string.registered_for_race)
@@ -3026,9 +3024,6 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             } catch (e: Exception) {
-                if (!serverResponded && asyncLifetime.isActive()) {
-                    ServerConnectionStateStore.markNoConnection(this, access.server)
-                }
                 runOnUiThread {
                     if (!asyncLifetime.isActive()) return@runOnUiThread
                     if (
@@ -3037,6 +3032,9 @@ class MainActivity : ComponentActivity() {
                         currentEventAccessKey() != access
                     ) {
                         return@runOnUiThread
+                    }
+                    if (!serverResponded) {
+                        ServerConnectionStateStore.markNoConnection(this, access.server)
                     }
                     updateConnectionUiState()
                     registerRaceStatusText.value = if (serverResponded) {
