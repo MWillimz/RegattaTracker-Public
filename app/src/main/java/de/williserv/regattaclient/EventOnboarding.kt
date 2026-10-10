@@ -116,4 +116,4 @@ internal fun eventOnboardingKey(
 internal fun isEventOnboardingUploadConfirmed(
     evidence: Pair<String, Boolean>?,
     eventKey: String?
-): Boolean = eventKey != null && evidence?.first == eventKey && evidence.second
+): Boolean = eventKey != null && evidence?.first == eventKey && evidence?.second == true
