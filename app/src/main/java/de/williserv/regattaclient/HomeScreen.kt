@@ -92,7 +92,7 @@ private fun AutoSizedSingleLineText(
     )
 }
 @Composable
-fun HomeScreen(
+internal fun HomeScreen(
     inRace: Boolean,
     manualTracking: Boolean,
     setupConfirmed: Boolean,
