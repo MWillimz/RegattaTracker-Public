@@ -520,7 +520,7 @@ class RegattaLinkConfigurationNmeaTest {
             configWord = REGATTALINK_CONFIG_CAN_STATUS_MIRROR or
                 REGATTALINK_CONFIG_SESSION_CAN,
             nmeaTxRuntimeStatusSupported = true,
-            nmeaTxBootSelected = false,
+            nmeaCanBootEnabled = false,
             nmeaBootOutputMask = 0
         )
         assertFalse(regattaLinkNmeaRestartRequired(state))
@@ -539,7 +539,7 @@ class RegattaLinkConfigurationNmeaTest {
                     REGATTALINK_CONFIG_TX_PHONE_GPS,
             configRestartRequired = false,
             nmeaTxRuntimeStatusSupported = true,
-            nmeaTxBootSelected = true,
+            nmeaCanBootEnabled = true,
             nmeaBootOutputMask = 0,
             nmeaActiveOutputMask = 0
         )
@@ -563,7 +563,7 @@ class RegattaLinkConfigurationNmeaTest {
                 configWordSupported = true,
                 configWord = configBit,
                 nmeaTxRuntimeStatusSupported = true,
-                nmeaTxBootSelected = false,
+                nmeaCanBootEnabled = false,
                 nmeaBootOutputMask = 0
             )
             assertTrue(regattaLinkNmeaRestartRequired(pending))
@@ -735,7 +735,7 @@ class RegattaLinkConfigurationNmeaTest {
         )
 
         assertTrue(regattaLinkNmeaAppliedStateUnknown(pending))
-        assertNull(pending.nmeaTxBootSelected)
+        assertNull(pending.nmeaCanBootEnabled)
         assertNull(pending.nmeaTxActive)
     }
 
