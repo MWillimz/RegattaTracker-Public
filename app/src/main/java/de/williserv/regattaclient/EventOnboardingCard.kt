@@ -51,42 +51,44 @@ private const val ONBOARDING_COMPLETION_ANIMATION_MS = 1_500
 internal fun EventOnboardingCard(
     state: EventOnboardingState,
     eventKey: String?,
-    previouslyObservedMask: Int?,
-    onObserveMask: (String?, Int) -> Unit,
+    previouslyObservedState: EventOnboardingState?,
+    onObserveState: (String?, EventOnboardingState) -> Unit,
     suppressed: Boolean,
     onSuppress: () -> Unit,
     onOpenStep: (OnboardingStep) -> Unit
 ) {
     var expanded by rememberSaveable(eventKey) { mutableStateOf(false) }
     var previousMask by remember(eventKey) {
-        mutableIntStateOf(previouslyObservedMask ?: state.completedMask)
+        mutableIntStateOf(previouslyObservedState?.completedMask ?: state.completedMask)
     }
     var celebratingMask by remember(eventKey) { mutableIntStateOf(0) }
-    var visualMask by remember(eventKey) {
-        mutableIntStateOf(previouslyObservedMask ?: state.completedMask)
+    var visualStatuses by remember(eventKey) {
+        mutableStateOf(previouslyObservedState?.statuses ?: state.statuses)
     }
     var keepVisible by remember(eventKey) { mutableStateOf(!state.complete) }
 
     // Never replay progress on initial composition, event switch or page revisit.
-    LaunchedEffect(eventKey, state.completedMask) {
+    LaunchedEffect(eventKey, state.statuses) {
         val newMask = eventOnboardingNewlyCompleted(previousMask, state.completedMask)
         previousMask = state.completedMask
-        onObserveMask(eventKey, state.completedMask)
+        // Remember urgency changes too: an orange step may be finished on
+        // another screen before Home is recomposed.
+        onObserveState(eventKey, state)
         if (newMask != 0 && !suppressed) {
             celebratingMask = newMask
             expanded = true
             keepVisible = true
-            // A completion on another page must first render its previous
-            // blue/orange dot before transitioning to green on Home.
+            // A completion on another page first draws the previously
+            // observed color (including orange), then transitions to green.
             delay(40L)
-            visualMask = state.completedMask
+            visualStatuses = state.statuses
             delay(ONBOARDING_COMPLETION_ANIMATION_MS - 40L)
             celebratingMask = 0
             delay(1_800L)
             expanded = false
             if (state.complete) keepVisible = false
         } else {
-            visualMask = state.completedMask
+            visualStatuses = state.statuses
             if (state.complete && celebratingMask == 0) {
                 keepVisible = false
             }
@@ -135,7 +137,7 @@ internal fun EventOnboardingCard(
                     )
                     state.statuses.forEachIndexed { index, status ->
                         OnboardingDot(
-                            onboardingVisualStatus(status, visualMask, index)
+                            onboardingVisualStatus(status, visualStatuses[index])
                         )
                     }
                 }
@@ -174,7 +176,7 @@ internal fun EventOnboardingCard(
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
                                     OnboardingDot(
-                                        onboardingVisualStatus(status, visualMask, index)
+                                        onboardingVisualStatus(status, visualStatuses[index])
                                     )
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
@@ -259,13 +261,10 @@ private fun OnboardingStatus.accessibilityRes(): Int = when (this) {
     OnboardingStatus.FUTURE -> R.string.onboarding_status_future
 }
 
-private fun onboardingVisualStatus(
+internal fun onboardingVisualStatus(
     actual: OnboardingStatus,
-    completedVisualMask: Int,
-    index: Int
+    previouslyRendered: OnboardingStatus
 ): OnboardingStatus =
     if (actual == OnboardingStatus.DONE &&
-        completedVisualMask and (1 shl index) == 0
-    ) {
-        OnboardingStatus.CURRENT
-    } else actual
+        previouslyRendered != OnboardingStatus.DONE
+    ) previouslyRendered else actual
