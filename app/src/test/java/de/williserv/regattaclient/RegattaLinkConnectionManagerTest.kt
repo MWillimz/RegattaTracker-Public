@@ -1186,7 +1186,7 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
-    fun nmeaTxConfigurationRoutesThroughManagerAndRespectsMutationOwnership() {
+    fun nmeaAttitudeConfigurationRoutesThroughManagerAndRespectsMutationOwnership() {
         fakeClient.emitConfiguration(
             RegattaLinkConfigurationState(
                 configWordSupported = true,
@@ -1194,19 +1194,14 @@ class RegattaLinkConnectionManagerTest {
             )
         )
 
-        assertTrue(manager.setNmeaTxEnabled(true))
         assertTrue(manager.setNmeaAttitudeTxEnabled(true))
-        assertEquals(1, fakeClient.setNmeaTxCalls)
         assertEquals(1, fakeClient.setNmeaAttitudeTxCalls)
-        assertEquals(true, fakeClient.lastNmeaTxEnabled)
         assertEquals(true, fakeClient.lastNmeaAttitudeTxEnabled)
 
         fakeClient.emitConfiguration(
             RegattaLinkConfigurationState(deviceControlBusy = true)
         )
-        assertFalse(manager.setNmeaTxEnabled(false))
         assertFalse(manager.setNmeaAttitudeTxEnabled(false))
-        assertEquals(1, fakeClient.setNmeaTxCalls)
         assertEquals(1, fakeClient.setNmeaAttitudeTxCalls)
     }
 
@@ -1220,9 +1215,7 @@ class RegattaLinkConnectionManagerTest {
             )
         )
 
-        val txDraft =
-            REGATTALINK_CONFIG_TX_MASTER or
-                REGATTALINK_CONFIG_TX_COMPASS
+        val txDraft = REGATTALINK_CONFIG_TX_COMPASS
         assertTrue(manager.applyTxSelectionAndRestart(txDraft))
         assertEquals(1, fakeClient.applyConfigBitsAndRestartCalls)
         assertEquals(
@@ -1259,8 +1252,13 @@ class RegattaLinkConnectionManagerTest {
             )
         )
         assertFalse(
+            manager.applyTxSelectionAndRestart(
+                REGATTALINK_CONFIG_CAN_STATUS_MIRROR
+            )
+        )
+        assertFalse(
             manager.applySubsystemSelectionAndRestart(
-                REGATTALINK_CONFIG_TX_MASTER
+                REGATTALINK_CONFIG_CAN_STATUS_MIRROR
             )
         )
         assertEquals(0, fakeClient.applyConfigBitsAndRestartCalls)
@@ -1283,7 +1281,6 @@ class RegattaLinkConnectionManagerTest {
         assertFalse(manager.setDeviceName("Race-Link"))
         assertFalse(manager.setLedBrightness(75))
         assertFalse(manager.setMotionDamping(4))
-        assertFalse(manager.setNmeaTxEnabled(true))
         assertFalse(manager.setNmeaAttitudeTxEnabled(true))
         assertFalse(manager.drainDiagnosticLog())
         assertFalse(
@@ -1298,7 +1295,6 @@ class RegattaLinkConnectionManagerTest {
         assertEquals(0, fakeClient.setNameCalls)
         assertEquals(0, fakeClient.setBrightnessCalls)
         assertEquals(0, fakeClient.setDampingCalls)
-        assertEquals(0, fakeClient.setNmeaTxCalls)
         assertEquals(0, fakeClient.setNmeaAttitudeTxCalls)
         assertEquals(0, fakeClient.diagnosticDrainCalls)
         assertEquals(0, fakeClient.deviceControlCalls)
@@ -1798,7 +1794,7 @@ class RegattaLinkConnectionManagerTest {
     @Test
     fun phoneGnssForwardingStopsForCanAndRuntimeBlocksAndRecovers() {
         val enabledWord =
-            REGATTALINK_CONFIG_TX_MASTER or
+            REGATTALINK_CONFIG_CAN_STATUS_MIRROR or
                 REGATTALINK_CONFIG_TX_PHONE_GPS or
                 REGATTALINK_CONFIG_SESSION_CAN
         val ready = RegattaLinkConfigurationState(
@@ -1845,7 +1841,7 @@ class RegattaLinkConnectionManagerTest {
         fakeClient.emitConfiguration(
             ready.copy(
                 configWord =
-                    REGATTALINK_CONFIG_TX_MASTER or
+                    REGATTALINK_CONFIG_CAN_STATUS_MIRROR or
                         REGATTALINK_CONFIG_TX_PHONE_GPS
             )
         )
@@ -1937,7 +1933,6 @@ class RegattaLinkConnectionManagerTest {
         var setNameCalls = 0
         var setBrightnessCalls = 0
         var setDampingCalls = 0
-        var setNmeaTxCalls = 0
         var setNmeaAttitudeTxCalls = 0
         var applyConfigBitsAndRestartCalls = 0
         var diagnosticDrainCalls = 0
@@ -1956,7 +1951,6 @@ class RegattaLinkConnectionManagerTest {
         var lastDeviceControlOpcode: RegattaLinkDeviceControlOpcode? = null
         var lastDeviceControlValue: Int? = null
         var lastDampingSeconds: Int? = null
-        var lastNmeaTxEnabled: Boolean? = null
         var lastNmeaAttitudeTxEnabled: Boolean? = null
         var lastAppliedConfigMask: UInt? = null
         var lastAppliedConfigBits: UInt? = null
@@ -2027,12 +2021,6 @@ class RegattaLinkConnectionManagerTest {
         override fun setMotionDamping(seconds: Int): Boolean {
             setDampingCalls += 1
             lastDampingSeconds = seconds
-            return true
-        }
-
-        override fun setNmeaTxEnabled(enabled: Boolean): Boolean {
-            setNmeaTxCalls += 1
-            lastNmeaTxEnabled = enabled
             return true
         }
 
