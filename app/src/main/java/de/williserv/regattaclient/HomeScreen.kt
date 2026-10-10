@@ -138,6 +138,8 @@ internal fun HomeScreen(
     onboardingEnteredRace: Boolean,
     onboardingUploadConfirmed: Boolean,
     onboardingHidden: Boolean,
+    onboardingResetCounter: Int,
+    onResetOnboarding: () -> Unit,
     onHideOnboarding: () -> Unit,
     canEnterRace: Boolean,
     startPanelText: String,
@@ -271,6 +273,7 @@ internal fun HomeScreen(
             EventOnboardingCard(
                 state = onboardingState,
                 eventKey = onboardingEventKey,
+                resetCounter = onboardingResetCounter,
                 previouslyObservedState = onboardingPreviouslyObservedState,
                 onObserveState = onOnboardingStateObserved,
                 suppressed = onboardingHidden,
@@ -463,7 +466,8 @@ internal fun HomeScreen(
                 onToggleManualTracking = onToggleManualTracking,
                 onSessionHistory = onSessionHistory,
                 onExport = onExport,
-                onClearOldDataClick = onClearOldDataClick
+                onClearOldDataClick = onClearOldDataClick,
+                onResetOnboarding = onResetOnboarding
             )
         }
 
@@ -1123,7 +1127,8 @@ fun AdvancedDebugBlock(
     onToggleManualTracking: () -> Unit,
     onSessionHistory: () -> Unit,
     onExport: () -> Unit,
-    onClearOldDataClick: () -> Unit
+    onClearOldDataClick: () -> Unit,
+    onResetOnboarding: () -> Unit
 ) {
     Spacer(modifier = Modifier.height(HomeGapLarge))
 
@@ -1155,6 +1160,15 @@ fun AdvancedDebugBlock(
                 } else {
                     Text(stringResource(R.string.start_manual_tracking))
                 }
+            }
+
+            Spacer(modifier = Modifier.height(HomeGapMedium))
+
+            Button(
+                onClick = onResetOnboarding,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.onboarding_reset))
             }
 
             Spacer(modifier = Modifier.height(HomeGapMedium))
