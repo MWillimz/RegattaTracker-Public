@@ -1056,7 +1056,6 @@ internal fun regattaLinkBoatKnots(metersPerSecond: Double): Double =
     metersPerSecond * 1.9438444924
 
 internal data class RegattaLinkNmeaSetupVisibility(
-    val enableTx: Boolean,
     val forward0183: Boolean,
     val forwardAttitude: Boolean,
     val forwardCompass: Boolean,
@@ -1075,7 +1074,6 @@ internal fun regattaLinkNmeaSetupVisibility(
     val canTx = connected && config.canSessionAvailable == true &&
         config.nmeaTxSupported
     return RegattaLinkNmeaSetupVisibility(
-        enableTx = canTx,
         forward0183 = canTx && config.nmea0183SessionAvailable == true,
         forwardAttitude = canTx && config.imuSessionAvailable == true &&
             config.nmeaAttitudeTxSupported,
@@ -1803,8 +1801,6 @@ private fun RegattaLinkNmeaSetupSheet(
         txBaseline != null &&
             txDraft != null &&
             txBaseline != txDraft
-    val txMasterDraft =
-        regattaLinkConfigDraftBit(txDraft, REGATTALINK_CONFIG_TX_MASTER)
     val txAttitudeDraft =
         regattaLinkConfigDraftBit(txDraft, REGATTALINK_CONFIG_TX_IMU)
     val tx0183Draft =
@@ -1853,7 +1849,7 @@ private fun RegattaLinkNmeaSetupSheet(
 
             val nmeaRuntimeKnown =
                 configurationState.nmeaTxRuntimeStatusSupported &&
-                    configurationState.nmeaTxBootSelected != null &&
+                    configurationState.nmeaCanBootEnabled != null &&
                     configurationState.nmeaTxActive != null
             val nmeaAttitudeBootSelected =
                 configurationState.nmeaBootOutputMask?.let {
@@ -1863,89 +1859,6 @@ private fun RegattaLinkNmeaSetupSheet(
                 configurationState.nmeaActiveOutputMask?.let {
                     it and REGATTALINK_TX_OUTPUT_IMU != 0
                 }
-
-            if (
-                visibility.enableTx
-            ) {
-                val masterDraftChanged =
-                    regattaLinkConfigDraftBitChanged(
-                        txBaseline,
-                        txDraft,
-                        REGATTALINK_CONFIG_TX_MASTER
-                    )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 18.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(
-                                R.string.regattalink_nmea_tx_title
-                            ),
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = when {
-                                txMasterDraft == null ->
-                                    stringResource(
-                                        R.string.regattalink_nmea_tx_state_unavailable
-                                    )
-                                masterDraftChanged ->
-                                    stringResource(
-                                        if (txMasterDraft) {
-                                            R.string.regattalink_config_draft_enable
-                                        } else {
-                                            R.string.regattalink_config_draft_disable
-                                        }
-                                    )
-                                !nmeaRuntimeKnown ->
-                                    stringResource(
-                                        if (configurationState.nmeaTxEnabled == true) {
-                                            R.string.regattalink_nmea_tx_selected_on_runtime_unknown
-                                        } else {
-                                            R.string.regattalink_nmea_tx_selected_off_runtime_unknown
-                                        }
-                                    )
-                                configurationState.nmeaTxRestartRequired ->
-                                    stringResource(
-                                        if (configurationState.nmeaTxEnabled == true) {
-                                            R.string.regattalink_nmea_tx_enable_pending
-                                        } else {
-                                            R.string.regattalink_nmea_tx_disable_pending
-                                        }
-                                    )
-                                configurationState.nmeaTxActive == true ->
-                                    stringResource(
-                                        R.string.regattalink_nmea_tx_enabled
-                                    )
-                                configurationState.nmeaTxBootSelected == true ->
-                                    stringResource(
-                                        R.string.regattalink_nmea_tx_selected_but_inactive
-                                    )
-                                else ->
-                                    stringResource(
-                                        R.string.regattalink_nmea_tx_receive_only
-                                    )
-                            },
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = txMasterDraft == true,
-                        onCheckedChange = { enabled ->
-                            txDraft = regattaLinkConfigDraftWithBit(
-                                txDraft,
-                                REGATTALINK_CONFIG_TX_MASTER,
-                                enabled
-                            )
-                        },
-                        enabled = configEnabled && txMasterDraft != null
-                    )
-                }
-            }
 
             if (
                 visibility.forward0183
@@ -2129,10 +2042,9 @@ private fun RegattaLinkNmeaSetupSheet(
                     Switch(
                         checked = phoneGpsRelayEnabled,
                         onCheckedChange = onSetPhoneGpsRelayEnabled,
-                        // This local background mode is meaningful only while
-                        // the RLink's TX master is actually enabled.
-                        enabled = configurationState.nmeaTxEnabled == true &&
-                            txMasterDraft == true
+                        // Relay requires an available CAN session, not a
+                        // separate global TX-master selection.
+                        enabled = configurationState.canSessionAvailable == true
                     )
                 }
             }

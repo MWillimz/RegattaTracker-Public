@@ -3972,14 +3972,6 @@ internal class RegattaLinkBleClient(
         return true
     }
 
-    override fun setNmeaTxEnabled(enabled: Boolean): Boolean =
-        mutateConfigWord(
-            mask = REGATTALINK_CONFIG_TX_MASTER,
-            encodedBits =
-                REGATTALINK_CONFIG_TX_MASTER.takeIf { enabled } ?: 0u,
-            failureText = "Could not change RegattaLink Boat Data TX setting"
-        )
-
     override fun setNmeaAttitudeTxEnabled(enabled: Boolean): Boolean =
         mutateConfigWord(
             mask = REGATTALINK_CONFIG_TX_IMU,
