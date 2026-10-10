@@ -817,4 +817,9 @@
     <string name="onboarding_status_current">Prossimo passo</string>
     <string name="onboarding_status_urgent">Da fare subito</string>
     <string name="onboarding_status_future">Più avanti</string>
+    <string name="onboarding_reset">Reimposta primi passi</string>
+    <string name="regattalink_calypso_delete">Rimuovi Calypso</string>
+    <string name="regattalink_calypso_delete_confirm">Rimuovere il sensore Calypso %1$s? Il sensore verrà disconnesso e dimenticato.</string>
+    <string name="regattalink_calypso_deleting">Rimozione Calypso…</string>
+    <string name="regattalink_calypso_delete_failed">Impossibile rimuovere Calypso. L’associazione rimane valida.</string>
 </resources>

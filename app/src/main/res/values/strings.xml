@@ -860,4 +860,9 @@
     <string name="onboarding_status_current">Next step</string>
     <string name="onboarding_status_urgent">Time-sensitive</string>
     <string name="onboarding_status_future">Later</string>
+    <string name="onboarding_reset">Reset Getting Started</string>
+    <string name="regattalink_calypso_delete">Remove Calypso</string>
+    <string name="regattalink_calypso_delete_confirm">Remove stored Calypso sensor %1$s? This disconnects and forgets the sensor.</string>
+    <string name="regattalink_calypso_deleting">Removing Calypso…</string>
+    <string name="regattalink_calypso_delete_failed">Could not remove Calypso. Sensor binding remains.</string>
 </resources>

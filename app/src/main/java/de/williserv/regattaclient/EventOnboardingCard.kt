@@ -51,21 +51,26 @@ private const val ONBOARDING_COMPLETION_ANIMATION_MS = 1_500
 internal fun EventOnboardingCard(
     state: EventOnboardingState,
     eventKey: String?,
+    resetCounter: Int,
     previouslyObservedState: EventOnboardingState?,
     onObserveState: (String?, EventOnboardingState) -> Unit,
     suppressed: Boolean,
     onSuppress: () -> Unit,
     onOpenStep: (OnboardingStep) -> Unit
 ) {
-    var expanded by rememberSaveable(eventKey) { mutableStateOf(false) }
-    var previousMask by remember(eventKey) {
+    var expanded by rememberSaveable(eventKey, resetCounter) {
+        mutableStateOf(resetCounter > 0)
+    }
+    var previousMask by remember(eventKey, resetCounter) {
         mutableIntStateOf(previouslyObservedState?.completedMask ?: state.completedMask)
     }
-    var celebratingMask by remember(eventKey) { mutableIntStateOf(0) }
-    var visualStatuses by remember(eventKey) {
+    var celebratingMask by remember(eventKey, resetCounter) { mutableIntStateOf(0) }
+    var visualStatuses by remember(eventKey, resetCounter) {
         mutableStateOf(previouslyObservedState?.statuses ?: state.statuses)
     }
-    var keepVisible by remember(eventKey) { mutableStateOf(!state.complete) }
+    var keepVisible by remember(eventKey, resetCounter) {
+        mutableStateOf(!state.complete || resetCounter > 0)
+    }
 
     // Never replay progress on initial composition, event switch or page revisit.
     LaunchedEffect(eventKey, state.statuses) {
@@ -86,10 +91,10 @@ internal fun EventOnboardingCard(
             celebratingMask = 0
             delay(1_800L)
             expanded = false
-            if (state.complete) keepVisible = false
+            if (state.complete && resetCounter == 0) keepVisible = false
         } else {
             visualStatuses = state.statuses
-            if (state.complete && celebratingMask == 0) {
+            if (state.complete && celebratingMask == 0 && resetCounter == 0) {
                 keepVisible = false
             }
         }

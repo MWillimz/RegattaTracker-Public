@@ -817,4 +817,9 @@
     <string name="onboarding_status_current">Prochaine étape</string>
     <string name="onboarding_status_urgent">À faire rapidement</string>
     <string name="onboarding_status_future">Plus tard</string>
+    <string name="onboarding_reset">Réinitialiser les premiers pas</string>
+    <string name="regattalink_calypso_delete">Supprimer Calypso</string>
+    <string name="regattalink_calypso_delete_confirm">Supprimer le capteur Calypso %1$s ? Il sera déconnecté et oublié.</string>
+    <string name="regattalink_calypso_deleting">Suppression de Calypso…</string>
+    <string name="regattalink_calypso_delete_failed">Impossible de supprimer Calypso. L’association est conservée.</string>
 </resources>

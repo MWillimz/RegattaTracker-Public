@@ -482,6 +482,9 @@ internal fun RegattaLinkScreen(
                         0
                     )
                 },
+                onDeleteCalypso = {
+                    onDeviceControl(RegattaLinkDeviceControlOpcode.CALYPSO_DELETE, 0)
+                },
                 onApplyBluetoothConfigAndRestart =
                     onApplyBluetoothConfigAndRestart,
                 onDismiss = { activeSetupDestination = null }
@@ -1129,10 +1132,7 @@ private fun RegattaLinkBoatDataOverview(state: RegattaLinkBoatState) {
             1 -> " (M)"
             else -> ""
         }
-    val course = listOfNotNull(
-        valid(0, state.headingDeg)?.let {
-            RegattaLinkBoatDisplayValue(headingLabel, angle(it))
-        },
+    val gps = listOfNotNull(
         valid(13, state.cogDeg)?.let {
             RegattaLinkBoatDisplayValue(cogLabel, angle(it))
         },
@@ -1140,6 +1140,11 @@ private fun RegattaLinkBoatDataOverview(state: RegattaLinkBoatState) {
             RegattaLinkBoatDisplayValue(
                 stringResource(R.string.regattalink_nmea_sog), speed(it)
             )
+        }
+    )
+    val course = listOfNotNull(
+        valid(0, state.headingDeg)?.let {
+            RegattaLinkBoatDisplayValue(headingLabel, angle(it))
         },
         valid(7, state.speedThroughWaterMps)?.let {
             RegattaLinkBoatDisplayValue("STW", speed(it))
@@ -1210,7 +1215,7 @@ private fun RegattaLinkBoatDataOverview(state: RegattaLinkBoatState) {
         String.format(Locale.US, "%.5f, %.5f", latitude, longitude)
     } else null
 
-    if (course.isEmpty() && wind.isEmpty() && depth.isEmpty() &&
+    if (gps.isEmpty() && course.isEmpty() && wind.isEmpty() && depth.isEmpty() &&
         motion.isEmpty() && position == null
     ) {
         Text(
@@ -1221,6 +1226,13 @@ private fun RegattaLinkBoatDataOverview(state: RegattaLinkBoatState) {
         return
     }
 
+    RegattaLinkBoatDataGroup(
+        title = stringResource(R.string.gps),
+        values = gps,
+        footer = position?.let {
+            stringResource(R.string.regattalink_nmea_position) + ": " + it
+        }
+    )
     RegattaLinkBoatDataGroup(
         stringResource(R.string.regattalink_boat_group_course), course
     )
@@ -1233,14 +1245,6 @@ private fun RegattaLinkBoatDataOverview(state: RegattaLinkBoatState) {
     RegattaLinkBoatDataGroup(
         stringResource(R.string.regattalink_boat_group_motion), motion
     )
-    if (position != null) {
-        Text(
-            text = stringResource(R.string.regattalink_nmea_position) + ": " + position,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 12.sp,
-            modifier = Modifier.padding(top = 6.dp)
-        )
-    }
 }
 
 @Composable
@@ -1259,9 +1263,10 @@ private fun RegattaLinkLoadDataOverview(sensors: List<RegattaLinkLoadSensor>) {
 @Composable
 private fun RegattaLinkBoatDataGroup(
     title: String,
-    values: List<RegattaLinkBoatDisplayValue>
+    values: List<RegattaLinkBoatDisplayValue>,
+    footer: String? = null
 ) {
-    if (values.isEmpty()) return
+    if (values.isEmpty() && footer == null) return
     Text(
         text = title,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1297,6 +1302,15 @@ private fun RegattaLinkBoatDataGroup(
                 Spacer(modifier = Modifier.weight(1f))
             }
         }
+    }
+    if (footer != null) {
+        Text(
+            text = footer,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.sp,
+            maxLines = 1,
+            modifier = Modifier.padding(top = 4.dp)
+        )
     }
 }
 
@@ -1450,6 +1464,7 @@ private fun RegattaLinkBluetoothDevicesSheet(
     deviceControlEnabled: Boolean,
     calypsoSupported: Boolean,
     onScanCalypso: () -> Unit,
+    onDeleteCalypso: () -> Unit,
     onApplyBluetoothConfigAndRestart: (UInt) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -1479,6 +1494,10 @@ private fun RegattaLinkBluetoothDevicesSheet(
             REGATTALINK_CONFIG_CALYPSO_ENABLE
         )
     val calypso = configurationState.calypso
+    var confirmCalypsoDelete by remember(deviceKey) { mutableStateOf(false) }
+    val deleteActive = configurationState.deviceControlBusy &&
+        configurationState.deviceControlAcceptedOpcode ==
+            RegattaLinkDeviceControlOpcode.CALYPSO_DELETE
     val scanActive =
         calypso.scanning ||
             (
@@ -1502,6 +1521,26 @@ private fun RegattaLinkBluetoothDevicesSheet(
         }
     }
 
+    if (confirmCalypsoDelete && calypso.boundId != null) {
+        AlertDialog(
+            onDismissRequest = { confirmCalypsoDelete = false },
+            title = { Text(stringResource(R.string.regattalink_calypso_delete)) },
+            text = { Text(stringResource(R.string.regattalink_calypso_delete_confirm, calypso.boundId!!)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmCalypsoDelete = false
+                    onDeleteCalypso()
+                }, enabled = connected && deviceControlEnabled && !configurationState.deviceControlBusy) {
+                    Text(stringResource(R.string.regattalink_calypso_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmCalypsoDelete = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
@@ -1535,6 +1574,28 @@ private fun RegattaLinkBluetoothDevicesSheet(
                         R.string.regattalink_calypso_not_bound
                     )
                 }
+            )
+            if (calypso.statusKnown && calypso.boundId != null && calypsoSupported) {
+                TextButton(
+                    onClick = { confirmCalypsoDelete = true },
+                    enabled = connected && deviceControlEnabled && !configurationState.deviceControlBusy,
+                    modifier = Modifier.padding(top = 2.dp)
+                ) {
+                    Text(stringResource(R.string.regattalink_calypso_delete))
+                }
+            }
+            if (deleteActive) {
+                Text(stringResource(R.string.regattalink_calypso_deleting))
+            }
+            if (calypso.lastDeleteResult != null &&
+                calypso.lastDeleteResult != RegattaLinkDeviceControlResult.OK) {
+                Text(
+                    text = stringResource(R.string.regattalink_calypso_delete_failed),
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+            RegattaLinkTechnicalDetail(
+                detail = if (calypso.lastDeleteResult != null) calypso.error else ""
             )
             telemetryValue(
                 label = stringResource(

@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -340,6 +341,7 @@ class MainActivity : ComponentActivity() {
     private val registrationRequestGate = RaceRegistrationRequestGate()
     private val onboardingRegisteredKey = mutableStateOf("")
     private val onboardingHidden = mutableStateOf(false)
+    private val onboardingResetCounter = mutableIntStateOf(0)
     private val onboardingEnteredKey = mutableStateOf("")
     private val onboardingUploadEvidence =
         mutableStateOf<Pair<String, Boolean>?>(null)
@@ -696,10 +698,10 @@ class MainActivity : ComponentActivity() {
                             raceDataReady = raceDataReady.value,
                             dailyReentryEnabled = dailyReentryEnabled.value,
                             raceRegistered = raceRegistered.value,
-                            onboardingRegistered =
-                                raceRegistered.value &&
-                                    onboardingRegisteredKey.value ==
-                                        currentOnboardingEventKey(),
+                            // Registration is already scoped to the current race by
+                            // setRaceRegistered(false) on event/run changes. The
+                            // onboarding key can differ after resolving an event name.
+                            onboardingRegistered = raceRegistered.value,
                             localRaceFinished = localRaceFinished,
                             dtlText = dtlText.value,
                             ttlText = ttlText.value,
@@ -726,6 +728,8 @@ class MainActivity : ComponentActivity() {
                                     eventKey = currentOnboardingEventKey()
                                 ),
                             onboardingHidden = onboardingHidden.value,
+                            onboardingResetCounter = onboardingResetCounter.intValue,
+                            onResetOnboarding = ::resetOnboardingDisplay,
                             onHideOnboarding = ::suppressEventOnboarding,
                             canEnterRace = canEnterRaceNow(),
                             startPanelText = startPanelText.value,
@@ -1809,6 +1813,15 @@ class MainActivity : ComponentActivity() {
             .edit()
             .putBoolean("entered_$eventKey", true)
             .apply()
+    }
+
+    private fun resetOnboardingDisplay() {
+        // Reset only UI suppression and animation state; never touch race/session data.
+        getSharedPreferences("event_onboarding", Context.MODE_PRIVATE)
+            .edit().remove("hidden").apply()
+        onboardingObservedStates.clear()
+        onboardingResetCounter.intValue += 1
+        onboardingHidden.value = false
     }
 
     private fun suppressEventOnboarding() {
