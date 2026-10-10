@@ -108,3 +108,12 @@ internal fun eventOnboardingKey(
         .digest(canonical.toByteArray(Charsets.UTF_8))
     return digest.joinToString("") { "%02x".format(it.toInt() and 0xff) }
 }
+
+/**
+ * A missing/failed DB read cannot establish an upload confirmation.
+ * A result from the previous event must also never complete this one.
+ */
+internal fun isEventOnboardingUploadConfirmed(
+    evidence: Pair<String, Boolean>?,
+    eventKey: String?
+): Boolean = eventKey != null && evidence?.first == eventKey && evidence?.second == true

@@ -40,6 +40,46 @@ class RegattaLinkScreenTest {
     }
 
     @Test
+    fun autoPgnRefreshWaitsForCaptureAndRetriesOnceAfterItEnds() {
+        fun allowed(
+            capture: Boolean = false,
+            alreadyRequested: Boolean = false,
+            loading: Boolean = false,
+            ota: Boolean = false,
+            expanded: Boolean = true
+        ): Boolean = shouldAutoRefreshPgnInventory(
+            detailsExpanded = expanded,
+            inventorySupported = true,
+            inventoryEmpty = true,
+            inventoryLoading = loading,
+            otaActive = ota,
+            rawCaptureActive = capture,
+            alreadyRequested = alreadyRequested
+        )
+
+        // Opening diagnostics during capture must not start a GATT read.
+        assertFalse(allowed(capture = true))
+        // Once capture is finished, the unopened request becomes eligible.
+        assertTrue(allowed(capture = false))
+        // A single automatic request is enough; no refresh loop.
+        assertFalse(allowed(alreadyRequested = true))
+        assertFalse(allowed(loading = true))
+        assertFalse(allowed(ota = true))
+        assertFalse(allowed(expanded = false))
+        assertFalse(
+            shouldAutoRefreshPgnInventory(
+                detailsExpanded = true,
+                inventorySupported = true,
+                inventoryEmpty = false,
+                inventoryLoading = false,
+                otaActive = false,
+                rawCaptureActive = false,
+                alreadyRequested = false
+            )
+        )
+    }
+
+    @Test
     fun boatOverviewRespectsValidityAndDoesNotHideValidZero() {
         val state = RegattaLinkBoatState(
             sequence = 1,

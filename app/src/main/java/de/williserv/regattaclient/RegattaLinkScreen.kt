@@ -62,6 +62,7 @@ internal fun shouldAutoRefreshPgnInventory(
     inventoryEmpty: Boolean,
     inventoryLoading: Boolean,
     otaActive: Boolean,
+    rawCaptureActive: Boolean,
     alreadyRequested: Boolean
 ): Boolean =
     detailsExpanded &&
@@ -69,6 +70,7 @@ internal fun shouldAutoRefreshPgnInventory(
         inventoryEmpty &&
         !inventoryLoading &&
         !otaActive &&
+        !rawCaptureActive &&
         !alreadyRequested
 
 internal data class RegattaLinkConfigSliderSubmission(
@@ -380,12 +382,16 @@ internal fun RegattaLinkScreen(
         nmeaState.pgnInventoryLoading,
         configurationState.canSessionAvailable,
         otaState.isActive,
+        rawCaptureState.isActive,
         state.deviceAddress
     ) {
         if (
             !advancedDiagnosticsOpen ||
-            configurationState.canSessionAvailable != true
+            configurationState.canSessionAvailable != true ||
+            rawCaptureState.isActive
         ) {
+            // If the capture interrupts a queued auto-read, allow one
+            // new attempt after capture ends without closing the sheet.
             pgnInventoryAutoRefreshRequested = false
             return@LaunchedEffect
         }
@@ -397,6 +403,7 @@ internal fun RegattaLinkScreen(
                 inventoryEmpty = nmeaState.pgnInventory.isEmpty(),
                 inventoryLoading = nmeaState.pgnInventoryLoading,
                 otaActive = otaState.isActive,
+                rawCaptureActive = rawCaptureState.isActive,
                 alreadyRequested = pgnInventoryAutoRefreshRequested
             )
         ) {
@@ -2060,7 +2067,11 @@ private fun RegattaLinkNmeaSetupSheet(
                     )
                     Switch(
                         checked = phoneGpsRelayEnabled,
-                        onCheckedChange = onSetPhoneGpsRelayEnabled
+                        onCheckedChange = onSetPhoneGpsRelayEnabled,
+                        // This local background mode is meaningful only while
+                        // the RLink's TX master is actually enabled.
+                        enabled = configurationState.nmeaTxEnabled == true &&
+                            txMasterDraft == true
                     )
                 }
             }

@@ -45,6 +45,47 @@ class EventOnboardingTest {
     }
 
     @Test
+    fun missingOrStaleUploadEvidenceNeverHidesEarlierProgressOrCompletesUpload() {
+        // On app launch, or after an SQLite read failure, no evidence
+        // is available. This is NOT a confirmed server upload.
+        assertFalse(isEventOnboardingUploadConfirmed(null, "event-A"))
+        assertFalse(isEventOnboardingUploadConfirmed("event-B" to true, "event-A"))
+        assertFalse(isEventOnboardingUploadConfirmed("event-A" to false, "event-A"))
+        assertFalse(isEventOnboardingUploadConfirmed("event-A" to true, null))
+
+        val pending = state(
+            now = start,
+            boat = true,
+            registered = true,
+            entered = true,
+            uploaded = isEventOnboardingUploadConfirmed(null, "event-A")
+        )
+        assertEquals(
+            listOf(
+                OnboardingStatus.DONE,
+                OnboardingStatus.DONE,
+                OnboardingStatus.DONE,
+                OnboardingStatus.URGENT
+            ),
+            pending.statuses
+        )
+        assertFalse(pending.complete)
+
+        assertTrue(isEventOnboardingUploadConfirmed("event-A" to true, "event-A"))
+        assertTrue(
+            state(
+                now = start,
+                boat = true,
+                registered = true,
+                entered = true,
+                uploaded = isEventOnboardingUploadConfirmed(
+                    "event-A" to true, "event-A"
+                )
+            ).complete
+        )
+    }
+
+    @Test
     fun laterStepsStayFutureAndCurrentStepBecomesOrangeOnlyAtThreshold() {
         assertEquals(OnboardingStatus.FUTURE, state().statuses[1])
         assertEquals(OnboardingStatus.CURRENT, state(boat = true).statuses[1])
@@ -133,6 +174,31 @@ class EventOnboardingTest {
             a, eventOnboardingKey("https://example.test", "Event A", "s1", "Race 2")
         )
         assertFalse(requireNotNull(a).contains("s1"))
+    }
+
+    @Test
+    fun completedDotKeepsPreviouslyDisplayedOrangeUntilGreenTransition() {
+        assertEquals(
+            OnboardingStatus.URGENT,
+            onboardingVisualStatus(OnboardingStatus.DONE, OnboardingStatus.URGENT)
+        )
+        assertEquals(
+            OnboardingStatus.CURRENT,
+            onboardingVisualStatus(OnboardingStatus.DONE, OnboardingStatus.CURRENT)
+        )
+        assertEquals(
+            OnboardingStatus.FUTURE,
+            onboardingVisualStatus(OnboardingStatus.DONE, OnboardingStatus.FUTURE)
+        )
+        // Already completed steps never replay a color transition.
+        assertEquals(
+            OnboardingStatus.DONE,
+            onboardingVisualStatus(OnboardingStatus.DONE, OnboardingStatus.DONE)
+        )
+        assertEquals(
+            OnboardingStatus.URGENT,
+            onboardingVisualStatus(OnboardingStatus.URGENT, OnboardingStatus.CURRENT)
+        )
     }
 
     @Test

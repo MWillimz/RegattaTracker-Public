@@ -92,7 +92,7 @@ private fun AutoSizedSingleLineText(
     )
 }
 @Composable
-fun HomeScreen(
+internal fun HomeScreen(
     inRace: Boolean,
     manualTracking: Boolean,
     setupConfirmed: Boolean,
@@ -133,11 +133,10 @@ fun HomeScreen(
     millisToStart: Long?,
     raceStartEpochMillis: Long?,
     onboardingEventKey: String?,
-    onboardingPreviouslyObservedMask: Int?,
-    onOnboardingMaskObserved: (String?, Int) -> Unit,
+    onboardingPreviouslyObservedState: EventOnboardingState?,
+    onOnboardingStateObserved: (String?, EventOnboardingState) -> Unit,
     onboardingEnteredRace: Boolean,
     onboardingUploadConfirmed: Boolean,
-    onboardingEvidenceReady: Boolean,
     onboardingHidden: Boolean,
     onHideOnboarding: () -> Unit,
     canEnterRace: Boolean,
@@ -266,15 +265,14 @@ fun HomeScreen(
             seriesDisplayMetadata = seriesDisplayMetadata
         )
 
-        if (
-            !onboardingHidden &&
-            (onboardingEventKey == null || onboardingEvidenceReady)
-        ) {
+        // Boot/setup/registration/entry stay usable even if upload evidence
+        // has not yet been read or the tracking database read has failed.
+        if (!onboardingHidden) {
             EventOnboardingCard(
                 state = onboardingState,
                 eventKey = onboardingEventKey,
-                previouslyObservedMask = onboardingPreviouslyObservedMask,
-                onObserveMask = onOnboardingMaskObserved,
+                previouslyObservedState = onboardingPreviouslyObservedState,
+                onObserveState = onOnboardingStateObserved,
                 suppressed = onboardingHidden,
                 onSuppress = onHideOnboarding,
                 onOpenStep = { step ->

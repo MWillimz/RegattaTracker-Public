@@ -32,6 +32,24 @@ internal class RegattaLinkPhoneGpsRelayStore(context: Context) {
     }
 }
 
+/**
+ * A confirmed, connected RLink with TX disabled cannot use the independent
+ * phone-GPS background relay. Do not reset the preference on BLE disconnect
+ * or while the firmware config is still unknown.
+ */
+internal fun shouldDisablePhoneGpsRelayForTxState(
+    relayEnabled: Boolean,
+    connected: Boolean,
+    configurationState: RegattaLinkConfigurationState
+): Boolean {
+    if (!relayEnabled || !connected || !configurationState.configWordSupported) {
+        return false
+    }
+    val word = configurationState.configWord ?: return false
+    return word and REGATTALINK_CONFIG_TX_MASTER == 0u ||
+        word and REGATTALINK_CONFIG_SESSION_CAN == 0u
+}
+
 internal const val REGATTALINK_PHONE_GNSS_VALID_POSITION = 1 shl 0
 internal const val REGATTALINK_PHONE_GNSS_VALID_COG = 1 shl 1
 internal const val REGATTALINK_PHONE_GNSS_VALID_SOG = 1 shl 2

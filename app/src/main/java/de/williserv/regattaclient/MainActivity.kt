@@ -223,6 +223,17 @@ class MainActivity : ComponentActivity() {
         override fun onConfigurationStateChanged(state: RegattaLinkConfigurationState) {
             if (asyncLifetime.isActive()) {
                 regattaLinkConfigurationState.value = state
+                if (shouldDisablePhoneGpsRelayForTxState(
+                        relayEnabled = regattaLinkPhoneGpsRelayEnabled.value,
+                        connected = regattaLinkState.value.status ==
+                            RegattaLinkConnectionStatus.CONNECTED,
+                        configurationState = state
+                    )
+                ) {
+                    // The confirmed firmware configuration cannot transmit.
+                    // Persist OFF and stop the relay-only foreground service.
+                    setRegattaLinkPhoneGpsRelayEnabled(false)
+                }
             }
         }
 
@@ -326,6 +337,7 @@ class MainActivity : ComponentActivity() {
     private val raceDataRequestGate = EventRequestGate()
 
     private val raceRegistered = mutableStateOf(false)
+    private val registrationRequestGate = RaceRegistrationRequestGate()
     private val onboardingRegisteredKey = mutableStateOf("")
     private val onboardingHidden = mutableStateOf(false)
     private val onboardingEnteredKey = mutableStateOf("")
@@ -333,7 +345,8 @@ class MainActivity : ComponentActivity() {
         mutableStateOf<Pair<String, Boolean>?>(null)
     // Session-only memory. A new app launch establishes its initial progress
     // without replaying past completion animations.
-    private val onboardingObservedMasks = mutableMapOf<String, Int>()
+    private val onboardingObservedStates =
+        mutableMapOf<String, EventOnboardingState>()
     private val statusText = mutableStateOf("")
     private val rowCountText = mutableStateOf("")
     private val uploadStatusText = mutableStateOf("")
@@ -699,22 +712,19 @@ class MainActivity : ComponentActivity() {
                             millisToStart = raceStartEpochMillis?.let { it - System.currentTimeMillis() },
                             raceStartEpochMillis = raceStartEpochMillis,
                             onboardingEventKey = currentOnboardingEventKey(),
-                            onboardingPreviouslyObservedMask =
-                                onboardingObservedMasks[
+                            onboardingPreviouslyObservedState =
+                                onboardingObservedStates[
                                     currentOnboardingEventKey() ?: "no-event"
                                 ],
-                            onOnboardingMaskObserved = { eventKey, mask ->
-                                onboardingObservedMasks[eventKey ?: "no-event"] = mask
+                            onOnboardingStateObserved = { eventKey, state ->
+                                onboardingObservedStates[eventKey ?: "no-event"] = state
                             },
                             onboardingEnteredRace = onboardingEnteredForCurrentEvent(),
                             onboardingUploadConfirmed =
-                                onboardingUploadEvidence.value?.let {
-                                    it.first == currentOnboardingEventKey() && it.second
-                                } == true,
-                            onboardingEvidenceReady =
-                                currentOnboardingEventKey() == null ||
-                                    onboardingUploadEvidence.value?.first ==
-                                        currentOnboardingEventKey(),
+                                isEventOnboardingUploadConfirmed(
+                                    evidence = onboardingUploadEvidence.value,
+                                    eventKey = currentOnboardingEventKey()
+                                ),
                             onboardingHidden = onboardingHidden.value,
                             onHideOnboarding = ::suppressEventOnboarding,
                             canEnterRace = canEnterRaceNow(),
@@ -1810,6 +1820,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun setRaceRegistered(registered: Boolean) {
+        if (!registered) registrationRequestGate.invalidate()
         raceRegistered.value = registered
         onboardingRegisteredKey.value =
             if (registered) currentOnboardingEventKey().orEmpty() else ""
@@ -2940,6 +2951,7 @@ class MainActivity : ComponentActivity() {
 
         val access = currentEventAccessKey() ?: return
         val registrationBoatSetup = currentBoatSetupValues()
+        val registrationGeneration = registrationRequestGate.begin()
         registerRaceStatusText.value = getString(R.string.registering)
 
         thread {
@@ -2983,9 +2995,6 @@ class MainActivity : ComponentActivity() {
 
                 val responseCode = connection.responseCode
                 serverResponded = true
-                if (asyncLifetime.isActive()) {
-                    ServerConnectionStateStore.markReachable(this, access.server)
-                }
                 val body = if (responseCode in 200..299) {
                     connection.inputStream.bufferedReader().use { it.readText() }
                 } else {
@@ -2997,12 +3006,14 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     if (!asyncLifetime.isActive()) return@runOnUiThread
                     if (
+                        !registrationRequestGate.isCurrent(registrationGeneration) ||
                         currentBoatSetupValues() != registrationBoatSetup ||
                         currentEventAccessKey() != access
                     ) {
                         return@runOnUiThread
                     }
 
+                    ServerConnectionStateStore.markReachable(this, access.server)
                     if (responseCode in 200..299) {
                         setRaceRegistered(true)
                         registerRaceStatusText.value = getString(R.string.registered_for_race)
@@ -3013,16 +3024,17 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             } catch (e: Exception) {
-                if (!serverResponded && asyncLifetime.isActive()) {
-                    ServerConnectionStateStore.markNoConnection(this, access.server)
-                }
                 runOnUiThread {
                     if (!asyncLifetime.isActive()) return@runOnUiThread
                     if (
+                        !registrationRequestGate.isCurrent(registrationGeneration) ||
                         currentBoatSetupValues() != registrationBoatSetup ||
                         currentEventAccessKey() != access
                     ) {
                         return@runOnUiThread
+                    }
+                    if (!serverResponded) {
+                        ServerConnectionStateStore.markNoConnection(this, access.server)
                     }
                     updateConnectionUiState()
                     registerRaceStatusText.value = if (serverResponded) {

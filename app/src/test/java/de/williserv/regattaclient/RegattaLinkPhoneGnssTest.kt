@@ -344,6 +344,45 @@ class RegattaLinkPhoneGnssTest {
     }
 
     @Test
+    fun backgroundRelayStopsOnlyOnConfirmedConnectedTxOrCanOff() {
+        val enabled = RegattaLinkConfigurationState(
+            configWordSupported = true,
+            configWord = REGATTALINK_CONFIG_SESSION_CAN or
+                REGATTALINK_CONFIG_TX_MASTER or
+                REGATTALINK_CONFIG_TX_PHONE_GPS
+        )
+        fun stops(
+            state: RegattaLinkConfigurationState,
+            connected: Boolean = true,
+            relayEnabled: Boolean = true
+        ) = shouldDisablePhoneGpsRelayForTxState(
+            relayEnabled = relayEnabled,
+            connected = connected,
+            configurationState = state
+        )
+
+        assertFalse(stops(enabled))
+        assertTrue(stops(enabled.copy(
+            configWord = REGATTALINK_CONFIG_SESSION_CAN or
+                REGATTALINK_CONFIG_TX_PHONE_GPS
+        )))
+        assertTrue(stops(enabled.copy(
+            configWord = REGATTALINK_CONFIG_TX_MASTER or
+                REGATTALINK_CONFIG_TX_PHONE_GPS
+        )))
+        assertFalse(stops(enabled.copy(
+            configWord = REGATTALINK_CONFIG_SESSION_CAN or
+                REGATTALINK_CONFIG_TX_MASTER
+        )))
+        // Transient BLE loss, unknown config and a previously disabled
+        // app relay must not trigger an unintended preference reset.
+        assertFalse(stops(enabled.copy(configWord = 0u), connected = false))
+        assertFalse(stops(enabled.copy(configWord = null)))
+        assertFalse(stops(enabled.copy(configWordSupported = false)))
+        assertFalse(stops(enabled.copy(configWord = 0u), relayEnabled = false))
+    }
+
+    @Test
     fun locationRequestCadenceDoesNotChangePersistenceCadence() {
         assertEquals(
             1_000L,
