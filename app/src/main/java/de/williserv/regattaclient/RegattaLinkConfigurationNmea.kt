@@ -67,11 +67,6 @@ data class RegattaLinkConfigurationState(
     val nmeaTxSupported: Boolean
         get() = configWordSupported
 
-    val nmeaTxEnabled: Boolean?
-        get() = configWord?.let {
-            it and REGATTALINK_CONFIG_TX_MASTER != 0u
-        }
-
     val nmeaAttitudeTxSupported: Boolean
         get() = configWordSupported
 
@@ -116,7 +111,7 @@ data class RegattaLinkConfigurationState(
     val phoneGnssForwardingDesired: Boolean
         get() =
             configWord?.let {
-                it and REGATTALINK_CONFIG_TX_MASTER != 0u &&
+                it and REGATTALINK_CONFIG_SESSION_CAN != 0u &&
                     it and REGATTALINK_CONFIG_TX_PHONE_GPS != 0u
             } == true
 
@@ -150,13 +145,6 @@ data class RegattaLinkConfigurationState(
      */
     fun subsystemSessionBit(subsystem: RegattaLinkSubsystem): Boolean? =
         configWord?.let { it and subsystem.configBit != 0u }
-
-    val nmeaTxRestartRequired: Boolean
-        get() =
-            nmeaTxRuntimeStatusSupported &&
-                nmeaTxEnabled != null &&
-                nmeaTxBootSelected != null &&
-                nmeaTxEnabled != nmeaTxBootSelected
 
     val nmeaAttitudeTxRestartRequired: Boolean
         get() {
@@ -336,7 +324,8 @@ internal fun regattaLinkExpireLoadSensorsIfTransportStale(
     )
 }
 
-internal const val REGATTALINK_CONFIG_TX_MASTER: UInt = 0x00000001u
+// Bit 0 is a read-only mirror of the CAN session status, never a TX selector.
+internal const val REGATTALINK_CONFIG_CAN_STATUS_MIRROR: UInt = 0x00000001u
 internal const val REGATTALINK_CONFIG_TX_IMU: UInt = 0x00000002u
 internal const val REGATTALINK_CONFIG_TX_NMEA0183: UInt = 0x00000004u
 internal const val REGATTALINK_CONFIG_TX_PHONE_GPS: UInt = 0x00000008u
@@ -344,7 +333,7 @@ internal const val REGATTALINK_CONFIG_TX_COMPASS: UInt = 0x00000010u
 internal const val REGATTALINK_CONFIG_TX_LOAD: UInt = 0x00000020u
 internal const val REGATTALINK_CONFIG_CALYPSO_ENABLE: UInt = 0x00000040u
 internal const val REGATTALINK_CONFIG_TX_CALYPSO_WIND: UInt = 0x00000080u
-internal const val REGATTALINK_CONFIG_TX_SELECTION_MASK: UInt = 0x0000009fu
+internal const val REGATTALINK_CONFIG_TX_SELECTION_MASK: UInt = 0x0000009eu
 internal const val REGATTALINK_CONFIG_BLUETOOTH_DEVICE_MASK: UInt =
     REGATTALINK_CONFIG_CALYPSO_ENABLE
 internal const val REGATTALINK_CONFIG_LOAD_PRECISION_X10: UInt = 0x00000100u
@@ -580,8 +569,8 @@ internal const val REGATTALINK_TX_OUTPUT_LOAD = 1 shl 4
 internal const val REGATTALINK_TX_OUTPUT_CALYPSO_WIND = 1 shl 5
 
 data class RegattaLinkNmeaTxRuntimeStatus(
-    val bootMasterSelected: Boolean,
-    val masterActive: Boolean,
+    val canInterfaceBootEnabled: Boolean,
+    val activeNode: Boolean,
     val bootOutputMask: Int,
     val activeOutputMask: Int
 ) {
@@ -604,8 +593,8 @@ internal fun parseRegattaLinkNmeaTxRuntimeStatus(
     }
     val masterFlags = raw[1].toInt() and 0xff
     return RegattaLinkNmeaTxRuntimeStatus(
-        bootMasterSelected = masterFlags and 0x01 != 0,
-        masterActive = masterFlags and 0x02 != 0,
+        canInterfaceBootEnabled = masterFlags and 0x01 != 0,
+        activeNode = masterFlags and 0x02 != 0,
         bootOutputMask = raw[2].toInt() and 0xff,
         activeOutputMask = raw[3].toInt() and 0xff
     )
@@ -618,8 +607,8 @@ internal fun regattaLinkApplyNmeaTxRuntimeStatus(
     regattaLinkReconcileNmeaTxState(
         state.copy(
             nmeaTxRuntimeStatusSupported = true,
-            nmeaTxBootSelected = runtime.bootMasterSelected,
-            nmeaTxActive = runtime.masterActive,
+            nmeaTxBootSelected = runtime.canInterfaceBootEnabled,
+            nmeaTxActive = runtime.activeNode,
             nmeaBootOutputMask = runtime.bootOutputMask,
             nmeaActiveOutputMask = runtime.activeOutputMask
         )
@@ -647,7 +636,6 @@ internal fun regattaLinkNmeaRestartRequired(
     state: RegattaLinkConfigurationState
 ): Boolean =
     state.configRestartRequired ||
-        state.nmeaTxRestartRequired ||
         regattaLinkOutputRestartRequired(
             state,
             REGATTALINK_CONFIG_TX_IMU,
