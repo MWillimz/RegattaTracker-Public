@@ -177,6 +177,31 @@ class EventOnboardingTest {
     }
 
     @Test
+    fun completedDotKeepsPreviouslyDisplayedOrangeUntilGreenTransition() {
+        assertEquals(
+            OnboardingStatus.URGENT,
+            onboardingVisualStatus(OnboardingStatus.DONE, OnboardingStatus.URGENT)
+        )
+        assertEquals(
+            OnboardingStatus.CURRENT,
+            onboardingVisualStatus(OnboardingStatus.DONE, OnboardingStatus.CURRENT)
+        )
+        assertEquals(
+            OnboardingStatus.FUTURE,
+            onboardingVisualStatus(OnboardingStatus.DONE, OnboardingStatus.FUTURE)
+        )
+        // Already completed steps never replay a color transition.
+        assertEquals(
+            OnboardingStatus.DONE,
+            onboardingVisualStatus(OnboardingStatus.DONE, OnboardingStatus.DONE)
+        )
+        assertEquals(
+            OnboardingStatus.URGENT,
+            onboardingVisualStatus(OnboardingStatus.URGENT, OnboardingStatus.CURRENT)
+        )
+    }
+
+    @Test
     fun completionTransitionIsOnlyNewlyFinishedSteps() {
         assertEquals(0b0100, eventOnboardingNewlyCompleted(0b0011, 0b0111))
         assertEquals(0, eventOnboardingNewlyCompleted(0b0111, 0b0111))
