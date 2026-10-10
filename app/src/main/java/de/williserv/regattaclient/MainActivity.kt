@@ -223,6 +223,17 @@ class MainActivity : ComponentActivity() {
         override fun onConfigurationStateChanged(state: RegattaLinkConfigurationState) {
             if (asyncLifetime.isActive()) {
                 regattaLinkConfigurationState.value = state
+                if (shouldDisablePhoneGpsRelayForTxState(
+                        relayEnabled = regattaLinkPhoneGpsRelayEnabled.value,
+                        connected = regattaLinkState.value.status ==
+                            RegattaLinkConnectionStatus.CONNECTED,
+                        configurationState = state
+                    )
+                ) {
+                    // The confirmed firmware configuration cannot transmit.
+                    // Persist OFF and stop the relay-only foreground service.
+                    setRegattaLinkPhoneGpsRelayEnabled(false)
+                }
             }
         }
 
