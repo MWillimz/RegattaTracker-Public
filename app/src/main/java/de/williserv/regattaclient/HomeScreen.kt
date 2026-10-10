@@ -133,8 +133,8 @@ fun HomeScreen(
     millisToStart: Long?,
     raceStartEpochMillis: Long?,
     onboardingEventKey: String?,
-    onboardingPreviouslyObservedMask: Int?,
-    onOnboardingMaskObserved: (String?, Int) -> Unit,
+    onboardingPreviouslyObservedState: EventOnboardingState?,
+    onOnboardingStateObserved: (String?, EventOnboardingState) -> Unit,
     onboardingEnteredRace: Boolean,
     onboardingUploadConfirmed: Boolean,
     onboardingHidden: Boolean,
@@ -271,8 +271,8 @@ fun HomeScreen(
             EventOnboardingCard(
                 state = onboardingState,
                 eventKey = onboardingEventKey,
-                previouslyObservedMask = onboardingPreviouslyObservedMask,
-                onObserveMask = onOnboardingMaskObserved,
+                previouslyObservedState = onboardingPreviouslyObservedState,
+                onObserveState = onOnboardingStateObserved,
                 suppressed = onboardingHidden,
                 onSuppress = onHideOnboarding,
                 onOpenStep = { step ->
