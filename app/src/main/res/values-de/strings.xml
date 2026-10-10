@@ -587,7 +587,7 @@
     <string name="regattalink_confidence">Confidence</string>
     <string name="regattalink_settings_title">Einstellungen</string>
     <string name="regattalink_setup">Einrichten</string>
-    <string name="regattalink_setup_imu">IMU einrichten</string>
+    <string name="regattalink_setup_imu">Internal Sensor</string>
     <string name="regattalink_bluetooth_devices">Bluetooth-Geräte</string>
     <string name="regattalink_calypso_wind_sensor">Calypso-Windsensor</string>
     <string name="regattalink_calypso_bound_sensor">Gebundener Sensor</string>
@@ -601,7 +601,7 @@
     <string name="regattalink_calypso_ambiguous">Mehrere Calypso-Sensoren gefunden. Unerwünschte Sensoren ausschalten oder entfernen und erneut suchen.</string>
     <string name="regattalink_calypso_verify_failed">Der Calypso-Sensor konnte nicht verifiziert werden.</string>
     <string name="regattalink_calypso_wind_tx">Calypso-Wind an Boat Data weiterleiten</string>
-    <string name="regattalink_setup_nmea">TX einrichten</string>
+    <string name="regattalink_setup_nmea">NMEA Setup</string>
     <string name="regattalink_advanced_diagnostics">Erweitert / Diagnose</string>
     <string name="regattalink_device_settings">Geräteeinstellungen</string>
     <string name="regattalink_subsystems">Hardware-Subsysteme</string>
@@ -745,6 +745,7 @@
     <string name="regattalink_phone_gps_tx">Telefon-GPS weiterleiten</string>
     <string name="regattalink_compass_tx">Kurs weiterleiten</string>
     <string name="regattalink_phone_gps_relay">Telefon-GPS ohne Tracking weiterleiten</string>
+    <string name="regattalink_phone_gps_relay_short">Auch ohne Tracking</string>
     <string name="regattalink_phone_gps_relay_hint">Leitet Telefon-GPS auch weiter, wenn Regatta- oder manuelles Tracking gestoppt ist.</string>
     <string name="regattalink_phone_gps_relay_notification_title">Telefon-GPS-Weiterleitung</string>
     <string name="regattalink_phone_gps_relay_active">Telefon-GPS wird an RegattaLink weitergeleitet</string>
@@ -793,4 +794,27 @@
     <string name="regattalink_known">Bekannt</string>
     <string name="regattalink_nearby">In der Nähe</string>
     <string name="regattalink_no_known_devices">Keine bekannten RLinks</string>
+    <string name="regattalink_pair">Koppeln</string>
+    <string name="regattalink_switch">Wechseln</string>
+    <string name="regattalink_pair_another">Weiteren RLink koppeln</string>
+    <string name="regattalink_boat_group_course">Kurs &amp; Fahrt</string>
+    <string name="regattalink_boat_group_wind">Wind</string>
+    <string name="regattalink_boat_group_depth">Tiefe &amp; Temperatur</string>
+    <string name="regattalink_boat_group_motion">Bewegung</string>
+    <string name="regattalink_boat_wind_direction">Windrichtung</string>
+    <string name="onboarding_title">Erste Schritte</string>
+    <string name="onboarding_boat">Bootsdaten</string>
+    <string name="onboarding_register">Anmelden</string>
+    <string name="onboarding_enter">Teilnahme starten</string>
+    <string name="onboarding_upload">Upload prüfen</string>
+    <string name="onboarding_boat_detail">Bootsdaten bestätigen</string>
+    <string name="onboarding_register_detail">QR-Code scannen und Eventbedingungen akzeptieren</string>
+    <string name="onboarding_enter_detail">Teilnahme am aktuellen Event starten</string>
+    <string name="onboarding_upload_detail">Bestätigten Tracking-Upload abwarten</string>
+    <string name="onboarding_dont_show">Nicht mehr anzeigen</string>
+    <string name="onboarding_progress">%1$d von %2$d erledigt</string>
+    <string name="onboarding_status_done">Erledigt</string>
+    <string name="onboarding_status_current">Nächster Schritt</string>
+    <string name="onboarding_status_urgent">Jetzt dringend</string>
+    <string name="onboarding_status_future">Später</string>
 </resources>

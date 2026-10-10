@@ -630,7 +630,7 @@
     <string name="regattalink_confidence">Confidence</string>
     <string name="regattalink_settings_title">Settings</string>
     <string name="regattalink_setup">Setup</string>
-    <string name="regattalink_setup_imu">Setup IMU</string>
+    <string name="regattalink_setup_imu">Internal Sensor</string>
     <string name="regattalink_bluetooth_devices">Bluetooth devices</string>
     <string name="regattalink_calypso_wind_sensor">Calypso wind sensor</string>
     <string name="regattalink_calypso_bound_sensor">Bound sensor</string>
@@ -644,7 +644,7 @@
     <string name="regattalink_calypso_ambiguous">Multiple Calypso sensors found. Turn off or remove unwanted sensors and try again.</string>
     <string name="regattalink_calypso_verify_failed">Calypso sensor verification failed.</string>
     <string name="regattalink_calypso_wind_tx">Forward Calypso wind to Boat Data</string>
-    <string name="regattalink_setup_nmea">Setup TX</string>
+    <string name="regattalink_setup_nmea">NMEA Setup</string>
     <string name="regattalink_advanced_diagnostics">Advanced / Diagnostics</string>
     <string name="regattalink_device_settings">Device settings</string>
     <string name="regattalink_subsystems">Hardware subsystems</string>
@@ -687,7 +687,7 @@
     <string name="regattalink_nmea_available">Boat Data diagnostics available</string>
     <string name="regattalink_nmea_unavailable">Boat Data diagnostics unavailable</string>
     <string name="regattalink_pgns_seen">Observed PGNs</string>
-    <string name="regattalink_boat_state_title">Boat state</string>
+    <string name="regattalink_boat_state_title">Boat data</string>
     <string name="regattalink_boat_state_snapshot_only">Live notifications are unavailable at the current BLE MTU; snapshot reads still work.</string>
     <string name="regattalink_boat_state_waiting">Waiting for Boat State…</string>
     <string name="regattalink_boat_state_no_data">Boat State is available, but no Boat Data values are currently valid.</string>
@@ -788,6 +788,7 @@
     <string name="regattalink_phone_gps_tx">Forward Phone GPS</string>
     <string name="regattalink_compass_tx">Forward Heading</string>
     <string name="regattalink_phone_gps_relay">Forward Phone GPS without tracking</string>
+    <string name="regattalink_phone_gps_relay_short">Also without tracking</string>
     <string name="regattalink_phone_gps_relay_hint">Keeps phone GPS forwarding active even when race or manual tracking is stopped.</string>
     <string name="regattalink_phone_gps_relay_notification_title">Phone GPS forwarding</string>
     <string name="regattalink_phone_gps_relay_active">Forwarding Phone GPS to RegattaLink</string>
@@ -836,4 +837,27 @@
     <string name="regattalink_known">Known</string>
     <string name="regattalink_nearby">Nearby</string>
     <string name="regattalink_no_known_devices">No known RLinks</string>
+    <string name="regattalink_pair">Pair</string>
+    <string name="regattalink_switch">Switch</string>
+    <string name="regattalink_pair_another">Pair another RLink</string>
+    <string name="regattalink_boat_group_course">Course &amp; speed</string>
+    <string name="regattalink_boat_group_wind">Wind</string>
+    <string name="regattalink_boat_group_depth">Depth &amp; temperature</string>
+    <string name="regattalink_boat_group_motion">Motion</string>
+    <string name="regattalink_boat_wind_direction">Wind direction</string>
+    <string name="onboarding_title">Getting Started</string>
+    <string name="onboarding_boat">Boat setup</string>
+    <string name="onboarding_register">Register</string>
+    <string name="onboarding_enter">Enter Race</string>
+    <string name="onboarding_upload">Upload check</string>
+    <string name="onboarding_boat_detail">Confirm your boat details</string>
+    <string name="onboarding_register_detail">Scan the QR code and accept the event terms</string>
+    <string name="onboarding_enter_detail">Join the current race</string>
+    <string name="onboarding_upload_detail">Await a confirmed tracking upload</string>
+    <string name="onboarding_dont_show">Do not show</string>
+    <string name="onboarding_progress">%1$d of %2$d completed</string>
+    <string name="onboarding_status_done">Done</string>
+    <string name="onboarding_status_current">Next step</string>
+    <string name="onboarding_status_urgent">Time-sensitive</string>
+    <string name="onboarding_status_future">Later</string>
 </resources>

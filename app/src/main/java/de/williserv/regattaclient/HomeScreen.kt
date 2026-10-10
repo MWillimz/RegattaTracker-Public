@@ -1,9 +1,7 @@
 package de.williserv.regattaclient
 
 import android.content.Context
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -25,6 +23,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -93,7 +92,7 @@ private fun AutoSizedSingleLineText(
     )
 }
 @Composable
-fun HomeScreen(
+internal fun HomeScreen(
     inRace: Boolean,
     manualTracking: Boolean,
     setupConfirmed: Boolean,
@@ -121,6 +120,7 @@ fun HomeScreen(
     raceDataReady: Boolean,
     dailyReentryEnabled: Boolean = false,
     raceRegistered: Boolean,
+    onboardingRegistered: Boolean,
     localRaceFinished: Boolean,
     dtlText: String,
     ttlText: String,
@@ -131,6 +131,15 @@ fun HomeScreen(
     hasRaceInfo: Boolean,
     raceStartFlags: RaceStartFlags,
     millisToStart: Long?,
+    raceStartEpochMillis: Long?,
+    onboardingEventKey: String?,
+    onboardingPreviouslyObservedState: EventOnboardingState?,
+    onOnboardingStateObserved: (String?, EventOnboardingState) -> Unit,
+    onboardingEnteredRace: Boolean,
+    onboardingUploadConfirmed: Boolean,
+    onboardingHidden: Boolean,
+    onHideOnboarding: () -> Unit,
+    canEnterRace: Boolean,
     startPanelText: String,
     startPanelMode: String,
     lastCsvLine: String,
@@ -147,7 +156,6 @@ fun HomeScreen(
     onCourse: () -> Unit,
     onMap: () -> Unit,
     onResults: () -> Unit,
-    onRegattaLinkReconnect: () -> Unit,
     onRegattaLinkOpen: () -> Unit,
     onLegal: () -> Unit,
     onOcsPanelClick: () -> Unit,
@@ -223,6 +231,27 @@ fun HomeScreen(
     val distancePrefix = stringResource(R.string.distance_prefix)
     val dtlPrefix = stringResource(R.string.dtl_prefix)
     val gpsStatus = ""
+    val onboardingNow by produceState(
+        initialValue = System.currentTimeMillis(),
+        onboardingEventKey
+    ) {
+        while (true) {
+            value = System.currentTimeMillis()
+            delay(30_000L)
+        }
+    }
+    val onboardingState = eventOnboardingState(
+        boatSetupConfirmed = setupConfirmed,
+        eventKnown = onboardingEventKey != null,
+        registered = onboardingRegistered,
+        // A confirmed real race-session upload also proves this event
+        // was entered, including for sessions predating the onboarding UI.
+        enteredRace = onboardingEnteredRace || onboardingUploadConfirmed,
+        trackingUploadConfirmed = onboardingUploadConfirmed,
+        raceStartEpochMillis = raceStartEpochMillis,
+        canEnterRace = canEnterRace,
+        nowEpochMillis = onboardingNow
+    )
 
     Column(
         modifier = modifier
@@ -235,6 +264,27 @@ fun HomeScreen(
             raceDataReady = raceDataReady,
             seriesDisplayMetadata = seriesDisplayMetadata
         )
+
+        // Boot/setup/registration/entry stay usable even if upload evidence
+        // has not yet been read or the tracking database read has failed.
+        if (!onboardingHidden) {
+            EventOnboardingCard(
+                state = onboardingState,
+                eventKey = onboardingEventKey,
+                previouslyObservedState = onboardingPreviouslyObservedState,
+                onObserveState = onOnboardingStateObserved,
+                suppressed = onboardingHidden,
+                onSuppress = onHideOnboarding,
+                onOpenStep = { step ->
+                    when (step) {
+                        OnboardingStep.BOAT_SETUP -> onBoatData()
+                        OnboardingStep.REGISTER,
+                        OnboardingStep.ENTER_RACE,
+                        OnboardingStep.UPLOAD_CHECK -> onRace()
+                    }
+                }
+            )
+        }
 
         Spacer(modifier = Modifier.height(HomeGapSmall))
 
@@ -338,7 +388,6 @@ fun HomeScreen(
             ),
             uploadColor = uploadColor,
             regattaLinkStatus = regattaLinkStatus,
-            onRegattaLinkReconnect = onRegattaLinkReconnect,
             onRegattaLinkOpen = onRegattaLinkOpen
         )
 
@@ -716,7 +765,6 @@ fun StatusOverviewCard(
     uploadStatusText: String,
     uploadColor: Color,
     regattaLinkStatus: RegattaLinkHomeStatus,
-    onRegattaLinkReconnect: () -> Unit,
     onRegattaLinkOpen: () -> Unit
 ) {
     Card(
@@ -743,7 +791,6 @@ fun StatusOverviewCard(
                 Spacer(modifier = Modifier.weight(1f))
                 RegattaLinkStatusIndicator(
                     status = regattaLinkStatus,
-                    onReconnect = onRegattaLinkReconnect,
                     onOpen = onRegattaLinkOpen,
                     modifier = Modifier.weight(1f)
                 )
@@ -793,30 +840,37 @@ private fun CompactStatusIndicator(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RegattaLinkStatusIndicator(
     status: RegattaLinkHomeStatus,
-    onReconnect: () -> Unit,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Row(
-        modifier = modifier.combinedClickable(
-            onClick = {
-                if (status != RegattaLinkHomeStatus.CONNECTED) {
-                    onReconnect()
-                }
-            },
-            onLongClick = onOpen
-        ),
+        modifier = modifier.clickable(onClick = onOpen),
         horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AutoSizedSingleLineText(
-            text = stringResource(R.string.regattalink_short_label),
-            minFontSize = 9.sp,
-            maxFontSize = 16.sp
+        Text(
+            text = buildAnnotatedString {
+                append(stringResource(R.string.regattalink_short_label))
+                withStyle(
+                    SpanStyle(
+                        fontSize = 9.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                ) {
+                    append(" (beta)")
+                }
+            },
+            modifier = Modifier.weight(1f, fill = false),
+            maxLines = 1,
+            softWrap = false,
+            autoSize = TextAutoSize.StepBased(
+                minFontSize = 9.sp,
+                maxFontSize = 16.sp,
+                stepSize = 0.5.sp
+            )
         )
         Box(
             modifier = Modifier

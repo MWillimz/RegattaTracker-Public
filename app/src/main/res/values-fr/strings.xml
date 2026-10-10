@@ -587,7 +587,7 @@
     <string name="regattalink_confidence">Confiance</string>
     <string name="regattalink_settings_title">Paramètres</string>
     <string name="regattalink_setup">Configurer</string>
-    <string name="regattalink_setup_imu">Configurer l’IMU</string>
+    <string name="regattalink_setup_imu">Internal Sensor</string>
     <string name="regattalink_bluetooth_devices">Appareils Bluetooth</string>
     <string name="regattalink_calypso_wind_sensor">Capteur de vent Calypso</string>
     <string name="regattalink_calypso_bound_sensor">Capteur associé</string>
@@ -601,7 +601,7 @@
     <string name="regattalink_calypso_ambiguous">Plusieurs capteurs Calypso ont été trouvés. Éteignez ou éloignez les capteurs indésirables puis réessayez.</string>
     <string name="regattalink_calypso_verify_failed">La vérification du capteur Calypso a échoué.</string>
     <string name="regattalink_calypso_wind_tx">Transmettre le vent Calypso vers Boat Data</string>
-    <string name="regattalink_setup_nmea">Configurer TX</string>
+    <string name="regattalink_setup_nmea">NMEA Setup</string>
     <string name="regattalink_advanced_diagnostics">Avancé / Diagnostic</string>
     <string name="regattalink_device_settings">Paramètres de l’appareil</string>
     <string name="regattalink_subsystems">Sous-systèmes matériels</string>
@@ -644,7 +644,7 @@
     <string name="regattalink_nmea_available">Diagnostic Boat Data disponible</string>
     <string name="regattalink_nmea_unavailable">Diagnostic Boat Data indisponible</string>
     <string name="regattalink_pgns_seen">PGN observés</string>
-    <string name="regattalink_boat_state_title">État du bateau</string>
+    <string name="regattalink_boat_state_title">Données du bateau</string>
     <string name="regattalink_boat_state_snapshot_only">Les notifications en direct ne sont pas disponibles avec le MTU BLE actuel ; les lectures instantanées fonctionnent toujours.</string>
     <string name="regattalink_boat_state_waiting">En attente de l’état du bateau…</string>
     <string name="regattalink_boat_state_no_data">L’état du bateau est disponible, mais aucune valeur Boat Data n’est actuellement valide.</string>
@@ -745,6 +745,7 @@
     <string name="regattalink_phone_gps_tx">Transmettre le GPS du téléphone</string>
     <string name="regattalink_compass_tx">Transmettre le cap</string>
     <string name="regattalink_phone_gps_relay">Transmettre le GPS sans suivi</string>
+    <string name="regattalink_phone_gps_relay_short">Aussi sans suivi</string>
     <string name="regattalink_phone_gps_relay_hint">Maintient la transmission du GPS du téléphone même lorsque le suivi de course ou manuel est arrêté.</string>
     <string name="regattalink_phone_gps_relay_notification_title">Transmission GPS du téléphone</string>
     <string name="regattalink_phone_gps_relay_active">Transmission du GPS du téléphone vers RegattaLink</string>
@@ -793,4 +794,27 @@
     <string name="regattalink_known">Connu</string>
     <string name="regattalink_nearby">À proximité</string>
     <string name="regattalink_no_known_devices">Aucun RLink connu</string>
+    <string name="regattalink_pair">Appairer</string>
+    <string name="regattalink_switch">Changer</string>
+    <string name="regattalink_pair_another">Appairer un autre RLink</string>
+    <string name="regattalink_boat_group_course">Cap et vitesse</string>
+    <string name="regattalink_boat_group_wind">Vent</string>
+    <string name="regattalink_boat_group_depth">Profondeur et température</string>
+    <string name="regattalink_boat_group_motion">Mouvement</string>
+    <string name="regattalink_boat_wind_direction">Direction du vent</string>
+    <string name="onboarding_title">Premiers pas</string>
+    <string name="onboarding_boat">Données du bateau</string>
+    <string name="onboarding_register">Inscription</string>
+    <string name="onboarding_enter">Participer à la régate</string>
+    <string name="onboarding_upload">Vérifier l’envoi</string>
+    <string name="onboarding_boat_detail">Confirmez les données du bateau</string>
+    <string name="onboarding_register_detail">Scannez le QR code et acceptez les conditions</string>
+    <string name="onboarding_enter_detail">Commencez à participer à la régate</string>
+    <string name="onboarding_upload_detail">Attendez la confirmation des données envoyées</string>
+    <string name="onboarding_dont_show">Ne plus afficher</string>
+    <string name="onboarding_progress">%1$d sur %2$d terminées</string>
+    <string name="onboarding_status_done">Terminé</string>
+    <string name="onboarding_status_current">Prochaine étape</string>
+    <string name="onboarding_status_urgent">À faire rapidement</string>
+    <string name="onboarding_status_future">Plus tard</string>
 </resources>

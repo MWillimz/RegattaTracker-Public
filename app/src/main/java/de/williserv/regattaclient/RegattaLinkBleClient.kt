@@ -5129,11 +5129,15 @@ internal class RegattaLinkBleClient(
     }
 
     override fun refreshPgnInventory(): Boolean {
-        if (otaRunning.get() || !isConnected()) return false
+        if (otaRunning.get() || rawCaptureRunning.get() || !isConnected()) return false
         val activeGatt = gatt ?: return false
 
         otaExecutor.execute {
-            if (!optionalFeatureWorkAllowed(activeGatt)) return@execute
+            // Capture may have started after this read was enqueued.
+            // Avoid a late PGN GATT read in that case.
+            if (!optionalFeatureWorkAllowed(activeGatt) || rawCaptureRunning.get()) {
+                return@execute
+            }
             updateNmea {
                 it.copy(
                     pgnInventoryLoading = true,

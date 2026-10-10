@@ -15,6 +15,7 @@ class RegattaLinkPgnRefreshPolicyTest {
                 inventoryEmpty = true,
                 inventoryLoading = false,
                 otaActive = false,
+                rawCaptureActive = false,
                 alreadyRequested = false
             )
         )
@@ -26,6 +27,7 @@ class RegattaLinkPgnRefreshPolicyTest {
                 inventoryEmpty = true,
                 inventoryLoading = false,
                 otaActive = false,
+                rawCaptureActive = false,
                 alreadyRequested = true
             )
         )
@@ -40,6 +42,7 @@ class RegattaLinkPgnRefreshPolicyTest {
                 inventoryEmpty = true,
                 inventoryLoading = true,
                 otaActive = false,
+                rawCaptureActive = false,
                 alreadyRequested = true
             )
         )
@@ -51,6 +54,7 @@ class RegattaLinkPgnRefreshPolicyTest {
                 inventoryEmpty = true,
                 inventoryLoading = false,
                 otaActive = false,
+                rawCaptureActive = false,
                 alreadyRequested = true
             )
         )
@@ -65,6 +69,7 @@ class RegattaLinkPgnRefreshPolicyTest {
                 inventoryEmpty = true,
                 inventoryLoading = false,
                 otaActive = false,
+                rawCaptureActive = false,
                 alreadyRequested = false
             ),
             false to shouldAutoRefreshPgnInventory(
@@ -73,6 +78,7 @@ class RegattaLinkPgnRefreshPolicyTest {
                 inventoryEmpty = true,
                 inventoryLoading = false,
                 otaActive = false,
+                rawCaptureActive = false,
                 alreadyRequested = false
             ),
             false to shouldAutoRefreshPgnInventory(
@@ -81,6 +87,7 @@ class RegattaLinkPgnRefreshPolicyTest {
                 inventoryEmpty = false,
                 inventoryLoading = false,
                 otaActive = false,
+                rawCaptureActive = false,
                 alreadyRequested = false
             ),
             false to shouldAutoRefreshPgnInventory(
@@ -89,6 +96,7 @@ class RegattaLinkPgnRefreshPolicyTest {
                 inventoryEmpty = true,
                 inventoryLoading = false,
                 otaActive = true,
+                rawCaptureActive = false,
                 alreadyRequested = false
             )
         )
