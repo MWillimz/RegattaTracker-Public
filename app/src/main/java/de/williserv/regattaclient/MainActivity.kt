@@ -345,7 +345,8 @@ class MainActivity : ComponentActivity() {
         mutableStateOf<Pair<String, Boolean>?>(null)
     // Session-only memory. A new app launch establishes its initial progress
     // without replaying past completion animations.
-    private val onboardingObservedMasks = mutableMapOf<String, Int>()
+    private val onboardingObservedStates =
+        mutableMapOf<String, EventOnboardingState>()
     private val statusText = mutableStateOf("")
     private val rowCountText = mutableStateOf("")
     private val uploadStatusText = mutableStateOf("")
@@ -711,12 +712,12 @@ class MainActivity : ComponentActivity() {
                             millisToStart = raceStartEpochMillis?.let { it - System.currentTimeMillis() },
                             raceStartEpochMillis = raceStartEpochMillis,
                             onboardingEventKey = currentOnboardingEventKey(),
-                            onboardingPreviouslyObservedMask =
-                                onboardingObservedMasks[
+                            onboardingPreviouslyObservedState =
+                                onboardingObservedStates[
                                     currentOnboardingEventKey() ?: "no-event"
                                 ],
-                            onOnboardingMaskObserved = { eventKey, mask ->
-                                onboardingObservedMasks[eventKey ?: "no-event"] = mask
+                            onOnboardingStateObserved = { eventKey, state ->
+                                onboardingObservedStates[eventKey ?: "no-event"] = state
                             },
                             onboardingEnteredRace = onboardingEnteredForCurrentEvent(),
                             onboardingUploadConfirmed =
