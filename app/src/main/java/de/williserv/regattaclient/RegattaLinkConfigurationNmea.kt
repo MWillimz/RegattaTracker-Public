@@ -32,7 +32,7 @@ data class RegattaLinkConfigurationState(
     val headingTrimSupported: Boolean = false,
     val headingTrimDeg: Int? = null,
     val nmeaTxRuntimeStatusSupported: Boolean = false,
-    val nmeaTxBootSelected: Boolean? = null,
+    val nmeaCanBootEnabled: Boolean? = null,
     val nmeaTxActive: Boolean? = null,
     val nmeaBootOutputMask: Int? = null,
     val nmeaActiveOutputMask: Int? = null,
@@ -591,10 +591,10 @@ internal fun parseRegattaLinkNmeaTxRuntimeStatus(
     require(version == 2) {
         "Unsupported RegattaLink Boat Data runtime TX status version $version"
     }
-    val masterFlags = raw[1].toInt() and 0xff
+    val nodeFlags = raw[1].toInt() and 0xff
     return RegattaLinkNmeaTxRuntimeStatus(
-        canInterfaceBootEnabled = masterFlags and 0x01 != 0,
-        activeNode = masterFlags and 0x02 != 0,
+        canInterfaceBootEnabled = nodeFlags and 0x01 != 0,
+        activeNode = nodeFlags and 0x02 != 0,
         bootOutputMask = raw[2].toInt() and 0xff,
         activeOutputMask = raw[3].toInt() and 0xff
     )
@@ -607,7 +607,7 @@ internal fun regattaLinkApplyNmeaTxRuntimeStatus(
     regattaLinkReconcileNmeaTxState(
         state.copy(
             nmeaTxRuntimeStatusSupported = true,
-            nmeaTxBootSelected = runtime.canInterfaceBootEnabled,
+            nmeaCanBootEnabled = runtime.canInterfaceBootEnabled,
             nmeaTxActive = runtime.activeNode,
             nmeaBootOutputMask = runtime.bootOutputMask,
             nmeaActiveOutputMask = runtime.activeOutputMask
@@ -667,7 +667,7 @@ internal fun regattaLinkNmeaAppliedStateUnknown(
 ): Boolean {
     if (!state.configWordSupported) return false
     if (!state.nmeaTxRuntimeStatusSupported) return true
-    if (state.nmeaTxBootSelected == null) return true
+    if (state.nmeaCanBootEnabled == null) return true
     return state.nmeaBootOutputMask == null
 }
 
