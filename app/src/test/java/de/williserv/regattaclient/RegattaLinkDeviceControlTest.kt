@@ -251,6 +251,30 @@ class RegattaLinkDeviceControlTest {
         )
     }
 
+    @Test
+    fun calypsoDeleteUsesOpcode11AndZeroValue() {
+        val request = buildRegattaLinkDeviceControlRequest(
+            RegattaLinkDeviceControlOpcode.CALYPSO_DELETE,
+            25u,
+            0
+        )
+        assertEquals(11, request[1].toInt() and 0xff)
+        assertEquals(
+            RegattaLinkDeviceControlOpcode.CALYPSO_DELETE,
+            RegattaLinkDeviceControlOpcode.fromWire(11)
+        )
+        assertEquals(true, RegattaLinkDeviceControlOpcode.CALYPSO_DELETE.isCalypsoCommand())
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun calypsoDeleteRejectsNonZeroValue() {
+        buildRegattaLinkDeviceControlRequest(
+            RegattaLinkDeviceControlOpcode.CALYPSO_DELETE,
+            26u,
+            1
+        )
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun calypsoScanRejectsNonZeroValue() {
         buildRegattaLinkDeviceControlRequest(
