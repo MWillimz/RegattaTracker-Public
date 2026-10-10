@@ -68,7 +68,9 @@ internal fun EventOnboardingCard(
     var visualStatuses by remember(eventKey, resetCounter) {
         mutableStateOf(previouslyObservedState?.statuses ?: state.statuses)
     }
-    var keepVisible by remember(eventKey, resetCounter) { mutableStateOf(!state.complete) }
+    var keepVisible by remember(eventKey, resetCounter) {
+        mutableStateOf(!state.complete || resetCounter > 0)
+    }
 
     // Never replay progress on initial composition, event switch or page revisit.
     LaunchedEffect(eventKey, state.statuses) {
@@ -89,10 +91,10 @@ internal fun EventOnboardingCard(
             celebratingMask = 0
             delay(1_800L)
             expanded = false
-            if (state.complete) keepVisible = false
+            if (state.complete && resetCounter == 0) keepVisible = false
         } else {
             visualStatuses = state.statuses
-            if (state.complete && celebratingMask == 0) {
+            if (state.complete && celebratingMask == 0 && resetCounter == 0) {
                 keepVisible = false
             }
         }
