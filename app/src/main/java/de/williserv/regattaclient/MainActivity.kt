@@ -1354,11 +1354,12 @@ class MainActivity : ComponentActivity() {
                         onContinue = {
                             val scan = pendingEventScan.value
                             if (scan != null) {
-                                pendingEventScan.value = scan.copy(
+                                val allowedScan = scan.copy(
                                     updateDecision = null,
                                     statusText = getString(R.string.loading_race_notice)
                                 )
-                                fetchPendingEventNotice(scan)
+                                pendingEventScan.value = allowedScan
+                                fetchPendingEventNotice(allowedScan)
                             }
                         },
                         onCancel = ::navigateBack
@@ -2258,7 +2259,7 @@ class MainActivity : ComponentActivity() {
     private fun acceptPendingEventScan() {
         val scan = pendingEventScan.value ?: return
         val notice = scan.notice ?: return
-        if (scan.accepting || !isCurrentPendingScan(scan)) return
+        if (scan.accepting || scan.updateDecision != null || !isCurrentPendingScan(scan)) return
         val acceptedBoatSetup = currentBoatSetupValues()
         pendingEventScan.value = scan.copy(
             accepting = true,
