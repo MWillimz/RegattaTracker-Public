@@ -28,6 +28,12 @@ internal fun isCurrentPendingEventScan(
     pending.access == requested.access &&
     pending.previousAccess == currentActiveAccess
 
+/** An old event's accepted notice must never be displayed for a newly scanned event. */
+internal fun displayedRaceNoticeText(
+    pending: PendingEventScan?,
+    activeLegalText: String
+): String = if (pending != null) pending.notice?.legalText.orEmpty() else activeLegalText
+
 /** Race Notice links always refer to the staged scan if one is awaiting consent. */
 internal fun raceNoticeEventPageUrl(
     pending: PendingEventScan?,
