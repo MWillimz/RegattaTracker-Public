@@ -9,7 +9,8 @@ internal data class PendingEventScan(
     val previousAccess: EventAccessKey?,
     val notice: PendingEventNotice? = null,
     val statusText: String = "",
-    val accepting: Boolean = false
+    val accepting: Boolean = false,
+    val updateDecision: EventCompatibilityDecision? = null
 )
 
 internal data class PendingEventNotice(
