@@ -45,6 +45,18 @@ class PendingEventScanTest {
     }
 
     @Test
+    fun loadingNewNoticeNeverShowsPriorEventsLegalText() {
+        val oldText = "Previously accepted document"
+        val loading = PendingEventScan(token = 5L, access = newAccess, previousAccess = oldAccess)
+        assertEquals("", displayedRaceNoticeText(loading, oldText))
+        val loaded = loading.copy(
+            notice = PendingEventNotice("New Race", "New legal terms", "sha256")
+        )
+        assertEquals("New legal terms", displayedRaceNoticeText(loaded, oldText))
+        assertEquals(oldText, displayedRaceNoticeText(null, oldText))
+    }
+
+    @Test
     fun eventPageLinkUsesUnacceptedScanNotPreviouslyLoadedRace() {
         val pending = PendingEventScan(token = 1L, access = newAccess, previousAccess = oldAccess)
         val expected = buildEventAccessUrl(
