@@ -1347,6 +1347,29 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
+                if (pendingEventScan.value?.updateDecision ==
+                    EventCompatibilityDecision.WARN
+                ) {
+                    EventUpdateRecommendedDialog(
+                        onContinue = {
+                            val scan = pendingEventScan.value
+                            if (scan != null) {
+                                pendingEventScan.value = scan.copy(
+                                    updateDecision = null,
+                                    statusText = getString(R.string.loading_race_notice)
+                                )
+                                fetchPendingEventNotice(scan)
+                            }
+                        },
+                        onCancel = ::navigateBack
+                    )
+                }
+                if (pendingEventScan.value?.updateDecision ==
+                    EventCompatibilityDecision.BLOCK
+                ) {
+                    EventUpdateRequiredDialog(onDismiss = ::navigateBack)
+                }
+
                 if (enterRaceServerCheckInProgress.value) {
                     EnterRaceServerCheckOverlay()
                 }
@@ -2106,7 +2129,7 @@ class MainActivity : ComponentActivity() {
             )
             pendingEventScan.value = pending
             currentScreen.value = Screen.RACE_LEGAL
-            fetchPendingEventNotice(pending)
+            checkPendingEventCompatibility(pending)
         } catch (_: JSONException) {
             showQrImportError(getString(R.string.qr_invalid_json))
         } catch (e: Exception) {
@@ -2143,6 +2166,32 @@ class MainActivity : ComponentActivity() {
                 requested = scan,
                 currentActiveAccess = currentEventAccessKey()
             )
+
+    private fun checkPendingEventCompatibility(scan: PendingEventScan) {
+        thread {
+            val metadata = fetchServerMetadata(
+                server = scan.access.server,
+                eventName = scan.access.event,
+                sharedSecret = scan.access.secret
+            )
+            val versionStatus = metadata?.let {
+                evaluateClientVersionStatus(
+                    client = currentClientBuildIdentity(),
+                    serverMetadata = it
+                )
+            }
+            val decision = eventCompatibilityDecision(versionStatus)
+            runOnUiThread {
+                if (!isCurrentPendingScan(scan)) return@runOnUiThread
+                when (decision) {
+                    EventCompatibilityDecision.PROCEED -> fetchPendingEventNotice(scan)
+                    EventCompatibilityDecision.WARN,
+                    EventCompatibilityDecision.BLOCK ->
+                        pendingEventScan.value = scan.copy(updateDecision = decision)
+                }
+            }
+        }
+    }
 
     private fun fetchPendingEventNotice(scan: PendingEventScan) {
         thread {
