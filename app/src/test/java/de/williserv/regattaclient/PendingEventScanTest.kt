@@ -42,6 +42,21 @@ class PendingEventScanTest {
     }
 
     @Test
+    fun eventPageLinkUsesUnacceptedScanNotPreviouslyLoadedRace() {
+        val pending = PendingEventScan(token = 1L, access = newAccess, previousAccess = oldAccess)
+        val expected = buildEventAccessUrl(
+            newAccess.server, newAccess.event, newAccess.secret
+        )
+        assertEquals(expected, raceNoticeEventPageUrl(pending, oldAccess))
+        assertFalse(requireNotNull(expected).contains("old-secret"))
+        assertEquals(
+            buildEventAccessUrl(oldAccess.server, oldAccess.event, oldAccess.secret),
+            raceNoticeEventPageUrl(null, oldAccess)
+        )
+        assertNull(raceNoticeEventPageUrl(null, null))
+    }
+
+    @Test
     fun raceNoticeRequiresResolvedIdentityTextAndHashBeforeAcceptance() {
         val valid = parsePendingEventNotice(
             """{"event_name":"Race 2","invitation_legal_text":"Please read","legal_text_hash":"hash"}"""
