@@ -27,6 +27,15 @@ internal fun isCurrentPendingEventScan(
     pending.access == requested.access &&
     pending.previousAccess == currentActiveAccess
 
+/** Race Notice links always refer to the staged scan if one is awaiting consent. */
+internal fun raceNoticeEventPageUrl(
+    pending: PendingEventScan?,
+    active: EventAccessKey?
+): String? {
+    val access = pending?.access ?: active ?: return null
+    return buildEventAccessUrl(access.server, access.event, access.secret)
+}
+
 internal fun parsePendingEventNotice(body: String): PendingEventNotice? {
     val json = JSONObject(body)
     val resolvedEventName = json.optString("event_name", "").trim()
