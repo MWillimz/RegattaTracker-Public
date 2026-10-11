@@ -430,12 +430,12 @@ fun RaceScreen(
                             containerColor = if (actions.registerHighlighted) {
                                 successGreen
                             } else {
-                                MaterialTheme.colorScheme.surfaceVariant
+                                primaryBlue
                             },
                             contentColor = if (actions.registerHighlighted) {
                                 MaterialTheme.colorScheme.onSecondary
                             } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
+                                MaterialTheme.colorScheme.onPrimary
                             },
                             disabledContainerColor = MaterialTheme.colorScheme.outlineVariant,
                             disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
