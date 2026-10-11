@@ -867,4 +867,7 @@
     <string name="regattalink_calypso_delete_failed">Could not remove Calypso. Sensor binding remains.</string>
     <string name="decline_race_notice">Decline</string>
     <string name="event_page_open_failed">Could not open the event page.</string>
+    <string name="regattalink_forget">Forget</string>
+    <string name="regattalink_forget_connected">Cannot forget the connected RegattaLink.</string>
+    <string name="regattalink_forget_failed">Could not forget RegattaLink. Please try again.</string>
 </resources>
