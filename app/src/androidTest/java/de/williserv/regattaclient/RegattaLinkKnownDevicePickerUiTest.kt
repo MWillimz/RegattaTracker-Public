@@ -35,7 +35,7 @@ class RegattaLinkKnownDevicePickerUiTest {
         var surface = Color.Unspecified
         composeRule.setContent {
             MaterialTheme {
-                surface = MaterialTheme.colorScheme.surface
+                surface = MaterialTheme.colorScheme.surfaceContainerLow
                 Column {
                     listOf(first, second).forEach { device ->
                         DismissibleKnownRegattaLinkRow(
