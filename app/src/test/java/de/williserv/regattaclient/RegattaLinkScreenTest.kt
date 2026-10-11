@@ -9,6 +9,36 @@ import org.junit.Test
 class RegattaLinkScreenTest {
 
     @Test
+    fun onlyDisconnectedKnownRLinksCanBeForgotten() {
+        val a = RegattaLinkConfiguredDevice("A", "44:B1:76:48:31:B2", "Same")
+        val b = RegattaLinkConfiguredDevice("B", "44:B1:76:48:31:CE", "Same")
+        val active = RegattaLinkClientState(
+            status = RegattaLinkConnectionStatus.CONNECTED,
+            deviceAddress = a.deviceAddress,
+            deviceInfo = RegattaLinkDeviceInfo(
+                protocolMajor = REGATTALINK_PROTOCOL_MAJOR,
+                protocolMinor = 0,
+                capabilities = 0u,
+                stableId = a.stableId,
+                productId = REGATTALINK_PRODUCT_ID,
+                profileId = REGATTALINK_PROFILE_ID,
+                runningBuild = 1uL,
+                otaSlotSize = 0u,
+                maxInflightBlocks = 0
+            )
+        )
+        assertFalse(canForgetKnownRegattaLink(a, active))
+        assertTrue(canForgetKnownRegattaLink(b, active))
+        assertTrue(canForgetKnownRegattaLink(a, RegattaLinkClientState()))
+        // Guard even when deviceInfo has not been resolved.
+        assertFalse(canForgetKnownRegattaLink(a, active.copy(deviceInfo = null)))
+        assertFalse(canForgetKnownRegattaLink(
+            a,
+            active.copy(deviceInfo = null, deviceAddress = "")
+        ))
+    }
+
+    @Test
     fun bluetoothDevicesOpenRequestsStatusOnlyOnceWhenControlIsReady() {
         assertTrue(
             shouldRefreshCalypsoStatusOnOpen(
