@@ -940,7 +940,7 @@ internal fun KnownRegattaLinkPickerRow(
         // when the row is actually moved to the left.
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Text(
