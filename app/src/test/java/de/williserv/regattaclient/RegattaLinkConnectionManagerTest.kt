@@ -214,6 +214,15 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun cannotForgetDuringExplicitDiscoveryConnectionToSameKnownDevice() {
+        assertTrue(manager.connectDiscoveredDevice(configured.deviceAddress))
+        assertEquals(RegattaLinkForgetResult.BUSY,
+            manager.forgetKnownDevice(configured.stableId))
+        assertEquals(configured, manager.configuredDevice())
+        assertEquals(0, fakeClient.disconnectCalls)
+    }
+
+    @Test
     fun connectionThatChangedAfterSwipeWasDrawnCannotBeForgotten() {
         fakeClient.emitConnection(
             RegattaLinkClientState(
