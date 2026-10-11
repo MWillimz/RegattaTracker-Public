@@ -84,6 +84,15 @@ class RaceEventActionPolicyTest {
     }
 
     @Test
+    fun cancelledStatusImmediatelyDisablesBothActions() {
+        val state = actions(start - 2L * hour, status = " CaNcElLeD ")
+        assertTrue(state.raceEnded)
+        assertFalse(state.registerEnabled)
+        assertFalse(state.registerHighlighted)
+        assertFalse(state.enterEnabled)
+    }
+
+    @Test
     fun registeredBoatCannotRegisterAgainButMayEnter() {
         val state = actions(start - hour * 2L, registered = true)
         assertFalse(state.registerEnabled)
