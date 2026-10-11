@@ -57,6 +57,7 @@ import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -925,7 +926,7 @@ internal fun RegattaLinkScreen(
 
 
 @Composable
-private fun KnownRegattaLinkPickerRow(
+internal fun KnownRegattaLinkPickerRow(
     device: RegattaLinkConfiguredDevice,
     isSelected: Boolean,
     isConnected: Boolean,
@@ -935,7 +936,11 @@ private fun KnownRegattaLinkPickerRow(
     TextButton(
         onClick = onSelect,
         enabled = canSelect && !isConnected,
-        modifier = Modifier.fillMaxWidth()
+        // Opaque at rest: the destructive swipe background must only be visible
+        // when the row is actually moved to the left.
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Text(
@@ -961,7 +966,7 @@ private fun KnownRegattaLinkPickerRow(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DismissibleKnownRegattaLinkRow(
+internal fun DismissibleKnownRegattaLinkRow(
     device: RegattaLinkConfiguredDevice,
     isSelected: Boolean,
     isConnected: Boolean,
@@ -989,7 +994,9 @@ private fun DismissibleKnownRegattaLinkRow(
     }
     SwipeToDismissBox(
         state = dismissState,
-        modifier = accessible.fillMaxWidth(),
+        modifier = accessible
+            .fillMaxWidth()
+            .testTag("known-rlink-${device.stableId}"),
         backgroundContent = {
             Box(
                 modifier = Modifier

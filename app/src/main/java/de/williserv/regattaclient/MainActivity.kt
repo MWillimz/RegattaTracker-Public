@@ -682,6 +682,7 @@ class MainActivity : ComponentActivity() {
                             inRace = inRace.value,
                             manualTracking = manualTracking.value,
                             setupConfirmed = setupConfirmed.value,
+                            eventAccessLoaded = currentEventAccessKey() != null,
                             statusText = statusText.value,
                             rowCountText = rowCountText.value,
                             uploadStatusText = uploadStatusText.value,

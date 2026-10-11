@@ -96,6 +96,7 @@ internal fun HomeScreen(
     inRace: Boolean,
     manualTracking: Boolean,
     setupConfirmed: Boolean,
+    eventAccessLoaded: Boolean,
     statusText: String,
     rowCountText: String,
     uploadStatusText: String,
@@ -447,6 +448,7 @@ internal fun HomeScreen(
 
         ActionRow(
             setupConfirmed = setupConfirmed,
+            eventAccessLoaded = eventAccessLoaded,
             inRace = inRace,
             raceFinished = isRaceFinished(raceStatusCode, raceDataReady),
             onSetup = onBoatData,
@@ -1009,6 +1011,7 @@ fun FlagSlot(
 @Composable
 fun ActionRow(
     setupConfirmed: Boolean,
+    eventAccessLoaded: Boolean,
     inRace: Boolean,
     raceFinished: Boolean,
     onSetup: () -> Unit,
@@ -1029,7 +1032,7 @@ fun ActionRow(
         )
 
         SmallActionButton(
-            text = stringResource(R.string.event),
+            text = stringResource(if (eventAccessLoaded) R.string.event else R.string.scan_event_qr),
             isOk = inRace || raceFinished,
             enabled = setupConfirmed,
             modifier = Modifier.weight(
