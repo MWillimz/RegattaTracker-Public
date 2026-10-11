@@ -1321,6 +1321,37 @@ internal class RegattaLinkBleClient(
         emitOta(RegattaLinkOtaUiState())
     }
 
+    /**
+     * Cancel only a known-device attempt for the requested identity. Do not
+     * tear down an unrelated connected GATT session or an OTA/discovery owner.
+     */
+    override fun cancelKnownDeviceAttempt(stableId: String, deviceAddress: String): Boolean {
+        if (
+            scanPurpose != ScanPurpose.KNOWN_DEVICE_RECONNECT &&
+            scanPurpose != ScanPurpose.KNOWN_DEVICE_AUTOCONNECT
+        ) return false
+        if (
+            knownReconnectExpectedStableId != stableId ||
+            !knownReconnectAddress.equals(deviceAddress, ignoreCase = true)
+        ) return false
+        if (
+            lastState.status == RegattaLinkConnectionStatus.CONNECTED &&
+            (lastState.deviceInfo?.stableId != stableId ||
+                !lastState.deviceAddress.equals(deviceAddress, ignoreCase = true))
+        ) return false
+
+        cancelKnownDeviceReconnect()
+        handler.removeCallbacks(bondPoll)
+        handler.removeCallbacks(gattTimeout)
+        closeGatt()
+        clearTelemetry()
+        clearConfiguration()
+        clearNmea()
+        currentDevice = null
+        emit(RegattaLinkClientState())
+        return true
+    }
+
     override fun disconnect() {
         clearPhoneGnssPending()
         val activeGatt = gatt
