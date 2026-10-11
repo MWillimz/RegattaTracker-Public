@@ -1441,6 +1441,15 @@ class MainActivity : ComponentActivity() {
             return
         }
 
+        if (!setupConfirmed.value) {
+            android.widget.Toast.makeText(
+                this,
+                getString(R.string.confirm_boat_setup_first),
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
         handleRaceQrCode(
             buildEventQrPayload(
                 server = access.server,
