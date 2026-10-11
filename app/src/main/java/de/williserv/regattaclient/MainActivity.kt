@@ -2319,6 +2319,7 @@ class MainActivity : ComponentActivity() {
                             activateAcceptedEventScan(scan.access)
                         } else {
                             pendingEventScan.value = scan.copy(
+                                notice = null,
                                 statusText = getString(R.string.race_notice_changed)
                             )
                             fetchPendingEventNotice(scan)
