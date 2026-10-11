@@ -120,8 +120,8 @@ class RegattaLinkKnownDevicePickerUiTest {
         composeRule.onNodeWithTag("known-rlink-${first.stableId}")
             .performTouchInput {
                 swipe(
-                    start = Offset(centerX + 12.dp.toPx(), centerY),
-                    end = Offset(centerX - 12.dp.toPx(), centerY),
+                    start = Offset(center.x + 12.dp.toPx(), center.y),
+                    end = Offset(center.x - 12.dp.toPx(), center.y),
                     durationMillis = 250
                 )
             }
