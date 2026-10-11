@@ -39,6 +39,8 @@
     <string name="setup_confirmed">Setup confirmed</string>
     <string name="confirm_setup">Confirm Setup</string>
     <string name="scan_qr_code">Scan QR Code</string>
+    <string name="scan_event_qr">Scan Event QR</string>
+    <string name="scan_event_qr_code">Scan Event QR Code</string>
     <string name="retire_finish">Retire / Finish</string>
     <string name="race_notice">Race Notice</string>
     <string name="accept_notice">Accept Notice</string>

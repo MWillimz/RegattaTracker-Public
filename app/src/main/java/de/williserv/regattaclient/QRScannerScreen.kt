@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -24,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.res.stringResource
@@ -68,6 +71,8 @@ fun QrScannerScreen(
     Column(
         modifier = modifier.fillMaxSize()
     ) {
+        EventQrScannerHint()
+
         if (hasCameraPermission.value) {
             CameraPreviewWithQrScanner(
                 modifier = Modifier
@@ -90,6 +95,21 @@ fun QrScannerScreen(
         ) {
             Text(stringResource(R.string.back))
         }
+    }
+}
+
+@Composable
+internal fun EventQrScannerHint() {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        Text(
+            text = stringResource(R.string.scan_event_qr_code),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 

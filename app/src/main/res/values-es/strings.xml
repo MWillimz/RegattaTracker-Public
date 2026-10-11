@@ -33,6 +33,8 @@
     <string name="setup_confirmed">Configuración confirmada</string>
     <string name="confirm_setup">Confirmar configuración</string>
     <string name="scan_qr_code">Escanear código QR</string>
+    <string name="scan_event_qr">Escanear QR del evento</string>
+    <string name="scan_event_qr_code">Escanea el código QR del evento</string>
     <string name="retire_finish">Retirada / Llegada</string>
     <string name="race_notice">Anuncio de regata</string>
     <string name="accept_notice">Aceptar anuncio</string>
