@@ -1026,7 +1026,7 @@ class RegattaTrackingServiceLifecycleTest {
         includeCan: Boolean
     ): RegattaLinkConfigurationState {
         var word =
-            REGATTALINK_CONFIG_TX_MASTER or REGATTALINK_CONFIG_TX_PHONE_GPS
+            REGATTALINK_CONFIG_TX_PHONE_GPS
         if (includeCan) {
             word = word or REGATTALINK_CONFIG_SESSION_CAN
         }

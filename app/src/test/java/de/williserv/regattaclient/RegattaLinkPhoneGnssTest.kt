@@ -266,10 +266,9 @@ class RegattaLinkPhoneGnssTest {
     }
 
     @Test
-    fun forwardingGateRequiresCanTxSelectorsAndUnblockedRuntime() {
+    fun forwardingGateRequiresCanSessionAndPhoneGpsSelectorWithoutMaster() {
         val enabledWord =
-            REGATTALINK_CONFIG_TX_MASTER or
-                REGATTALINK_CONFIG_TX_PHONE_GPS or
+            REGATTALINK_CONFIG_TX_PHONE_GPS or
                 REGATTALINK_CONFIG_SESSION_CAN
         val ready = RegattaLinkConfigurationState(
             configWordSupported = true,
@@ -286,21 +285,8 @@ class RegattaLinkPhoneGnssTest {
         )
 
         listOf(
-            ready.copy(
-                configWord =
-                    REGATTALINK_CONFIG_TX_MASTER or
-                        REGATTALINK_CONFIG_TX_PHONE_GPS
-            ),
-            ready.copy(
-                configWord =
-                    REGATTALINK_CONFIG_TX_PHONE_GPS or
-                        REGATTALINK_CONFIG_SESSION_CAN
-            ),
-            ready.copy(
-                configWord =
-                    REGATTALINK_CONFIG_TX_MASTER or
-                        REGATTALINK_CONFIG_SESSION_CAN
-            ),
+            ready.copy(configWord = REGATTALINK_CONFIG_TX_PHONE_GPS),
+            ready.copy(configWord = REGATTALINK_CONFIG_SESSION_CAN),
             ready.copy(deviceControlBusy = true),
             ready.copy(restartAwaitingDisconnect = true),
             ready.copy(factoryResetAwaitingDisconnect = true),
@@ -344,11 +330,10 @@ class RegattaLinkPhoneGnssTest {
     }
 
     @Test
-    fun backgroundRelayStopsOnlyOnConfirmedConnectedTxOrCanOff() {
+    fun backgroundRelayStopsOnlyOnConfirmedConnectedCanOff() {
         val enabled = RegattaLinkConfigurationState(
             configWordSupported = true,
             configWord = REGATTALINK_CONFIG_SESSION_CAN or
-                REGATTALINK_CONFIG_TX_MASTER or
                 REGATTALINK_CONFIG_TX_PHONE_GPS
         )
         fun stops(
@@ -362,17 +347,16 @@ class RegattaLinkPhoneGnssTest {
         )
 
         assertFalse(stops(enabled))
-        assertTrue(stops(enabled.copy(
-            configWord = REGATTALINK_CONFIG_SESSION_CAN or
+        assertFalse(stops(enabled.copy(
+            configWord = REGATTALINK_CONFIG_CAN_STATUS_MIRROR or
+                REGATTALINK_CONFIG_SESSION_CAN or
                 REGATTALINK_CONFIG_TX_PHONE_GPS
         )))
         assertTrue(stops(enabled.copy(
-            configWord = REGATTALINK_CONFIG_TX_MASTER or
-                REGATTALINK_CONFIG_TX_PHONE_GPS
+            configWord = REGATTALINK_CONFIG_TX_PHONE_GPS
         )))
         assertFalse(stops(enabled.copy(
-            configWord = REGATTALINK_CONFIG_SESSION_CAN or
-                REGATTALINK_CONFIG_TX_MASTER
+            configWord = REGATTALINK_CONFIG_SESSION_CAN
         )))
         // Transient BLE loss, unknown config and a previously disabled
         // app relay must not trigger an unintended preference reset.

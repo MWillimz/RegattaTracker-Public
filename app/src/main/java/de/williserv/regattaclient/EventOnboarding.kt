@@ -34,7 +34,9 @@ internal fun eventOnboardingState(
 ): EventOnboardingState {
     val completed = listOf(
         boatSetupConfirmed,
-        eventKnown && registered,
+        // Entering the race also completes the onboarding registration step,
+        // without claiming a separate server registration was performed.
+        eventKnown && (registered || enteredRace),
         eventKnown && enteredRace,
         eventKnown && trackingUploadConfirmed
     )

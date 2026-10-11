@@ -9,6 +9,36 @@ import org.junit.Test
 class RegattaLinkScreenTest {
 
     @Test
+    fun onlyDisconnectedKnownRLinksCanBeForgotten() {
+        val a = RegattaLinkConfiguredDevice("A", "44:B1:76:48:31:B2", "Same")
+        val b = RegattaLinkConfiguredDevice("B", "44:B1:76:48:31:CE", "Same")
+        val active = RegattaLinkClientState(
+            status = RegattaLinkConnectionStatus.CONNECTED,
+            deviceAddress = a.deviceAddress,
+            deviceInfo = RegattaLinkDeviceInfo(
+                protocolMajor = REGATTALINK_PROTOCOL_MAJOR,
+                protocolMinor = 0,
+                capabilities = 0u,
+                stableId = a.stableId,
+                productId = REGATTALINK_PRODUCT_ID,
+                profileId = REGATTALINK_PROFILE_ID,
+                runningBuild = 1uL,
+                otaSlotSize = 0u,
+                maxInflightBlocks = 0
+            )
+        )
+        assertFalse(canForgetKnownRegattaLink(a, active))
+        assertTrue(canForgetKnownRegattaLink(b, active))
+        assertTrue(canForgetKnownRegattaLink(a, RegattaLinkClientState()))
+        // Guard even when deviceInfo has not been resolved.
+        assertFalse(canForgetKnownRegattaLink(a, active.copy(deviceInfo = null)))
+        assertFalse(canForgetKnownRegattaLink(
+            a,
+            active.copy(deviceInfo = null, deviceAddress = "")
+        ))
+    }
+
+    @Test
     fun bluetoothDevicesOpenRequestsStatusOnlyOnceWhenControlIsReady() {
         assertTrue(
             shouldRefreshCalypsoStatusOnOpen(
@@ -147,7 +177,6 @@ class RegattaLinkScreenTest {
             connected = true,
             calypsoSupported = true
         )
-        assertFalse(unknown.enableTx)
         assertFalse(unknown.forward0183)
         assertFalse(unknown.forwardAttitude)
         assertFalse(unknown.forwardCompass)
@@ -159,7 +188,7 @@ class RegattaLinkScreenTest {
         val disabled = regattaLinkNmeaSetupVisibility(
             RegattaLinkConfigurationState(
                 configWordSupported = true,
-                configWord = REGATTALINK_CONFIG_TX_MASTER or
+                configWord = REGATTALINK_CONFIG_CAN_STATUS_MIRROR or
                     REGATTALINK_CONFIG_TX_NMEA0183 or
                     REGATTALINK_CONFIG_TX_IMU
             ),
@@ -167,7 +196,6 @@ class RegattaLinkScreenTest {
             connected = true,
             calypsoSupported = true
         )
-        assertFalse(disabled.enableTx)
         assertFalse(disabled.forward0183)
         assertFalse(disabled.forwardAttitude)
         assertFalse(disabled.forwardPhoneGps)
@@ -200,7 +228,6 @@ class RegattaLinkScreenTest {
         val shown = regattaLinkNmeaSetupVisibility(
             config, nmea, connected = true, calypsoSupported = true
         )
-        assertTrue(shown.enableTx)
         assertTrue(shown.forward0183)
         assertTrue(shown.forwardAttitude)
         assertTrue(shown.forwardCompass)
@@ -231,7 +258,6 @@ class RegattaLinkScreenTest {
         val disconnected = regattaLinkNmeaSetupVisibility(
             config, nmea, connected = false, calypsoSupported = true
         )
-        assertFalse(disconnected.enableTx)
         assertFalse(disconnected.loadSensors)
     }
 
@@ -246,7 +272,6 @@ class RegattaLinkScreenTest {
             connected = true, calypsoSupported = false
         )
         assertTrue(shown.baudRate)
-        assertFalse(shown.enableTx)
         assertFalse(shown.forward0183)
     }
 

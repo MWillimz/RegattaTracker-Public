@@ -179,4 +179,68 @@ class RegattaLinkConfiguredDeviceStoreTest {
 
         assertEquals(replacement, store.load())
     }
+    @Test
+    fun forgettingOneOfTwoKnownDevicesDoesNotTouchSelectedOne() {
+        val selected = RegattaLinkConfiguredDevice("selected", "44:B1:76:48:31:B2", "Same")
+        val forgotten = RegattaLinkConfiguredDevice("forgotten", "44:B1:76:48:31:CE", "Same")
+        store.save(selected)
+        store.upsert(forgotten)
+
+        assertTrue(store.forget(forgotten.stableId))
+        assertEquals(listOf(selected), store.all())
+        assertEquals(selected, store.selected())
+        assertEquals(listOf(selected), RegattaLinkConfiguredDeviceStore(context).all())
+        assertFalse(store.forget(forgotten.stableId))
+    }
+
+    @Test
+    fun forgettingSelectedDeviceClearsSelectionButKeepsOthers() {
+        val selected = RegattaLinkConfiguredDevice("selected", "44:B1:76:48:31:B2", "One")
+        val other = RegattaLinkConfiguredDevice("other", "44:B1:76:48:31:CE", "Two")
+        store.save(selected)
+        store.upsert(other)
+
+        assertTrue(store.forget(selected.stableId))
+
+        val reloaded = RegattaLinkConfiguredDeviceStore(context)
+        assertNull(reloaded.selected())
+        assertEquals(listOf(other), reloaded.all())
+        assertFalse(reloaded.allowsLegacyBondBootstrap())
+    }
+
+    @Test
+    fun forgettingLastKnownDeviceBlocksLegacyBondBootstrapAcrossRestart() {
+        val only = RegattaLinkConfiguredDevice("only", "44:B1:76:48:31:B2", "Last")
+        store.save(only)
+        assertTrue(store.allowsLegacyBondBootstrap())
+
+        assertTrue(store.forget(only.stableId))
+
+        val reloaded = RegattaLinkConfiguredDeviceStore(context)
+        assertEquals(emptyList<RegattaLinkConfiguredDevice>(), reloaded.all())
+        assertNull(reloaded.selected())
+        assertFalse(reloaded.allowsLegacyBondBootstrap())
+
+        // Explicitly pairing the device again still works.
+        reloaded.upsertAndSelect(only)
+        assertEquals(only, reloaded.selected())
+    }
+
+    @Test
+    fun failedForgetCommitLeavesKnownDeviceAndSelectionUntouched() {
+        val selected = RegattaLinkConfiguredDevice("selected", "44:B1:76:48:31:B2", "One")
+        store.save(selected)
+        val rejectingStore = RegattaLinkConfiguredDeviceStore(context) { editor ->
+            // Simulate a commit reporting failure after SharedPreferences memory changed.
+            editor.commit()
+            false
+        }
+
+        assertFalse(rejectingStore.forget(selected.stableId))
+        assertEquals(selected, rejectingStore.selected())
+        assertEquals(listOf(selected), rejectingStore.all())
+        assertTrue(rejectingStore.allowsLegacyBondBootstrap())
+        assertEquals(selected, RegattaLinkConfiguredDeviceStore(context).selected())
+    }
+
 }

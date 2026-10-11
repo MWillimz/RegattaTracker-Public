@@ -6,6 +6,7 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.SharedPreferences
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
@@ -49,7 +50,30 @@ internal data class RegattaLinkDeviceSelectionState(
         get() = knownDevices.firstOrNull { it.stableId == selectedStableId }
 }
 
-internal class RegattaLinkConfiguredDeviceStore(context: Context) {
+internal enum class RegattaLinkForgetResult {
+    SUCCESS, NOT_FOUND, CONNECTED, BUSY, PERSISTENCE_FAILED
+}
+
+/** Protect the actual connection, not merely the preferred device. */
+internal fun canForgetKnownRegattaLink(
+    candidate: RegattaLinkConfiguredDevice,
+    connection: RegattaLinkClientState
+): Boolean {
+    if (connection.status != RegattaLinkConnectionStatus.CONNECTED) return true
+    val activeId = connection.deviceInfo?.stableId
+    val activeAddress = connection.deviceAddress
+    if (candidate.stableId == activeId ||
+        (activeAddress.isNotBlank() &&
+            candidate.deviceAddress.equals(activeAddress, ignoreCase = true))
+    ) return false
+    // If the current connection cannot be identified, never guess which device it is.
+    return !activeId.isNullOrBlank() || activeAddress.isNotBlank()
+}
+
+internal class RegattaLinkConfiguredDeviceStore(
+    context: Context,
+    private val commitForget: (SharedPreferences.Editor) -> Boolean = { it.commit() }
+) {
     companion object {
         internal const val PREFS_NAME = "regattalink_connection"
 
@@ -60,6 +84,7 @@ internal class RegattaLinkConfiguredDeviceStore(context: Context) {
 
         private const val KEY_KNOWN_STABLE_IDS = "known_stable_ids"
         private const val KEY_SELECTED_STABLE_ID = "selected_stable_id"
+        private const val KEY_LEGACY_BOOTSTRAP_DISABLED = "legacy_bootstrap_disabled_after_forget"
         private const val KEY_RESET_PENDING_PAIRING = "reset_pending_pairing"
         private const val KEY_RESET_PENDING_STABLE_ID = "reset_pending_stable_id"
         private const val DEVICE_KEY_PREFIX = "device."
@@ -135,6 +160,39 @@ internal class RegattaLinkConfiguredDeviceStore(context: Context) {
         }
         editor.apply()
     }
+
+    /** Persist the complete forget atomically; on failure restore the in-memory prefs too. */
+    fun forget(stableId: String): Boolean {
+        val device = device(stableId) ?: return false
+        val previousIds = knownStableIds()
+        val previousSelected = prefs.getString(KEY_SELECTED_STABLE_ID, null)
+        val previousLegacyDisabled = prefs.getBoolean(KEY_LEGACY_BOOTSTRAP_DISABLED, false)
+        val editor = prefs.edit()
+            .putStringSet(KEY_KNOWN_STABLE_IDS, previousIds - stableId)
+            .remove(deviceAddressKey(stableId))
+            .remove(deviceNameKey(stableId))
+            .putBoolean(KEY_LEGACY_BOOTSTRAP_DISABLED, true)
+        if (previousSelected == stableId) editor.remove(KEY_SELECTED_STABLE_ID)
+        val saved = runCatching { commitForget(editor) }.getOrDefault(false)
+        if (!saved) {
+            // SharedPreferences.commit() can update memory even when disk persistence fails.
+            val restore = prefs.edit()
+                .putStringSet(KEY_KNOWN_STABLE_IDS, previousIds)
+                .putString(deviceAddressKey(stableId), device.deviceAddress)
+                .putString(deviceNameKey(stableId), device.deviceName)
+                .putBoolean(KEY_LEGACY_BOOTSTRAP_DISABLED, previousLegacyDisabled)
+            if (previousSelected != null) {
+                restore.putString(KEY_SELECTED_STABLE_ID, previousSelected)
+            } else {
+                restore.remove(KEY_SELECTED_STABLE_ID)
+            }
+            restore.apply()
+        }
+        return saved
+    }
+
+    fun allowsLegacyBondBootstrap(): Boolean =
+        !prefs.getBoolean(KEY_LEGACY_BOOTSTRAP_DISABLED, false)
 
     fun updateName(stableId: String, deviceName: String) {
         if (device(stableId) == null) return
@@ -258,6 +316,8 @@ internal interface RegattaLinkConnectionClient {
 
     fun startDiscovery(): Boolean
     fun connectDiscoveredDevice(deviceAddress: String): Boolean = false
+    /** Cancels a pending attempt for this device only; never disconnects another RLink. */
+    fun cancelKnownDeviceAttempt(stableId: String, deviceAddress: String): Boolean = false
     fun disconnect()
     fun startOta(artifact: RegattaLinkFirmwareArtifact)
     fun cancelOta()
@@ -266,7 +326,6 @@ internal interface RegattaLinkConnectionClient {
     fun setLedBrightness(percent: Int): Boolean
     fun setMotionDamping(seconds: Int): Boolean
     fun setLoadPrecisionX10(enabled: Boolean): Boolean = false
-    fun setNmeaTxEnabled(enabled: Boolean): Boolean = false
     fun setNmeaAttitudeTxEnabled(enabled: Boolean): Boolean = false
     fun setNmea0183TxEnabled(enabled: Boolean): Boolean = false
     fun setPhoneGpsTxEnabled(enabled: Boolean): Boolean = false
@@ -536,7 +595,9 @@ internal class RegattaLinkConnectionManager(
 
         // Once a registry exists, absence of a selection is intentional:
         // never choose another known/bonded RLink implicitly.
-        if (configuredDeviceStore.all().isNotEmpty()) return false
+        if (configuredDeviceStore.all().isNotEmpty() ||
+            !configuredDeviceStore.allowsLegacyBondBootstrap()
+        ) return false
 
         val legacyAddress = legacyBondedAddressProvider(appContext) ?: return false
         legacyBootstrapAddress = legacyAddress
@@ -565,7 +626,9 @@ internal class RegattaLinkConnectionManager(
             )
         }
 
-        if (configuredDeviceStore.all().isNotEmpty()) return false
+        if (configuredDeviceStore.all().isNotEmpty() ||
+            !configuredDeviceStore.allowsLegacyBondBootstrap()
+        ) return false
 
         val legacyAddress = legacyBondedAddressProvider(appContext) ?: return false
         legacyBootstrapAddress = legacyAddress
@@ -667,6 +730,44 @@ internal class RegattaLinkConnectionManager(
         return accepted
     }
 
+    /**
+     * Forget only a currently disconnected known RLink, without switching devices.
+     * Checks repeat at action time: a swiped UI row may already be stale.
+     */
+    fun forgetKnownDevice(stableId: String): RegattaLinkForgetResult {
+        val target = configuredDeviceStore.all().firstOrNull { it.stableId == stableId }
+            ?: return RegattaLinkForgetResult.NOT_FOUND
+        if (otaState.isActive ||
+            factoryResetPending ||
+            configurationState.factoryResetAwaitingDisconnect ||
+            configurationState.restartAwaitingDisconnect ||
+            configurationState.deviceControlBusy ||
+            pendingDiscoveredSelectionAddress?.equals(
+                target.deviceAddress, ignoreCase = true
+            ) == true
+        ) return RegattaLinkForgetResult.BUSY
+
+        if (!canForgetKnownRegattaLink(target, connectionState)) {
+            return RegattaLinkForgetResult.CONNECTED
+        }
+
+        val wasSelected = configuredDeviceStore.selected()?.stableId == stableId
+        if (!configuredDeviceStore.forget(stableId)) {
+            return RegattaLinkForgetResult.PERSISTENCE_FAILED
+        }
+
+        if (wasSelected) {
+            // Disable reconnect triggers before client cancellation emits callbacks.
+            autoReconnectSuppressedByUser = true
+            if (pendingKnownSwitchStableId == stableId) pendingKnownSwitchStableId = null
+            if (connectionState.status != RegattaLinkConnectionStatus.CONNECTED) {
+                client.cancelKnownDeviceAttempt(stableId, target.deviceAddress)
+            }
+        }
+        refreshDeviceSelectionState()
+        return RegattaLinkForgetResult.SUCCESS
+    }
+
     fun disconnect() {
         if (factoryResetPending) return
         autoReconnectSuppressedByUser = true
@@ -760,20 +861,6 @@ internal class RegattaLinkConnectionManager(
             return false
         }
         return client.setLoadPrecisionX10(enabled)
-    }
-
-    fun setNmeaTxEnabled(enabled: Boolean): Boolean {
-        if (
-            otaState.isActive ||
-            rawCaptureState.isActive ||
-            regattaLinkConfigurationMutationBlocked(
-                state = configurationState,
-                factoryResetOwned = factoryResetPending
-            )
-        ) {
-            return false
-        }
-        return client.setNmeaTxEnabled(enabled)
     }
 
     fun setNmeaAttitudeTxEnabled(enabled: Boolean): Boolean {
