@@ -28,7 +28,11 @@ fun RaceLegalScreen(
     statusText: String,
     modifier: Modifier = Modifier,
     onAccept: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onVisitEventPage: () -> Unit,
+    declineNewEvent: Boolean = false,
+    accepting: Boolean = false,
+    actionStatusText: String = ""
 ) {
     val noLegalTextLoaded = stringResource(R.string.no_legal_text_loaded)
 
@@ -77,9 +81,17 @@ fun RaceLegalScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        if (actionStatusText.isNotBlank()) {
+            Text(
+                text = actionStatusText,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+        }
+
         Button(
             onClick = onAccept,
-            enabled = legalText.isNotBlank(),
+            enabled = legalText.isNotBlank() && !accepting,
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(stringResource(R.string.i_accept))
@@ -91,7 +103,18 @@ fun RaceLegalScreen(
                 .fillMaxWidth()
                 .padding(top = 10.dp)
         ) {
-            Text(stringResource(R.string.back))
+            Text(stringResource(
+                if (declineNewEvent) R.string.decline_race_notice else R.string.back
+            ))
+        }
+
+        Button(
+            onClick = onVisitEventPage,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 10.dp)
+        ) {
+            Text(stringResource(R.string.visit_event_page))
         }
     }
 }
