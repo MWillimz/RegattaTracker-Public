@@ -23,6 +23,7 @@ internal fun resolveRaceEventActions(
 ): RaceEventActionState {
     val raceEnded =
         raceStatusCode.trim().equals("finished", ignoreCase = true) ||
+            raceStatusCode.trim().equals("cancelled", ignoreCase = true) ||
             (stopEpochMillis != null && nowEpochMillis >= stopEpochMillis)
     val enterTimeAvailable = isEnterRaceTimeAvailable(startEpochMillis, nowEpochMillis)
     val registerEnabled = !raceEnded && !raceRegistered && baseCanRegister &&
