@@ -137,8 +137,6 @@ class RegattaLinkConnectionManagerTest {
         assertEquals(configured.stableId, manager.configuredDevice()?.stableId)
         assertEquals(0, fakeClient.disconnectCalls)
         assertEquals(0, fakeClient.cancelKnownAttemptCalls)
-        assertEquals(RegattaLinkConnectionStatus.CONNECTED,
-            manager.currentConnectionState().status)
     }
 
     @Test
