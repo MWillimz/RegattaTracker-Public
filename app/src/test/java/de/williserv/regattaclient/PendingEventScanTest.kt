@@ -5,7 +5,10 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+@RunWith(RobolectricTestRunner::class)
 class PendingEventScanTest {
     private val oldAccess = EventAccessKey("https://server.test", "Old Race", "old-secret")
     private val newAccess = EventAccessKey("https://server.test", "New Race", "new-secret")
