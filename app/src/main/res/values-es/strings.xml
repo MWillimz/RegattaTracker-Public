@@ -822,4 +822,6 @@
     <string name="regattalink_calypso_delete_confirm">¿Eliminar el sensor Calypso %1$s? Se desconectará y se borrará su vinculación.</string>
     <string name="regattalink_calypso_deleting">Eliminando Calypso…</string>
     <string name="regattalink_calypso_delete_failed">No se pudo eliminar Calypso. Se conserva la vinculación.</string>
+    <string name="decline_race_notice">Rechazar</string>
+    <string name="event_page_open_failed">No se pudo abrir la página del evento.</string>
 </resources>

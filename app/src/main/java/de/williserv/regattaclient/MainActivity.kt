@@ -153,6 +153,8 @@ class MainActivity : ComponentActivity() {
     private val eventLegalFlowState = EventLegalFlowState()
     private var pendingEnterRaceAfterLegal = false
     private var pendingManualRaceLegalOpen = false
+    private val pendingEventScan = mutableStateOf<PendingEventScan?>(null)
+    private var nextPendingEventScanToken = 0L
     private val enterRaceServerCheckInProgress = mutableStateOf(false)
     private val enterRaceServerCheckState = EnterRaceServerCheckState()
     private var activeLegalFetchContext: EventCompatibilityContext? = null
@@ -464,8 +466,15 @@ class MainActivity : ComponentActivity() {
             }
             Screen.SESSION_REPLAY,
             Screen.SESSION_ANALYSIS -> Screen.SESSION_DETAIL
-            Screen.SERVER_INFORMATION,
-            Screen.RACE_LEGAL -> Screen.RACE
+            Screen.SERVER_INFORMATION -> Screen.RACE
+            Screen.RACE_LEGAL -> {
+                if (pendingEventScan.value != null) {
+                    pendingEventScan.value = null
+                    if (currentEventAccessKey() != null) Screen.RACE else Screen.HOME
+                } else {
+                    Screen.RACE
+                }
+            }
             Screen.QR_SCANNER ->
                 qrScannerBackDestination(eventAccessLoaded = currentEventAccessKey() != null)
             Screen.MAP -> if (selectedCourseMapView.value == null) {
@@ -865,19 +874,39 @@ class MainActivity : ComponentActivity() {
                             onBack = ::navigateBack
                         )
 
-                        Screen.RACE_LEGAL -> RaceLegalScreen(
-                            raceEvent = raceEvent.value,
-                            legalText = raceLegalText.value,
-                            statusText = raceLegalStatusText.value,
-                            modifier = Modifier.padding(innerPadding),
-                            onAccept = {
-                                acceptRaceLegalAndLoadRaceData()
-                            },
-                            onBack = {
-                                pendingEnterRaceAfterLegal = false
-                                navigateBack()
-                            }
-                        )
+                        Screen.RACE_LEGAL -> {
+                            val pendingScan = pendingEventScan.value
+                            RaceLegalScreen(
+                                raceEvent = pendingScan?.access?.event ?: raceEvent.value,
+                                // Never show or enable acceptance of the previous
+                                // event's notice while the new notice is loading.
+                                legalText = displayedRaceNoticeText(
+                                    pending = pendingScan,
+                                    activeLegalText = raceLegalText.value
+                                ),
+                                statusText = pendingScan?.statusText ?: raceLegalStatusText.value,
+                                actionStatusText = if (pendingScan != null) {
+                                    pendingScan.statusText
+                                } else {
+                                    raceLegalAcceptStatusText.value
+                                },
+                                accepting = pendingScan?.accepting == true,
+                                modifier = Modifier.padding(innerPadding),
+                                declineNewEvent = pendingScan != null,
+                                onAccept = {
+                                    if (pendingEventScan.value != null) {
+                                        acceptPendingEventScan()
+                                    } else {
+                                        acceptRaceLegalAndLoadRaceData()
+                                    }
+                                },
+                                onVisitEventPage = ::openRaceEventPage,
+                                onBack = {
+                                    pendingEnterRaceAfterLegal = false
+                                    navigateBack()
+                                }
+                            )
+                        }
                         Screen.RESULTS -> ResultsScreen(
                             raceEvent = raceEvent.value,
                             published = resultsPublished.value,
@@ -1321,6 +1350,30 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     )
+                }
+
+                if (pendingEventScan.value?.updateDecision ==
+                    EventCompatibilityDecision.WARN
+                ) {
+                    EventUpdateRecommendedDialog(
+                        onContinue = {
+                            val scan = pendingEventScan.value
+                            if (scan != null) {
+                                val allowedScan = scan.copy(
+                                    updateDecision = null,
+                                    statusText = getString(R.string.loading_race_notice)
+                                )
+                                pendingEventScan.value = allowedScan
+                                fetchPendingEventNotice(allowedScan)
+                            }
+                        },
+                        onCancel = ::navigateBack
+                    )
+                }
+                if (pendingEventScan.value?.updateDecision ==
+                    EventCompatibilityDecision.BLOCK
+                ) {
+                    EventUpdateRequiredDialog(onDismiss = ::navigateBack)
                 }
 
                 if (enterRaceServerCheckInProgress.value) {
@@ -2062,44 +2115,262 @@ class MainActivity : ComponentActivity() {
     private fun handleRaceQrCode(raw: String) {
         try {
             val json = JSONObject(raw)
-
-            val server = json.optString("server", "").trim()
-            val event = json.optString("event", "").trim()
-            val secret = json.optString("secret", "").trim()
-
-            if (server.isBlank() || event.isBlank() || secret.isBlank()) {
+            val access = eventAccessKey(
+                server = json.optString("server", ""),
+                event = json.optString("event", ""),
+                secret = json.optString("secret", "")
+            )
+            if (access == null) {
                 showQrImportError(getString(R.string.qr_code_incomplete))
                 return
             }
 
-            raceServer.value = server
-            raceEvent.value = event
-            raceSecret.value = secret
-            invalidateRegattaLinkFirmwareSelection()
-            clearResolvedEventContextForAccessChange()
-
-            setRaceRegistered(false)
-            registerRaceStatusText.value = ""
-
-            raceStatusText.value = getString(R.string.qr_code_loaded)
-
-            raceLegalAccepted.value = false
-            raceLegalText.value = ""
-            raceLegalHash.value = ""
-            raceLegalVersion.value = ""
-            raceLegalStatusText.value = getString(R.string.loading_race_notice)
-            raceLegalAcceptStatusText.value = ""
-
-            clearSavedRaceDataReady()
-
-            currentScreen.value = Screen.RACE
-
-            fetchRaceLegalText()
-
+            // A new scan is not the active event until its notice has been accepted.
+            // This applies to both QR scanning and Android Share import.
+            val pending = PendingEventScan(
+                token = ++nextPendingEventScanToken,
+                access = access,
+                previousAccess = currentEventAccessKey(),
+                statusText = getString(R.string.loading_race_notice)
+            )
+            pendingEventScan.value = pending
+            currentScreen.value = Screen.RACE_LEGAL
+            checkPendingEventCompatibility(pending)
         } catch (_: JSONException) {
             showQrImportError(getString(R.string.qr_invalid_json))
         } catch (e: Exception) {
             showQrImportError(getString(R.string.qr_error, e.message ?: ""))
+        }
+    }
+
+    private fun activateAcceptedEventScan(access: EventAccessKey) {
+        // This is the previous QR import body, executed only after successful
+        // consent; other legal-entry paths never call it.
+        raceServer.value = access.server
+        raceEvent.value = access.event
+        raceSecret.value = access.secret
+        invalidateRegattaLinkFirmwareSelection()
+        clearResolvedEventContextForAccessChange()
+        setRaceRegistered(false)
+        registerRaceStatusText.value = ""
+        raceStatusText.value = getString(R.string.qr_code_loaded)
+        raceLegalAccepted.value = false
+        raceLegalText.value = ""
+        raceLegalHash.value = ""
+        raceLegalVersion.value = ""
+        raceLegalStatusText.value = getString(R.string.loading_race_notice)
+        raceLegalAcceptStatusText.value = ""
+        clearSavedRaceDataReady()
+        currentScreen.value = Screen.RACE
+        fetchRaceLegalText()
+    }
+
+    private fun isCurrentPendingScan(scan: PendingEventScan): Boolean =
+        asyncLifetime.isActive() &&
+            isCurrentPendingEventScan(
+                pending = pendingEventScan.value,
+                requested = scan,
+                currentActiveAccess = currentEventAccessKey()
+            )
+
+    private fun checkPendingEventCompatibility(scan: PendingEventScan) {
+        thread {
+            val metadata = fetchServerMetadata(
+                server = scan.access.server,
+                eventName = scan.access.event,
+                sharedSecret = scan.access.secret
+            )
+            val versionStatus = metadata?.let {
+                evaluateClientVersionStatus(
+                    client = currentClientBuildIdentity(),
+                    serverMetadata = it
+                )
+            }
+            val decision = eventCompatibilityDecision(versionStatus)
+            runOnUiThread {
+                if (!isCurrentPendingScan(scan)) return@runOnUiThread
+                when (decision) {
+                    EventCompatibilityDecision.PROCEED -> fetchPendingEventNotice(scan)
+                    EventCompatibilityDecision.WARN,
+                    EventCompatibilityDecision.BLOCK ->
+                        pendingEventScan.value = scan.copy(updateDecision = decision)
+                }
+            }
+        }
+    }
+
+    private fun fetchPendingEventNotice(scan: PendingEventScan) {
+        thread {
+            var serverResponded = false
+            try {
+                val access = scan.access
+                val url = buildNormalApiGetUrl(
+                    baseUrl = baseServerUrlForAccess(access),
+                    path = "/event/legal",
+                    eventName = access.event
+                )
+                val connection = URL(url).openConnection() as HttpURLConnection
+                val responseCode: Int
+                val body: String
+                try {
+                    connection.requestMethod = "GET"
+                    connection.connectTimeout = 3000
+                    connection.readTimeout = 3000
+                    connection.setRequestProperty("Accept", "application/json")
+                    connection.setRequestProperty("x-shared-secret", access.secret)
+                    connection.setRequestProperty("x-api-version", RegattaTrackingService.API_VERSION)
+                    responseCode = connection.responseCode
+                    serverResponded = true
+                    body = (if (responseCode in 200..299) connection.inputStream
+                        else connection.errorStream)
+                        ?.bufferedReader()?.use { it.readText() }.orEmpty()
+                } finally {
+                    connection.disconnect()
+                }
+
+                val notice = if (responseCode in 200..299) {
+                    parsePendingEventNotice(body)
+                } else {
+                    null
+                }
+                runOnUiThread {
+                    if (!isCurrentPendingScan(scan)) return@runOnUiThread
+                    val error = when {
+                        responseCode !in 200..299 ->
+                            getString(R.string.legal_text_failed_code, responseCode, body.take(160))
+                        notice == null -> getString(R.string.race_notice_empty)
+                        else -> ""
+                    }
+                    // A cached acceptance must not silently activate a
+                    // newly scanned event. The user decides for this import.
+                    pendingEventScan.value = scan.copy(
+                        notice = notice,
+                        statusText = error
+                    )
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    if (!isCurrentPendingScan(scan)) return@runOnUiThread
+                    pendingEventScan.value = scan.copy(
+                        statusText = if (serverResponded) {
+                            getString(R.string.legal_text_failed, e.message ?: "")
+                        } else {
+                            getString(R.string.status_no_connection)
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    private fun acceptPendingEventScan() {
+        val scan = pendingEventScan.value ?: return
+        val notice = scan.notice ?: return
+        if (scan.accepting || scan.updateDecision != null || !isCurrentPendingScan(scan)) return
+        val acceptedBoatSetup = currentBoatSetupValues()
+        pendingEventScan.value = scan.copy(
+            accepting = true,
+            statusText = getString(R.string.accepting_race_notice)
+        )
+
+        thread {
+            var serverResponded = false
+            try {
+                val access = scan.access
+                val json = JSONObject().apply {
+                    put("event_name", access.event)
+                    put("sail_number", acceptedBoatSetup.sailNumber)
+                    put("boat_name", acceptedBoatSetup.boatName)
+                    put("captain_name", acceptedBoatSetup.skipperName)
+                    put("legal_text_hash", notice.legalHash)
+                }
+                val connection = URL("${baseServerUrlForAccess(access)}/event/legal/accept")
+                    .openConnection() as HttpURLConnection
+                val responseCode: Int
+                val body: String
+                try {
+                    connection.requestMethod = "POST"
+                    connection.connectTimeout = 3000
+                    connection.readTimeout = 3000
+                    connection.doOutput = true
+                    connection.setRequestProperty("Content-Type", "application/json")
+                    connection.setRequestProperty("Accept", "application/json")
+                    connection.setRequestProperty("X-Shared-Secret", access.secret)
+                    connection.setRequestProperty("x-api-version", RegattaTrackingService.API_VERSION)
+                    connection.outputStream.use {
+                        it.write(json.toString().toByteArray(Charsets.UTF_8))
+                    }
+                    responseCode = connection.responseCode
+                    serverResponded = true
+                    body = (if (responseCode in 200..299) connection.inputStream
+                        else connection.errorStream)
+                        ?.bufferedReader()?.use { it.readText() }.orEmpty()
+                } finally {
+                    connection.disconnect()
+                }
+                runOnUiThread {
+                    if (!isCurrentPendingScan(scan) ||
+                        !hasSameLegalBoatIdentity(currentBoatSetupValues(), acceptedBoatSetup)
+                    ) return@runOnUiThread
+
+                    if (responseCode in 200..299) {
+                        val acceptedEventName = runCatching {
+                            JSONObject(body).optString("event_name", "").trim()
+                        }.getOrDefault("")
+                        if (acceptedEventName == notice.resolvedEventName) {
+                            raceLegalAcceptanceStore.save(
+                                resolvedEventName = notice.resolvedEventName,
+                                legalTextHash = notice.legalHash
+                            )
+                            pendingEventScan.value = null
+                            activateAcceptedEventScan(scan.access)
+                        } else {
+                            pendingEventScan.value = scan.copy(
+                                notice = null,
+                                statusText = getString(R.string.race_notice_changed)
+                            )
+                            fetchPendingEventNotice(scan)
+                        }
+                    } else {
+                        pendingEventScan.value = scan.copy(
+                            statusText = getString(
+                                R.string.accept_failed_code, responseCode, body.take(160)
+                            )
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    if (!isCurrentPendingScan(scan)) return@runOnUiThread
+                    pendingEventScan.value = scan.copy(
+                        statusText = if (serverResponded) {
+                            getString(R.string.accept_failed, e.message ?: "")
+                        } else {
+                            getString(R.string.status_no_connection)
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    private fun openRaceEventPage() {
+        // Identical URL and Android browser intent as Server Information;
+        // while scanning, use the staged credentials rather than the old event.
+        val url = raceNoticeEventPageUrl(
+            pending = pendingEventScan.value,
+            active = currentEventAccessKey()
+        )
+        if (url == null || !isHttpOrHttpsUrl(url) ||
+            runCatching {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            }.isFailure
+        ) {
+            android.widget.Toast.makeText(
+                this,
+                getString(R.string.event_page_open_failed),
+                android.widget.Toast.LENGTH_LONG
+            ).show()
         }
     }
 

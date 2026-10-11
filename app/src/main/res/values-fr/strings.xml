@@ -822,4 +822,6 @@
     <string name="regattalink_calypso_delete_confirm">Supprimer le capteur Calypso %1$s ? Il sera déconnecté et oublié.</string>
     <string name="regattalink_calypso_deleting">Suppression de Calypso…</string>
     <string name="regattalink_calypso_delete_failed">Impossible de supprimer Calypso. L’association est conservée.</string>
+    <string name="decline_race_notice">Refuser</string>
+    <string name="event_page_open_failed">Impossible d’ouvrir la page de l’événement.</string>
 </resources>

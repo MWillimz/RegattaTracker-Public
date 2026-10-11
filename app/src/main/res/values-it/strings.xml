@@ -822,4 +822,6 @@
     <string name="regattalink_calypso_delete_confirm">Rimuovere il sensore Calypso %1$s? Il sensore verrà disconnesso e dimenticato.</string>
     <string name="regattalink_calypso_deleting">Rimozione Calypso…</string>
     <string name="regattalink_calypso_delete_failed">Impossibile rimuovere Calypso. L’associazione rimane valida.</string>
+    <string name="decline_race_notice">Rifiuta</string>
+    <string name="event_page_open_failed">Impossibile aprire la pagina dell’evento.</string>
 </resources>
