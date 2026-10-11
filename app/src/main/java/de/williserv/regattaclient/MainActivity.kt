@@ -2241,21 +2241,12 @@ class MainActivity : ComponentActivity() {
                         notice == null -> getString(R.string.race_notice_empty)
                         else -> ""
                     }
-                    if (notice != null && raceLegalAcceptanceStore.matches(
-                            resolvedEventName = notice.resolvedEventName,
-                            legalTextHash = notice.legalHash
-                        )
-                    ) {
-                        // The same version of this notice was accepted earlier.
-                        // Preserve the original accepted-notice fast path.
-                        pendingEventScan.value = null
-                        activateAcceptedEventScan(scan.access)
-                    } else {
-                        pendingEventScan.value = scan.copy(
-                            notice = notice,
-                            statusText = error
-                        )
-                    }
+                    // A cached acceptance must not silently activate a
+                    // newly scanned event. The user decides for this import.
+                    pendingEventScan.value = scan.copy(
+                        notice = notice,
+                        statusText = error
+                    )
                 }
             } catch (e: Exception) {
                 runOnUiThread {
