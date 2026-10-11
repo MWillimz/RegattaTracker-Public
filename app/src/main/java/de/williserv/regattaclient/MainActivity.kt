@@ -1097,6 +1097,8 @@ class MainActivity : ComponentActivity() {
                             raceStatusText = raceStatusText.value,
                             raceStartText = raceStartText.value,
                             raceStartEpochMillis = raceStartEpochMillis,
+                            raceStopEpochMillis = parseServerTimeToMillis(rawRaceStop),
+                            raceStatusCode = currentRaceStatus,
                             raceEntryNowEpochMillis = raceEntryNowEpochMillis.value,
                             raceStopText = raceStopText.value,
                             raceCourseText = raceCourseText.value,
