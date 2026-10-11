@@ -741,7 +741,10 @@ internal class RegattaLinkConnectionManager(
             factoryResetPending ||
             configurationState.factoryResetAwaitingDisconnect ||
             configurationState.restartAwaitingDisconnect ||
-            configurationState.deviceControlBusy
+            configurationState.deviceControlBusy ||
+            pendingDiscoveredSelectionAddress?.equals(
+                target.deviceAddress, ignoreCase = true
+            ) == true
         ) return RegattaLinkForgetResult.BUSY
 
         if (!canForgetKnownRegattaLink(target, connectionState)) {
