@@ -39,6 +39,7 @@ import com.google.zxing.PlanarYUVLuminanceSource
 import com.google.zxing.ReaderException
 import com.google.zxing.common.HybridBinarizer
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 @Composable
 fun QrScannerScreen(
@@ -121,6 +122,7 @@ fun CameraPreviewWithQrScanner(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val hasScanned = remember { mutableStateOf(false) }
+    val disposed = remember { AtomicBoolean(false) }
 
     val cameraExecutor = remember {
         Executors.newSingleThreadExecutor()
@@ -132,9 +134,12 @@ fun CameraPreviewWithQrScanner(
 
     DisposableEffect(Unit) {
         onDispose {
-            try {
-                cameraProviderFuture.get().unbindAll()
-            } catch (_: Exception) {
+            disposed.set(true)
+            if (cameraProviderFuture.isDone) {
+                try {
+                    cameraProviderFuture.get().unbindAll()
+                } catch (_: Exception) {
+                }
             }
 
             cameraExecutor.shutdownNow()
@@ -151,6 +156,7 @@ fun CameraPreviewWithQrScanner(
 
             cameraProviderFuture.addListener(
                 {
+                    if (disposed.get()) return@addListener
                     val cameraProvider = cameraProviderFuture.get()
 
                     val preview = androidx.camera.core.Preview.Builder()
@@ -169,15 +175,15 @@ fun CameraPreviewWithQrScanner(
                             imageProxy = imageProxy,
                             hasScanned = hasScanned.value,
                             onQrScanned = { raw ->
-                                if (!hasScanned.value) {
-                                    hasScanned.value = true
-
-                                    try {
-                                        cameraProvider.unbindAll()
-                                    } catch (_: Exception) {
+                                ContextCompat.getMainExecutor(ctx).execute {
+                                    if (!disposed.get() && !hasScanned.value) {
+                                        hasScanned.value = true
+                                        try {
+                                            cameraProvider.unbindAll()
+                                        } catch (_: Exception) {
+                                        }
+                                        onQrScanned(raw)
                                     }
-
-                                    onQrScanned(raw)
                                 }
                             }
                         )
