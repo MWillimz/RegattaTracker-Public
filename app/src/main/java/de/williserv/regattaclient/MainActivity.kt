@@ -465,8 +465,9 @@ class MainActivity : ComponentActivity() {
             Screen.SESSION_REPLAY,
             Screen.SESSION_ANALYSIS -> Screen.SESSION_DETAIL
             Screen.SERVER_INFORMATION,
-            Screen.RACE_LEGAL,
-            Screen.QR_SCANNER -> Screen.RACE
+            Screen.RACE_LEGAL -> Screen.RACE
+            Screen.QR_SCANNER ->
+                qrScannerBackDestination(eventAccessLoaded = currentEventAccessKey() != null)
             Screen.MAP -> if (selectedCourseMapView.value == null) {
                 Screen.HOME
             } else {
@@ -755,7 +756,10 @@ class MainActivity : ComponentActivity() {
                                 currentScreen.value = Screen.BOAT_DATA
                             },
                             onRace = {
-                                currentScreen.value = Screen.RACE
+                                currentScreen.value = homeEventDestination(
+                                    boatSetupConfirmed = setupConfirmed.value,
+                                    eventAccessLoaded = currentEventAccessKey() != null
+                                )
                             },
                             onCourse = {
                                 if (raceDataReady.value) {
@@ -1185,7 +1189,13 @@ class MainActivity : ComponentActivity() {
                         Screen.QR_SCANNER -> QrScannerScreen(
                             modifier = Modifier.padding(innerPadding),
                             onQrScanned = { raw ->
-                                handleRaceQrCode(raw)
+                                // Camera analysis runs off the main thread; event
+                                // state and any scan-error feedback are UI-owned.
+                                runOnUiThread {
+                                    if (currentScreen.value == Screen.QR_SCANNER) {
+                                        handleRaceQrCode(raw)
+                                    }
+                                }
                             },
                             onBack = ::navigateBack
                         )
@@ -2058,8 +2068,7 @@ class MainActivity : ComponentActivity() {
             val secret = json.optString("secret", "").trim()
 
             if (server.isBlank() || event.isBlank() || secret.isBlank()) {
-                raceStatusText.value = getString(R.string.qr_code_incomplete)
-                currentScreen.value = Screen.RACE
+                showQrImportError(getString(R.string.qr_code_incomplete))
                 return
             }
 
@@ -2088,10 +2097,23 @@ class MainActivity : ComponentActivity() {
             fetchRaceLegalText()
 
         } catch (_: JSONException) {
-            raceStatusText.value = getString(R.string.qr_invalid_json)
-            currentScreen.value = Screen.RACE
+            showQrImportError(getString(R.string.qr_invalid_json))
         } catch (e: Exception) {
-            raceStatusText.value = getString(R.string.qr_error, e.message ?: "")
+            showQrImportError(getString(R.string.qr_error, e.message ?: ""))
+        }
+    }
+
+    private fun showQrImportError(message: String) {
+        raceStatusText.value = message
+        if (currentScreen.value == Screen.QR_SCANNER && currentEventAccessKey() == null) {
+            // A failed scan must not lead to an empty Event screen.
+            android.widget.Toast.makeText(
+                this,
+                message,
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+            currentScreen.value = Screen.HOME
+        } else {
             currentScreen.value = Screen.RACE
         }
     }
