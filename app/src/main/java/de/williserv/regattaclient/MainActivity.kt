@@ -2299,8 +2299,10 @@ class MainActivity : ComponentActivity() {
     private fun openRaceEventPage() {
         // Identical URL and Android browser intent as Server Information;
         // while scanning, use the staged credentials rather than the old event.
-        val access = pendingEventScan.value?.access ?: currentEventAccessKey()
-        val url = access?.let { buildEventAccessUrl(it.server, it.event, it.secret) }
+        val url = raceNoticeEventPageUrl(
+            pending = pendingEventScan.value,
+            active = currentEventAccessKey()
+        )
         if (url == null || !isHttpOrHttpsUrl(url) ||
             runCatching {
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
