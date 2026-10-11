@@ -822,4 +822,6 @@
     <string name="regattalink_calypso_delete_confirm">Gespeicherten Calypso-Sensor %1$s entfernen? Der Sensor wird getrennt und seine Bindung gelöscht.</string>
     <string name="regattalink_calypso_deleting">Calypso wird entfernt…</string>
     <string name="regattalink_calypso_delete_failed">Calypso konnte nicht entfernt werden. Die Bindung bleibt bestehen.</string>
+    <string name="decline_race_notice">Ablehnen</string>
+    <string name="event_page_open_failed">Veranstaltungsseite konnte nicht geöffnet werden.</string>
 </resources>
