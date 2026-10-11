@@ -886,7 +886,7 @@ class MainActivity : ComponentActivity() {
                                 ),
                                 statusText = pendingScan?.statusText ?: raceLegalStatusText.value,
                                 actionStatusText = if (pendingScan != null) {
-                                    pendingScan.statusText
+                                    if (pendingScan.notice == null) "" else pendingScan.statusText
                                 } else {
                                     raceLegalAcceptStatusText.value
                                 },
@@ -1436,6 +1436,15 @@ class MainActivity : ComponentActivity() {
             android.widget.Toast.makeText(
                 this,
                 getString(R.string.event_already_loaded),
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        if (!setupConfirmed.value) {
+            android.widget.Toast.makeText(
+                this,
+                getString(R.string.confirm_boat_setup_first),
                 android.widget.Toast.LENGTH_LONG
             ).show()
             return
