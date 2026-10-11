@@ -824,4 +824,7 @@
     <string name="regattalink_calypso_delete_failed">Impossible de supprimer Calypso. L’association est conservée.</string>
     <string name="decline_race_notice">Refuser</string>
     <string name="event_page_open_failed">Impossible d’ouvrir la page de l’événement.</string>
+    <string name="regattalink_forget">Oublier</string>
+    <string name="regattalink_forget_connected">Impossible d’oublier le RegattaLink connecté.</string>
+    <string name="regattalink_forget_failed">Impossible d’oublier le RegattaLink. Réessayez.</string>
 </resources>
