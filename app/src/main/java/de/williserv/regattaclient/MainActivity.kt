@@ -1189,7 +1189,13 @@ class MainActivity : ComponentActivity() {
                         Screen.QR_SCANNER -> QrScannerScreen(
                             modifier = Modifier.padding(innerPadding),
                             onQrScanned = { raw ->
-                                handleRaceQrCode(raw)
+                                // Camera analysis runs off the main thread; event
+                                // state and any scan-error feedback are UI-owned.
+                                runOnUiThread {
+                                    if (currentScreen.value == Screen.QR_SCANNER) {
+                                        handleRaceQrCode(raw)
+                                    }
+                                }
                             },
                             onBack = ::navigateBack
                         )
