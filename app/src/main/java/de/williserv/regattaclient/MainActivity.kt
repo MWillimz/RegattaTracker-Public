@@ -886,7 +886,7 @@ class MainActivity : ComponentActivity() {
                                 ),
                                 statusText = pendingScan?.statusText ?: raceLegalStatusText.value,
                                 actionStatusText = if (pendingScan != null) {
-                                    pendingScan.statusText
+                                    if (pendingScan.notice == null) "" else pendingScan.statusText
                                 } else {
                                     raceLegalAcceptStatusText.value
                                 },
