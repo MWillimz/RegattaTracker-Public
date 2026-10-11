@@ -878,7 +878,13 @@ class MainActivity : ComponentActivity() {
                             val pendingScan = pendingEventScan.value
                             RaceLegalScreen(
                                 raceEvent = pendingScan?.access?.event ?: raceEvent.value,
-                                legalText = pendingScan?.notice?.legalText ?: raceLegalText.value,
+                                // Never show or enable acceptance of the previous
+                                // event's notice while the new notice is loading.
+                                legalText = if (pendingScan != null) {
+                                    pendingScan.notice?.legalText.orEmpty()
+                                } else {
+                                    raceLegalText.value
+                                },
                                 statusText = pendingScan?.statusText ?: raceLegalStatusText.value,
                                 actionStatusText = if (pendingScan != null) {
                                     pendingScan.statusText
