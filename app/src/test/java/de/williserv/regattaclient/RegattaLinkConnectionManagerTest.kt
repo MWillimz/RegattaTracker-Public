@@ -118,6 +118,125 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun forgetNonselectedDisconnectedDeviceDoesNotTouchConnectedRLink() {
+        val unused = RegattaLinkConfiguredDevice(
+            "unused", "44:B1:76:48:31:CE", "RegattaLink-Unused"
+        )
+        RegattaLinkConfiguredDeviceStore(context).upsert(unused)
+        manager = createManager()
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress,
+                deviceInfo = testDeviceInfo(configured.stableId)
+            )
+        )
+
+        assertEquals(RegattaLinkForgetResult.SUCCESS, manager.forgetKnownDevice(unused.stableId))
+        assertEquals(listOf(configured), manager.currentDeviceSelectionState().knownDevices)
+        assertEquals(configured.stableId, manager.configuredDevice()?.stableId)
+        assertEquals(0, fakeClient.disconnectCalls)
+        assertEquals(0, fakeClient.cancelKnownAttemptCalls)
+    }
+
+    @Test
+    fun forgetConnectedRLinkIsRejectedEvenWhenNotPreferred() {
+        val other = RegattaLinkConfiguredDevice(
+            "other", "44:B1:76:48:31:CE", "Other"
+        )
+        val store = RegattaLinkConfiguredDeviceStore(context)
+        store.upsert(other)
+        assertTrue(store.select(other.stableId))
+        manager = createManager()
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress,
+                deviceInfo = testDeviceInfo(configured.stableId)
+            )
+        )
+
+        assertEquals(RegattaLinkForgetResult.CONNECTED,
+            manager.forgetKnownDevice(configured.stableId))
+        assertEquals(2, manager.currentDeviceSelectionState().knownDevices.size)
+        assertEquals(0, fakeClient.disconnectCalls)
+    }
+
+    @Test
+    fun selectedDisconnectedRLinkForgetCancelsOnlyItsPendingReconnect() {
+        assertTrue(manager.reconnectConfigured())
+        assertEquals(1, fakeClient.reconnectCalls)
+
+        assertEquals(RegattaLinkForgetResult.SUCCESS,
+            manager.forgetKnownDevice(configured.stableId))
+        assertEquals(null, manager.currentDeviceSelectionState().selectedStableId)
+        assertEquals(configured.stableId, fakeClient.lastCanceledStableId)
+        assertEquals(1, fakeClient.cancelKnownAttemptCalls)
+        assertEquals(0, fakeClient.disconnectCalls)
+        assertFalse(manager.reconnectConfigured())
+        fakeClient.emitUnexpectedDisconnect()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(0, fakeClient.autoConnectCalls)
+    }
+
+    @Test
+    fun lastForgottenKnownDeviceNeverBootstrapsFromLegacyBond() {
+        manager = createManager { configured.deviceAddress }
+        assertEquals(RegattaLinkForgetResult.SUCCESS,
+            manager.forgetKnownDevice(configured.stableId))
+
+        assertFalse(manager.reconnectConfigured())
+        manager.requestForegroundStartupReconnectIfPermitted()
+        assertEquals(0, fakeClient.reconnectCalls)
+        assertEquals(0, fakeClient.autoConnectCalls)
+        manager = createManager { configured.deviceAddress }
+        manager.requestForegroundStartupReconnectIfPermitted()
+        assertFalse(manager.reconnectConfigured())
+        assertEquals(0, fakeClient.reconnectCalls)
+        assertEquals(0, fakeClient.autoConnectCalls)
+    }
+
+    @Test
+    fun forgottenDeviceCanBeExplicitlyDiscoveredAndAddedAgain() {
+        assertEquals(RegattaLinkForgetResult.SUCCESS,
+            manager.forgetKnownDevice(configured.stableId))
+        assertTrue(manager.connectDiscoveredDevice(configured.deviceAddress))
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress,
+                deviceName = configured.deviceName,
+                deviceInfo = testDeviceInfo(configured.stableId)
+            )
+        )
+        assertEquals(configured.stableId, manager.configuredDevice()?.stableId)
+        assertEquals(listOf(configured), manager.currentDeviceSelectionState().knownDevices)
+    }
+
+    @Test
+    fun cannotForgetDuringExplicitDiscoveryConnectionToSameKnownDevice() {
+        assertTrue(manager.connectDiscoveredDevice(configured.deviceAddress))
+        assertEquals(RegattaLinkForgetResult.BUSY,
+            manager.forgetKnownDevice(configured.stableId))
+        assertEquals(configured, manager.configuredDevice())
+        assertEquals(0, fakeClient.disconnectCalls)
+    }
+
+    @Test
+    fun connectionThatChangedAfterSwipeWasDrawnCannotBeForgotten() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress,
+                deviceInfo = testDeviceInfo(configured.stableId)
+            )
+        )
+        assertEquals(RegattaLinkForgetResult.CONNECTED,
+            manager.forgetKnownDevice(configured.stableId))
+        assertEquals(configured, manager.configuredDevice())
+    }
+
+    @Test
     fun updatingConfiguredNamePreservesResetRecoveryMarker() {
         val store = RegattaLinkConfiguredDeviceStore(context)
         store.markResetRecoveryPending()
@@ -1929,6 +2048,8 @@ class RegattaLinkConnectionManagerTest {
         var reconnectCalls = 0
         var autoConnectCalls = 0
         var disconnectCalls = 0
+        var cancelKnownAttemptCalls = 0
+        var lastCanceledStableId: String? = null
         var otaStartCalls = 0
         var setNameCalls = 0
         var setBrightnessCalls = 0
@@ -1993,6 +2114,14 @@ class RegattaLinkConnectionManagerTest {
         override fun connectDiscoveredDevice(deviceAddress: String): Boolean {
             discoveredConnectCalls += 1
             lastDiscoveredConnectAddress = deviceAddress
+            return true
+        }
+
+        override fun cancelKnownDeviceAttempt(
+            stableId: String, deviceAddress: String
+        ): Boolean {
+            cancelKnownAttemptCalls++
+            lastCanceledStableId = stableId
             return true
         }
 

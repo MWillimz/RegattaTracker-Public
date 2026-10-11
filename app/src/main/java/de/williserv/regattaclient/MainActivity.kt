@@ -992,6 +992,7 @@ class MainActivity : ComponentActivity() {
                             onSearch = ::startRegattaLinkConnection,
                             onSelectKnownDevice =
                                 ::startRegattaLinkKnownDeviceSelection,
+                            onForgetKnownDevice = ::forgetInactiveRegattaLink,
                             onConnectDiscoveredDevice =
                                 ::startRegattaLinkDiscoveredDeviceConnection,
                             onEnableBluetooth = ::requestEnableRegattaLinkBluetooth,
@@ -3884,6 +3885,34 @@ class MainActivity : ComponentActivity() {
         runRegattaLinkActionWithPermissions(
             PendingRegattaLinkPermissionAction.RECONNECT_CONFIGURED
         )
+    }
+
+    private fun forgetInactiveRegattaLink(stableId: String): Boolean {
+        val result = regattaLinkManager.forgetKnownDevice(stableId)
+        if (result == RegattaLinkForgetResult.SUCCESS) {
+            // Do not touch the connected RLink's runtime or firmware state.
+            if (pendingRegattaLinkKnownStableId == stableId) {
+                pendingRegattaLinkKnownStableId = null
+                if (pendingRegattaLinkPermissionAction ==
+                    PendingRegattaLinkPermissionAction.SELECT_KNOWN
+                ) {
+                    pendingRegattaLinkPermissionAction = null
+                }
+            }
+            return true
+        }
+        android.widget.Toast.makeText(
+            this,
+            getString(
+                if (result == RegattaLinkForgetResult.CONNECTED) {
+                    R.string.regattalink_forget_connected
+                } else {
+                    R.string.regattalink_forget_failed
+                }
+            ),
+            android.widget.Toast.LENGTH_LONG
+        ).show()
+        return false
     }
 
     private fun startRegattaLinkKnownDeviceSelection(stableId: String) {

@@ -2,12 +2,14 @@ package de.williserv.regattaclient
 
 import android.os.SystemClock
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -29,11 +31,15 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,7 +53,9 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -185,6 +193,7 @@ internal fun RegattaLinkScreen(
     modifier: Modifier = Modifier,
     onSearch: () -> Unit,
     onSelectKnownDevice: (String) -> Unit = {},
+    onForgetKnownDevice: (String) -> Boolean = { false },
     onConnectDiscoveredDevice: (String) -> Unit = {},
     onEnableBluetooth: () -> Unit = {},
     onCheckFirmware: () -> Unit,
@@ -552,6 +561,7 @@ internal fun RegattaLinkScreen(
     if (devicePickerOpen) {
         RegattaLinkDevicePickerSheet(
             deviceSelectionState = deviceSelectionState,
+            connectionState = state,
             connectedStableId = connectedStableId,
             canSearch = canSearchRLinks,
             canSelect = canSelectRLink,
@@ -564,6 +574,7 @@ internal fun RegattaLinkScreen(
                 onConnectDiscoveredDevice(address)
                 devicePickerOpen = false
             },
+            onForgetKnownDevice = onForgetKnownDevice,
             onDismiss = { devicePickerOpen = false }
         )
     }
@@ -913,16 +924,112 @@ internal fun RegattaLinkScreen(
 
 
 
+@Composable
+private fun KnownRegattaLinkPickerRow(
+    device: RegattaLinkConfiguredDevice,
+    isSelected: Boolean,
+    isConnected: Boolean,
+    canSelect: Boolean,
+    onSelect: () -> Unit
+) {
+    TextButton(
+        onClick = onSelect,
+        enabled = canSelect && !isConnected,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = device.deviceName.ifBlank {
+                    stringResource(R.string.regattalink_title)
+                },
+                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+            )
+            Text(
+                text = stringResource(
+                    when {
+                        isConnected -> R.string.regattalink_status_connected
+                        isSelected -> R.string.regattalink_selected
+                        else -> R.string.regattalink_known
+                    }
+                ) + " · ID …" + device.stableId.takeLast(8),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DismissibleKnownRegattaLinkRow(
+    device: RegattaLinkConfiguredDevice,
+    isSelected: Boolean,
+    isConnected: Boolean,
+    canSelect: Boolean,
+    onSelect: () -> Unit,
+    onForget: () -> Boolean
+) {
+    val forgetLabel = stringResource(R.string.regattalink_forget)
+    val dismissState = rememberSwipeToDismissBoxState()
+    LaunchedEffect(dismissState.currentValue) {
+        if (dismissState.currentValue == SwipeToDismissBoxValue.EndToStart &&
+            !onForget()
+        ) {
+            // Failed persistence/changed connection: keep the row usable.
+            dismissState.reset()
+        }
+    }
+    val accessible = Modifier.semantics {
+        customActions = listOf(
+            CustomAccessibilityAction(label = forgetLabel) {
+                onForget()
+                true
+            }
+        )
+    }
+    SwipeToDismissBox(
+        state = dismissState,
+        modifier = accessible.fillMaxWidth(),
+        backgroundContent = {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.errorContainer)
+                    .padding(horizontal = 20.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Text(
+                    text = forgetLabel,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        },
+        enableDismissFromStartToEnd = false,
+        enableDismissFromEndToStart = true
+    ) {
+        KnownRegattaLinkPickerRow(
+            device = device,
+            isSelected = isSelected,
+            isConnected = isConnected,
+            canSelect = canSelect,
+            onSelect = onSelect
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun RegattaLinkDevicePickerSheet(
     deviceSelectionState: RegattaLinkDeviceSelectionState,
+    connectionState: RegattaLinkClientState,
     connectedStableId: String?,
     canSearch: Boolean,
     canSelect: Boolean,
     onSearch: () -> Unit,
     onSelectKnownDevice: (String) -> Unit,
     onConnectDiscoveredDevice: (String) -> Unit,
+    onForgetKnownDevice: (String) -> Boolean,
     onDismiss: () -> Unit
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -941,33 +1048,33 @@ private fun RegattaLinkDevicePickerSheet(
             deviceSelectionState.knownDevices
                 .sortedBy { it.stableId != deviceSelectionState.selectedStableId }
                 .forEach { device ->
-                    val isConnected = connectedStableId == device.stableId
-                    val isSelected =
-                        deviceSelectionState.selectedStableId == device.stableId
-                    TextButton(
-                        onClick = { onSelectKnownDevice(device.stableId) },
-                        enabled = canSelect && !isConnected,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            Text(
-                                text = device.deviceName.ifBlank {
-                                    stringResource(R.string.regattalink_title)
-                                },
-                                fontWeight =
-                                    if (isSelected) FontWeight.SemiBold
-                                    else FontWeight.Normal
+                    key(device.stableId) {
+                        val isConnected = connectedStableId == device.stableId ||
+                            (connectionState.status == RegattaLinkConnectionStatus.CONNECTED &&
+                                connectionState.deviceAddress.isNotBlank() &&
+                                connectionState.deviceAddress.equals(
+                                    device.deviceAddress, ignoreCase = true
+                                ))
+                        val isSelected =
+                            deviceSelectionState.selectedStableId == device.stableId
+                        val canForget = canSelect &&
+                            canForgetKnownRegattaLink(device, connectionState)
+                        if (canForget) {
+                            DismissibleKnownRegattaLinkRow(
+                                device = device,
+                                isSelected = isSelected,
+                                isConnected = isConnected,
+                                canSelect = canSelect,
+                                onSelect = { onSelectKnownDevice(device.stableId) },
+                                onForget = { onForgetKnownDevice(device.stableId) }
                             )
-                            Text(
-                                text = stringResource(
-                                    when {
-                                        isConnected -> R.string.regattalink_status_connected
-                                        isSelected -> R.string.regattalink_selected
-                                        else -> R.string.regattalink_known
-                                    }
-                                ) + " · ID …" + device.stableId.takeLast(8),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 12.sp
+                        } else {
+                            KnownRegattaLinkPickerRow(
+                                device = device,
+                                isSelected = isSelected,
+                                isConnected = isConnected,
+                                canSelect = canSelect,
+                                onSelect = { onSelectKnownDevice(device.stableId) }
                             )
                         }
                     }
