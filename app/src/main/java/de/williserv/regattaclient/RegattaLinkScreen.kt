@@ -65,6 +65,9 @@ import kotlinx.coroutines.delay
 import java.util.Locale
 import kotlin.math.roundToInt
 
+internal fun shouldShowRegattaLinkSetupMenu(status: RegattaLinkConnectionStatus): Boolean =
+    status == RegattaLinkConnectionStatus.CONNECTED
+
 internal fun shouldAutoRefreshPgnInventory(
     detailsExpanded: Boolean,
     inventorySupported: Boolean,
@@ -260,7 +263,10 @@ internal fun RegattaLinkScreen(
     var resetDialogOpen by rememberSaveable { mutableStateOf(false) }
     var nameDraft by rememberSaveable { mutableStateOf("") }
 
-    val connected = state.status == RegattaLinkConnectionStatus.CONNECTED
+    val connected = shouldShowRegattaLinkSetupMenu(state.status)
+    LaunchedEffect(connected) {
+        if (!connected) settingsMenuExpanded = false
+    }
     val deviceKey = state.deviceInfo?.stableId ?: state.deviceAddress
     var calypsoStatusRequestedForOpen by remember(
         deviceKey,
@@ -595,38 +601,40 @@ internal fun RegattaLinkScreen(
                 fontSize = 26.sp,
                 fontWeight = FontWeight.SemiBold
             )
-            Box {
-                Button(
-                    onClick = { settingsMenuExpanded = true }
-                ) {
-                    Text(stringResource(R.string.regattalink_setup))
-                }
-                DropdownMenu(
-                    expanded = settingsMenuExpanded,
-                    onDismissRequest = { settingsMenuExpanded = false }
-                ) {
-                    regattaLinkSetupMenuItems
-                        .filter { menuItem ->
-                            when (menuItem.destination) {
-                                RegattaLinkSetupDestination.IMU ->
-                                    configurationState.imuSessionAvailable != false ||
-                                        configurationState.magSessionAvailable != false
-                                RegattaLinkSetupDestination.NMEA ->
-                                    configurationState.canSessionAvailable != false ||
-                                        configurationState.nmea0183SessionAvailable != false
-                                else -> true
+            if (connected) {
+                Box {
+                    Button(
+                        onClick = { settingsMenuExpanded = true }
+                    ) {
+                        Text(stringResource(R.string.regattalink_setup))
+                    }
+                    DropdownMenu(
+                        expanded = settingsMenuExpanded,
+                        onDismissRequest = { settingsMenuExpanded = false }
+                    ) {
+                        regattaLinkSetupMenuItems
+                            .filter { menuItem ->
+                                when (menuItem.destination) {
+                                    RegattaLinkSetupDestination.IMU ->
+                                        configurationState.imuSessionAvailable != false ||
+                                            configurationState.magSessionAvailable != false
+                                    RegattaLinkSetupDestination.NMEA ->
+                                        configurationState.canSessionAvailable != false ||
+                                            configurationState.nmea0183SessionAvailable != false
+                                    else -> true
+                                }
                             }
+                            .forEach { menuItem ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(stringResource(menuItem.labelResId))
+                                },
+                                onClick = {
+                                    settingsMenuExpanded = false
+                                    activeSetupDestination = menuItem.destination
+                                }
+                            )
                         }
-                        .forEach { menuItem ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(stringResource(menuItem.labelResId))
-                            },
-                            onClick = {
-                                settingsMenuExpanded = false
-                                activeSetupDestination = menuItem.destination
-                            }
-                        )
                     }
                 }
             }
