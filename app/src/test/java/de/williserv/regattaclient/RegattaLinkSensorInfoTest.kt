@@ -25,7 +25,7 @@ class RegattaLinkSensorInfoTest {
 
     @Test
     fun acceptsEscapesAndNestedFutureValues() {
-        val entries = parse("""{"model":"Schiff \\"A\\"","more":{"rate":1},"list":[1,2]}""")
+        val entries = parse("""{"model":"Schiff \"A\"","more":{"rate":1},"list":[1,2]}""")
         assertEquals(3, entries.size)
         assertEquals("""{"rate":1}""", entries.single { it.key == "more" }.value)
         assertEquals("[1,2]", entries.single { it.key == "list" }.value)
