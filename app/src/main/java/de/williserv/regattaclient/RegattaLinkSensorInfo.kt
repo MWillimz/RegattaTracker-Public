@@ -8,12 +8,12 @@ import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 
-internal data class RegattaLinkSensorInfoEntry(
+data class RegattaLinkSensorInfoEntry(
     val key: String,
     val value: String
 )
 
-internal data class RegattaLinkSensorInfoState(
+data class RegattaLinkSensorInfoState(
     val loading: Boolean = false,
     val entries: List<RegattaLinkSensorInfoEntry> = emptyList(),
     val error: String = ""
