@@ -251,7 +251,7 @@ internal class RegattaLinkBleClient(
     private val rawCaptureRunning = AtomicBoolean(false)
     private val diagnosticLogRunning = AtomicBoolean(false)
     private val configurationMutationRunning = AtomicBoolean(false)
-    private val sensorInfoReadRunning = AtomicBoolean(false)
+    private val sensorInfoReadGatt = AtomicReference<BluetoothGatt?>(null)
     private val sensorInfoGeneration = AtomicLong(0L)
     private val deviceControlExecutionGuard =
         RegattaLinkDeviceControlExecutionGuard<BluetoothGatt>()
@@ -5185,7 +5185,7 @@ internal class RegattaLinkBleClient(
             rawCaptureRunning.get() ||
             diagnosticLogRunning.get() ||
             configurationMutationRunning.get() ||
-            !sensorInfoReadRunning.compareAndSet(false, true)
+            !sensorInfoReadGatt.compareAndSet(null, activeGatt)
         ) return false
 
         val generation = sensorInfoGeneration.get()
@@ -5252,7 +5252,7 @@ internal class RegattaLinkBleClient(
                         } else current
                     }
                 }
-                sensorInfoReadRunning.set(false)
+                sensorInfoReadGatt.compareAndSet(activeGatt, null)
             }
         }
         return true
@@ -6300,6 +6300,10 @@ internal class RegattaLinkBleClient(
     }
 
     private fun resetConnectionTransportState() {
+        // An old GATT read must neither block nor publish into a new session.
+        sensorInfoGeneration.incrementAndGet()
+        sensorInfoReadGatt.set(null)
+        updateConfiguration { it.copy(calypsoSensorInfo = RegattaLinkSensorInfoState()) }
         /*
          * Do not reset phoneGnssDrainScheduled here. A previously posted or
          * in-flight drain owns that flag and clears it in its finally block.
