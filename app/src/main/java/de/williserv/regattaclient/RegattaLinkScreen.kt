@@ -4105,7 +4105,7 @@ private fun RegattaLinkImuSetupSheet(
                     onSetImuRawPreviewEnabled(true)
                     onSetImuRawModeEnabled(true)
                 },
-                enabled = setUprightEnabled,
+                enabled = setUprightEnabled && !uprightDialogOpen,
                 modifier = Modifier.padding(top = 10.dp)
             ) {
                 Text(stringResource(R.string.regattalink_set_upright))
@@ -4143,7 +4143,7 @@ private fun RegattaLinkImuSetupSheet(
                     status = controlStatus,
                     liveHeelValue = liveHeelValue,
                     livePitchValue = livePitchValue,
-                    enabled = controlsEnabled,
+                    enabled = controlsEnabled && !uprightDialogOpen,
                     onAdjust = onAdjust,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -4213,7 +4213,7 @@ private fun RegattaLinkImuSetupSheet(
                 )
             }
 
-            if (deviceControlBusy) {
+            if (deviceControlBusy && !uprightDialogOpen) {
                 Text(
                     text = controlStatus
                         ?.takeIf { !it.phase.isTerminal }
