@@ -6303,7 +6303,12 @@ internal class RegattaLinkBleClient(
         // An old GATT read must neither block nor publish into a new session.
         sensorInfoGeneration.incrementAndGet()
         sensorInfoReadGatt.set(null)
-        updateConfiguration { it.copy(calypsoSensorInfo = RegattaLinkSensorInfoState()) }
+        updateConfiguration {
+            it.copy(
+                calypso = RegattaLinkCalypsoState(),
+                calypsoSensorInfo = RegattaLinkSensorInfoState()
+            )
+        }
         /*
          * Do not reset phoneGnssDrainScheduled here. A previously posted or
          * in-flight drain owns that flag and clears it in its finally block.
