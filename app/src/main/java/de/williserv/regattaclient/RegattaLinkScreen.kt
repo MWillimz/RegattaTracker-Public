@@ -219,6 +219,7 @@ internal fun RegattaLinkScreen(
     onDrainDiagnosticLog: () -> Unit,
     onStopDiagnosticLog: () -> Unit = {},
     onDeviceControl: (RegattaLinkDeviceControlOpcode, Int) -> Unit,
+    onRefreshCalypsoSensorInfo: () -> Unit = {},
     onSetImuRawPreviewEnabled: (Boolean) -> Unit = {},
     onRefreshPgnInventory: () -> Unit,
     onReadRawFrames: () -> Unit,
@@ -501,6 +502,7 @@ internal fun RegattaLinkScreen(
                 onDeleteCalypso = {
                     onDeviceControl(RegattaLinkDeviceControlOpcode.CALYPSO_DELETE, 0)
                 },
+                onRefreshCalypsoSensorInfo = onRefreshCalypsoSensorInfo,
                 onApplyBluetoothConfigAndRestart =
                     onApplyBluetoothConfigAndRestart,
                 onDismiss = { activeSetupDestination = null }
@@ -1585,6 +1587,7 @@ private fun RegattaLinkBluetoothDevicesSheet(
     calypsoSupported: Boolean,
     onScanCalypso: () -> Unit,
     onDeleteCalypso: () -> Unit,
+    onRefreshCalypsoSensorInfo: () -> Unit,
     onApplyBluetoothConfigAndRestart: (UInt) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -1614,6 +1617,12 @@ private fun RegattaLinkBluetoothDevicesSheet(
             REGATTALINK_CONFIG_CALYPSO_ENABLE
         )
     val calypso = configurationState.calypso
+    var infosExpanded by remember(deviceKey, calypso.boundId) { mutableStateOf(false) }
+    LaunchedEffect(deviceKey, connected, calypso.statusKnown, calypso.boundId) {
+        if (connected && calypso.statusKnown && calypso.boundId != null) {
+            onRefreshCalypsoSensorInfo()
+        }
+    }
     var confirmCalypsoDelete by remember(deviceKey) { mutableStateOf(false) }
     val deleteActive = configurationState.deviceControlBusy &&
         configurationState.deviceControlAcceptedOpcode ==
@@ -1731,6 +1740,47 @@ private fun RegattaLinkBluetoothDevicesSheet(
                         )
                 }
             )
+
+            if (calypso.statusKnown && calypso.boundId != null) {
+                TextButton(
+                    onClick = { infosExpanded = !infosExpanded },
+                    modifier = Modifier.padding(top = 8.dp)
+                ) {
+                    Text(
+                        stringResource(R.string.regattalink_sensor_infos) +
+                            if (infosExpanded) " ▴" else " ▾"
+                    )
+                }
+                if (infosExpanded) {
+                    val infos = configurationState.calypsoSensorInfo
+                    when {
+                        infos.loading -> Text(
+                            stringResource(R.string.regattalink_sensor_info_loading),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        infos.error.isNotBlank() -> {
+                            Text(
+                                stringResource(R.string.regattalink_sensor_info_read_failed),
+                                color = MaterialTheme.colorScheme.error
+                            )
+                            RegattaLinkTechnicalDetail(infos.error)
+                        }
+                        infos.entries.isEmpty() -> Text(
+                            stringResource(R.string.regattalink_sensor_info_empty),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        else -> infos.entries.forEach { entry ->
+                            telemetryValue(label = entry.key, value = entry.value)
+                        }
+                    }
+                    TextButton(
+                        onClick = onRefreshCalypsoSensorInfo,
+                        enabled = connected && configEnabled && !infos.loading
+                    ) {
+                        Text(stringResource(R.string.refresh))
+                    }
+                }
+            }
 
             Row(
                 modifier = Modifier
