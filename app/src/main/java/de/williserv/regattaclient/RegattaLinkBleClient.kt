@@ -32,6 +32,7 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 enum class RegattaLinkConnectionStatus {
@@ -78,6 +79,8 @@ internal class RegattaLinkBleClient(
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720010")
         val EXTENSION_SERVICE_UUID: UUID =
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720030")
+        val BLE_SENSOR_INFO_UUID: UUID =
+            UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720031")
         val DEVICE_NAME_UUID: UUID =
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720011")
         val DEVICE_INFO_UUID: UUID =
@@ -248,6 +251,8 @@ internal class RegattaLinkBleClient(
     private val rawCaptureRunning = AtomicBoolean(false)
     private val diagnosticLogRunning = AtomicBoolean(false)
     private val configurationMutationRunning = AtomicBoolean(false)
+    private val sensorInfoReadRunning = AtomicBoolean(false)
+    private val sensorInfoGeneration = AtomicLong(0L)
     private val deviceControlExecutionGuard =
         RegattaLinkDeviceControlExecutionGuard<BluetoothGatt>()
     private var nextDeviceControlRequestId = 1u
@@ -4629,6 +4634,15 @@ internal class RegattaLinkBleClient(
             return false
         }
 
+        if (opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN ||
+            opcode == RegattaLinkDeviceControlOpcode.CALYPSO_DELETE
+        ) {
+            sensorInfoGeneration.incrementAndGet()
+            updateConfiguration {
+                it.copy(calypsoSensorInfo = RegattaLinkSensorInfoState())
+            }
+        }
+
         otaExecutor.execute {
             if (!optionalFeatureWorkAllowed(activeGatt)) {
                 rejectDeviceControlBeforeStart(execution)
@@ -5160,6 +5174,88 @@ internal class RegattaLinkBleClient(
         nextDeviceControlRequestId =
             if (value == UInt.MAX_VALUE) 1u else value + 1u
         return value
+    }
+
+    override fun refreshCalypsoSensorInfo(): Boolean {
+        val activeGatt = gatt ?: return false
+        val boundId = lastConfigurationState.calypso.boundId ?: return false
+        if (
+            !isConnected() ||
+            otaRunning.get() ||
+            rawCaptureRunning.get() ||
+            diagnosticLogRunning.get() ||
+            configurationMutationRunning.get() ||
+            !sensorInfoReadRunning.compareAndSet(false, true)
+        ) return false
+
+        val generation = sensorInfoGeneration.get()
+        updateConfiguration { current ->
+            if (current.calypso.boundId == boundId &&
+                sensorInfoGeneration.get() == generation
+            ) {
+                current.copy(calypsoSensorInfo = RegattaLinkSensorInfoState(loading = true))
+            } else {
+                current
+            }
+        }
+        otaExecutor.execute {
+            fun requestStillCurrent(): Boolean =
+                gatt === activeGatt &&
+                    connected &&
+                    sensorInfoGeneration.get() == generation &&
+                    lastConfigurationState.calypso.boundId == boundId
+
+            try {
+                if (!requestStillCurrent() ||
+                    !optionalFeatureWorkAllowed(activeGatt) ||
+                    rawCaptureRunning.get() ||
+                    diagnosticLogRunning.get() ||
+                    configurationMutationRunning.get()
+                ) return@execute
+
+                val characteristic = activeGatt
+                    .getService(EXTENSION_SERVICE_UUID)
+                    ?.getCharacteristic(BLE_SENSOR_INFO_UUID)
+                    ?: throw IllegalStateException("RegattaLink Sensor Info 0031 is unavailable")
+
+                val entries = parseRegattaLinkSensorInfo(
+                    readCharacteristicBlocking(activeGatt, characteristic)
+                )
+                if (requestStillCurrent()) {
+                    updateConfiguration { current ->
+                        if (requestStillCurrent()) {
+                            current.copy(
+                                calypsoSensorInfo = RegattaLinkSensorInfoState(entries = entries)
+                            )
+                        } else current
+                    }
+                }
+            } catch (error: Exception) {
+                if (requestStillCurrent()) {
+                    updateConfiguration { current ->
+                        if (requestStillCurrent()) {
+                            current.copy(
+                                calypsoSensorInfo = RegattaLinkSensorInfoState(
+                                    error = error.message ?: "Could not read Calypso sensor info"
+                                )
+                            )
+                        } else current
+                    }
+                }
+            } finally {
+                if (requestStillCurrent()) {
+                    updateConfiguration { current ->
+                        if (requestStillCurrent() && current.calypsoSensorInfo.loading) {
+                            current.copy(
+                                calypsoSensorInfo = current.calypsoSensorInfo.copy(loading = false)
+                            )
+                        } else current
+                    }
+                }
+                sensorInfoReadRunning.set(false)
+            }
+        }
+        return true
     }
 
     override fun refreshPgnInventory(): Boolean {
@@ -6416,6 +6512,9 @@ internal class RegattaLinkBleClient(
     ) {
         val next = synchronized(configurationLock) {
             transform(lastConfigurationState).also {
+                if (it.calypso.boundId != lastConfigurationState.calypso.boundId) {
+                    sensorInfoGeneration.incrementAndGet()
+                }
                 lastConfigurationState = it
             }
         }
@@ -6425,6 +6524,8 @@ internal class RegattaLinkBleClient(
     }
 
     private fun emitConfiguration(state: RegattaLinkConfigurationState) {
+        // Setup and disconnect replace the entire session's metadata snapshot.
+        sensorInfoGeneration.incrementAndGet()
         if (!state.phoneGnssForwardingDesired) {
             clearPhoneGnssPending()
         }
