@@ -1,8 +1,9 @@
 package de.williserv.regattaclient
 
-import org.json.JSONArray
 import org.json.JSONObject
-import org.json.JSONTokener
+import android.util.JsonReader
+import android.util.JsonToken
+import java.io.StringReader
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
@@ -26,14 +27,21 @@ internal fun parseRegattaLinkSensorInfo(raw: ByteArray): List<RegattaLinkSensorI
         .onUnmappableCharacter(CodingErrorAction.REPORT)
         .decode(ByteBuffer.wrap(raw))
         .toString()
-    val reader = JSONTokener(json)
-    val obj = reader.nextValue()
-    require(obj is JSONObject) { "RegattaLink sensor info must be a JSON object" }
-    while (true) {
-        val trailing = reader.next()
-        if (trailing == '\u0000') break
-        require(trailing.isWhitespace()) { "Unexpected trailing sensor info data" }
+    // Android's JSONObject parser accepts several non-JSON extensions. Validate
+    // against the platform's strict streaming parser before building display rows.
+    JsonReader(StringReader(json)).use { reader ->
+        reader.isLenient = false
+        reader.beginObject()
+        while (reader.hasNext()) {
+            reader.nextName()
+            reader.skipValue()
+        }
+        reader.endObject()
+        require(reader.peek() == JsonToken.END_DOCUMENT) {
+            "Unexpected trailing sensor info data"
+        }
     }
+    val obj = JSONObject(json)
     return obj.keys().asSequence().mapNotNull { key ->
         val value = obj.opt(key)
         if (value == null || value === JSONObject.NULL) {
@@ -41,10 +49,7 @@ internal fun parseRegattaLinkSensorInfo(raw: ByteArray): List<RegattaLinkSensorI
         } else {
             RegattaLinkSensorInfoEntry(
                 key,
-                when (value) {
-                    is JSONObject, is JSONArray -> value.toString()
-                    else -> value.toString()
-                }
+                value.toString()
             )
         }
     }.sortedBy { it.key }.toList()
