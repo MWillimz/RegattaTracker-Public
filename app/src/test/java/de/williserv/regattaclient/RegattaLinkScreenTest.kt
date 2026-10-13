@@ -9,6 +9,19 @@ import org.junit.Test
 class RegattaLinkScreenTest {
 
     @Test
+    fun setupMenuRequiresFullyConnectedRLink() {
+        assertTrue(shouldShowRegattaLinkSetupMenu(RegattaLinkConnectionStatus.CONNECTED))
+        RegattaLinkConnectionStatus.values()
+            .filterNot { it == RegattaLinkConnectionStatus.CONNECTED }
+            .forEach { status ->
+                assertFalse(
+                    "Setup menu should be hidden in $status",
+                    shouldShowRegattaLinkSetupMenu(status)
+                )
+            }
+    }
+
+    @Test
     fun onlyDisconnectedKnownRLinksCanBeForgotten() {
         val a = RegattaLinkConfiguredDevice("A", "44:B1:76:48:31:B2", "Same")
         val b = RegattaLinkConfiguredDevice("B", "44:B1:76:48:31:CE", "Same")
