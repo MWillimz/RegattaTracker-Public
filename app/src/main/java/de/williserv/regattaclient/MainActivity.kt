@@ -1058,6 +1058,9 @@ class MainActivity : ComponentActivity() {
                             onDeviceControl = { opcode, value ->
                                 regattaLinkManager.executeDeviceControl(opcode, value)
                             },
+                            onRequestSetUpright = {
+                                regattaLinkManager.requestSetUprightFromPreview()
+                            },
                             onRefreshCalypsoSensorInfo = {
                                 regattaLinkManager.refreshCalypsoSensorInfo()
                             },

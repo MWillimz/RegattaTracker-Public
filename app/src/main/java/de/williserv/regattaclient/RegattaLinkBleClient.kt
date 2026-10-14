@@ -259,6 +259,7 @@ internal class RegattaLinkBleClient(
     private val calypsoRawGeneration = AtomicLong(0L)
     private val deviceControlExecutionGuard =
         RegattaLinkDeviceControlExecutionGuard<BluetoothGatt>()
+    private val uprightPreviewSubmissionQueued = AtomicBoolean(false)
     private var nextDeviceControlRequestId = 1u
     private val rawCaptureStopReason =
         AtomicReference<RegattaLinkRawCaptureStopReason?>(null)
@@ -4603,6 +4604,46 @@ internal class RegattaLinkBleClient(
                     }
                 }
             }
+        }
+        return true
+    }
+
+    /**
+     * The raw-mode renewal and SET_UPRIGHT share an exclusive Device Control
+     * lease. Place the confirm behind any running renewal on the single GATT
+     * worker, rather than racing the lease or using a guessed sleep duration.
+     *
+     * The UI ends renewals once this submission has been enqueued. Firmware
+     * raw mode expires after 1 s without renewal, so confirmation needs no
+     * colliding IMU_RAW_MODE(0) Device Control command.
+     */
+    override fun requestSetUprightFromPreview(): Boolean {
+        val activeGatt = gatt ?: return false
+        if (!lastConfigurationState.deviceControlSupported ||
+            !isConnected() || otaRunning.get() || rawCaptureRunning.get() ||
+            diagnosticLogRunning.get() || configurationMutationRunning.get() ||
+            !uprightPreviewSubmissionQueued.compareAndSet(false, true)
+        ) return false
+        try {
+            otaExecutor.execute {
+                try {
+                    if (gatt !== activeGatt || !optionalFeatureWorkAllowed(activeGatt) ||
+                        !executeDeviceControl(RegattaLinkDeviceControlOpcode.SET_UPRIGHT, 0)
+                    ) {
+                        if (gatt === activeGatt && connected) {
+                            updateConfiguration { current ->
+                                current.copy(deviceControlError =
+                                    "Set upright could not be started; please try again")
+                            }
+                        }
+                    }
+                } finally {
+                    uprightPreviewSubmissionQueued.set(false)
+                }
+            }
+        } catch (error: java.util.concurrent.RejectedExecutionException) {
+            uprightPreviewSubmissionQueued.set(false)
+            return false
         }
         return true
     }

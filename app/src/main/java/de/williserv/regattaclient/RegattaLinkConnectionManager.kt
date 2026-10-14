@@ -349,6 +349,8 @@ internal interface RegattaLinkConnectionClient {
         opcode: RegattaLinkDeviceControlOpcode,
         value: Int
     ): Boolean = false
+    /** Queues upright after an in-flight raw-mode renewal on the BLE worker. */
+    fun requestSetUprightFromPreview(): Boolean = false
     fun setImuRawPreviewEnabled(enabled: Boolean): Boolean = false
     fun refreshCalypsoSensorInfo(): Boolean = false
     fun refreshCalypsoAwaOffset(): Boolean = false
@@ -1089,6 +1091,14 @@ internal class RegattaLinkConnectionManager(
             )
         }
         return accepted
+    }
+
+    fun requestSetUprightFromPreview(): Boolean {
+        if (!configurationState.deviceControlSupported ||
+            otaState.isActive || rawCaptureState.isActive ||
+            configurationState.diagnosticLogLoading
+        ) return false
+        return client.requestSetUprightFromPreview()
     }
 
     fun setImuRawPreviewEnabled(enabled: Boolean): Boolean {
