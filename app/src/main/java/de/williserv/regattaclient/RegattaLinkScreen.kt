@@ -68,6 +68,23 @@ import kotlin.math.roundToInt
 internal fun shouldShowRegattaLinkSetupMenu(status: RegattaLinkConnectionStatus): Boolean =
     status == RegattaLinkConnectionStatus.CONNECTED
 
+internal fun isConnectedRegattaLinkPickerDevice(
+    device: RegattaLinkConfiguredDevice,
+    connectionState: RegattaLinkClientState,
+    connectedStableId: String?
+): Boolean =
+    connectionState.status == RegattaLinkConnectionStatus.CONNECTED &&
+        (
+            connectedStableId == device.stableId ||
+                (
+                    connectionState.deviceAddress.isNotBlank() &&
+                        connectionState.deviceAddress.equals(
+                            device.deviceAddress,
+                            ignoreCase = true
+                        )
+                    )
+            )
+
 internal fun shouldAutoRefreshPgnInventory(
     detailsExpanded: Boolean,
     inventorySupported: Boolean,
@@ -584,6 +601,13 @@ internal fun RegattaLinkScreen(
                 devicePickerOpen = false
             },
             onForgetKnownDevice = onForgetKnownDevice,
+            canDisconnect = !otaState.isActive &&
+                !configurationState.deviceControlBusy &&
+                !configurationState.factoryResetAwaitingDisconnect,
+            onDisconnect = {
+                devicePickerOpen = false
+                onDisconnect()
+            },
             onDismiss = { devicePickerOpen = false }
         )
     }
@@ -905,21 +929,6 @@ internal fun RegattaLinkScreen(
             }
         }
 
-        if (
-            state.status != RegattaLinkConnectionStatus.IDLE &&
-            state.status != RegattaLinkConnectionStatus.BLUETOOTH_OFF
-        ) {
-            TextButton(
-                onClick = onDisconnect,
-                enabled = !otaState.isActive &&
-                    !configurationState.deviceControlBusy &&
-                    !configurationState.factoryResetAwaitingDisconnect,
-                modifier = Modifier.padding(top = 4.dp)
-            ) {
-                Text(stringResource(R.string.regattalink_disconnect))
-            }
-        }
-
         Button(
             onClick = onBack,
             enabled = !otaState.isActive,
@@ -941,35 +950,46 @@ internal fun KnownRegattaLinkPickerRow(
     isSelected: Boolean,
     isConnected: Boolean,
     canSelect: Boolean,
-    onSelect: () -> Unit
+    onSelect: () -> Unit,
+    onDisconnect: (() -> Unit)? = null,
+    canDisconnect: Boolean = false
 ) {
-    TextButton(
-        onClick = onSelect,
-        enabled = canSelect && !isConnected,
-        // Opaque at rest: the destructive swipe background must only be visible
-        // when the row is actually moved to the left.
+    // Keep the row opaque above the swipe-to-forget background.
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Text(
-                text = device.deviceName.ifBlank {
-                    stringResource(R.string.regattalink_title)
-                },
-                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
-            )
-            Text(
-                text = stringResource(
-                    when {
-                        isConnected -> R.string.regattalink_status_connected
-                        isSelected -> R.string.regattalink_selected
-                        else -> R.string.regattalink_known
-                    }
-                ) + " · ID …" + device.stableId.takeLast(8),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 12.sp
-            )
+        TextButton(
+            onClick = onSelect,
+            enabled = canSelect && !isConnected,
+            modifier = Modifier.weight(1f)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = device.deviceName.ifBlank {
+                        stringResource(R.string.regattalink_title)
+                    },
+                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                )
+                Text(
+                    text = stringResource(
+                        when {
+                            isConnected -> R.string.regattalink_status_connected
+                            isSelected -> R.string.regattalink_selected
+                            else -> R.string.regattalink_known
+                        }
+                    ) + " · ID …" + device.stableId.takeLast(8),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp
+                )
+            }
+        }
+        if (isConnected && onDisconnect != null) {
+            TextButton(onClick = onDisconnect, enabled = canDisconnect) {
+                Text(stringResource(R.string.regattalink_disconnect))
+            }
         }
     }
 }
@@ -1047,6 +1067,8 @@ private fun RegattaLinkDevicePickerSheet(
     onSelectKnownDevice: (String) -> Unit,
     onConnectDiscoveredDevice: (String) -> Unit,
     onForgetKnownDevice: (String) -> Boolean,
+    canDisconnect: Boolean,
+    onDisconnect: () -> Unit,
     onDismiss: () -> Unit
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -1066,12 +1088,9 @@ private fun RegattaLinkDevicePickerSheet(
                 .sortedBy { it.stableId != deviceSelectionState.selectedStableId }
                 .forEach { device ->
                     key(device.stableId) {
-                        val isConnected = connectedStableId == device.stableId ||
-                            (connectionState.status == RegattaLinkConnectionStatus.CONNECTED &&
-                                connectionState.deviceAddress.isNotBlank() &&
-                                connectionState.deviceAddress.equals(
-                                    device.deviceAddress, ignoreCase = true
-                                ))
+                        val isConnected = isConnectedRegattaLinkPickerDevice(
+                            device, connectionState, connectedStableId
+                        )
                         val isSelected =
                             deviceSelectionState.selectedStableId == device.stableId
                         val canForget = canSelect &&
@@ -1091,7 +1110,9 @@ private fun RegattaLinkDevicePickerSheet(
                                 isSelected = isSelected,
                                 isConnected = isConnected,
                                 canSelect = canSelect,
-                                onSelect = { onSelectKnownDevice(device.stableId) }
+                                onSelect = { onSelectKnownDevice(device.stableId) },
+                                onDisconnect = onDisconnect.takeIf { isConnected },
+                                canDisconnect = canDisconnect
                             )
                         }
                     }
