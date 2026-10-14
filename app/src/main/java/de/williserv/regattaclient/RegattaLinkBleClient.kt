@@ -256,6 +256,7 @@ internal class RegattaLinkBleClient(
     private val calypsoOffsetOperationRunning = AtomicBoolean(false)
     private val calypsoOffsetSessionGeneration = AtomicLong(0L)
     private val calypsoRawReadRunning = AtomicBoolean(false)
+    private val calypsoRawGeneration = AtomicLong(0L)
     private val deviceControlExecutionGuard =
         RegattaLinkDeviceControlExecutionGuard<BluetoothGatt>()
     private var nextDeviceControlRequestId = 1u
@@ -5311,13 +5312,19 @@ internal class RegattaLinkBleClient(
         ) return false
 
         val sessionGeneration = calypsoOffsetSessionGeneration.get()
+        // A SET must not pair its newly confirmed offset with a raw value
+        // captured before the change, including an in-flight GATT read.
+        if (target != null) calypsoRawGeneration.incrementAndGet()
         updateConfiguration { current ->
             if (gatt === activeGatt && connected &&
                 calypsoOffsetSessionGeneration.get() == sessionGeneration
             ) current.copy(
                 calypsoAwaOffset = current.calypsoAwaOffset.copy(
                     loading = true, saving = target != null, error = ""
-                )
+                ),
+                calypsoRawWind = if (target != null) {
+                    RegattaLinkCalypsoRawWindState()
+                } else current.calypsoRawWind
             ) else current
         }
         otaExecutor.execute {
@@ -5384,10 +5391,12 @@ internal class RegattaLinkBleClient(
             !calypsoRawReadRunning.compareAndSet(false, true)
         ) return false
         val generation = sensorInfoGeneration.get()
+        val rawGeneration = calypsoRawGeneration.get()
         otaExecutor.execute {
             fun current(): Boolean =
                 gatt === activeGatt && connected &&
                     sensorInfoGeneration.get() == generation &&
+                    calypsoRawGeneration.get() == rawGeneration &&
                     lastConfigurationState.calypso.boundId == boundId &&
                     lastConfigurationState.calypso.connected
             try {
