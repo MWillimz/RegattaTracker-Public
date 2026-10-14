@@ -1788,13 +1788,17 @@ private fun RegattaLinkBluetoothDevicesSheet(
             val rawWind = configurationState.calypsoRawWind
             val firmwareAge = maxOf(
                 rawWind.awa?.ageMs ?: 2_000L, rawWind.aws?.ageMs ?: 2_000L
-            )
+            ).coerceAtMost(2_001L)
+            val ageBudget = (2_000L - firmwareAge).coerceAtLeast(1L)
             val rawExpired = rememberTelemetryStale(
-                rawWind.receivedAtElapsedMs, (2_000L - firmwareAge).coerceAtLeast(1L)
+                rawWind.receivedAtElapsedMs, ageBudget
             )
             val freshRaw =
                 connected && calypso.connected &&
-                    rawWind.receivedAtElapsedMs != null && !rawExpired &&
+                    rawWind.receivedAtElapsedMs?.let {
+                        val elapsed = SystemClock.elapsedRealtime() - it
+                        elapsed >= 0 && elapsed <= ageBudget && firmwareAge <= 2_000L
+                    } == true && !rawExpired &&
                     rawWind.awa?.status == RegattaLinkCalypsoValueStatus.OK &&
                     rawWind.aws?.status == RegattaLinkCalypsoValueStatus.OK
             val liveAwa = if (freshRaw) {
@@ -1860,7 +1864,7 @@ private fun RegattaLinkBluetoothDevicesSheet(
                 }
             }
             BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                if (maxWidth < 350.dp) {
+                if (maxWidth < 290.dp) {
                     Column {
                         Text(offsetLabel, fontSize = 14.sp)
                         AdjustmentButtons(Modifier.fillMaxWidth())
@@ -1891,6 +1895,12 @@ private fun RegattaLinkBluetoothDevicesSheet(
                     fontSize = 12.sp
                 )
                 RegattaLinkTechnicalDetail(offset.error)
+                TextButton(
+                    onClick = onRefreshCalypsoAwaOffset,
+                    enabled = connected && !offset.loading && !offset.saving
+                ) {
+                    Text(stringResource(R.string.refresh))
+                }
             }
             if (calypso.connected && freshRaw && rawWind.aws?.value == 0) {
                 Text(
