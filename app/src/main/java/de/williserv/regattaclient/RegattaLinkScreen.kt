@@ -466,7 +466,10 @@ internal fun RegattaLinkScreen(
                     !configurationState.diagnosticLogLoading &&
                     !configurationState.factoryResetAwaitingDisconnect &&
                     !configurationState.restartAwaitingDisconnect &&
-                    !nmeaState.rawCanReading,
+                    !nmeaState.rawCanReading &&
+                    (!configurationState.deviceControlBusy ||
+                        configurationState.deviceControlAcceptedOpcode ==
+                            RegattaLinkDeviceControlOpcode.IMU_RAW_MODE),
                 configEnabled = configEnabled,
                 deviceControlBusy = configurationState.deviceControlBusy,
                 deviceControlError = configurationState.deviceControlError,
