@@ -235,6 +235,7 @@ internal fun RegattaLinkScreen(
     onDrainDiagnosticLog: () -> Unit,
     onStopDiagnosticLog: () -> Unit = {},
     onDeviceControl: (RegattaLinkDeviceControlOpcode, Int) -> Unit,
+    onRequestSetUpright: () -> Boolean = { false },
     onRefreshCalypsoSensorInfo: () -> Unit = {},
     onRefreshCalypsoAwaOffset: () -> Unit = {},
     onSetCalypsoAwaOffsetDeg: (Int) -> Unit = {},
@@ -247,6 +248,7 @@ internal fun RegattaLinkScreen(
     onExportRawCapture: () -> Unit,
     onDiscardRawCapture: () -> Unit,
     onDisconnect: () -> Unit,
+    onCancelConnectionAttempt: () -> Unit = {},
     onBack: () -> Unit
 ) {
     val busy = state.status in setOf(
@@ -456,7 +458,19 @@ internal fun RegattaLinkScreen(
                 configurationState = configurationState,
                 boatFramePresentation = boatFramePresentation,
                 controlsEnabled = orientationControlsEnabled,
-                setUprightEnabled = deviceControlEnabled,
+                // Permit confirmation while IMU_RAW_MODE renewal owns Device
+                // Control; the queued upright request runs after that renewal.
+                setUprightEnabled =
+                    connected && configurationState.deviceControlSupported &&
+                    !otaState.isActive && !rawCaptureState.isActive &&
+                    !configurationState.busy &&
+                    !configurationState.diagnosticLogLoading &&
+                    !configurationState.factoryResetAwaitingDisconnect &&
+                    !configurationState.restartAwaitingDisconnect &&
+                    !nmeaState.rawCanReading &&
+                    (!configurationState.deviceControlBusy ||
+                        configurationState.deviceControlAcceptedOpcode ==
+                            RegattaLinkDeviceControlOpcode.IMU_RAW_MODE),
                 configEnabled = configEnabled,
                 deviceControlBusy = configurationState.deviceControlBusy,
                 deviceControlError = configurationState.deviceControlError,
@@ -467,12 +481,7 @@ internal fun RegattaLinkScreen(
                 onRestart = {
                     onDeviceControl(RegattaLinkDeviceControlOpcode.RESTART, 0)
                 },
-                onSetUpright = {
-                    onDeviceControl(
-                        RegattaLinkDeviceControlOpcode.SET_UPRIGHT,
-                        0
-                    )
-                },
+                onSetUpright = onRequestSetUpright,
                 onSetImuRawPreviewEnabled = onSetImuRawPreviewEnabled,
                 onSetImuRawModeEnabled = { enabled ->
                     onDeviceControl(
@@ -609,6 +618,7 @@ internal fun RegattaLinkScreen(
             canDisconnect = !otaState.isActive &&
                 !configurationState.deviceControlBusy &&
                 !configurationState.factoryResetAwaitingDisconnect,
+            onCancelConnectionAttempt = onCancelConnectionAttempt,
             onDisconnect = {
                 devicePickerOpen = false
                 onDisconnect()
@@ -1074,6 +1084,7 @@ private fun RegattaLinkDevicePickerSheet(
     onForgetKnownDevice: (String) -> Boolean,
     canDisconnect: Boolean,
     onDisconnect: () -> Unit,
+    onCancelConnectionAttempt: () -> Unit,
     onDismiss: () -> Unit
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -1089,6 +1100,21 @@ private fun RegattaLinkDevicePickerSheet(
                 fontSize = 22.sp,
                 fontWeight = FontWeight.SemiBold
             )
+            // Global action for the single active connection attempt. Do not
+            // attach it to disconnected known-device rows or manual discovery.
+            if (canCancelRegattaLinkConnectionAttempt(
+                    connectionState.status,
+                    deviceSelectionState.discovery.scanning
+                )
+            ) {
+                TextButton(
+                    onClick = onCancelConnectionAttempt,
+                    enabled = canDisconnect,
+                    modifier = Modifier.padding(top = 4.dp)
+                ) {
+                    Text(stringResource(R.string.regattalink_cancel_connection_attempt))
+                }
+            }
             deviceSelectionState.knownDevices
                 .sortedBy { it.stableId != deviceSelectionState.selectedStableId }
                 .forEach { device ->
@@ -3929,7 +3955,7 @@ private fun RegattaLinkImuSetupSheet(
     onSetMagBackgroundLearningEnabled: (Boolean) -> Unit,
     onSetHeadingTrimDeg: (Int) -> Unit,
     onRestart: () -> Unit,
-    onSetUpright: () -> Unit,
+    onSetUpright: () -> Boolean,
     onSetImuRawPreviewEnabled: (Boolean) -> Unit,
     onSetImuRawModeEnabled: (Boolean) -> Unit,
     onAdjust: (RegattaLinkDeviceControlOpcode, Int) -> Unit,
@@ -3941,6 +3967,7 @@ private fun RegattaLinkImuSetupSheet(
         mutableStateOf((configurationState.motionDampingSeconds ?: 3).toFloat())
     }
     var uprightDialogOpen by rememberSaveable { mutableStateOf(false) }
+    var uprightSubmitRejected by remember { mutableStateOf(false) }
     var uprightPreviewStartedAtElapsedMs by remember {
         mutableStateOf<Long?>(null)
     }
@@ -3998,17 +4025,23 @@ private fun RegattaLinkImuSetupSheet(
         }
     }
 
+    // DisposableEffect(Unit) otherwise captures the initial (false) value,
+    // leaking the raw preview subscription when the sheet is removed.
+    val uprightOpenOnDispose by rememberUpdatedState(uprightDialogOpen)
+    val stopRawPreviewOnDispose by rememberUpdatedState(onSetImuRawPreviewEnabled)
     DisposableEffect(Unit) {
         onDispose {
-            if (uprightDialogOpen) {
-                onSetImuRawModeEnabled(false)
-                onSetImuRawPreviewEnabled(false)
+            if (uprightOpenOnDispose) {
+                // No further renewals: firmware raw mode expires within 1 s.
+                // Do not collide with a pending SET_UPRIGHT or raw renewal.
+                stopRawPreviewOnDispose(false)
             }
         }
     }
 
     val stopUprightPreview = {
-        onSetImuRawModeEnabled(false)
+        // IMU_RAW_MODE(0) would compete for the same exclusive Device
+        // Control lease. Stopping 400-ms renewals lets firmware expire it.
         onSetImuRawPreviewEnabled(false)
         uprightDialogOpen = false
         uprightPreviewStartedAtElapsedMs = null
@@ -4315,13 +4348,27 @@ private fun RegattaLinkImuSetupSheet(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(top = 12.dp)
                             )
+                            if (uprightSubmitRejected) {
+                                Text(
+                                    text = stringResource(
+                                        R.string.regattalink_upright_submission_failed
+                                    ),
+                                    color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.padding(top = 8.dp)
+                                )
+                            }
                         }
                     },
                     confirmButton = {
                         TextButton(
                             onClick = {
-                                onSetUpright()
-                                stopUprightPreview()
+                                if (onSetUpright()) {
+                                    stopUprightPreview()
+                                } else {
+                                    // Keep the confirmation open; an unaccepted
+                                    // calibration must not look successful.
+                                    uprightSubmitRejected = true
+                                }
                             },
                             enabled = setUprightEnabled
                         ) {
@@ -4347,6 +4394,7 @@ private fun RegattaLinkImuSetupSheet(
                     uprightPreviewStartedAtElapsedMs =
                         SystemClock.elapsedRealtime()
                     uprightDialogOpen = true
+                    uprightSubmitRejected = false
                     onSetImuRawPreviewEnabled(true)
                     onSetImuRawModeEnabled(true)
                 },
@@ -4479,6 +4527,7 @@ private fun RegattaLinkImuSetupSheet(
                     modifier = Modifier.padding(top = 8.dp)
                 )
             }
+            RegattaLinkTechnicalDetail(deviceControlError)
 
             TextButton(
                 onClick = onDismiss,

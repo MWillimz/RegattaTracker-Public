@@ -431,6 +431,7 @@
     <string name="regattalink_error_pairing_required">RegattaLink deve essere associato di nuovo.</string>
     <string name="regattalink_enable_bluetooth">Attiva Bluetooth</string>
     <string name="regattalink_search_connect">Cerca / connetti</string>
+    <string name="regattalink_cancel_connection_attempt">Annulla tentativo di connessione</string>
     <string name="regattalink_disconnect">Disconnetti</string>
     <string name="regattalink_permission_denied">Autorizzazione Bluetooth negata.</string>
     <string name="regattalink_error_bluetooth_unavailable">Bluetooth LE non è disponibile.</string>
@@ -696,6 +697,7 @@
     <string name="regattalink_raw_capture_export">Esporta CSV</string>
     <string name="regattalink_raw_capture_discard">Elimina</string>
     <string name="regattalink_device_control">Calibrazione</string>
+    <string name="regattalink_upright_submission_failed">Impossibile avviare la calibrazione verticale. Riprova.</string>
     <string name="regattalink_set_upright">Imposta posizione verticale</string>
     <string name="regattalink_set_upright_instruction">Mantieni barca e RegattaLink fermi nella posizione neutra desiderata durante la calibrazione.</string>
     <string name="regattalink_set_upright_arrow_forward">Il RegattaLink è installato con la freccia rivolta verso prua?</string>
