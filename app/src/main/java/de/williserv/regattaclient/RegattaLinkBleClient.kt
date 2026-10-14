@@ -5180,6 +5180,7 @@ internal class RegattaLinkBleClient(
         val activeGatt = gatt ?: return false
         val boundId = lastConfigurationState.calypso.boundId ?: return false
         if (
+            !lastConfigurationState.calypso.connected ||
             !isConnected() ||
             otaRunning.get() ||
             rawCaptureRunning.get() ||
@@ -5203,7 +5204,8 @@ internal class RegattaLinkBleClient(
                 gatt === activeGatt &&
                     connected &&
                     sensorInfoGeneration.get() == generation &&
-                    lastConfigurationState.calypso.boundId == boundId
+                    lastConfigurationState.calypso.boundId == boundId &&
+                    lastConfigurationState.calypso.connected
 
             try {
                 if (!requestStillCurrent() ||
@@ -6521,7 +6523,10 @@ internal class RegattaLinkBleClient(
     ) {
         val next = synchronized(configurationLock) {
             transform(lastConfigurationState).also {
-                if (it.calypso.boundId != lastConfigurationState.calypso.boundId) {
+                if (
+                    it.calypso.boundId != lastConfigurationState.calypso.boundId ||
+                    it.calypso.connected != lastConfigurationState.calypso.connected
+                ) {
                     sensorInfoGeneration.incrementAndGet()
                 }
                 lastConfigurationState = it
