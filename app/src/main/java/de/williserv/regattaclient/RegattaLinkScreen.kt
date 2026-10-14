@@ -4004,12 +4004,16 @@ private fun RegattaLinkImuSetupSheet(
         }
     }
 
+    // DisposableEffect(Unit) otherwise captures the initial (false) value,
+    // leaking the raw preview subscription when the sheet is removed.
+    val uprightOpenOnDispose by rememberUpdatedState(uprightDialogOpen)
+    val stopRawPreviewOnDispose by rememberUpdatedState(onSetImuRawPreviewEnabled)
     DisposableEffect(Unit) {
         onDispose {
-            if (uprightDialogOpen) {
+            if (uprightOpenOnDispose) {
                 // No further renewals: firmware raw mode expires within 1 s.
                 // Do not collide with a pending SET_UPRIGHT or raw renewal.
-                onSetImuRawPreviewEnabled(false)
+                stopRawPreviewOnDispose(false)
             }
         }
     }
