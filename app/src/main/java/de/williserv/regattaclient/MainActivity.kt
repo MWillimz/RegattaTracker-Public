@@ -1404,7 +1404,7 @@ class MainActivity : ComponentActivity() {
 
                 // Read the Application's observable pending result here. Neither
                 // a permission dialog nor Activity recreation consumes it.
-                if (playStoreUpdateWindowFocused.value && canOfferPlayStoreUpdateNow()) {
+                if (canOfferPlayStoreUpdateNow()) {
                     val gate = (application as RegattaApplication).playStoreUpdateCheckGate
                     PlayStoreUpdateDialog(
                         onUpdate = {
@@ -1450,7 +1450,8 @@ class MainActivity : ComponentActivity() {
                     pendingEventScan.value != null ||
                     pendingTrackingAction != null ||
                     pendingEnterRaceAfterLegal ||
-                    pendingManualRaceLegalOpen
+                    pendingManualRaceLegalOpen,
+            hasWindowFocus = playStoreUpdateWindowFocused.value
         )
 
     private fun checkForPlayStoreUpdateOnce() {
