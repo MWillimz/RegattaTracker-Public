@@ -350,6 +350,7 @@ internal interface RegattaLinkConnectionClient {
         value: Int
     ): Boolean = false
     fun setImuRawPreviewEnabled(enabled: Boolean): Boolean = false
+    fun refreshCalypsoSensorInfo(): Boolean = false
     fun refreshPgnInventory(): Boolean
     fun readRawCanFrames(): Boolean
 
@@ -1096,6 +1097,11 @@ internal class RegattaLinkConnectionManager(
             return false
         }
         return client.setImuRawPreviewEnabled(enabled)
+    }
+
+    fun refreshCalypsoSensorInfo(): Boolean {
+        if (otaState.isActive || rawCaptureState.isActive) return false
+        return client.refreshCalypsoSensorInfo()
     }
 
     fun refreshPgnInventory(): Boolean {

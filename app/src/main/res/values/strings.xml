@@ -635,6 +635,10 @@
     <string name="regattalink_setup_imu">Internal Sensor</string>
     <string name="regattalink_bluetooth_devices">Bluetooth devices</string>
     <string name="regattalink_calypso_wind_sensor">Calypso wind sensor</string>
+    <string name="regattalink_sensor_infos">Infos</string>
+    <string name="regattalink_sensor_info_loading">Loading…</string>
+    <string name="regattalink_sensor_info_empty">No information available.</string>
+    <string name="regattalink_sensor_info_read_failed">Could not read sensor information.</string>
     <string name="regattalink_calypso_bound_sensor">Bound sensor</string>
     <string name="regattalink_calypso_not_bound">Not bound</string>
     <string name="regattalink_calypso_runtime">Status</string>

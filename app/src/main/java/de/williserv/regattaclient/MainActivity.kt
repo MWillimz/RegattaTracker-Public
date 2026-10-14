@@ -1055,6 +1055,9 @@ class MainActivity : ComponentActivity() {
                             onDeviceControl = { opcode, value ->
                                 regattaLinkManager.executeDeviceControl(opcode, value)
                             },
+                            onRefreshCalypsoSensorInfo = {
+                                regattaLinkManager.refreshCalypsoSensorInfo()
+                            },
                             onSetImuRawPreviewEnabled = { enabled ->
                                 regattaLinkManager.setImuRawPreviewEnabled(enabled)
                             },
