@@ -5,6 +5,8 @@ import android.app.Application
 class RegattaApplication : Application() {
     private lateinit var raceSignalController: RaceSignalController
 
+    internal val playStoreUpdateCheckGate = PlayStoreUpdateCheckGate()
+
     internal lateinit var regattaLinkConnectionManager: RegattaLinkConnectionManager
         private set
 

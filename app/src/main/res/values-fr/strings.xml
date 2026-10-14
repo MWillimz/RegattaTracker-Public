@@ -592,6 +592,10 @@
     <string name="regattalink_setup_imu">Internal Sensor</string>
     <string name="regattalink_bluetooth_devices">Appareils Bluetooth</string>
     <string name="regattalink_calypso_wind_sensor">Capteur de vent Calypso</string>
+    <string name="regattalink_sensor_infos">Infos</string>
+    <string name="regattalink_sensor_info_loading">Chargement…</string>
+    <string name="regattalink_sensor_info_empty">Aucune information disponible.</string>
+    <string name="regattalink_sensor_info_read_failed">Impossible de lire les informations du capteur.</string>
     <string name="regattalink_calypso_bound_sensor">Capteur associé</string>
     <string name="regattalink_calypso_not_bound">Non associé</string>
     <string name="regattalink_calypso_runtime">État</string>
@@ -829,4 +833,8 @@
     <string name="regattalink_forget">Oublier</string>
     <string name="regattalink_forget_connected">Impossible d’oublier le RegattaLink connecté.</string>
     <string name="regattalink_forget_failed">Impossible d’oublier le RegattaLink. Réessayez.</string>
+    <string name="play_store_update_title">Mise à jour disponible</string>
+    <string name="play_store_update_message">Une nouvelle version de RegattaTracker est disponible sur Google Play.</string>
+    <string name="play_store_update_action">Mettre à jour</string>
+    <string name="play_store_update_later">Plus tard</string>
 </resources>

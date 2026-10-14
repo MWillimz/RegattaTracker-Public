@@ -9,6 +9,50 @@ import org.junit.Test
 class RegattaLinkScreenTest {
 
     @Test
+    fun setupMenuRequiresFullyConnectedRLink() {
+        assertTrue(shouldShowRegattaLinkSetupMenu(RegattaLinkConnectionStatus.CONNECTED))
+        RegattaLinkConnectionStatus.values()
+            .filterNot { it == RegattaLinkConnectionStatus.CONNECTED }
+            .forEach { status ->
+                assertFalse(
+                    "Setup menu should be hidden in $status",
+                    shouldShowRegattaLinkSetupMenu(status)
+                )
+            }
+    }
+
+    @Test
+    fun switchSheetIdentifiesOnlyTheActiveRLinkForDisconnect() {
+        val active = RegattaLinkConfiguredDevice("A", "44:B1:76:48:31:B2", "First")
+        val other = RegattaLinkConfiguredDevice("B", "44:B1:76:48:31:CE", "Second")
+        val connected = RegattaLinkClientState(
+            status = RegattaLinkConnectionStatus.CONNECTED,
+            deviceAddress = active.deviceAddress
+        )
+
+        // While device info is still unavailable, its current BLE address suffices.
+        assertTrue(isConnectedRegattaLinkPickerDevice(active, connected, null))
+        assertFalse(isConnectedRegattaLinkPickerDevice(other, connected, null))
+
+        // When the stable identity is known, it takes priority over any stale
+        // address mappings in the known-device list.
+        assertTrue(isConnectedRegattaLinkPickerDevice(active, connected, active.stableId))
+        assertFalse(isConnectedRegattaLinkPickerDevice(other, connected, active.stableId))
+        assertFalse(
+            isConnectedRegattaLinkPickerDevice(
+                other.copy(deviceAddress = active.deviceAddress),
+                connected,
+                active.stableId
+            )
+        )
+
+        // Never offer disconnect for an RLink that is merely being reconnected.
+        val waiting = connected.copy(status = RegattaLinkConnectionStatus.WAITING)
+        assertFalse(isConnectedRegattaLinkPickerDevice(active, waiting, active.stableId))
+        assertFalse(isConnectedRegattaLinkPickerDevice(active, waiting, null))
+    }
+
+    @Test
     fun onlyDisconnectedKnownRLinksCanBeForgotten() {
         val a = RegattaLinkConfiguredDevice("A", "44:B1:76:48:31:B2", "Same")
         val b = RegattaLinkConfiguredDevice("B", "44:B1:76:48:31:CE", "Same")

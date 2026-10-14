@@ -65,6 +65,24 @@ import kotlinx.coroutines.delay
 import java.util.Locale
 import kotlin.math.roundToInt
 
+internal fun shouldShowRegattaLinkSetupMenu(status: RegattaLinkConnectionStatus): Boolean =
+    status == RegattaLinkConnectionStatus.CONNECTED
+
+internal fun isConnectedRegattaLinkPickerDevice(
+    device: RegattaLinkConfiguredDevice,
+    connectionState: RegattaLinkClientState,
+    connectedStableId: String?
+): Boolean =
+    connectionState.status == RegattaLinkConnectionStatus.CONNECTED &&
+        if (connectedStableId != null) {
+            connectedStableId == device.stableId
+        } else {
+            connectionState.deviceAddress.isNotBlank() &&
+                connectionState.deviceAddress.equals(
+                    device.deviceAddress, ignoreCase = true
+                )
+        }
+
 internal fun shouldAutoRefreshPgnInventory(
     detailsExpanded: Boolean,
     inventorySupported: Boolean,
@@ -216,6 +234,7 @@ internal fun RegattaLinkScreen(
     onDrainDiagnosticLog: () -> Unit,
     onStopDiagnosticLog: () -> Unit = {},
     onDeviceControl: (RegattaLinkDeviceControlOpcode, Int) -> Unit,
+    onRefreshCalypsoSensorInfo: () -> Unit = {},
     onSetImuRawPreviewEnabled: (Boolean) -> Unit = {},
     onRefreshPgnInventory: () -> Unit,
     onReadRawFrames: () -> Unit,
@@ -260,7 +279,10 @@ internal fun RegattaLinkScreen(
     var resetDialogOpen by rememberSaveable { mutableStateOf(false) }
     var nameDraft by rememberSaveable { mutableStateOf("") }
 
-    val connected = state.status == RegattaLinkConnectionStatus.CONNECTED
+    val connected = shouldShowRegattaLinkSetupMenu(state.status)
+    LaunchedEffect(connected) {
+        if (!connected) settingsMenuExpanded = false
+    }
     val deviceKey = state.deviceInfo?.stableId ?: state.deviceAddress
     var calypsoStatusRequestedForOpen by remember(
         deviceKey,
@@ -495,6 +517,7 @@ internal fun RegattaLinkScreen(
                 onDeleteCalypso = {
                     onDeviceControl(RegattaLinkDeviceControlOpcode.CALYPSO_DELETE, 0)
                 },
+                onRefreshCalypsoSensorInfo = onRefreshCalypsoSensorInfo,
                 onApplyBluetoothConfigAndRestart =
                     onApplyBluetoothConfigAndRestart,
                 onDismiss = { activeSetupDestination = null }
@@ -576,6 +599,13 @@ internal fun RegattaLinkScreen(
                 devicePickerOpen = false
             },
             onForgetKnownDevice = onForgetKnownDevice,
+            canDisconnect = !otaState.isActive &&
+                !configurationState.deviceControlBusy &&
+                !configurationState.factoryResetAwaitingDisconnect,
+            onDisconnect = {
+                devicePickerOpen = false
+                onDisconnect()
+            },
             onDismiss = { devicePickerOpen = false }
         )
     }
@@ -595,38 +625,40 @@ internal fun RegattaLinkScreen(
                 fontSize = 26.sp,
                 fontWeight = FontWeight.SemiBold
             )
-            Box {
-                Button(
-                    onClick = { settingsMenuExpanded = true }
-                ) {
-                    Text(stringResource(R.string.regattalink_setup))
-                }
-                DropdownMenu(
-                    expanded = settingsMenuExpanded,
-                    onDismissRequest = { settingsMenuExpanded = false }
-                ) {
-                    regattaLinkSetupMenuItems
-                        .filter { menuItem ->
-                            when (menuItem.destination) {
-                                RegattaLinkSetupDestination.IMU ->
-                                    configurationState.imuSessionAvailable != false ||
-                                        configurationState.magSessionAvailable != false
-                                RegattaLinkSetupDestination.NMEA ->
-                                    configurationState.canSessionAvailable != false ||
-                                        configurationState.nmea0183SessionAvailable != false
-                                else -> true
+            if (connected) {
+                Box {
+                    Button(
+                        onClick = { settingsMenuExpanded = true }
+                    ) {
+                        Text(stringResource(R.string.regattalink_setup))
+                    }
+                    DropdownMenu(
+                        expanded = settingsMenuExpanded,
+                        onDismissRequest = { settingsMenuExpanded = false }
+                    ) {
+                        regattaLinkSetupMenuItems
+                            .filter { menuItem ->
+                                when (menuItem.destination) {
+                                    RegattaLinkSetupDestination.IMU ->
+                                        configurationState.imuSessionAvailable != false ||
+                                            configurationState.magSessionAvailable != false
+                                    RegattaLinkSetupDestination.NMEA ->
+                                        configurationState.canSessionAvailable != false ||
+                                            configurationState.nmea0183SessionAvailable != false
+                                    else -> true
+                                }
                             }
+                            .forEach { menuItem ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(stringResource(menuItem.labelResId))
+                                },
+                                onClick = {
+                                    settingsMenuExpanded = false
+                                    activeSetupDestination = menuItem.destination
+                                }
+                            )
                         }
-                        .forEach { menuItem ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(stringResource(menuItem.labelResId))
-                            },
-                            onClick = {
-                                settingsMenuExpanded = false
-                                activeSetupDestination = menuItem.destination
-                            }
-                        )
                     }
                 }
             }
@@ -895,21 +927,6 @@ internal fun RegattaLinkScreen(
             }
         }
 
-        if (
-            state.status != RegattaLinkConnectionStatus.IDLE &&
-            state.status != RegattaLinkConnectionStatus.BLUETOOTH_OFF
-        ) {
-            TextButton(
-                onClick = onDisconnect,
-                enabled = !otaState.isActive &&
-                    !configurationState.deviceControlBusy &&
-                    !configurationState.factoryResetAwaitingDisconnect,
-                modifier = Modifier.padding(top = 4.dp)
-            ) {
-                Text(stringResource(R.string.regattalink_disconnect))
-            }
-        }
-
         Button(
             onClick = onBack,
             enabled = !otaState.isActive,
@@ -931,35 +948,46 @@ internal fun KnownRegattaLinkPickerRow(
     isSelected: Boolean,
     isConnected: Boolean,
     canSelect: Boolean,
-    onSelect: () -> Unit
+    onSelect: () -> Unit,
+    onDisconnect: (() -> Unit)? = null,
+    canDisconnect: Boolean = false
 ) {
-    TextButton(
-        onClick = onSelect,
-        enabled = canSelect && !isConnected,
-        // Opaque at rest: the destructive swipe background must only be visible
-        // when the row is actually moved to the left.
+    // Keep the row opaque above the swipe-to-forget background.
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Text(
-                text = device.deviceName.ifBlank {
-                    stringResource(R.string.regattalink_title)
-                },
-                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
-            )
-            Text(
-                text = stringResource(
-                    when {
-                        isConnected -> R.string.regattalink_status_connected
-                        isSelected -> R.string.regattalink_selected
-                        else -> R.string.regattalink_known
-                    }
-                ) + " · ID …" + device.stableId.takeLast(8),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 12.sp
-            )
+        TextButton(
+            onClick = onSelect,
+            enabled = canSelect && !isConnected,
+            modifier = Modifier.weight(1f)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = device.deviceName.ifBlank {
+                        stringResource(R.string.regattalink_title)
+                    },
+                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                )
+                Text(
+                    text = stringResource(
+                        when {
+                            isConnected -> R.string.regattalink_status_connected
+                            isSelected -> R.string.regattalink_selected
+                            else -> R.string.regattalink_known
+                        }
+                    ) + " · ID …" + device.stableId.takeLast(8),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp
+                )
+            }
+        }
+        if (isConnected && onDisconnect != null) {
+            TextButton(onClick = onDisconnect, enabled = canDisconnect) {
+                Text(stringResource(R.string.regattalink_disconnect))
+            }
         }
     }
 }
@@ -1037,6 +1065,8 @@ private fun RegattaLinkDevicePickerSheet(
     onSelectKnownDevice: (String) -> Unit,
     onConnectDiscoveredDevice: (String) -> Unit,
     onForgetKnownDevice: (String) -> Boolean,
+    canDisconnect: Boolean,
+    onDisconnect: () -> Unit,
     onDismiss: () -> Unit
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -1056,12 +1086,9 @@ private fun RegattaLinkDevicePickerSheet(
                 .sortedBy { it.stableId != deviceSelectionState.selectedStableId }
                 .forEach { device ->
                     key(device.stableId) {
-                        val isConnected = connectedStableId == device.stableId ||
-                            (connectionState.status == RegattaLinkConnectionStatus.CONNECTED &&
-                                connectionState.deviceAddress.isNotBlank() &&
-                                connectionState.deviceAddress.equals(
-                                    device.deviceAddress, ignoreCase = true
-                                ))
+                        val isConnected = isConnectedRegattaLinkPickerDevice(
+                            device, connectionState, connectedStableId
+                        )
                         val isSelected =
                             deviceSelectionState.selectedStableId == device.stableId
                         val canForget = canSelect &&
@@ -1081,7 +1108,9 @@ private fun RegattaLinkDevicePickerSheet(
                                 isSelected = isSelected,
                                 isConnected = isConnected,
                                 canSelect = canSelect,
-                                onSelect = { onSelectKnownDevice(device.stableId) }
+                                onSelect = { onSelectKnownDevice(device.stableId) },
+                                onDisconnect = onDisconnect.takeIf { isConnected },
+                                canDisconnect = canDisconnect
                             )
                         }
                     }
@@ -1577,6 +1606,7 @@ private fun RegattaLinkBluetoothDevicesSheet(
     calypsoSupported: Boolean,
     onScanCalypso: () -> Unit,
     onDeleteCalypso: () -> Unit,
+    onRefreshCalypsoSensorInfo: () -> Unit,
     onApplyBluetoothConfigAndRestart: (UInt) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -1606,6 +1636,14 @@ private fun RegattaLinkBluetoothDevicesSheet(
             REGATTALINK_CONFIG_CALYPSO_ENABLE
         )
     val calypso = configurationState.calypso
+    var infosExpanded by remember(deviceKey, calypso.boundId, calypso.connected) {
+        mutableStateOf(false)
+    }
+    LaunchedEffect(deviceKey, connected, calypso.statusKnown, calypso.boundId, calypso.connected) {
+        if (connected && calypso.statusKnown && calypso.connected) {
+            onRefreshCalypsoSensorInfo()
+        }
+    }
     var confirmCalypsoDelete by remember(deviceKey) { mutableStateOf(false) }
     val deleteActive = configurationState.deviceControlBusy &&
         configurationState.deviceControlAcceptedOpcode ==
@@ -1723,6 +1761,47 @@ private fun RegattaLinkBluetoothDevicesSheet(
                         )
                 }
             )
+
+            if (calypso.statusKnown && calypso.connected) {
+                TextButton(
+                    onClick = { infosExpanded = !infosExpanded },
+                    modifier = Modifier.padding(top = 8.dp)
+                ) {
+                    Text(
+                        stringResource(R.string.regattalink_sensor_infos) +
+                            if (infosExpanded) " ▴" else " ▾"
+                    )
+                }
+                if (infosExpanded) {
+                    val infos = configurationState.calypsoSensorInfo
+                    when {
+                        infos.loading -> Text(
+                            stringResource(R.string.regattalink_sensor_info_loading),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        infos.error.isNotBlank() -> {
+                            Text(
+                                stringResource(R.string.regattalink_sensor_info_read_failed),
+                                color = MaterialTheme.colorScheme.error
+                            )
+                            RegattaLinkTechnicalDetail(infos.error)
+                        }
+                        infos.entries.isEmpty() -> Text(
+                            stringResource(R.string.regattalink_sensor_info_empty),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        else -> infos.entries.forEach { entry ->
+                            telemetryValue(label = entry.key, value = entry.value)
+                        }
+                    }
+                    TextButton(
+                        onClick = onRefreshCalypsoSensorInfo,
+                        enabled = connected && configEnabled && !infos.loading
+                    ) {
+                        Text(stringResource(R.string.refresh))
+                    }
+                }
+            }
 
             Row(
                 modifier = Modifier
@@ -4097,7 +4176,7 @@ private fun RegattaLinkImuSetupSheet(
                     onSetImuRawPreviewEnabled(true)
                     onSetImuRawModeEnabled(true)
                 },
-                enabled = setUprightEnabled,
+                enabled = setUprightEnabled && !uprightDialogOpen,
                 modifier = Modifier.padding(top = 10.dp)
             ) {
                 Text(stringResource(R.string.regattalink_set_upright))
@@ -4135,7 +4214,7 @@ private fun RegattaLinkImuSetupSheet(
                     status = controlStatus,
                     liveHeelValue = liveHeelValue,
                     livePitchValue = livePitchValue,
-                    enabled = controlsEnabled,
+                    enabled = controlsEnabled && !uprightDialogOpen,
                     onAdjust = onAdjust,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -4205,7 +4284,7 @@ private fun RegattaLinkImuSetupSheet(
                 )
             }
 
-            if (deviceControlBusy) {
+            if (deviceControlBusy && !uprightDialogOpen) {
                 Text(
                     text = controlStatus
                         ?.takeIf { !it.phase.isTerminal }

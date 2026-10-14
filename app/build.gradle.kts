@@ -248,6 +248,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation("androidx.fragment:fragment:1.8.9")
     implementation("androidx.work:work-runtime:2.11.2")
+    implementation("com.google.android.play:app-update:2.1.0")
     testImplementation(libs.junit)
     testImplementation("org.robolectric:robolectric:4.16.1")
     testImplementation("androidx.work:work-testing:2.11.2")
