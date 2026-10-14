@@ -42,9 +42,11 @@ internal fun shouldOfferPlayStoreUpdate(
     screen: Screen,
     raceTrackingActive: Boolean,
     manualTrackingActive: Boolean,
-    blockingFlowActive: Boolean
+    blockingFlowActive: Boolean,
+    hasWindowFocus: Boolean = true
 ): Boolean =
     isPlayUpdateAvailable &&
+        hasWindowFocus &&
         screen == Screen.HOME &&
         !raceTrackingActive &&
         !manualTrackingActive &&
