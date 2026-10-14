@@ -25,11 +25,11 @@ internal fun regattaLinkCalypso0031Request(func: Int, value: Int = 0): ByteArray
     )
 }
 
-internal enum class RegattaLinkCalypsoValueStatus {
+enum class RegattaLinkCalypsoValueStatus {
     OK, STALE, NOT_AVAILABLE
 }
 
-internal data class RegattaLinkCalypsoValue(
+data class RegattaLinkCalypsoValue(
     val func: Int,
     val value: Int?,
     val unit: String,
@@ -88,7 +88,9 @@ internal fun parseRegattaLinkCalypsoValue(
     val valueLong = integer("value")
     val age = integer("age_ms")
     require(age == null || age >= 0)
-    val value = valueLong?.also { require(it in Int.MIN_VALUE..Int.MAX_VALUE) }?.toInt()
+    val value = valueLong?.also {
+        require(it >= Int.MIN_VALUE.toLong() && it <= Int.MAX_VALUE.toLong())
+    }?.toInt()
     val unit = obj.getString("unit")
     require(unit == if (expectedFunc == 0x02) "0.01m/s" else "deg")
     val status = when (obj.getString("status")) {

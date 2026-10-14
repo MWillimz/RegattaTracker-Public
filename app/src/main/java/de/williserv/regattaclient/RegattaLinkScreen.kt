@@ -5,6 +5,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -235,6 +236,9 @@ internal fun RegattaLinkScreen(
     onStopDiagnosticLog: () -> Unit = {},
     onDeviceControl: (RegattaLinkDeviceControlOpcode, Int) -> Unit,
     onRefreshCalypsoSensorInfo: () -> Unit = {},
+    onRefreshCalypsoAwaOffset: () -> Unit = {},
+    onSetCalypsoAwaOffsetDeg: (Int) -> Unit = {},
+    onRefreshCalypsoRawWind: () -> Unit = {},
     onSetImuRawPreviewEnabled: (Boolean) -> Unit = {},
     onRefreshPgnInventory: () -> Unit,
     onReadRawFrames: () -> Unit,
@@ -518,6 +522,9 @@ internal fun RegattaLinkScreen(
                     onDeviceControl(RegattaLinkDeviceControlOpcode.CALYPSO_DELETE, 0)
                 },
                 onRefreshCalypsoSensorInfo = onRefreshCalypsoSensorInfo,
+                onRefreshCalypsoAwaOffset = onRefreshCalypsoAwaOffset,
+                onSetCalypsoAwaOffsetDeg = onSetCalypsoAwaOffsetDeg,
+                onRefreshCalypsoRawWind = onRefreshCalypsoRawWind,
                 onApplyBluetoothConfigAndRestart =
                     onApplyBluetoothConfigAndRestart,
                 onDismiss = { activeSetupDestination = null }
@@ -1607,6 +1614,9 @@ private fun RegattaLinkBluetoothDevicesSheet(
     onScanCalypso: () -> Unit,
     onDeleteCalypso: () -> Unit,
     onRefreshCalypsoSensorInfo: () -> Unit,
+    onRefreshCalypsoAwaOffset: () -> Unit,
+    onSetCalypsoAwaOffsetDeg: (Int) -> Unit,
+    onRefreshCalypsoRawWind: () -> Unit,
     onApplyBluetoothConfigAndRestart: (UInt) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -1642,6 +1652,18 @@ private fun RegattaLinkBluetoothDevicesSheet(
     LaunchedEffect(deviceKey, connected, calypso.statusKnown, calypso.boundId, calypso.connected) {
         if (connected && calypso.statusKnown && calypso.connected) {
             onRefreshCalypsoSensorInfo()
+        }
+    }
+    LaunchedEffect(deviceKey, connected, calypso.statusKnown) {
+        if (connected && calypso.statusKnown) onRefreshCalypsoAwaOffset()
+    }
+    // Poll only while this sheet is composed. Busy ticks are dropped, not queued.
+    LaunchedEffect(deviceKey, connected, calypso.statusKnown, calypso.connected, calypso.boundId) {
+        if (connected && calypso.statusKnown && calypso.connected) {
+            while (true) {
+                onRefreshCalypsoRawWind()
+                delay(1_000L)
+            }
         }
     }
     var confirmCalypsoDelete by remember(deviceKey) { mutableStateOf(false) }
@@ -1762,6 +1784,124 @@ private fun RegattaLinkBluetoothDevicesSheet(
                 }
             )
 
+            val offset = configurationState.calypsoAwaOffset
+            val rawWind = configurationState.calypsoRawWind
+            val firmwareAge = maxOf(
+                rawWind.awa?.ageMs ?: 2_000L, rawWind.aws?.ageMs ?: 2_000L
+            )
+            val rawExpired = rememberTelemetryStale(
+                rawWind.receivedAtElapsedMs, (2_000L - firmwareAge).coerceAtLeast(1L)
+            )
+            val freshRaw =
+                connected && calypso.connected &&
+                    rawWind.receivedAtElapsedMs != null && !rawExpired &&
+                    rawWind.awa?.status == RegattaLinkCalypsoValueStatus.OK &&
+                    rawWind.aws?.status == RegattaLinkCalypsoValueStatus.OK
+            val liveAwa = if (freshRaw) {
+                regattaLinkCalypsoPreviewAwa(
+                    rawWind.awa?.value, rawWind.aws?.value, offset.valueDeg
+                )
+            } else null
+            val liveAws = if (freshRaw) {
+                rawWind.aws?.value?.let { it / 100.0 }
+            } else null
+            val canAdjustOffset =
+                connected && configEnabled && calypsoSupported &&
+                    !configurationState.deviceControlBusy &&
+                    !offset.loading && !offset.saving && offset.valueDeg != null
+
+            Text(
+                text = stringResource(R.string.regattalink_calypso_wind_correction),
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 12.dp)
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "AWA " + (liveAwa?.let { "${it}°" } ?: "—"),
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = "AWS " + (liveAws?.let {
+                        formatTelemetry(regattaLinkBoatKnots(it), " kn", 1)
+                    } ?: "—"),
+                    fontSize = 14.sp,
+                    maxLines = 1
+                )
+            }
+            val offsetLabel = stringResource(R.string.regattalink_calypso_wind_offset) +
+                " " + (offset.valueDeg?.let { if (it > 0) "+${it}°" else "${it}°" } ?: "—")
+            @Composable
+            fun AdjustmentButtons(modifier: Modifier = Modifier) {
+                Row(
+                    modifier = modifier,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    RegattaLinkOrientationActionButton(
+                        text = "−1°",
+                        contentDescription = offsetLabel + " −1°",
+                        enabled = canAdjustOffset && offset.valueDeg!! > -180,
+                        onClick = { onSetCalypsoAwaOffsetDeg(offset.valueDeg!! - 1) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    RegattaLinkOrientationActionButton(
+                        text = "+1°",
+                        contentDescription = offsetLabel + " +1°",
+                        enabled = canAdjustOffset && offset.valueDeg!! < 180,
+                        onClick = { onSetCalypsoAwaOffsetDeg(offset.valueDeg!! + 1) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                if (maxWidth < 350.dp) {
+                    Column {
+                        Text(offsetLabel, fontSize = 14.sp)
+                        AdjustmentButtons(Modifier.fillMaxWidth())
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(offsetLabel, fontSize = 14.sp, maxLines = 1,
+                            modifier = Modifier.weight(1f))
+                        AdjustmentButtons(Modifier.weight(1.4f))
+                    }
+                }
+            }
+            if (offset.loading) {
+                Text(
+                    stringResource(R.string.regattalink_sensor_info_loading),
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (offset.error.isNotBlank()) {
+                Text(
+                    stringResource(R.string.regattalink_calypso_offset_error),
+                    color = MaterialTheme.colorScheme.error,
+                    fontSize = 12.sp
+                )
+                RegattaLinkTechnicalDetail(offset.error)
+            }
+            if (calypso.connected && freshRaw && rawWind.aws?.value == 0) {
+                Text(
+                    stringResource(R.string.regattalink_calypso_wind_calm),
+                    fontSize = 12.sp
+                )
+            }
+            if (calypso.connected && rawWind.error.isNotBlank()) {
+                RegattaLinkTechnicalDetail(rawWind.error)
+            }
+
             if (calypso.statusKnown && calypso.connected) {
                 TextButton(
                     onClick = { infosExpanded = !infosExpanded },
@@ -1797,6 +1937,30 @@ private fun RegattaLinkBluetoothDevicesSheet(
                     TextButton(
                         onClick = onRefreshCalypsoSensorInfo,
                         enabled = connected && configEnabled && !infos.loading
+                    ) {
+                        Text(stringResource(R.string.refresh))
+                    }
+                    Text(
+                        stringResource(R.string.regattalink_calypso_raw_values),
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    telemetryValue(
+                        label = "Raw AWA",
+                        value = if (freshRaw) {
+                            rawWind.awa?.value?.let { "${it}°" } ?: "—"
+                        } else "—"
+                    )
+                    telemetryValue(
+                        label = "Raw AWS",
+                        value = if (freshRaw) {
+                            rawWind.aws?.value?.let { formatTelemetry(it / 100.0, " m/s", 2) }
+                                ?: "—"
+                        } else "—"
+                    )
+                    TextButton(
+                        onClick = onRefreshCalypsoRawWind,
+                        enabled = connected && calypso.connected && configEnabled
                     ) {
                         Text(stringResource(R.string.refresh))
                     }
