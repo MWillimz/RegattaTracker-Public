@@ -30,6 +30,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import com.google.android.play.core.appupdate.AppUpdateManagerFactory
+import com.google.android.play.core.install.model.UpdateAvailability
 import de.williserv.regattaclient.ui.theme.RegattaClientTheme
 import org.json.JSONException
 import org.json.JSONObject
@@ -146,6 +148,7 @@ class MainActivity : ComponentActivity() {
 
     private val showBoatConfirmDialog = mutableStateOf(false)
     private val showRegistrationReminderDialog = mutableStateOf(false)
+    private val showPlayStoreUpdateDialog = mutableStateOf(false)
 
     private val raceLegalHash = mutableStateOf("")
     private val raceLegalVersion = mutableStateOf("")
@@ -1387,6 +1390,23 @@ class MainActivity : ComponentActivity() {
                     EnterRaceServerCheckOverlay()
                 }
 
+                if (showPlayStoreUpdateDialog.value) {
+                    val allowed = canOfferPlayStoreUpdateNow()
+                    LaunchedEffect(allowed) {
+                        // A race/legal action taking priority dismisses, not postpones, the offer.
+                        if (!allowed) showPlayStoreUpdateDialog.value = false
+                    }
+                    if (allowed) {
+                        PlayStoreUpdateDialog(
+                            onUpdate = {
+                                showPlayStoreUpdateDialog.value = false
+                                openOwnPlayStoreListing()
+                            },
+                            onLater = { showPlayStoreUpdateDialog.value = false }
+                        )
+                    }
+                }
+
             }
         }
 
@@ -1397,6 +1417,52 @@ class MainActivity : ComponentActivity() {
         updateConnectionUiState()
         requestPermissionsForApp()
         handler.postDelayed(uiRefreshRunnable, 1000L)
+        checkForPlayStoreUpdateOnce()
+    }
+
+    private fun canOfferPlayStoreUpdateNow(): Boolean =
+        shouldOfferPlayStoreUpdate(
+            isPlayUpdateAvailable = true,
+            screen = currentScreen.value,
+            raceTrackingActive = inRace.value,
+            manualTrackingActive = manualTracking.value,
+            blockingFlowActive =
+                showTrackingConsentDialog.value ||
+                    showClearConfirmDialog.value ||
+                    showBoatConfirmDialog.value ||
+                    showRegistrationReminderDialog.value ||
+                    showClearRaceSetupDialog.value ||
+                    showOcsDecisionDialog.value ||
+                    showRetireConfirmDialog.value ||
+                    showFinishDetectedDialog.value ||
+                    showEventUpdateRecommendedDialog.value ||
+                    showEventUpdateRequiredDialog.value ||
+                    enterRaceServerCheckInProgress.value ||
+                    pendingEventScan.value != null ||
+                    pendingTrackingAction != null ||
+                    pendingEnterRaceAfterLegal ||
+                    pendingManualRaceLegalOpen
+        )
+
+    private fun checkForPlayStoreUpdateOnce() {
+        // Google Play is authoritative: no guessed version codes or sideload checks.
+        if (!(application as RegattaApplication).playStoreUpdateCheckGate.tryStart()) return
+        if (BuildConfig.DEBUG || inRace.value || manualTracking.value) return
+
+        runCatching {
+            AppUpdateManagerFactory.create(applicationContext).appUpdateInfo
+                .addOnSuccessListener(this) { info ->
+                    if (
+                        asyncLifetime.isActive() &&
+                        hasWindowFocus() &&
+                        info.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE &&
+                        canOfferPlayStoreUpdateNow()
+                    ) {
+                        showPlayStoreUpdateDialog.value = true
+                    }
+                }
+        }
+        // Missing/offline Play Store or failed checks never affect startup.
     }
 
     override fun onNewIntent(intent: Intent) {
