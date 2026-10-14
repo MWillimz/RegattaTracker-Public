@@ -149,6 +149,9 @@ class MainActivity : ComponentActivity() {
     private val showBoatConfirmDialog = mutableStateOf(false)
     private val showRegistrationReminderDialog = mutableStateOf(false)
     private val playStoreUpdateWindowFocused = mutableStateOf(false)
+    // The dialog itself takes window focus; preserve it until handled or
+    // another higher-priority flow preempts the notice.
+    private val playStoreUpdateDialogPresented = mutableStateOf(false)
 
     private val raceLegalHash = mutableStateOf("")
     private val raceLegalVersion = mutableStateOf("")
@@ -1402,16 +1405,29 @@ class MainActivity : ComponentActivity() {
                     EnterRaceServerCheckOverlay()
                 }
 
-                // Read the Application's observable pending result here. Neither
-                // a permission dialog nor Activity recreation consumes it.
-                if (canOfferPlayStoreUpdateNow()) {
+                // Keep the Play result in Application state; only the visible
+                // dialog belongs to this Activity. An Android permission dialog
+                // cannot consume the offer, and our own dialog may take focus.
+                val canPresentUpdate = canOfferPlayStoreUpdateNow()
+                LaunchedEffect(canPresentUpdate, playStoreUpdateWindowFocused.value) {
+                    if (!canPresentUpdate) {
+                        playStoreUpdateDialogPresented.value = false
+                    } else if (playStoreUpdateWindowFocused.value) {
+                        playStoreUpdateDialogPresented.value = true
+                    }
+                }
+                if (canPresentUpdate && playStoreUpdateDialogPresented.value) {
                     val gate = (application as RegattaApplication).playStoreUpdateCheckGate
                     PlayStoreUpdateDialog(
                         onUpdate = {
                             gate.markHandled()
+                            playStoreUpdateDialogPresented.value = false
                             openOwnPlayStoreListing()
                         },
-                        onLater = { gate.markHandled() }
+                        onLater = {
+                            gate.markHandled()
+                            playStoreUpdateDialogPresented.value = false
+                        }
                     )
                 }
 
@@ -1451,7 +1467,8 @@ class MainActivity : ComponentActivity() {
                     pendingTrackingAction != null ||
                     pendingEnterRaceAfterLegal ||
                     pendingManualRaceLegalOpen,
-            hasWindowFocus = playStoreUpdateWindowFocused.value
+            hasWindowFocus = playStoreUpdateWindowFocused.value,
+            offerAlreadyPresented = playStoreUpdateDialogPresented.value
         )
 
     private fun checkForPlayStoreUpdateOnce() {
