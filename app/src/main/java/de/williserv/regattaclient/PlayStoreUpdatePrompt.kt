@@ -8,14 +8,32 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.res.stringResource
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** Application-scoped: Activity recreation must not start a second Play check. */
+/**
+ * Process-scoped Play check and pending offer. A Play callback may arrive while
+ * a permission dialog owns the window or after the requesting Activity was
+ * recreated; neither case is allowed to consume the offer.
+ */
 internal class PlayStoreUpdateCheckGate {
+    private enum class Offer { NONE, AVAILABLE, HANDLED }
+
     private val started = AtomicBoolean(false)
+    private val offer = mutableStateOf(Offer.NONE)
+
+    val hasPendingOffer: Boolean get() = offer.value == Offer.AVAILABLE
 
     fun tryStart(): Boolean = started.compareAndSet(false, true)
+
+    fun recordAvailable() {
+        if (offer.value != Offer.HANDLED) offer.value = Offer.AVAILABLE
+    }
+
+    fun markHandled() {
+        offer.value = Offer.HANDLED
+    }
 }
 
 /** A Play update notice must never preempt race operation or a higher-priority flow. */
