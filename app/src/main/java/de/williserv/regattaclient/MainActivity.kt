@@ -148,7 +148,10 @@ class MainActivity : ComponentActivity() {
 
     private val showBoatConfirmDialog = mutableStateOf(false)
     private val showRegistrationReminderDialog = mutableStateOf(false)
-    private val showPlayStoreUpdateDialog = mutableStateOf(false)
+    private val playStoreUpdateWindowFocused = mutableStateOf(false)
+    // The dialog itself takes window focus; preserve it until handled or
+    // another higher-priority flow preempts the notice.
+    private val playStoreUpdateDialogPresented = mutableStateOf(false)
 
     private val raceLegalHash = mutableStateOf("")
     private val raceLegalVersion = mutableStateOf("")
@@ -997,6 +1000,9 @@ class MainActivity : ComponentActivity() {
                             onSelectKnownDevice =
                                 ::startRegattaLinkKnownDeviceSelection,
                             onForgetKnownDevice = ::forgetInactiveRegattaLink,
+                            onCancelConnectionAttempt = {
+                                regattaLinkManager.cancelConnectionAttempt()
+                            },
                             onConnectDiscoveredDevice =
                                 ::startRegattaLinkDiscoveredDeviceConnection,
                             onEnableBluetooth = ::requestEnableRegattaLinkBluetooth,
@@ -1058,8 +1064,20 @@ class MainActivity : ComponentActivity() {
                             onDeviceControl = { opcode, value ->
                                 regattaLinkManager.executeDeviceControl(opcode, value)
                             },
+                            onRequestSetUpright = {
+                                regattaLinkManager.requestSetUprightFromPreview()
+                            },
                             onRefreshCalypsoSensorInfo = {
                                 regattaLinkManager.refreshCalypsoSensorInfo()
+                            },
+                            onRefreshCalypsoAwaOffset = {
+                                regattaLinkManager.refreshCalypsoAwaOffset()
+                            },
+                            onSetCalypsoAwaOffsetDeg = { degrees ->
+                                regattaLinkManager.setCalypsoAwaOffsetDeg(degrees)
+                            },
+                            onRefreshCalypsoRawWind = {
+                                regattaLinkManager.refreshCalypsoRawWind()
                             },
                             onSetImuRawPreviewEnabled = { enabled ->
                                 regattaLinkManager.setImuRawPreviewEnabled(enabled)
@@ -1390,21 +1408,30 @@ class MainActivity : ComponentActivity() {
                     EnterRaceServerCheckOverlay()
                 }
 
-                if (showPlayStoreUpdateDialog.value) {
-                    val allowed = canOfferPlayStoreUpdateNow()
-                    LaunchedEffect(allowed) {
-                        // A race/legal action taking priority dismisses, not postpones, the offer.
-                        if (!allowed) showPlayStoreUpdateDialog.value = false
+                // Keep the Play result in Application state; only the visible
+                // dialog belongs to this Activity. An Android permission dialog
+                // cannot consume the offer, and our own dialog may take focus.
+                val canPresentUpdate = canOfferPlayStoreUpdateNow()
+                LaunchedEffect(canPresentUpdate, playStoreUpdateWindowFocused.value) {
+                    if (!canPresentUpdate) {
+                        playStoreUpdateDialogPresented.value = false
+                    } else if (playStoreUpdateWindowFocused.value) {
+                        playStoreUpdateDialogPresented.value = true
                     }
-                    if (allowed) {
-                        PlayStoreUpdateDialog(
-                            onUpdate = {
-                                showPlayStoreUpdateDialog.value = false
-                                openOwnPlayStoreListing()
-                            },
-                            onLater = { showPlayStoreUpdateDialog.value = false }
-                        )
-                    }
+                }
+                if (canPresentUpdate && playStoreUpdateDialogPresented.value) {
+                    val gate = (application as RegattaApplication).playStoreUpdateCheckGate
+                    PlayStoreUpdateDialog(
+                        onUpdate = {
+                            gate.markHandled()
+                            playStoreUpdateDialogPresented.value = false
+                            openOwnPlayStoreListing()
+                        },
+                        onLater = {
+                            gate.markHandled()
+                            playStoreUpdateDialogPresented.value = false
+                        }
+                    )
                 }
 
             }
@@ -1422,7 +1449,8 @@ class MainActivity : ComponentActivity() {
 
     private fun canOfferPlayStoreUpdateNow(): Boolean =
         shouldOfferPlayStoreUpdate(
-            isPlayUpdateAvailable = true,
+            isPlayUpdateAvailable =
+                (application as RegattaApplication).playStoreUpdateCheckGate.hasPendingOffer,
             screen = currentScreen.value,
             raceTrackingActive = inRace.value,
             manualTrackingActive = manualTracking.value,
@@ -1441,28 +1469,34 @@ class MainActivity : ComponentActivity() {
                     pendingEventScan.value != null ||
                     pendingTrackingAction != null ||
                     pendingEnterRaceAfterLegal ||
-                    pendingManualRaceLegalOpen
+                    pendingManualRaceLegalOpen,
+            hasWindowFocus = playStoreUpdateWindowFocused.value,
+            offerAlreadyPresented = playStoreUpdateDialogPresented.value
         )
 
     private fun checkForPlayStoreUpdateOnce() {
         // Google Play is authoritative: no guessed version codes or sideload checks.
-        if (!(application as RegattaApplication).playStoreUpdateCheckGate.tryStart()) return
-        if (BuildConfig.DEBUG || inRace.value || manualTracking.value) return
+        if (BuildConfig.DEBUG) return
+        val gate = (application as RegattaApplication).playStoreUpdateCheckGate
+        if (!gate.tryStart()) return
 
         runCatching {
             AppUpdateManagerFactory.create(applicationContext).appUpdateInfo
-                .addOnSuccessListener(this) { info ->
-                    if (
-                        asyncLifetime.isActive() &&
-                        hasWindowFocus() &&
-                        info.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE &&
-                        canOfferPlayStoreUpdateNow()
-                    ) {
-                        showPlayStoreUpdateDialog.value = true
+                // Not Activity-scoped: a rotation must not drop the only result.
+                .addOnSuccessListener { info ->
+                    if (info.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE) {
+                        gate.recordAvailable()
                     }
                 }
         }
         // Missing/offline Play Store or failed checks never affect startup.
+        // A positive result is deferred on HOME while racing, tracking or a
+        // higher-priority dialog owns the UI; it is never discarded for focus.
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        playStoreUpdateWindowFocused.value = hasFocus
     }
 
     override fun onNewIntent(intent: Intent) {

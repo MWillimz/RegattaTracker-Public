@@ -665,6 +665,65 @@ class RegattaLinkConfigurationNmeaTest {
     }
 
     @Test
+    fun calypsoDisconnectClearsRawValuesButRetainsRLinkOffset() {
+        val awa = RegattaLinkCalypsoValue(
+            func = 0x01, value = 67, unit = "deg", ageMs = 100,
+            status = RegattaLinkCalypsoValueStatus.OK
+        )
+        val aws = RegattaLinkCalypsoValue(
+            func = 0x02, value = 216, unit = "0.01m/s", ageMs = 100,
+            status = RegattaLinkCalypsoValueStatus.OK
+        )
+        val old = RegattaLinkConfigurationState(
+            calypso = RegattaLinkCalypsoState(
+                statusKnown = true,
+                boundId = "AA:BB:CC:DD:EE:FF",
+                connected = true
+            ),
+            calypsoAwaOffset = RegattaLinkCalypsoOffsetState(valueDeg = 6),
+            calypsoRawWind = RegattaLinkCalypsoRawWindState(
+                awa = awa, aws = aws, receivedAtElapsedMs = 1000
+            )
+        )
+        val status = RegattaLinkDeviceControlStatus(
+            opcode = RegattaLinkDeviceControlOpcode.CALYPSO_STATUS,
+            phase = RegattaLinkDeviceControlPhase.SUCCESS,
+            result = RegattaLinkDeviceControlResult.OK,
+            requestId = 12u,
+            forwardTrimDeg = 0,
+            heelTrimDeg = 0,
+            pitchTrimDeg = 0,
+            boatFrameValid = false,
+            gyroBiasValid = false,
+            mountingEpoch = 0u,
+            calypso = RegattaLinkCalypsoControlStatus(
+                boundId = "AA:BB:CC:DD:EE:FF",
+                bound = true,
+                connected = true,
+                scanning = false,
+                detail = 0
+            )
+        )
+        val same = regattaLinkApplyCalypsoControlStatus(old, status)
+        assertEquals(old.calypsoRawWind, same.calypsoRawWind)
+
+        val disconnected = regattaLinkApplyCalypsoControlStatus(
+            same, status.copy(calypso = status.calypso!!.copy(connected = false))
+        )
+        assertEquals(RegattaLinkCalypsoRawWindState(), disconnected.calypsoRawWind)
+        assertEquals(6, disconnected.calypsoAwaOffset.valueDeg)
+
+        val rebound = regattaLinkApplyCalypsoControlStatus(
+            old,
+            status.copy(calypso = status.calypso!!.copy(
+                boundId = "11:22:33:44:55:66"
+            ))
+        )
+        assertEquals(RegattaLinkCalypsoRawWindState(), rebound.calypsoRawWind)
+        assertEquals(6, rebound.calypsoAwaOffset.valueDeg)
+    }
+
+    @Test
     fun parsesRuntimeStatusV2AndPreservesFutureOutputBits() {
         val parsed = parseRegattaLinkNmeaTxRuntimeStatus(
             byteArrayOf(

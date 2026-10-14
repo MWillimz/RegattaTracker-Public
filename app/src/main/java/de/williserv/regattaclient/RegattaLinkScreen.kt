@@ -5,6 +5,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -234,7 +235,11 @@ internal fun RegattaLinkScreen(
     onDrainDiagnosticLog: () -> Unit,
     onStopDiagnosticLog: () -> Unit = {},
     onDeviceControl: (RegattaLinkDeviceControlOpcode, Int) -> Unit,
+    onRequestSetUpright: () -> Boolean = { false },
     onRefreshCalypsoSensorInfo: () -> Unit = {},
+    onRefreshCalypsoAwaOffset: () -> Unit = {},
+    onSetCalypsoAwaOffsetDeg: (Int) -> Unit = {},
+    onRefreshCalypsoRawWind: () -> Unit = {},
     onSetImuRawPreviewEnabled: (Boolean) -> Unit = {},
     onRefreshPgnInventory: () -> Unit,
     onReadRawFrames: () -> Unit,
@@ -243,6 +248,7 @@ internal fun RegattaLinkScreen(
     onExportRawCapture: () -> Unit,
     onDiscardRawCapture: () -> Unit,
     onDisconnect: () -> Unit,
+    onCancelConnectionAttempt: () -> Unit = {},
     onBack: () -> Unit
 ) {
     val busy = state.status in setOf(
@@ -452,7 +458,19 @@ internal fun RegattaLinkScreen(
                 configurationState = configurationState,
                 boatFramePresentation = boatFramePresentation,
                 controlsEnabled = orientationControlsEnabled,
-                setUprightEnabled = deviceControlEnabled,
+                // Permit confirmation while IMU_RAW_MODE renewal owns Device
+                // Control; the queued upright request runs after that renewal.
+                setUprightEnabled =
+                    connected && configurationState.deviceControlSupported &&
+                    !otaState.isActive && !rawCaptureState.isActive &&
+                    !configurationState.busy &&
+                    !configurationState.diagnosticLogLoading &&
+                    !configurationState.factoryResetAwaitingDisconnect &&
+                    !configurationState.restartAwaitingDisconnect &&
+                    !nmeaState.rawCanReading &&
+                    (!configurationState.deviceControlBusy ||
+                        configurationState.deviceControlAcceptedOpcode ==
+                            RegattaLinkDeviceControlOpcode.IMU_RAW_MODE),
                 configEnabled = configEnabled,
                 deviceControlBusy = configurationState.deviceControlBusy,
                 deviceControlError = configurationState.deviceControlError,
@@ -463,12 +481,7 @@ internal fun RegattaLinkScreen(
                 onRestart = {
                     onDeviceControl(RegattaLinkDeviceControlOpcode.RESTART, 0)
                 },
-                onSetUpright = {
-                    onDeviceControl(
-                        RegattaLinkDeviceControlOpcode.SET_UPRIGHT,
-                        0
-                    )
-                },
+                onSetUpright = onRequestSetUpright,
                 onSetImuRawPreviewEnabled = onSetImuRawPreviewEnabled,
                 onSetImuRawModeEnabled = { enabled ->
                     onDeviceControl(
@@ -518,6 +531,9 @@ internal fun RegattaLinkScreen(
                     onDeviceControl(RegattaLinkDeviceControlOpcode.CALYPSO_DELETE, 0)
                 },
                 onRefreshCalypsoSensorInfo = onRefreshCalypsoSensorInfo,
+                onRefreshCalypsoAwaOffset = onRefreshCalypsoAwaOffset,
+                onSetCalypsoAwaOffsetDeg = onSetCalypsoAwaOffsetDeg,
+                onRefreshCalypsoRawWind = onRefreshCalypsoRawWind,
                 onApplyBluetoothConfigAndRestart =
                     onApplyBluetoothConfigAndRestart,
                 onDismiss = { activeSetupDestination = null }
@@ -602,6 +618,7 @@ internal fun RegattaLinkScreen(
             canDisconnect = !otaState.isActive &&
                 !configurationState.deviceControlBusy &&
                 !configurationState.factoryResetAwaitingDisconnect,
+            onCancelConnectionAttempt = onCancelConnectionAttempt,
             onDisconnect = {
                 devicePickerOpen = false
                 onDisconnect()
@@ -1067,6 +1084,7 @@ private fun RegattaLinkDevicePickerSheet(
     onForgetKnownDevice: (String) -> Boolean,
     canDisconnect: Boolean,
     onDisconnect: () -> Unit,
+    onCancelConnectionAttempt: () -> Unit,
     onDismiss: () -> Unit
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -1082,6 +1100,21 @@ private fun RegattaLinkDevicePickerSheet(
                 fontSize = 22.sp,
                 fontWeight = FontWeight.SemiBold
             )
+            // Global action for the single active connection attempt. Do not
+            // attach it to disconnected known-device rows or manual discovery.
+            if (canCancelRegattaLinkConnectionAttempt(
+                    connectionState.status,
+                    deviceSelectionState.discovery.scanning
+                )
+            ) {
+                TextButton(
+                    onClick = onCancelConnectionAttempt,
+                    enabled = canDisconnect,
+                    modifier = Modifier.padding(top = 4.dp)
+                ) {
+                    Text(stringResource(R.string.regattalink_cancel_connection_attempt))
+                }
+            }
             deviceSelectionState.knownDevices
                 .sortedBy { it.stableId != deviceSelectionState.selectedStableId }
                 .forEach { device ->
@@ -1607,6 +1640,9 @@ private fun RegattaLinkBluetoothDevicesSheet(
     onScanCalypso: () -> Unit,
     onDeleteCalypso: () -> Unit,
     onRefreshCalypsoSensorInfo: () -> Unit,
+    onRefreshCalypsoAwaOffset: () -> Unit,
+    onSetCalypsoAwaOffsetDeg: (Int) -> Unit,
+    onRefreshCalypsoRawWind: () -> Unit,
     onApplyBluetoothConfigAndRestart: (UInt) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -1642,6 +1678,18 @@ private fun RegattaLinkBluetoothDevicesSheet(
     LaunchedEffect(deviceKey, connected, calypso.statusKnown, calypso.boundId, calypso.connected) {
         if (connected && calypso.statusKnown && calypso.connected) {
             onRefreshCalypsoSensorInfo()
+        }
+    }
+    LaunchedEffect(deviceKey, connected, calypso.statusKnown) {
+        if (connected && calypso.statusKnown) onRefreshCalypsoAwaOffset()
+    }
+    // Poll only while this sheet is composed. Busy ticks are dropped, not queued.
+    LaunchedEffect(deviceKey, connected, calypso.statusKnown, calypso.connected, calypso.boundId) {
+        if (connected && calypso.statusKnown && calypso.connected) {
+            while (true) {
+                onRefreshCalypsoRawWind()
+                delay(1_000L)
+            }
         }
     }
     var confirmCalypsoDelete by remember(deviceKey) { mutableStateOf(false) }
@@ -1762,6 +1810,134 @@ private fun RegattaLinkBluetoothDevicesSheet(
                 }
             )
 
+            val offset = configurationState.calypsoAwaOffset
+            val rawWind = configurationState.calypsoRawWind
+            val firmwareAge = maxOf(
+                rawWind.awa?.ageMs ?: 2_000L, rawWind.aws?.ageMs ?: 2_000L
+            ).coerceAtMost(2_001L)
+            val ageBudget = (2_000L - firmwareAge).coerceAtLeast(1L)
+            val rawExpired = rememberTelemetryStale(
+                rawWind.receivedAtElapsedMs, ageBudget
+            )
+            val freshRaw =
+                connected && calypso.connected &&
+                    rawWind.receivedAtElapsedMs?.let {
+                        val elapsed = SystemClock.elapsedRealtime() - it
+                        elapsed >= 0 && elapsed <= ageBudget && firmwareAge <= 2_000L
+                    } == true && !rawExpired &&
+                    rawWind.awa?.status == RegattaLinkCalypsoValueStatus.OK &&
+                    rawWind.aws?.status == RegattaLinkCalypsoValueStatus.OK
+            val liveAwa = if (freshRaw) {
+                regattaLinkCalypsoPreviewAwa(
+                    rawWind.awa?.value, rawWind.aws?.value, offset.valueDeg
+                )
+            } else null
+            val liveAws = if (freshRaw) {
+                rawWind.aws?.value?.let { it / 100.0 }
+            } else null
+            val canAdjustOffset =
+                connected && configEnabled && calypsoSupported &&
+                    !configurationState.deviceControlBusy &&
+                    !offset.loading && !offset.saving && offset.valueDeg != null
+
+            Text(
+                text = stringResource(R.string.regattalink_calypso_wind_correction),
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 12.dp)
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "AWA " + (liveAwa?.let { "${it}°" } ?: "—"),
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = "AWS " + (liveAws?.let {
+                        formatTelemetry(regattaLinkBoatKnots(it), " kn", 1)
+                    } ?: "—"),
+                    fontSize = 14.sp,
+                    maxLines = 1
+                )
+            }
+            val offsetLabel = stringResource(R.string.regattalink_calypso_wind_offset) +
+                " " + (offset.valueDeg?.let { if (it > 0) "+${it}°" else "${it}°" } ?: "—")
+            @Composable
+            fun AdjustmentButtons(modifier: Modifier = Modifier) {
+                Row(
+                    modifier = modifier,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    RegattaLinkOrientationActionButton(
+                        text = "−1°",
+                        contentDescription = offsetLabel + " −1°",
+                        enabled = canAdjustOffset && offset.valueDeg!! > -180,
+                        onClick = { onSetCalypsoAwaOffsetDeg(offset.valueDeg!! - 1) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    RegattaLinkOrientationActionButton(
+                        text = "+1°",
+                        contentDescription = offsetLabel + " +1°",
+                        enabled = canAdjustOffset && offset.valueDeg!! < 180,
+                        onClick = { onSetCalypsoAwaOffsetDeg(offset.valueDeg!! + 1) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                if (maxWidth < 290.dp) {
+                    Column {
+                        Text(offsetLabel, fontSize = 14.sp)
+                        AdjustmentButtons(Modifier.fillMaxWidth())
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(offsetLabel, fontSize = 14.sp, maxLines = 1,
+                            modifier = Modifier.weight(1f))
+                        AdjustmentButtons(Modifier.weight(1.4f))
+                    }
+                }
+            }
+            if (offset.loading) {
+                Text(
+                    stringResource(R.string.regattalink_sensor_info_loading),
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (offset.error.isNotBlank()) {
+                Text(
+                    stringResource(R.string.regattalink_calypso_offset_error),
+                    color = MaterialTheme.colorScheme.error,
+                    fontSize = 12.sp
+                )
+                RegattaLinkTechnicalDetail(offset.error)
+                TextButton(
+                    onClick = onRefreshCalypsoAwaOffset,
+                    enabled = connected && !offset.loading && !offset.saving
+                ) {
+                    Text(stringResource(R.string.refresh))
+                }
+            }
+            if (calypso.connected && freshRaw && rawWind.aws?.value == 0) {
+                Text(
+                    stringResource(R.string.regattalink_calypso_wind_calm),
+                    fontSize = 12.sp
+                )
+            }
+            if (calypso.connected && rawWind.error.isNotBlank()) {
+                RegattaLinkTechnicalDetail(rawWind.error)
+            }
+
             if (calypso.statusKnown && calypso.connected) {
                 TextButton(
                     onClick = { infosExpanded = !infosExpanded },
@@ -1797,6 +1973,30 @@ private fun RegattaLinkBluetoothDevicesSheet(
                     TextButton(
                         onClick = onRefreshCalypsoSensorInfo,
                         enabled = connected && configEnabled && !infos.loading
+                    ) {
+                        Text(stringResource(R.string.refresh))
+                    }
+                    Text(
+                        stringResource(R.string.regattalink_calypso_raw_values),
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    telemetryValue(
+                        label = "Raw AWA",
+                        value = if (freshRaw) {
+                            rawWind.awa?.value?.let { "${it}°" } ?: "—"
+                        } else "—"
+                    )
+                    telemetryValue(
+                        label = "Raw AWS",
+                        value = if (freshRaw) {
+                            rawWind.aws?.value?.let { formatTelemetry(it / 100.0, " m/s", 2) }
+                                ?: "—"
+                        } else "—"
+                    )
+                    TextButton(
+                        onClick = onRefreshCalypsoRawWind,
+                        enabled = connected && calypso.connected && configEnabled
                     ) {
                         Text(stringResource(R.string.refresh))
                     }
@@ -3755,7 +3955,7 @@ private fun RegattaLinkImuSetupSheet(
     onSetMagBackgroundLearningEnabled: (Boolean) -> Unit,
     onSetHeadingTrimDeg: (Int) -> Unit,
     onRestart: () -> Unit,
-    onSetUpright: () -> Unit,
+    onSetUpright: () -> Boolean,
     onSetImuRawPreviewEnabled: (Boolean) -> Unit,
     onSetImuRawModeEnabled: (Boolean) -> Unit,
     onAdjust: (RegattaLinkDeviceControlOpcode, Int) -> Unit,
@@ -3767,6 +3967,7 @@ private fun RegattaLinkImuSetupSheet(
         mutableStateOf((configurationState.motionDampingSeconds ?: 3).toFloat())
     }
     var uprightDialogOpen by rememberSaveable { mutableStateOf(false) }
+    var uprightSubmitRejected by remember { mutableStateOf(false) }
     var uprightPreviewStartedAtElapsedMs by remember {
         mutableStateOf<Long?>(null)
     }
@@ -3824,17 +4025,23 @@ private fun RegattaLinkImuSetupSheet(
         }
     }
 
+    // DisposableEffect(Unit) otherwise captures the initial (false) value,
+    // leaking the raw preview subscription when the sheet is removed.
+    val uprightOpenOnDispose by rememberUpdatedState(uprightDialogOpen)
+    val stopRawPreviewOnDispose by rememberUpdatedState(onSetImuRawPreviewEnabled)
     DisposableEffect(Unit) {
         onDispose {
-            if (uprightDialogOpen) {
-                onSetImuRawModeEnabled(false)
-                onSetImuRawPreviewEnabled(false)
+            if (uprightOpenOnDispose) {
+                // No further renewals: firmware raw mode expires within 1 s.
+                // Do not collide with a pending SET_UPRIGHT or raw renewal.
+                stopRawPreviewOnDispose(false)
             }
         }
     }
 
     val stopUprightPreview = {
-        onSetImuRawModeEnabled(false)
+        // IMU_RAW_MODE(0) would compete for the same exclusive Device
+        // Control lease. Stopping 400-ms renewals lets firmware expire it.
         onSetImuRawPreviewEnabled(false)
         uprightDialogOpen = false
         uprightPreviewStartedAtElapsedMs = null
@@ -4141,13 +4348,27 @@ private fun RegattaLinkImuSetupSheet(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(top = 12.dp)
                             )
+                            if (uprightSubmitRejected) {
+                                Text(
+                                    text = stringResource(
+                                        R.string.regattalink_upright_submission_failed
+                                    ),
+                                    color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.padding(top = 8.dp)
+                                )
+                            }
                         }
                     },
                     confirmButton = {
                         TextButton(
                             onClick = {
-                                onSetUpright()
-                                stopUprightPreview()
+                                if (onSetUpright()) {
+                                    stopUprightPreview()
+                                } else {
+                                    // Keep the confirmation open; an unaccepted
+                                    // calibration must not look successful.
+                                    uprightSubmitRejected = true
+                                }
                             },
                             enabled = setUprightEnabled
                         ) {
@@ -4173,6 +4394,7 @@ private fun RegattaLinkImuSetupSheet(
                     uprightPreviewStartedAtElapsedMs =
                         SystemClock.elapsedRealtime()
                     uprightDialogOpen = true
+                    uprightSubmitRejected = false
                     onSetImuRawPreviewEnabled(true)
                     onSetImuRawModeEnabled(true)
                 },
@@ -4305,6 +4527,7 @@ private fun RegattaLinkImuSetupSheet(
                     modifier = Modifier.padding(top = 8.dp)
                 )
             }
+            RegattaLinkTechnicalDetail(deviceControlError)
 
             TextButton(
                 onClick = onDismiss,

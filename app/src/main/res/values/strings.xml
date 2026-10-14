@@ -474,6 +474,7 @@
     <string name="regattalink_error_pairing_required">RegattaLink needs to be paired again.</string>
     <string name="regattalink_enable_bluetooth">Turn on Bluetooth</string>
     <string name="regattalink_search_connect">Search / connect</string>
+    <string name="regattalink_cancel_connection_attempt">Cancel connection attempt</string>
     <string name="regattalink_disconnect">Disconnect</string>
     <string name="regattalink_permission_denied">Bluetooth permission denied.</string>
     <string name="regattalink_error_bluetooth_unavailable">Bluetooth LE is unavailable.</string>
@@ -635,6 +636,11 @@
     <string name="regattalink_setup_imu">Internal Sensor</string>
     <string name="regattalink_bluetooth_devices">Bluetooth devices</string>
     <string name="regattalink_calypso_wind_sensor">Calypso wind sensor</string>
+    <string name="regattalink_calypso_wind_correction">Wind angle correction</string>
+    <string name="regattalink_calypso_wind_offset">Offset</string>
+    <string name="regattalink_calypso_offset_error">Could not read or save the Calypso offset.</string>
+    <string name="regattalink_calypso_wind_calm">No usable wind direction (calm).</string>
+    <string name="regattalink_calypso_raw_values">Raw wind values</string>
     <string name="regattalink_sensor_infos">Infos</string>
     <string name="regattalink_sensor_info_loading">Loading…</string>
     <string name="regattalink_sensor_info_empty">No information available.</string>
@@ -734,6 +740,7 @@
     <string name="regattalink_raw_capture_export">Export CSV</string>
     <string name="regattalink_raw_capture_discard">Discard</string>
     <string name="regattalink_device_control">Calibration</string>
+    <string name="regattalink_upright_submission_failed">Could not start upright calibration. Please try again.</string>
     <string name="regattalink_set_upright">Set upright</string>
     <string name="regattalink_set_upright_instruction">Keep the boat and RegattaLink still in the intended neutral orientation while calibration runs.</string>
     <string name="regattalink_set_upright_arrow_forward">Is the RegattaLink installed with the arrow pointing forward?</string>

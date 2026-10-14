@@ -22,6 +22,33 @@ class RegattaLinkScreenTest {
     }
 
     @Test
+    fun switchSheetOffersCancelOnlyDuringAnActiveConnectionAttempt() {
+        val cancellable = setOf(
+            RegattaLinkConnectionStatus.WAITING,
+            RegattaLinkConnectionStatus.SCANNING,
+            RegattaLinkConnectionStatus.BONDING,
+            RegattaLinkConnectionStatus.CONNECTING,
+            RegattaLinkConnectionStatus.DISCOVERING,
+            RegattaLinkConnectionStatus.READING_DEVICE_INFO
+        )
+        RegattaLinkConnectionStatus.values().forEach { status ->
+            assertEquals(
+                "Unexpected cancel action for $status",
+                status in cancellable,
+                canCancelRegattaLinkConnectionAttempt(
+                    status = status,
+                    manualDiscoveryScanning = false
+                )
+            )
+            // A user-initiated "Pair another" discovery is not a reconnect.
+            assertFalse(canCancelRegattaLinkConnectionAttempt(
+                status = status,
+                manualDiscoveryScanning = true
+            ))
+        }
+    }
+
+    @Test
     fun switchSheetIdentifiesOnlyTheActiveRLinkForDisconnect() {
         val active = RegattaLinkConfiguredDevice("A", "44:B1:76:48:31:B2", "First")
         val other = RegattaLinkConfiguredDevice("B", "44:B1:76:48:31:CE", "Second")

@@ -431,6 +431,7 @@
     <string name="regattalink_error_pairing_required">RegattaLink doit être associé à nouveau.</string>
     <string name="regattalink_enable_bluetooth">Activer le Bluetooth</string>
     <string name="regattalink_search_connect">Rechercher / connecter</string>
+    <string name="regattalink_cancel_connection_attempt">Annuler la tentative de connexion</string>
     <string name="regattalink_disconnect">Déconnecter</string>
     <string name="regattalink_permission_denied">Autorisation Bluetooth refusée.</string>
     <string name="regattalink_error_bluetooth_unavailable">Bluetooth LE n’est pas disponible.</string>
@@ -592,6 +593,11 @@
     <string name="regattalink_setup_imu">Internal Sensor</string>
     <string name="regattalink_bluetooth_devices">Appareils Bluetooth</string>
     <string name="regattalink_calypso_wind_sensor">Capteur de vent Calypso</string>
+    <string name="regattalink_calypso_wind_correction">Correction de l’angle du vent</string>
+    <string name="regattalink_calypso_wind_offset">Décalage</string>
+    <string name="regattalink_calypso_offset_error">Impossible de lire ou d’enregistrer la correction Calypso.</string>
+    <string name="regattalink_calypso_wind_calm">Pas de direction du vent exploitable (calme).</string>
+    <string name="regattalink_calypso_raw_values">Valeurs brutes du vent</string>
     <string name="regattalink_sensor_infos">Infos</string>
     <string name="regattalink_sensor_info_loading">Chargement…</string>
     <string name="regattalink_sensor_info_empty">Aucune information disponible.</string>
@@ -691,6 +697,7 @@
     <string name="regattalink_raw_capture_export">Exporter CSV</string>
     <string name="regattalink_raw_capture_discard">Supprimer</string>
     <string name="regattalink_device_control">Étalonnage</string>
+    <string name="regattalink_upright_submission_failed">Impossible de lancer l’étalonnage en position verticale. Réessayez.</string>
     <string name="regattalink_set_upright">Définir la position verticale</string>
     <string name="regattalink_set_upright_instruction">Maintenez le bateau et le RegattaLink immobiles dans la position neutre souhaitée pendant l’étalonnage.</string>
     <string name="regattalink_set_upright_arrow_forward">Le RegattaLink est-il installé avec la flèche orientée vers l’avant ?</string>
