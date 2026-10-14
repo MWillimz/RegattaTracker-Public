@@ -1446,8 +1446,8 @@ class MainActivity : ComponentActivity() {
 
     private fun checkForPlayStoreUpdateOnce() {
         // Google Play is authoritative: no guessed version codes or sideload checks.
-        if (BuildConfig.DEBUG || inRace.value || manualTracking.value) return
         if (!(application as RegattaApplication).playStoreUpdateCheckGate.tryStart()) return
+        if (BuildConfig.DEBUG || inRace.value || manualTracking.value) return
 
         runCatching {
             AppUpdateManagerFactory.create(applicationContext).appUpdateInfo
