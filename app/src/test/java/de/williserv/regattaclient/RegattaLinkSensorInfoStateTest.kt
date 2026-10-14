@@ -5,7 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RegattaLinkSensorInfoStateTest {
-    private fun status(boundId: String?): RegattaLinkDeviceControlStatus =
+    private fun status(boundId: String?, connected: Boolean = false): RegattaLinkDeviceControlStatus =
         RegattaLinkDeviceControlStatus(
             opcode = RegattaLinkDeviceControlOpcode.CALYPSO_STATUS,
             phase = RegattaLinkDeviceControlPhase.SUCCESS,
@@ -20,7 +20,7 @@ class RegattaLinkSensorInfoStateTest {
             calypso = RegattaLinkCalypsoControlStatus(
                 boundId = boundId,
                 bound = boundId != null,
-                connected = false,
+                connected = connected,
                 scanning = false,
                 detail = 0
             )
@@ -59,5 +59,32 @@ class RegattaLinkSensorInfoStateTest {
         )
         val refreshed = regattaLinkApplyCalypsoControlStatus(old, status("AA:BB:CC:DD:EE:FF"))
         assertEquals(metadata, refreshed.calypsoSensorInfo)
+    }
+
+    @Test
+    fun connectionChangesClearInfosEvenForSameBoundCalypso() {
+        val id = "AA:BB:CC:DD:EE:FF"
+        val metadata = RegattaLinkSensorInfoState(
+            entries = listOf(RegattaLinkSensorInfoEntry("manufacturer", "Calypso"))
+        )
+        val old = RegattaLinkConfigurationState(
+            calypso = RegattaLinkCalypsoState(
+                statusKnown = true,
+                boundId = id,
+                connected = true
+            ),
+            calypsoSensorInfo = metadata
+        )
+
+        val disconnected = regattaLinkApplyCalypsoControlStatus(old, status(id, connected = false))
+        assertEquals(id, disconnected.calypso.boundId)
+        assertTrue(disconnected.calypsoSensorInfo.entries.isEmpty())
+
+        val connectedAgain = regattaLinkApplyCalypsoControlStatus(
+            disconnected.copy(calypsoSensorInfo = metadata),
+            status(id, connected = true)
+        )
+        assertTrue(connectedAgain.calypso.connected)
+        assertTrue(connectedAgain.calypsoSensorInfo.entries.isEmpty())
     }
 }
