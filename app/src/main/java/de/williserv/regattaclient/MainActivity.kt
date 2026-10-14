@@ -148,7 +148,7 @@ class MainActivity : ComponentActivity() {
 
     private val showBoatConfirmDialog = mutableStateOf(false)
     private val showRegistrationReminderDialog = mutableStateOf(false)
-    private val showPlayStoreUpdateDialog = mutableStateOf(false)
+    private val playStoreUpdateWindowFocused = mutableStateOf(false)
 
     private val raceLegalHash = mutableStateOf("")
     private val raceLegalVersion = mutableStateOf("")
@@ -1402,21 +1402,17 @@ class MainActivity : ComponentActivity() {
                     EnterRaceServerCheckOverlay()
                 }
 
-                if (showPlayStoreUpdateDialog.value) {
-                    val allowed = canOfferPlayStoreUpdateNow()
-                    LaunchedEffect(allowed) {
-                        // A race/legal action taking priority dismisses, not postpones, the offer.
-                        if (!allowed) showPlayStoreUpdateDialog.value = false
-                    }
-                    if (allowed) {
-                        PlayStoreUpdateDialog(
-                            onUpdate = {
-                                showPlayStoreUpdateDialog.value = false
-                                openOwnPlayStoreListing()
-                            },
-                            onLater = { showPlayStoreUpdateDialog.value = false }
-                        )
-                    }
+                // Read the Application's observable pending result here. Neither
+                // a permission dialog nor Activity recreation consumes it.
+                if (playStoreUpdateWindowFocused.value && canOfferPlayStoreUpdateNow()) {
+                    val gate = (application as RegattaApplication).playStoreUpdateCheckGate
+                    PlayStoreUpdateDialog(
+                        onUpdate = {
+                            gate.markHandled()
+                            openOwnPlayStoreListing()
+                        },
+                        onLater = { gate.markHandled() }
+                    )
                 }
 
             }
@@ -1434,7 +1430,8 @@ class MainActivity : ComponentActivity() {
 
     private fun canOfferPlayStoreUpdateNow(): Boolean =
         shouldOfferPlayStoreUpdate(
-            isPlayUpdateAvailable = true,
+            isPlayUpdateAvailable =
+                (application as RegattaApplication).playStoreUpdateCheckGate.hasPendingOffer,
             screen = currentScreen.value,
             raceTrackingActive = inRace.value,
             manualTrackingActive = manualTracking.value,
@@ -1458,23 +1455,27 @@ class MainActivity : ComponentActivity() {
 
     private fun checkForPlayStoreUpdateOnce() {
         // Google Play is authoritative: no guessed version codes or sideload checks.
-        if (!(application as RegattaApplication).playStoreUpdateCheckGate.tryStart()) return
-        if (BuildConfig.DEBUG || inRace.value || manualTracking.value) return
+        if (BuildConfig.DEBUG) return
+        val gate = (application as RegattaApplication).playStoreUpdateCheckGate
+        if (!gate.tryStart()) return
 
         runCatching {
             AppUpdateManagerFactory.create(applicationContext).appUpdateInfo
-                .addOnSuccessListener(this) { info ->
-                    if (
-                        asyncLifetime.isActive() &&
-                        hasWindowFocus() &&
-                        info.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE &&
-                        canOfferPlayStoreUpdateNow()
-                    ) {
-                        showPlayStoreUpdateDialog.value = true
+                // Not Activity-scoped: a rotation must not drop the only result.
+                .addOnSuccessListener { info ->
+                    if (info.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE) {
+                        gate.recordAvailable()
                     }
                 }
         }
         // Missing/offline Play Store or failed checks never affect startup.
+        // A positive result is deferred on HOME while racing, tracking or a
+        // higher-priority dialog owns the UI; it is never discarded for focus.
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        playStoreUpdateWindowFocused.value = hasFocus
     }
 
     override fun onNewIntent(intent: Intent) {
