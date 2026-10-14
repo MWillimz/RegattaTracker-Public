@@ -739,6 +739,7 @@
     <string name="regattalink_raw_capture_export">Export CSV</string>
     <string name="regattalink_raw_capture_discard">Discard</string>
     <string name="regattalink_device_control">Calibration</string>
+    <string name="regattalink_upright_submission_failed">Could not start upright calibration. Please try again.</string>
     <string name="regattalink_set_upright">Set upright</string>
     <string name="regattalink_set_upright_instruction">Keep the boat and RegattaLink still in the intended neutral orientation while calibration runs.</string>
     <string name="regattalink_set_upright_arrow_forward">Is the RegattaLink installed with the arrow pointing forward?</string>

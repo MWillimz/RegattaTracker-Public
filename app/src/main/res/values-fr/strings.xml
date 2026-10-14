@@ -696,6 +696,7 @@
     <string name="regattalink_raw_capture_export">Exporter CSV</string>
     <string name="regattalink_raw_capture_discard">Supprimer</string>
     <string name="regattalink_device_control">Étalonnage</string>
+    <string name="regattalink_upright_submission_failed">Impossible de lancer l’étalonnage en position verticale. Réessayez.</string>
     <string name="regattalink_set_upright">Définir la position verticale</string>
     <string name="regattalink_set_upright_instruction">Maintenez le bateau et le RegattaLink immobiles dans la position neutre souhaitée pendant l’étalonnage.</string>
     <string name="regattalink_set_upright_arrow_forward">Le RegattaLink est-il installé avec la flèche orientée vers l’avant ?</string>

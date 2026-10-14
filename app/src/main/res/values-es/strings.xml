@@ -696,6 +696,7 @@
     <string name="regattalink_raw_capture_export">Exportar CSV</string>
     <string name="regattalink_raw_capture_discard">Descartar</string>
     <string name="regattalink_device_control">Calibración</string>
+    <string name="regattalink_upright_submission_failed">No se pudo iniciar la calibración de posición vertical. Inténtalo de nuevo.</string>
     <string name="regattalink_set_upright">Establecer posición vertical</string>
     <string name="regattalink_set_upright_instruction">Mantén el barco y el RegattaLink quietos en la posición neutra deseada durante la calibración.</string>
     <string name="regattalink_set_upright_arrow_forward">¿Está instalado el RegattaLink con la flecha apuntando hacia proa?</string>
