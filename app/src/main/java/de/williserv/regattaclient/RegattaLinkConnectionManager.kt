@@ -351,6 +351,9 @@ internal interface RegattaLinkConnectionClient {
     ): Boolean = false
     fun setImuRawPreviewEnabled(enabled: Boolean): Boolean = false
     fun refreshCalypsoSensorInfo(): Boolean = false
+    fun refreshCalypsoAwaOffset(): Boolean = false
+    fun setCalypsoAwaOffsetDeg(value: Int): Boolean = false
+    fun refreshCalypsoRawWind(): Boolean = false
     fun refreshPgnInventory(): Boolean
     fun readRawCanFrames(): Boolean
 
@@ -1102,6 +1105,21 @@ internal class RegattaLinkConnectionManager(
     fun refreshCalypsoSensorInfo(): Boolean {
         if (otaState.isActive || rawCaptureState.isActive) return false
         return client.refreshCalypsoSensorInfo()
+    }
+
+    fun refreshCalypsoAwaOffset(): Boolean {
+        if (otaState.isActive || rawCaptureState.isActive) return false
+        return client.refreshCalypsoAwaOffset()
+    }
+
+    fun setCalypsoAwaOffsetDeg(value: Int): Boolean {
+        if (otaState.isActive || rawCaptureState.isActive) return false
+        return client.setCalypsoAwaOffsetDeg(value)
+    }
+
+    fun refreshCalypsoRawWind(): Boolean {
+        if (otaState.isActive || rawCaptureState.isActive) return false
+        return client.refreshCalypsoRawWind()
     }
 
     fun refreshPgnInventory(): Boolean {

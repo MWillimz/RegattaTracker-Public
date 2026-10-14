@@ -253,6 +253,8 @@ internal class RegattaLinkBleClient(
     private val configurationMutationRunning = AtomicBoolean(false)
     private val sensorInfoReadGatt = AtomicReference<BluetoothGatt?>(null)
     private val sensorInfoGeneration = AtomicLong(0L)
+    private val calypsoOffsetOperationRunning = AtomicBoolean(false)
+    private val calypsoRawReadRunning = AtomicBoolean(false)
     private val deviceControlExecutionGuard =
         RegattaLinkDeviceControlExecutionGuard<BluetoothGatt>()
     private var nextDeviceControlRequestId = 1u
@@ -4639,7 +4641,10 @@ internal class RegattaLinkBleClient(
         ) {
             sensorInfoGeneration.incrementAndGet()
             updateConfiguration {
-                it.copy(calypsoSensorInfo = RegattaLinkSensorInfoState())
+                it.copy(
+                    calypsoSensorInfo = RegattaLinkSensorInfoState(),
+                    calypsoRawWind = RegattaLinkCalypsoRawWindState()
+                )
             }
         }
 
@@ -5220,6 +5225,11 @@ internal class RegattaLinkBleClient(
                     ?.getCharacteristic(BLE_SENSOR_INFO_UUID)
                     ?: throw IllegalStateException("RegattaLink Sensor Info 0031 is unavailable")
 
+                // 0031 selection persists throughout a BLE session. Never assume
+                // a prior offset/raw read left the characteristic on metadata.
+                writeCharacteristicBlockingDirect(
+                    activeGatt, characteristic, regattaLinkCalypso0031Request(0x00)
+                )
                 val entries = parseRegattaLinkSensorInfo(
                     readCharacteristicBlocking(activeGatt, characteristic)
                 )
@@ -5255,6 +5265,153 @@ internal class RegattaLinkBleClient(
                     }
                 }
                 sensorInfoReadGatt.compareAndSet(activeGatt, null)
+            }
+        }
+        return true
+    }
+
+    private fun calypso0031Characteristic(
+        activeGatt: BluetoothGatt
+    ): BluetoothGattCharacteristic =
+        activeGatt.getService(EXTENSION_SERVICE_UUID)
+            ?.getCharacteristic(BLE_SENSOR_INFO_UUID)
+            ?: throw IllegalStateException("RegattaLink Sensor Info 0031 is unavailable")
+
+    private fun readCalypso0031(
+        activeGatt: BluetoothGatt,
+        characteristic: BluetoothGattCharacteristic,
+        func: Int
+    ): RegattaLinkCalypsoValue {
+        writeCharacteristicBlockingDirect(
+            activeGatt, characteristic, regattaLinkCalypso0031Request(func)
+        )
+        return parseRegattaLinkCalypsoValue(
+            readCharacteristicBlocking(activeGatt, characteristic), func
+        )
+    }
+
+    override fun refreshCalypsoAwaOffset(): Boolean =
+        runCalypsoAwaOffsetOperation(null)
+
+    override fun setCalypsoAwaOffsetDeg(value: Int): Boolean {
+        if (value !in -180..180 ||
+            lastConfigurationState.calypsoAwaOffset.valueDeg == null
+        ) return false
+        return runCalypsoAwaOffsetOperation(value)
+    }
+
+    private fun runCalypsoAwaOffsetOperation(target: Int?): Boolean {
+        val activeGatt = gatt ?: return false
+        if (!isConnected() || otaRunning.get() || rawCaptureRunning.get() ||
+            diagnosticLogRunning.get() || configurationMutationRunning.get() ||
+            !lastConfigurationState.calypso.statusKnown ||
+            (target != null && configurationMutationBlocked(activeGatt)) ||
+            !calypsoOffsetOperationRunning.compareAndSet(false, true)
+        ) return false
+
+        updateConfiguration { current ->
+            current.copy(
+                calypsoAwaOffset = current.calypsoAwaOffset.copy(
+                    loading = true, saving = target != null, error = ""
+                )
+            )
+        }
+        otaExecutor.execute {
+            fun current(): Boolean = gatt === activeGatt && connected
+            try {
+                if (!current() || !optionalFeatureWorkAllowed(activeGatt) ||
+                    rawCaptureRunning.get() || diagnosticLogRunning.get() ||
+                    (target != null && configurationMutationBlocked(activeGatt))
+                ) throw IllegalStateException("Calypso offset operation unavailable")
+
+                val characteristic = calypso0031Characteristic(activeGatt)
+                if (target != null) {
+                    // SET is absolute and may commit even if Android loses the
+                    // write callback. Never automatically repeat a timed-out SET.
+                    writeCharacteristicBlockingDirect(
+                        activeGatt, characteristic,
+                        regattaLinkCalypso0031Request(0x40, target)
+                    )
+                }
+                val actual = readCalypso0031(activeGatt, characteristic, 0x20)
+                    .value ?: throw IllegalArgumentException("Missing Calypso offset")
+                if (current()) {
+                    updateConfiguration {
+                        it.copy(calypsoAwaOffset = RegattaLinkCalypsoOffsetState(
+                            valueDeg = actual,
+                            error = if (target != null && actual != target) {
+                                "Calypso offset readback differs from requested value"
+                            } else ""
+                        ))
+                    }
+                }
+            } catch (error: Exception) {
+                if (current()) {
+                    updateConfiguration { old ->
+                        old.copy(calypsoAwaOffset = RegattaLinkCalypsoOffsetState(
+                            // A failed/ambiguous SET may already be committed.
+                            valueDeg = if (target == null) {
+                                old.calypsoAwaOffset.valueDeg
+                            } else null,
+                            error = error.message ?: "Could not read Calypso offset"
+                        ))
+                    }
+                }
+            } finally {
+                calypsoOffsetOperationRunning.set(false)
+            }
+        }
+        return true
+    }
+
+    override fun refreshCalypsoRawWind(): Boolean {
+        val activeGatt = gatt ?: return false
+        val boundId = lastConfigurationState.calypso.boundId ?: return false
+        if (!lastConfigurationState.calypso.connected || !isConnected() ||
+            otaRunning.get() || rawCaptureRunning.get() ||
+            diagnosticLogRunning.get() || configurationMutationRunning.get() ||
+            calypsoOffsetOperationRunning.get() ||
+            !calypsoRawReadRunning.compareAndSet(false, true)
+        ) return false
+        val generation = sensorInfoGeneration.get()
+        otaExecutor.execute {
+            fun current(): Boolean =
+                gatt === activeGatt && connected &&
+                    sensorInfoGeneration.get() == generation &&
+                    lastConfigurationState.calypso.boundId == boundId &&
+                    lastConfigurationState.calypso.connected
+            try {
+                if (!current() || !optionalFeatureWorkAllowed(activeGatt) ||
+                    rawCaptureRunning.get() || diagnosticLogRunning.get() ||
+                    configurationMutationRunning.get() ||
+                    calypsoOffsetOperationRunning.get()
+                ) return@execute
+                val characteristic = calypso0031Characteristic(activeGatt)
+                val awa = readCalypso0031(activeGatt, characteristic, 0x01)
+                if (!current()) return@execute
+                val aws = readCalypso0031(activeGatt, characteristic, 0x02)
+                if (current()) {
+                    updateConfiguration { old ->
+                        if (current()) {
+                            old.copy(calypsoRawWind = RegattaLinkCalypsoRawWindState(
+                                awa = awa, aws = aws,
+                                receivedAtElapsedMs = SystemClock.elapsedRealtime()
+                            ))
+                        } else old
+                    }
+                }
+            } catch (error: Exception) {
+                if (current()) {
+                    updateConfiguration { old ->
+                        if (current()) old.copy(
+                            calypsoRawWind = RegattaLinkCalypsoRawWindState(
+                                error = error.message ?: "Could not read Calypso wind"
+                            )
+                        ) else old
+                    }
+                }
+            } finally {
+                calypsoRawReadRunning.set(false)
             }
         }
         return true
@@ -6308,7 +6465,9 @@ internal class RegattaLinkBleClient(
         updateConfiguration {
             it.copy(
                 calypso = RegattaLinkCalypsoState(),
-                calypsoSensorInfo = RegattaLinkSensorInfoState()
+                calypsoSensorInfo = RegattaLinkSensorInfoState(),
+                calypsoAwaOffset = RegattaLinkCalypsoOffsetState(),
+                calypsoRawWind = RegattaLinkCalypsoRawWindState()
             )
         }
         /*
