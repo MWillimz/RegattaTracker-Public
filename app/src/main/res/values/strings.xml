@@ -635,6 +635,11 @@
     <string name="regattalink_setup_imu">Internal Sensor</string>
     <string name="regattalink_bluetooth_devices">Bluetooth devices</string>
     <string name="regattalink_calypso_wind_sensor">Calypso wind sensor</string>
+    <string name="regattalink_calypso_wind_correction">Wind angle correction</string>
+    <string name="regattalink_calypso_wind_offset">Mounting offset</string>
+    <string name="regattalink_calypso_offset_error">Could not read or save the Calypso offset.</string>
+    <string name="regattalink_calypso_wind_calm">No usable wind direction (calm).</string>
+    <string name="regattalink_calypso_raw_values">Raw wind values</string>
     <string name="regattalink_sensor_infos">Infos</string>
     <string name="regattalink_sensor_info_loading">Loading…</string>
     <string name="regattalink_sensor_info_empty">No information available.</string>
