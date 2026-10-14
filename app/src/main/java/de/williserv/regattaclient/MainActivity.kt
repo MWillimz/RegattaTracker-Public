@@ -1000,6 +1000,9 @@ class MainActivity : ComponentActivity() {
                             onSelectKnownDevice =
                                 ::startRegattaLinkKnownDeviceSelection,
                             onForgetKnownDevice = ::forgetInactiveRegattaLink,
+                            onCancelConnectionAttempt = {
+                                regattaLinkManager.cancelConnectionAttempt()
+                            },
                             onConnectDiscoveredDevice =
                                 ::startRegattaLinkDiscoveredDeviceConnection,
                             onEnableBluetooth = ::requestEnableRegattaLinkBluetooth,
