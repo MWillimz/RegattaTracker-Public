@@ -833,4 +833,8 @@
     <string name="regattalink_forget">Oublier</string>
     <string name="regattalink_forget_connected">Impossible d’oublier le RegattaLink connecté.</string>
     <string name="regattalink_forget_failed">Impossible d’oublier le RegattaLink. Réessayez.</string>
+    <string name="play_store_update_title">Mise à jour disponible</string>
+    <string name="play_store_update_message">Une nouvelle version de RegattaTracker est disponible sur Google Play.</string>
+    <string name="play_store_update_action">Mettre à jour</string>
+    <string name="play_store_update_later">Plus tard</string>
 </resources>
