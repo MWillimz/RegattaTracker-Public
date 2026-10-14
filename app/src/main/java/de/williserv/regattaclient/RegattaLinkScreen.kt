@@ -74,16 +74,14 @@ internal fun isConnectedRegattaLinkPickerDevice(
     connectedStableId: String?
 ): Boolean =
     connectionState.status == RegattaLinkConnectionStatus.CONNECTED &&
-        (
-            connectedStableId == device.stableId ||
-                (
-                    connectionState.deviceAddress.isNotBlank() &&
-                        connectionState.deviceAddress.equals(
-                            device.deviceAddress,
-                            ignoreCase = true
-                        )
-                    )
-            )
+        if (connectedStableId != null) {
+            connectedStableId == device.stableId
+        } else {
+            connectionState.deviceAddress.isNotBlank() &&
+                connectionState.deviceAddress.equals(
+                    device.deviceAddress, ignoreCase = true
+                )
+        }
 
 internal fun shouldAutoRefreshPgnInventory(
     detailsExpanded: Boolean,
