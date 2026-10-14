@@ -254,6 +254,7 @@ internal class RegattaLinkBleClient(
     private val sensorInfoReadGatt = AtomicReference<BluetoothGatt?>(null)
     private val sensorInfoGeneration = AtomicLong(0L)
     private val calypsoOffsetOperationRunning = AtomicBoolean(false)
+    private val calypsoOffsetSessionGeneration = AtomicLong(0L)
     private val calypsoRawReadRunning = AtomicBoolean(false)
     private val deviceControlExecutionGuard =
         RegattaLinkDeviceControlExecutionGuard<BluetoothGatt>()
@@ -5309,15 +5310,20 @@ internal class RegattaLinkBleClient(
             !calypsoOffsetOperationRunning.compareAndSet(false, true)
         ) return false
 
+        val sessionGeneration = calypsoOffsetSessionGeneration.get()
         updateConfiguration { current ->
-            current.copy(
+            if (gatt === activeGatt && connected &&
+                calypsoOffsetSessionGeneration.get() == sessionGeneration
+            ) current.copy(
                 calypsoAwaOffset = current.calypsoAwaOffset.copy(
                     loading = true, saving = target != null, error = ""
                 )
-            )
+            ) else current
         }
         otaExecutor.execute {
-            fun current(): Boolean = gatt === activeGatt && connected
+            fun current(): Boolean =
+                gatt === activeGatt && connected &&
+                    calypsoOffsetSessionGeneration.get() == sessionGeneration
             try {
                 if (!current() || !optionalFeatureWorkAllowed(activeGatt) ||
                     rawCaptureRunning.get() || diagnosticLogRunning.get() ||
@@ -5336,25 +5342,29 @@ internal class RegattaLinkBleClient(
                 val actual = readCalypso0031(activeGatt, characteristic, 0x20)
                     .value ?: throw IllegalArgumentException("Missing Calypso offset")
                 if (current()) {
-                    updateConfiguration {
-                        it.copy(calypsoAwaOffset = RegattaLinkCalypsoOffsetState(
-                            valueDeg = actual,
-                            error = if (target != null && actual != target) {
-                                "Calypso offset readback differs from requested value"
-                            } else ""
-                        ))
+                    updateConfiguration { state ->
+                        if (current()) state.copy(
+                            calypsoAwaOffset = RegattaLinkCalypsoOffsetState(
+                                valueDeg = actual,
+                                error = if (target != null && actual != target) {
+                                    "Calypso offset readback differs from requested value"
+                                } else ""
+                            )
+                        ) else state
                     }
                 }
             } catch (error: Exception) {
                 if (current()) {
                     updateConfiguration { old ->
-                        old.copy(calypsoAwaOffset = RegattaLinkCalypsoOffsetState(
-                            // A failed/ambiguous SET may already be committed.
-                            valueDeg = if (target == null) {
-                                old.calypsoAwaOffset.valueDeg
-                            } else null,
-                            error = error.message ?: "Could not read Calypso offset"
-                        ))
+                        if (current()) old.copy(
+                            calypsoAwaOffset = RegattaLinkCalypsoOffsetState(
+                                // An ambiguous SET may already be committed.
+                                valueDeg = if (target == null) {
+                                    old.calypsoAwaOffset.valueDeg
+                                } else null,
+                                error = error.message ?: "Could not read Calypso offset"
+                            )
+                        ) else old
                     }
                 }
             } finally {
@@ -6460,6 +6470,7 @@ internal class RegattaLinkBleClient(
 
     private fun resetConnectionTransportState() {
         // An old GATT read must neither block nor publish into a new session.
+        calypsoOffsetSessionGeneration.incrementAndGet()
         sensorInfoGeneration.incrementAndGet()
         sensorInfoReadGatt.set(null)
         updateConfiguration {
@@ -6698,6 +6709,7 @@ internal class RegattaLinkBleClient(
 
     private fun emitConfiguration(state: RegattaLinkConfigurationState) {
         // Setup and disconnect replace the entire session's metadata snapshot.
+        calypsoOffsetSessionGeneration.incrementAndGet()
         sensorInfoGeneration.incrementAndGet()
         if (!state.phoneGnssForwardingDesired) {
             clearPhoneGnssPending()
