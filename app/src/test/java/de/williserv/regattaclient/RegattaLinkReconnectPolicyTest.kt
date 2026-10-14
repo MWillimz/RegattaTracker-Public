@@ -63,6 +63,31 @@ class RegattaLinkReconnectPolicyTest {
     }
 
     @Test
+    fun connectedDifferentRLinkDoesNotMakePreferredStatusGreen() {
+        assertEquals(
+            RegattaLinkHomeStatus.WAITING,
+            regattaLinkHomeStatus(
+                state = RegattaLinkClientState(
+                    status = RegattaLinkConnectionStatus.CONNECTED,
+                    deviceInfo = RegattaLinkDeviceInfo(
+                        protocolMajor = REGATTALINK_PROTOCOL_MAJOR,
+                        protocolMinor = 0,
+                        capabilities = 0u,
+                        stableId = "connected",
+                        productId = REGATTALINK_PRODUCT_ID,
+                        profileId = REGATTALINK_PROFILE_ID,
+                        runningBuild = 1uL,
+                        otaSlotSize = 0u,
+                        maxInflightBlocks = 0
+                    )
+                ),
+                pairingRequired = false,
+                selectedStableId = "preferred"
+            )
+        )
+    }
+
+    @Test
     fun homeStatusUsesGreenOnlyForConnected() {
         assertEquals(
             RegattaLinkHomeStatus.CONNECTED,

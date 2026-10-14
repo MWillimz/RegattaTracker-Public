@@ -57,6 +57,7 @@ class RegattaLinkConnectionManagerTest {
                     onTelemetryStateChanged,
                     onConfigurationStateChanged,
                     onNmeaStateChanged,
+                    onDiscoveryStateChanged,
                     onFactoryResetRecoveryStateChanged,
                     onUnexpectedDisconnect ->
                 FakeConnectionClient(
@@ -65,12 +66,26 @@ class RegattaLinkConnectionManagerTest {
                     onTelemetryStateChanged = onTelemetryStateChanged,
                     onConfigurationStateChanged = onConfigurationStateChanged,
                     onNmeaStateChanged = onNmeaStateChanged,
+                    onDiscoveryStateChanged = onDiscoveryStateChanged,
                     onFactoryResetRecoveryStateChanged =
                         onFactoryResetRecoveryStateChanged,
                     onUnexpectedDisconnect = onUnexpectedDisconnect
                 ).also { fakeClient = it }
             },
             legacyBondedAddressProvider = legacyBondedAddressProvider
+        )
+
+    private fun testDeviceInfo(stableId: String) =
+        RegattaLinkDeviceInfo(
+            protocolMajor = REGATTALINK_PROTOCOL_MAJOR,
+            protocolMinor = 0,
+            capabilities = 0u,
+            stableId = stableId,
+            productId = REGATTALINK_PRODUCT_ID,
+            profileId = REGATTALINK_PROFILE_ID,
+            runningBuild = 1uL,
+            otaSlotSize = 0u,
+            maxInflightBlocks = 0
         )
 
     private fun testFirmwareArtifact(): RegattaLinkFirmwareArtifact =
@@ -103,6 +118,125 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun forgetNonselectedDisconnectedDeviceDoesNotTouchConnectedRLink() {
+        val unused = RegattaLinkConfiguredDevice(
+            "unused", "44:B1:76:48:31:CE", "RegattaLink-Unused"
+        )
+        RegattaLinkConfiguredDeviceStore(context).upsert(unused)
+        manager = createManager()
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress,
+                deviceInfo = testDeviceInfo(configured.stableId)
+            )
+        )
+
+        assertEquals(RegattaLinkForgetResult.SUCCESS, manager.forgetKnownDevice(unused.stableId))
+        assertEquals(listOf(configured), manager.currentDeviceSelectionState().knownDevices)
+        assertEquals(configured.stableId, manager.configuredDevice()?.stableId)
+        assertEquals(0, fakeClient.disconnectCalls)
+        assertEquals(0, fakeClient.cancelKnownAttemptCalls)
+    }
+
+    @Test
+    fun forgetConnectedRLinkIsRejectedEvenWhenNotPreferred() {
+        val other = RegattaLinkConfiguredDevice(
+            "other", "44:B1:76:48:31:CE", "Other"
+        )
+        val store = RegattaLinkConfiguredDeviceStore(context)
+        store.upsert(other)
+        assertTrue(store.select(other.stableId))
+        manager = createManager()
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress,
+                deviceInfo = testDeviceInfo(configured.stableId)
+            )
+        )
+
+        assertEquals(RegattaLinkForgetResult.CONNECTED,
+            manager.forgetKnownDevice(configured.stableId))
+        assertEquals(2, manager.currentDeviceSelectionState().knownDevices.size)
+        assertEquals(0, fakeClient.disconnectCalls)
+    }
+
+    @Test
+    fun selectedDisconnectedRLinkForgetCancelsOnlyItsPendingReconnect() {
+        assertTrue(manager.reconnectConfigured())
+        assertEquals(1, fakeClient.reconnectCalls)
+
+        assertEquals(RegattaLinkForgetResult.SUCCESS,
+            manager.forgetKnownDevice(configured.stableId))
+        assertEquals(null, manager.currentDeviceSelectionState().selectedStableId)
+        assertEquals(configured.stableId, fakeClient.lastCanceledStableId)
+        assertEquals(1, fakeClient.cancelKnownAttemptCalls)
+        assertEquals(0, fakeClient.disconnectCalls)
+        assertFalse(manager.reconnectConfigured())
+        fakeClient.emitUnexpectedDisconnect()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(0, fakeClient.autoConnectCalls)
+    }
+
+    @Test
+    fun lastForgottenKnownDeviceNeverBootstrapsFromLegacyBond() {
+        manager = createManager { configured.deviceAddress }
+        assertEquals(RegattaLinkForgetResult.SUCCESS,
+            manager.forgetKnownDevice(configured.stableId))
+
+        assertFalse(manager.reconnectConfigured())
+        manager.requestForegroundStartupReconnectIfPermitted()
+        assertEquals(0, fakeClient.reconnectCalls)
+        assertEquals(0, fakeClient.autoConnectCalls)
+        manager = createManager { configured.deviceAddress }
+        manager.requestForegroundStartupReconnectIfPermitted()
+        assertFalse(manager.reconnectConfigured())
+        assertEquals(0, fakeClient.reconnectCalls)
+        assertEquals(0, fakeClient.autoConnectCalls)
+    }
+
+    @Test
+    fun forgottenDeviceCanBeExplicitlyDiscoveredAndAddedAgain() {
+        assertEquals(RegattaLinkForgetResult.SUCCESS,
+            manager.forgetKnownDevice(configured.stableId))
+        assertTrue(manager.connectDiscoveredDevice(configured.deviceAddress))
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress,
+                deviceName = configured.deviceName,
+                deviceInfo = testDeviceInfo(configured.stableId)
+            )
+        )
+        assertEquals(configured.stableId, manager.configuredDevice()?.stableId)
+        assertEquals(listOf(configured), manager.currentDeviceSelectionState().knownDevices)
+    }
+
+    @Test
+    fun cannotForgetDuringExplicitDiscoveryConnectionToSameKnownDevice() {
+        assertTrue(manager.connectDiscoveredDevice(configured.deviceAddress))
+        assertEquals(RegattaLinkForgetResult.BUSY,
+            manager.forgetKnownDevice(configured.stableId))
+        assertEquals(configured, manager.configuredDevice())
+        assertEquals(0, fakeClient.disconnectCalls)
+    }
+
+    @Test
+    fun connectionThatChangedAfterSwipeWasDrawnCannotBeForgotten() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress,
+                deviceInfo = testDeviceInfo(configured.stableId)
+            )
+        )
+        assertEquals(RegattaLinkForgetResult.CONNECTED,
+            manager.forgetKnownDevice(configured.stableId))
+        assertEquals(configured, manager.configuredDevice())
+    }
+
+    @Test
     fun updatingConfiguredNamePreservesResetRecoveryMarker() {
         val store = RegattaLinkConfiguredDeviceStore(context)
         store.markResetRecoveryPending()
@@ -113,6 +247,113 @@ class RegattaLinkConnectionManagerTest {
         assertEquals(
             "RegattaLink-Renamed",
             store.load()?.deviceName
+        )
+    }
+
+    @Test
+    fun knownRegistryWithoutSelectionDoesNotAutoconnectLegacyBond() {
+        context.getSharedPreferences(
+            RegattaLinkConfiguredDeviceStore.PREFS_NAME,
+            Context.MODE_PRIVATE
+        ).edit().clear().commit()
+        val store = RegattaLinkConfiguredDeviceStore(context)
+        store.upsert(configured)
+        store.upsert(
+            RegattaLinkConfiguredDevice(
+                stableId = "8899aabbccddeeff",
+                deviceAddress = "44:B1:76:48:31:CE",
+                deviceName = "RegattaLink-31CE"
+            )
+        )
+        manager = createManager { "44:B1:76:48:31:B2" }
+
+        manager.requestForegroundStartupReconnectIfPermitted()
+
+        assertEquals(null, manager.configuredDevice())
+        assertEquals(0, fakeClient.autoConnectCalls)
+        assertEquals(0, fakeClient.reconnectCalls)
+    }
+
+    @Test
+    fun selectingKnownDeviceMakesItPreferredAndTargetsOnlyThatDevice() {
+        val second = RegattaLinkConfiguredDevice(
+            stableId = "8899aabbccddeeff",
+            deviceAddress = "44:B1:76:48:31:CE",
+            deviceName = "RegattaLink-31CE"
+        )
+        RegattaLinkConfiguredDeviceStore(context).upsert(second)
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress
+            )
+        )
+
+        assertTrue(manager.selectKnownDevice(second.stableId))
+
+        assertEquals(second, manager.configuredDevice())
+        assertEquals(1, fakeClient.disconnectCalls)
+        assertEquals(1, fakeClient.autoConnectCalls)
+        assertEquals(second.deviceAddress, fakeClient.lastAutoConnectAddress)
+        assertEquals(second.stableId, fakeClient.lastAutoConnectStableId)
+    }
+
+    @Test
+    fun configMutationBlocksBothDeviceSwitchPathsUntilFinished() {
+        val second = RegattaLinkConfiguredDevice(
+            stableId = "8899aabbccddeeff",
+            deviceAddress = "44:B1:76:48:31:CE",
+            deviceName = "RegattaLink-31CE"
+        )
+        RegattaLinkConfiguredDeviceStore(context).upsert(second)
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress,
+                deviceInfo = testDeviceInfo(configured.stableId)
+            )
+        )
+        fakeClient.emitConfiguration(RegattaLinkConfigurationState(busy = true))
+
+        assertFalse(manager.selectKnownDevice(second.stableId))
+        assertFalse(manager.connectDiscoveredDevice(second.deviceAddress))
+        assertEquals(configured.stableId, manager.configuredDevice()?.stableId)
+        assertEquals(0, fakeClient.disconnectCalls)
+        assertEquals(0, fakeClient.autoConnectCalls)
+        assertEquals(0, fakeClient.discoveredConnectCalls)
+
+        fakeClient.emitConfiguration(RegattaLinkConfigurationState(busy = false))
+
+        assertTrue(manager.selectKnownDevice(second.stableId))
+        assertEquals(1, fakeClient.disconnectCalls)
+        assertEquals(1, fakeClient.autoConnectCalls)
+        assertEquals(second.stableId, manager.configuredDevice()?.stableId)
+        assertTrue(manager.connectDiscoveredDevice(second.deviceAddress))
+        assertEquals(1, fakeClient.discoveredConnectCalls)
+    }
+
+    @Test
+    fun validatedDiscoveredDeviceBecomesKnownAndPreferred() {
+        val address = "44:B1:76:48:31:CE"
+        val stableId = "8899aabbccddeeff"
+
+        assertTrue(manager.connectDiscoveredDevice(address))
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = address,
+                deviceName = "RegattaLink-31CE",
+                deviceInfo = testDeviceInfo(stableId)
+            )
+        )
+
+        assertEquals(stableId, manager.configuredDevice()?.stableId)
+        assertEquals(
+            setOf(configured.stableId, stableId),
+            manager.currentDeviceSelectionState()
+                .knownDevices
+                .map { it.stableId }
+                .toSet()
         )
     }
 
@@ -154,6 +395,12 @@ class RegattaLinkConnectionManagerTest {
     @Test
     fun bluetoothOffEndsManualDiscoveryOwnershipSoAutoconnectCanResume() {
         assertTrue(manager.startDiscovery())
+        fakeClient.emitDiscovery(
+            RegattaLinkDiscoveryState(
+                scanning = false,
+                userMessage = RegattaLinkUiMessage.BLUETOOTH_DISABLED
+            )
+        )
         fakeClient.emitConnection(
             RegattaLinkClientState(
                 status = RegattaLinkConnectionStatus.BLUETOOTH_OFF,
@@ -178,6 +425,52 @@ class RegattaLinkConnectionManagerTest {
         assertEquals(1, fakeClient.reconnectCalls)
         assertEquals(configured.deviceAddress, fakeClient.lastReconnectAddress)
         assertEquals(configured.stableId, fakeClient.lastReconnectStableId)
+    }
+
+    @Test
+    fun factoryResetRemovesOnlyAffectedRLinkAndDoesNotSelectAnother() {
+        val second = RegattaLinkConfiguredDevice(
+            stableId = "8899aabbccddeeff",
+            deviceAddress = "44:B1:76:48:31:CE",
+            deviceName = "RegattaLink-31CE"
+        )
+        RegattaLinkConfiguredDeviceStore(context).upsert(second)
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress,
+                deviceName = configured.deviceName,
+                deviceInfo = testDeviceInfo(configured.stableId)
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                deviceControlAcceptedOpcode =
+                    RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                deviceControlAcceptedRequestId = 77u
+            )
+        )
+
+        fakeClient.emitConnection(RegattaLinkClientState())
+
+        val selection = manager.currentDeviceSelectionState()
+        assertEquals(null, selection.selectedStableId)
+        assertEquals(listOf(second), selection.knownDevices)
+        assertEquals(null, manager.configuredDevice())
+        assertFalse(manager.reconnectConfigured())
+        assertEquals(0, fakeClient.reconnectCalls)
+        assertEquals(0, fakeClient.autoConnectCalls)
     }
 
     @Test
@@ -281,6 +574,102 @@ class RegattaLinkConnectionManagerTest {
         assertEquals(0, fakeClient.reconnectCalls)
         assertTrue(manager.startDiscovery())
         assertEquals(1, fakeClient.discoveryCalls)
+    }
+
+    @Test
+    fun confirmedFactoryResetBlocksLegacyAutoconnectAfterProcessRestart() {
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress,
+                deviceName = configured.deviceName,
+                deviceInfo = testDeviceInfo(configured.stableId)
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                deviceControlAcceptedOpcode =
+                    RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                deviceControlAcceptedRequestId = 51u
+            )
+        )
+        fakeClient.emitConnection(RegattaLinkClientState())
+
+        assertTrue(
+            RegattaLinkConfiguredDeviceStore(context)
+                .requiresNewPairing()
+        )
+
+        manager = createManager { configured.deviceAddress }
+
+        manager.requestForegroundStartupReconnectIfPermitted()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(0, fakeClient.autoConnectCalls)
+        assertFalse(manager.reconnectConfigured())
+        assertEquals(0, fakeClient.reconnectCalls)
+        assertTrue(manager.startDiscovery())
+        assertEquals(1, fakeClient.discoveryCalls)
+    }
+
+    @Test
+    fun resetMarkerForADoesNotBlockExplicitlySelectedBReconnect() {
+        val second = RegattaLinkConfiguredDevice(
+            stableId = "8899aabbccddeeff",
+            deviceAddress = "44:B1:76:48:31:CE",
+            deviceName = "RegattaLink-31CE"
+        )
+        val store = RegattaLinkConfiguredDeviceStore(context)
+        store.upsert(second)
+
+        fakeClient.emitConnection(
+            RegattaLinkClientState(
+                status = RegattaLinkConnectionStatus.CONNECTED,
+                deviceAddress = configured.deviceAddress,
+                deviceName = configured.deviceName,
+                deviceInfo = testDeviceInfo(configured.stableId)
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlSupported = true)
+        )
+        assertTrue(
+            manager.executeDeviceControl(
+                RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                0
+            )
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                deviceControlSupported = true,
+                deviceControlBusy = true,
+                deviceControlAcceptedOpcode =
+                    RegattaLinkDeviceControlOpcode.FACTORY_RESET,
+                deviceControlAcceptedRequestId = 52u
+            )
+        )
+        fakeClient.emitConnection(RegattaLinkClientState())
+
+        assertTrue(store.select(second.stableId))
+        assertFalse(store.requiresNewPairing())
+
+        manager = createManager { configured.deviceAddress }
+
+        assertTrue(manager.reconnectConfigured())
+        assertEquals(1, fakeClient.reconnectCalls)
+        assertEquals(second.deviceAddress, fakeClient.lastReconnectAddress)
+        assertEquals(second.stableId, fakeClient.lastReconnectStableId)
     }
 
     @Test
@@ -813,10 +1202,10 @@ class RegattaLinkConnectionManagerTest {
     fun failedExplicitSearchPreservesPreviouslyConfiguredDevice() {
         assertTrue(manager.startDiscovery())
 
-        fakeClient.emitConnection(
-            RegattaLinkClientState(
-                status = RegattaLinkConnectionStatus.ERROR,
-                error = "search failed"
+        fakeClient.emitDiscovery(
+            RegattaLinkDiscoveryState(
+                scanning = false,
+                userMessage = RegattaLinkUiMessage.CONNECTION_FAILED
             )
         )
 
@@ -916,7 +1305,7 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
-    fun nmeaTxConfigurationRoutesThroughManagerAndRespectsMutationOwnership() {
+    fun nmeaAttitudeConfigurationRoutesThroughManagerAndRespectsMutationOwnership() {
         fakeClient.emitConfiguration(
             RegattaLinkConfigurationState(
                 configWordSupported = true,
@@ -924,19 +1313,14 @@ class RegattaLinkConnectionManagerTest {
             )
         )
 
-        assertTrue(manager.setNmeaTxEnabled(true))
         assertTrue(manager.setNmeaAttitudeTxEnabled(true))
-        assertEquals(1, fakeClient.setNmeaTxCalls)
         assertEquals(1, fakeClient.setNmeaAttitudeTxCalls)
-        assertEquals(true, fakeClient.lastNmeaTxEnabled)
         assertEquals(true, fakeClient.lastNmeaAttitudeTxEnabled)
 
         fakeClient.emitConfiguration(
             RegattaLinkConfigurationState(deviceControlBusy = true)
         )
-        assertFalse(manager.setNmeaTxEnabled(false))
         assertFalse(manager.setNmeaAttitudeTxEnabled(false))
-        assertEquals(1, fakeClient.setNmeaTxCalls)
         assertEquals(1, fakeClient.setNmeaAttitudeTxCalls)
     }
 
@@ -950,9 +1334,7 @@ class RegattaLinkConnectionManagerTest {
             )
         )
 
-        val txDraft =
-            REGATTALINK_CONFIG_TX_MASTER or
-                REGATTALINK_CONFIG_TX_COMPASS
+        val txDraft = REGATTALINK_CONFIG_TX_COMPASS
         assertTrue(manager.applyTxSelectionAndRestart(txDraft))
         assertEquals(1, fakeClient.applyConfigBitsAndRestartCalls)
         assertEquals(
@@ -989,8 +1371,13 @@ class RegattaLinkConnectionManagerTest {
             )
         )
         assertFalse(
+            manager.applyTxSelectionAndRestart(
+                REGATTALINK_CONFIG_CAN_STATUS_MIRROR
+            )
+        )
+        assertFalse(
             manager.applySubsystemSelectionAndRestart(
-                REGATTALINK_CONFIG_TX_MASTER
+                REGATTALINK_CONFIG_CAN_STATUS_MIRROR
             )
         )
         assertEquals(0, fakeClient.applyConfigBitsAndRestartCalls)
@@ -1013,7 +1400,6 @@ class RegattaLinkConnectionManagerTest {
         assertFalse(manager.setDeviceName("Race-Link"))
         assertFalse(manager.setLedBrightness(75))
         assertFalse(manager.setMotionDamping(4))
-        assertFalse(manager.setNmeaTxEnabled(true))
         assertFalse(manager.setNmeaAttitudeTxEnabled(true))
         assertFalse(manager.drainDiagnosticLog())
         assertFalse(
@@ -1028,7 +1414,6 @@ class RegattaLinkConnectionManagerTest {
         assertEquals(0, fakeClient.setNameCalls)
         assertEquals(0, fakeClient.setBrightnessCalls)
         assertEquals(0, fakeClient.setDampingCalls)
-        assertEquals(0, fakeClient.setNmeaTxCalls)
         assertEquals(0, fakeClient.setNmeaAttitudeTxCalls)
         assertEquals(0, fakeClient.diagnosticDrainCalls)
         assertEquals(0, fakeClient.deviceControlCalls)
@@ -1297,6 +1682,37 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun diagnosticEntriesRemainVisibleAfterDeviceConfigurationResets() {
+        val entry = RegattaLinkDiagnosticLogEntry(
+            timestamp10ms = 123,
+            message = "CAN ACK"
+        )
+        var observed: RegattaLinkConfigurationState? = null
+        manager.addListener(
+            object : RegattaLinkConnectionListener {
+                override fun onConfigurationStateChanged(state: RegattaLinkConfigurationState) {
+                    observed = state
+                }
+            }
+        )
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                diagnosticLogSupported = true,
+                diagnosticLogEntries = listOf(entry)
+            )
+        )
+        fakeClient.emitConfiguration(RegattaLinkConfigurationState())
+
+        assertEquals(listOf(entry), observed?.diagnosticLogEntries)
+    }
+
+    @Test
+    fun stoppingDiagnosticStreamDelegatesToClient() {
+        manager.stopDiagnosticLog()
+        assertEquals(1, fakeClient.diagnosticStopCalls)
+    }
+
+    @Test
     fun acceptedOptionalWorkImmediatelyReservesRawCaptureAdmission() {
         fakeClient.emitConnection(
             RegattaLinkClientState(
@@ -1497,7 +1913,7 @@ class RegattaLinkConnectionManagerTest {
     @Test
     fun phoneGnssForwardingStopsForCanAndRuntimeBlocksAndRecovers() {
         val enabledWord =
-            REGATTALINK_CONFIG_TX_MASTER or
+            REGATTALINK_CONFIG_CAN_STATUS_MIRROR or
                 REGATTALINK_CONFIG_TX_PHONE_GPS or
                 REGATTALINK_CONFIG_SESSION_CAN
         val ready = RegattaLinkConfigurationState(
@@ -1544,7 +1960,7 @@ class RegattaLinkConnectionManagerTest {
         fakeClient.emitConfiguration(
             ready.copy(
                 configWord =
-                    REGATTALINK_CONFIG_TX_MASTER or
+                    REGATTALINK_CONFIG_CAN_STATUS_MIRROR or
                         REGATTALINK_CONFIG_TX_PHONE_GPS
             )
         )
@@ -1620,6 +2036,7 @@ class RegattaLinkConnectionManagerTest {
         private val onConfigurationStateChanged: (RegattaLinkConfigurationState) -> Unit,
         @Suppress("UNUSED_PARAMETER")
         private val onNmeaStateChanged: (RegattaLinkNmeaState) -> Unit,
+        private val onDiscoveryStateChanged: (RegattaLinkDiscoveryState) -> Unit,
         private val onFactoryResetRecoveryStateChanged: (Boolean) -> Unit,
         private val onUnexpectedDisconnect: () -> Unit
     ) : RegattaLinkConnectionClient {
@@ -1627,17 +2044,20 @@ class RegattaLinkConnectionManagerTest {
         var reconnectAccepted = true
         var autoConnectAccepted = true
         var discoveryCalls = 0
+        var discoveredConnectCalls = 0
         var reconnectCalls = 0
         var autoConnectCalls = 0
         var disconnectCalls = 0
+        var cancelKnownAttemptCalls = 0
+        var lastCanceledStableId: String? = null
         var otaStartCalls = 0
         var setNameCalls = 0
         var setBrightnessCalls = 0
         var setDampingCalls = 0
-        var setNmeaTxCalls = 0
         var setNmeaAttitudeTxCalls = 0
         var applyConfigBitsAndRestartCalls = 0
         var diagnosticDrainCalls = 0
+        var diagnosticStopCalls = 0
         var deviceControlCalls = 0
         var refreshPgnCalls = 0
         var rawReadCalls = 0
@@ -1652,10 +2072,10 @@ class RegattaLinkConnectionManagerTest {
         var lastDeviceControlOpcode: RegattaLinkDeviceControlOpcode? = null
         var lastDeviceControlValue: Int? = null
         var lastDampingSeconds: Int? = null
-        var lastNmeaTxEnabled: Boolean? = null
         var lastNmeaAttitudeTxEnabled: Boolean? = null
         var lastAppliedConfigMask: UInt? = null
         var lastAppliedConfigBits: UInt? = null
+        var lastDiscoveredConnectAddress: String? = null
         var lastReconnectAddress: String? = null
         var lastReconnectStableId: String? = null
         var lastAutoConnectAddress: String? = null
@@ -1691,6 +2111,20 @@ class RegattaLinkConnectionManagerTest {
             return discoveryAccepted
         }
 
+        override fun connectDiscoveredDevice(deviceAddress: String): Boolean {
+            discoveredConnectCalls += 1
+            lastDiscoveredConnectAddress = deviceAddress
+            return true
+        }
+
+        override fun cancelKnownDeviceAttempt(
+            stableId: String, deviceAddress: String
+        ): Boolean {
+            cancelKnownAttemptCalls++
+            lastCanceledStableId = stableId
+            return true
+        }
+
         override fun disconnect() {
             disconnectCalls += 1
         }
@@ -1719,12 +2153,6 @@ class RegattaLinkConnectionManagerTest {
             return true
         }
 
-        override fun setNmeaTxEnabled(enabled: Boolean): Boolean {
-            setNmeaTxCalls += 1
-            lastNmeaTxEnabled = enabled
-            return true
-        }
-
         override fun setNmeaAttitudeTxEnabled(enabled: Boolean): Boolean {
             setNmeaAttitudeTxCalls += 1
             lastNmeaAttitudeTxEnabled = enabled
@@ -1739,6 +2167,10 @@ class RegattaLinkConnectionManagerTest {
             lastAppliedConfigMask = mask
             lastAppliedConfigBits = encodedBits
             return true
+        }
+
+        override fun stopDiagnosticLog() {
+            diagnosticStopCalls += 1
         }
 
         override fun drainDiagnosticLog(): Boolean {
@@ -1803,6 +2235,10 @@ class RegattaLinkConnectionManagerTest {
 
         fun emitConnection(state: RegattaLinkClientState) {
             onStateChanged(state)
+        }
+
+        fun emitDiscovery(state: RegattaLinkDiscoveryState) {
+            onDiscoveryStateChanged(state)
         }
 
         fun emitOta(state: RegattaLinkOtaUiState) {

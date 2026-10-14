@@ -34,6 +34,23 @@ internal fun regattaLinkHomeStatus(
         RegattaLinkHomeStatus.WAITING
 }
 
+internal fun regattaLinkHomeStatus(
+    state: RegattaLinkClientState,
+    pairingRequired: Boolean,
+    selectedStableId: String?
+): RegattaLinkHomeStatus = when {
+    state.status == RegattaLinkConnectionStatus.CONNECTED &&
+        selectedStableId != null &&
+        state.deviceInfo?.stableId == selectedStableId ->
+        RegattaLinkHomeStatus.CONNECTED
+    state.status == RegattaLinkConnectionStatus.ERROR ||
+        state.status == RegattaLinkConnectionStatus.BLUETOOTH_OFF ||
+        pairingRequired ->
+        RegattaLinkHomeStatus.ERROR
+    else ->
+        RegattaLinkHomeStatus.WAITING
+}
+
 internal fun shouldDeferRegattaLinkTerminalOtaState(
     otaOwnsConnection: Boolean,
     phase: RegattaLinkOtaPhase

@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -24,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.res.stringResource
@@ -36,6 +39,7 @@ import com.google.zxing.PlanarYUVLuminanceSource
 import com.google.zxing.ReaderException
 import com.google.zxing.common.HybridBinarizer
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 @Composable
 fun QrScannerScreen(
@@ -68,6 +72,8 @@ fun QrScannerScreen(
     Column(
         modifier = modifier.fillMaxSize()
     ) {
+        EventQrScannerHint()
+
         if (hasCameraPermission.value) {
             CameraPreviewWithQrScanner(
                 modifier = Modifier
@@ -94,6 +100,21 @@ fun QrScannerScreen(
 }
 
 @Composable
+internal fun EventQrScannerHint() {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        Text(
+            text = stringResource(R.string.scan_event_qr_code),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
 fun CameraPreviewWithQrScanner(
     modifier: Modifier = Modifier,
     onQrScanned: (String) -> Unit
@@ -101,6 +122,7 @@ fun CameraPreviewWithQrScanner(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val hasScanned = remember { mutableStateOf(false) }
+    val disposed = remember { AtomicBoolean(false) }
 
     val cameraExecutor = remember {
         Executors.newSingleThreadExecutor()
@@ -112,9 +134,12 @@ fun CameraPreviewWithQrScanner(
 
     DisposableEffect(Unit) {
         onDispose {
-            try {
-                cameraProviderFuture.get().unbindAll()
-            } catch (_: Exception) {
+            disposed.set(true)
+            if (cameraProviderFuture.isDone) {
+                try {
+                    cameraProviderFuture.get().unbindAll()
+                } catch (_: Exception) {
+                }
             }
 
             cameraExecutor.shutdownNow()
@@ -131,6 +156,7 @@ fun CameraPreviewWithQrScanner(
 
             cameraProviderFuture.addListener(
                 {
+                    if (disposed.get()) return@addListener
                     val cameraProvider = cameraProviderFuture.get()
 
                     val preview = androidx.camera.core.Preview.Builder()
@@ -149,15 +175,15 @@ fun CameraPreviewWithQrScanner(
                             imageProxy = imageProxy,
                             hasScanned = hasScanned.value,
                             onQrScanned = { raw ->
-                                if (!hasScanned.value) {
-                                    hasScanned.value = true
-
-                                    try {
-                                        cameraProvider.unbindAll()
-                                    } catch (_: Exception) {
+                                ContextCompat.getMainExecutor(ctx).execute {
+                                    if (!disposed.get() && !hasScanned.value) {
+                                        hasScanned.value = true
+                                        try {
+                                            cameraProvider.unbindAll()
+                                        } catch (_: Exception) {
+                                        }
+                                        onQrScanned(raw)
                                     }
-
-                                    onQrScanned(raw)
                                 }
                             }
                         )

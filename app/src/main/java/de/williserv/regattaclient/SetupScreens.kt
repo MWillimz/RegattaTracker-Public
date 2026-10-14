@@ -202,6 +202,8 @@ fun RaceScreen(
     raceStatusText: String,
     raceStartText: String,
     raceStartEpochMillis: Long?,
+    raceStopEpochMillis: Long?,
+    raceStatusCode: String,
     raceEntryNowEpochMillis: Long,
     raceStopText: String,
     raceRegistered: Boolean,
@@ -232,10 +234,6 @@ fun RaceScreen(
     dailyReentryEnabled: Boolean = false
 ) {
     val hasRaceSetup = raceEvent.isNotBlank() && raceSecret.isNotBlank() && raceServer.isNotBlank()
-    val enterRaceTimeAvailable = isEnterRaceTimeAvailable(
-        raceStartEpochMillis = raceStartEpochMillis,
-        nowEpochMillis = raceEntryNowEpochMillis
-    )
     val primaryBlue = MaterialTheme.colorScheme.primary
     val successGreen = MaterialTheme.colorScheme.secondary
     val dangerRed = MaterialTheme.colorScheme.error
@@ -373,11 +371,22 @@ fun RaceScreen(
             }
 
             else -> {
+                val actions = resolveRaceEventActions(
+                    startEpochMillis = raceStartEpochMillis,
+                    stopEpochMillis = raceStopEpochMillis,
+                    nowEpochMillis = raceEntryNowEpochMillis,
+                    raceStatusCode = raceStatusCode,
+                    raceRegistered = raceRegistered,
+                    baseCanRegister = canRegisterRace,
+                    baseCanEnter = canEnterRace
+                )
+
                 Button(
                     onClick = onEnterRace,
-                    enabled = canEnterRace && enterRaceTimeAvailable,
+                    enabled = actions.enterEnabled,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = successGreen,
+                        contentColor = MaterialTheme.colorScheme.onSecondary,
                         disabledContainerColor = MaterialTheme.colorScheme.outlineVariant,
                         disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
                     ),
@@ -389,7 +398,7 @@ fun RaceScreen(
                 }
 
                 when {
-                    !canEnterRace -> {
+                    !actions.raceEnded && !canEnterRace -> {
                         Text(
                             text = stringResource(R.string.enter_race_requirements),
                             fontSize = 14.sp,
@@ -398,7 +407,7 @@ fun RaceScreen(
                         )
                     }
 
-                    !enterRaceTimeAvailable -> {
+                    !actions.raceEnded && !actions.enterTimeAvailable -> {
                         Text(
                             text = stringResource(R.string.enter_race_available_24h),
                             fontSize = 14.sp,
@@ -416,10 +425,18 @@ fun RaceScreen(
                 ) {
                     Button(
                         onClick = onRegisterRace,
-                        enabled = canRegisterRace,
+                        enabled = actions.registerEnabled,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = primaryBlue,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                            containerColor = if (actions.registerHighlighted) {
+                                successGreen
+                            } else {
+                                primaryBlue
+                            },
+                            contentColor = if (actions.registerHighlighted) {
+                                MaterialTheme.colorScheme.onSecondary
+                            } else {
+                                MaterialTheme.colorScheme.onPrimary
+                            },
                             disabledContainerColor = MaterialTheme.colorScheme.outlineVariant,
                             disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant
                         ),

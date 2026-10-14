@@ -2,15 +2,22 @@ package de.williserv.regattaclient
 
 import android.os.SystemClock
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -24,14 +31,19 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -41,8 +53,11 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -50,12 +65,31 @@ import kotlinx.coroutines.delay
 import java.util.Locale
 import kotlin.math.roundToInt
 
+internal fun shouldShowRegattaLinkSetupMenu(status: RegattaLinkConnectionStatus): Boolean =
+    status == RegattaLinkConnectionStatus.CONNECTED
+
+internal fun isConnectedRegattaLinkPickerDevice(
+    device: RegattaLinkConfiguredDevice,
+    connectionState: RegattaLinkClientState,
+    connectedStableId: String?
+): Boolean =
+    connectionState.status == RegattaLinkConnectionStatus.CONNECTED &&
+        if (connectedStableId != null) {
+            connectedStableId == device.stableId
+        } else {
+            connectionState.deviceAddress.isNotBlank() &&
+                connectionState.deviceAddress.equals(
+                    device.deviceAddress, ignoreCase = true
+                )
+        }
+
 internal fun shouldAutoRefreshPgnInventory(
     detailsExpanded: Boolean,
     inventorySupported: Boolean,
     inventoryEmpty: Boolean,
     inventoryLoading: Boolean,
     otaActive: Boolean,
+    rawCaptureActive: Boolean,
     alreadyRequested: Boolean
 ): Boolean =
     detailsExpanded &&
@@ -63,12 +97,26 @@ internal fun shouldAutoRefreshPgnInventory(
         inventoryEmpty &&
         !inventoryLoading &&
         !otaActive &&
+        !rawCaptureActive &&
         !alreadyRequested
 
 internal data class RegattaLinkConfigSliderSubmission(
     val requestedValue: Int,
     val confirmedDraft: Float
 )
+
+internal fun shouldRefreshCalypsoStatusOnOpen(
+    bluetoothDevicesOpen: Boolean,
+    connected: Boolean,
+    deviceControlSupported: Boolean,
+    deviceControlEnabled: Boolean,
+    alreadyRequested: Boolean
+): Boolean =
+    bluetoothDevicesOpen &&
+        connected &&
+        deviceControlSupported &&
+        deviceControlEnabled &&
+        !alreadyRequested
 
 @Composable
 private fun regattaLinkRuntimeMessageText(
@@ -115,6 +163,7 @@ internal fun prepareRegattaLinkConfigSliderSubmission(
 internal enum class RegattaLinkSetupDestination {
     IMU,
     NMEA,
+    BLUETOOTH_DEVICES,
     ADVANCED_DIAGNOSTICS,
     FIRMWARE
 }
@@ -134,6 +183,10 @@ internal val regattaLinkSetupMenuItems = listOf(
         R.string.regattalink_setup_nmea
     ),
     RegattaLinkSetupMenuItem(
+        RegattaLinkSetupDestination.BLUETOOTH_DEVICES,
+        R.string.regattalink_bluetooth_devices
+    ),
+    RegattaLinkSetupMenuItem(
         RegattaLinkSetupDestination.ADVANCED_DIAGNOSTICS,
         R.string.regattalink_advanced_diagnostics
     ),
@@ -144,8 +197,10 @@ internal val regattaLinkSetupMenuItems = listOf(
 )
 
 @Composable
-fun RegattaLinkScreen(
+internal fun RegattaLinkScreen(
     state: RegattaLinkClientState,
+    deviceSelectionState: RegattaLinkDeviceSelectionState =
+        RegattaLinkDeviceSelectionState(),
     firmwareState: RegattaLinkFirmwareUiState,
     otaState: RegattaLinkOtaUiState,
     telemetryState: RegattaLinkTelemetryState,
@@ -156,6 +211,9 @@ fun RegattaLinkScreen(
     phoneGpsRelayEnabled: Boolean = false,
     modifier: Modifier = Modifier,
     onSearch: () -> Unit,
+    onSelectKnownDevice: (String) -> Unit = {},
+    onForgetKnownDevice: (String) -> Boolean = { false },
+    onConnectDiscoveredDevice: (String) -> Unit = {},
     onEnableBluetooth: () -> Unit = {},
     onCheckFirmware: () -> Unit,
     onFirmwareSourceSelected: (RegattaLinkFirmwareSource) -> Unit,
@@ -166,6 +224,7 @@ fun RegattaLinkScreen(
     onSetMotionDamping: (Int) -> Unit,
     onSetLoadPrecisionX10: (Boolean) -> Unit = {},
     onApplyTxConfigAndRestart: (UInt) -> Unit = {},
+    onApplyBluetoothConfigAndRestart: (UInt) -> Unit = {},
     onSetPhoneGpsRelayEnabled: (Boolean) -> Unit = {},
     onSetNmea0183Baud: (Int) -> Unit = {},
     onSetMagBackgroundLearningEnabled: (Boolean) -> Unit = {},
@@ -173,7 +232,9 @@ fun RegattaLinkScreen(
     onSetHeadingTrimDeg: (Int) -> Unit = {},
     onSetLoadSensorAlias: (String, String) -> Unit = { _, _ -> },
     onDrainDiagnosticLog: () -> Unit,
+    onStopDiagnosticLog: () -> Unit = {},
     onDeviceControl: (RegattaLinkDeviceControlOpcode, Int) -> Unit,
+    onRefreshCalypsoSensorInfo: () -> Unit = {},
     onSetImuRawPreviewEnabled: (Boolean) -> Unit = {},
     onRefreshPgnInventory: () -> Unit,
     onReadRawFrames: () -> Unit,
@@ -207,6 +268,7 @@ fun RegattaLinkScreen(
     }
 
     var settingsMenuExpanded by rememberSaveable { mutableStateOf(false) }
+    var devicePickerOpen by rememberSaveable { mutableStateOf(false) }
     var activeSetupDestination by rememberSaveable {
         mutableStateOf<RegattaLinkSetupDestination?>(null)
     }
@@ -217,10 +279,43 @@ fun RegattaLinkScreen(
     var resetDialogOpen by rememberSaveable { mutableStateOf(false) }
     var nameDraft by rememberSaveable { mutableStateOf("") }
 
-    val connected = state.status == RegattaLinkConnectionStatus.CONNECTED
+    val connected = shouldShowRegattaLinkSetupMenu(state.status)
+    LaunchedEffect(connected) {
+        if (!connected) settingsMenuExpanded = false
+    }
+    val deviceKey = state.deviceInfo?.stableId ?: state.deviceAddress
+    var calypsoStatusRequestedForOpen by remember(
+        deviceKey,
+        activeSetupDestination,
+        connected
+    ) {
+        mutableStateOf(false)
+    }
+    val displayedName = configurationState.deviceName.ifBlank { state.deviceName }
+    val connectedStableId = state.deviceInfo?.stableId.takeIf { connected }
+    val noKnownRLink = !connected && deviceSelectionState.knownDevices.isEmpty()
+    val selectedRLinkName = (if (connected) {
+        displayedName
+    } else {
+        deviceSelectionState.selectedDevice?.deviceName.orEmpty()
+    }).ifBlank { stringResource(R.string.regattalink_title) }
+    val canSearchRLinks =
+        !busy &&
+            !deviceSelectionState.discovery.scanning &&
+            !otaState.isActive &&
+            !configurationState.busy &&
+            !configurationState.deviceControlBusy &&
+            !configurationState.restartAwaitingDisconnect &&
+            !configurationState.factoryResetAwaitingDisconnect &&
+            state.status != RegattaLinkConnectionStatus.BLUETOOTH_OFF
+    val canSelectRLink =
+        !otaState.isActive &&
+            !configurationState.busy &&
+            !configurationState.deviceControlBusy &&
+            !configurationState.factoryResetAwaitingDisconnect &&
+            !configurationState.restartAwaitingDisconnect
     val firmwareSetupOpen =
         activeSetupDestination == RegattaLinkSetupDestination.FIRMWARE
-    val displayedName = configurationState.deviceName.ifBlank { state.deviceName }
     val configEnabled =
         connected &&
             !otaState.isActive &&
@@ -269,6 +364,39 @@ fun RegattaLinkScreen(
     val nmeaSetupOpen =
         activeSetupDestination == RegattaLinkSetupDestination.NMEA &&
             connected
+    val advancedDiagnosticsOpen =
+        activeSetupDestination == RegattaLinkSetupDestination.ADVANCED_DIAGNOSTICS &&
+            connected
+    val bluetoothDevicesOpen =
+        activeSetupDestination ==
+            RegattaLinkSetupDestination.BLUETOOTH_DEVICES
+    // A valid Calypso STATUS response confirms firmware support.
+    val calypsoSupported = connected && configurationState.calypso.statusKnown
+
+    LaunchedEffect(
+        bluetoothDevicesOpen || nmeaSetupOpen,
+        connected,
+        configurationState.deviceControlSupported,
+        deviceControlEnabled,
+        deviceKey
+    ) {
+        if (
+            shouldRefreshCalypsoStatusOnOpen(
+                bluetoothDevicesOpen = bluetoothDevicesOpen || nmeaSetupOpen,
+                connected = connected,
+                deviceControlSupported =
+                    configurationState.deviceControlSupported,
+                deviceControlEnabled = deviceControlEnabled,
+                alreadyRequested = calypsoStatusRequestedForOpen
+            )
+        ) {
+            calypsoStatusRequestedForOpen = true
+            onDeviceControl(
+                RegattaLinkDeviceControlOpcode.CALYPSO_STATUS,
+                0
+            )
+        }
+    }
 
     LaunchedEffect(
         firmwareSetupOpen,
@@ -281,28 +409,33 @@ fun RegattaLinkScreen(
     }
 
     LaunchedEffect(
-        nmeaSetupOpen,
+        advancedDiagnosticsOpen,
         nmeaState.pgnInventorySupported,
         nmeaState.pgnInventoryLoading,
         configurationState.canSessionAvailable,
         otaState.isActive,
+        rawCaptureState.isActive,
         state.deviceAddress
     ) {
         if (
-            !nmeaSetupOpen ||
-            configurationState.canSessionAvailable == false
+            !advancedDiagnosticsOpen ||
+            configurationState.canSessionAvailable != true ||
+            rawCaptureState.isActive
         ) {
+            // If the capture interrupts a queued auto-read, allow one
+            // new attempt after capture ends without closing the sheet.
             pgnInventoryAutoRefreshRequested = false
             return@LaunchedEffect
         }
 
         if (
             shouldAutoRefreshPgnInventory(
-                detailsExpanded = nmeaSetupOpen,
+                detailsExpanded = advancedDiagnosticsOpen,
                 inventorySupported = nmeaState.pgnInventorySupported,
                 inventoryEmpty = nmeaState.pgnInventory.isEmpty(),
                 inventoryLoading = nmeaState.pgnInventoryLoading,
                 otaActive = otaState.isActive,
+                rawCaptureActive = rawCaptureState.isActive,
                 alreadyRequested = pgnInventoryAutoRefreshRequested
             )
         ) {
@@ -351,11 +484,10 @@ fun RegattaLinkScreen(
             RegattaLinkNmeaSetupSheet(
                 nmeaState = nmeaState,
                 configurationState = configurationState,
-                deviceKey = state.deviceInfo?.stableId ?: state.deviceAddress,
+                deviceKey = deviceKey,
                 connected = connected,
                 configEnabled = configEnabled,
-                otaActive = otaState.isActive,
-                rawCaptureActive = rawCaptureState.isActive,
+                calypsoSupported = calypsoSupported,
                 onSetLoadPrecisionX10 = onSetLoadPrecisionX10,
                 onApplyTxConfigAndRestart = onApplyTxConfigAndRestart,
                 phoneGpsRelayEnabled = phoneGpsRelayEnabled,
@@ -365,7 +497,29 @@ fun RegattaLinkScreen(
                     onDeviceControl(RegattaLinkDeviceControlOpcode.RESTART, 0)
                 },
                 onSetLoadSensorAlias = onSetLoadSensorAlias,
-                onRefreshPgnInventory = onRefreshPgnInventory,
+                onDismiss = { activeSetupDestination = null }
+            )
+        }
+        RegattaLinkSetupDestination.BLUETOOTH_DEVICES -> {
+            RegattaLinkBluetoothDevicesSheet(
+                configurationState = configurationState,
+                deviceKey = deviceKey,
+                connected = connected,
+                configEnabled = configEnabled,
+                deviceControlEnabled = deviceControlEnabled,
+                calypsoSupported = calypsoSupported,
+                onScanCalypso = {
+                    onDeviceControl(
+                        RegattaLinkDeviceControlOpcode.CALYPSO_SCAN,
+                        0
+                    )
+                },
+                onDeleteCalypso = {
+                    onDeviceControl(RegattaLinkDeviceControlOpcode.CALYPSO_DELETE, 0)
+                },
+                onRefreshCalypsoSensorInfo = onRefreshCalypsoSensorInfo,
+                onApplyBluetoothConfigAndRestart =
+                    onApplyBluetoothConfigAndRestart,
                 onDismiss = { activeSetupDestination = null }
             )
         }
@@ -388,12 +542,21 @@ fun RegattaLinkScreen(
                 onApplySubsystemConfigAndRestart =
                     onApplySubsystemConfigAndRestart,
                 onDrainDiagnosticLog = onDrainDiagnosticLog,
+                onStopDiagnosticLog = onStopDiagnosticLog,
+                onCanErrorTrace = {
+                    onDeviceControl(
+                        RegattaLinkDeviceControlOpcode.CAN_ERROR_TRACE_60S,
+                        0
+                    )
+                },
+                onRefreshPgnInventory = onRefreshPgnInventory,
                 onReadRawFrames = onReadRawFrames,
                 onStartRawCapture = onStartRawCapture,
                 onStopRawCapture = onStopRawCapture,
                 onExportRawCapture = onExportRawCapture,
                 onDiscardRawCapture = onDiscardRawCapture,
                 onFactoryReset = {
+                    onStopDiagnosticLog()
                     activeSetupDestination = null
                     resetDialogOpen = true
                 },
@@ -419,6 +582,34 @@ fun RegattaLinkScreen(
         null -> Unit
     }
 
+    if (devicePickerOpen) {
+        RegattaLinkDevicePickerSheet(
+            deviceSelectionState = deviceSelectionState,
+            connectionState = state,
+            connectedStableId = connectedStableId,
+            canSearch = canSearchRLinks,
+            canSelect = canSelectRLink,
+            onSearch = onSearch,
+            onSelectKnownDevice = { stableId ->
+                onSelectKnownDevice(stableId)
+                devicePickerOpen = false
+            },
+            onConnectDiscoveredDevice = { address ->
+                onConnectDiscoveredDevice(address)
+                devicePickerOpen = false
+            },
+            onForgetKnownDevice = onForgetKnownDevice,
+            canDisconnect = !otaState.isActive &&
+                !configurationState.deviceControlBusy &&
+                !configurationState.factoryResetAwaitingDisconnect,
+            onDisconnect = {
+                devicePickerOpen = false
+                onDisconnect()
+            },
+            onDismiss = { devicePickerOpen = false }
+        )
+    }
+
     Column(
         modifier = modifier
             .padding(24.dp)
@@ -434,38 +625,40 @@ fun RegattaLinkScreen(
                 fontSize = 26.sp,
                 fontWeight = FontWeight.SemiBold
             )
-            Box {
-                Button(
-                    onClick = { settingsMenuExpanded = true }
-                ) {
-                    Text(stringResource(R.string.regattalink_setup))
-                }
-                DropdownMenu(
-                    expanded = settingsMenuExpanded,
-                    onDismissRequest = { settingsMenuExpanded = false }
-                ) {
-                    regattaLinkSetupMenuItems
-                        .filter { menuItem ->
-                            when (menuItem.destination) {
-                                RegattaLinkSetupDestination.IMU ->
-                                    configurationState.imuSessionAvailable != false ||
-                                        configurationState.magSessionAvailable != false
-                                RegattaLinkSetupDestination.NMEA ->
-                                    configurationState.canSessionAvailable != false ||
-                                        configurationState.nmea0183SessionAvailable != false
-                                else -> true
+            if (connected) {
+                Box {
+                    Button(
+                        onClick = { settingsMenuExpanded = true }
+                    ) {
+                        Text(stringResource(R.string.regattalink_setup))
+                    }
+                    DropdownMenu(
+                        expanded = settingsMenuExpanded,
+                        onDismissRequest = { settingsMenuExpanded = false }
+                    ) {
+                        regattaLinkSetupMenuItems
+                            .filter { menuItem ->
+                                when (menuItem.destination) {
+                                    RegattaLinkSetupDestination.IMU ->
+                                        configurationState.imuSessionAvailable != false ||
+                                            configurationState.magSessionAvailable != false
+                                    RegattaLinkSetupDestination.NMEA ->
+                                        configurationState.canSessionAvailable != false ||
+                                            configurationState.nmea0183SessionAvailable != false
+                                    else -> true
+                                }
                             }
+                            .forEach { menuItem ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(stringResource(menuItem.labelResId))
+                                },
+                                onClick = {
+                                    settingsMenuExpanded = false
+                                    activeSetupDestination = menuItem.destination
+                                }
+                            )
                         }
-                        .forEach { menuItem ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(stringResource(menuItem.labelResId))
-                            },
-                            onClick = {
-                                settingsMenuExpanded = false
-                                activeSetupDestination = menuItem.destination
-                            }
-                        )
                     }
                 }
             }
@@ -541,36 +734,111 @@ fun RegattaLinkScreen(
             )
         }
 
-        Card(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 18.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            )
+                .padding(top = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.padding(18.dp)) {
+            Column(modifier = Modifier.weight(1f)) {
+                if (!noKnownRLink) {
+                    Text(
+                        text = selectedRLinkName,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 18.sp
+                    )
+                }
                 Text(
                     text = statusText,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold
+                    color = if (connected) {
+                        androidx.compose.ui.graphics.Color(0xFF2E7D32)
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    fontSize = 12.sp
                 )
-
-                if (displayedName.isNotBlank()) {
-                    Text(
-                        text = displayedName,
-                        modifier = Modifier.padding(top = 6.dp)
-                    )
+            }
+            if (noKnownRLink) {
+                Button(
+                    onClick = {
+                        devicePickerOpen = true
+                        onSearch()
+                    },
+                    enabled = canSearchRLinks
+                ) {
+                    Text(stringResource(R.string.regattalink_pair))
                 }
-
-                state.deviceInfo?.let { info ->
-                    telemetryValue(
-                        label = stringResource(
-                            R.string.regattalink_firmware_build
-                        ),
-                        value = info.runningBuild.toString()
-                    )
+            } else {
+                TextButton(onClick = { devicePickerOpen = true }) {
+                    Text(stringResource(R.string.regattalink_switch))
                 }
+            }
+        }
+
+        if (
+            connected ||
+            state.userMessage != null ||
+            state.error.isNotBlank() ||
+            configurationState.userMessage != null ||
+            configurationState.error.isNotBlank() ||
+            configurationState.deviceControlBusy ||
+            rawCaptureState.isActive ||
+            otaState.isActive
+        ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    if (connected) {
+                        Text(
+                            text = stringResource(R.string.regattalink_boat_state_title),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        val stale = rememberTelemetryStale(
+                            nmeaState.boatStateReceivedAtElapsedMs,
+                            REGATTALINK_NMEA_STALE_MS
+                        )
+                        val liveBoatState = nmeaState.boatState.takeIf {
+                            nmeaState.boatStateSupported &&
+                                !nmeaState.pausedForOta &&
+                                !stale &&
+                                isRegattaLinkTelemetryFresh(
+                                    nmeaState.boatStateReceivedAtElapsedMs,
+                                    REGATTALINK_NMEA_STALE_MS,
+                                    SystemClock.elapsedRealtime()
+                                )
+                        }
+                        if (liveBoatState == null) {
+                            val message = when {
+                                !nmeaState.boatStateSupported ->
+                                    R.string.regattalink_unavailable
+                                nmeaState.pausedForOta ->
+                                    R.string.regattalink_telemetry_paused_ota
+                                else -> R.string.regattalink_boat_state_waiting
+                            }
+                            Text(
+                                text = stringResource(message),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 12.sp
+                            )
+                        } else {
+                            RegattaLinkBoatDataOverview(liveBoatState)
+                        }
+                        if (
+                            configurationState.canSessionAvailable == true &&
+                            nmeaState.loadSupported &&
+                            nmeaState.loadSensors.isNotEmpty() &&
+                            !nmeaState.pausedForOta
+                        ) {
+                            RegattaLinkLoadDataOverview(nmeaState.loadSensors)
+                        }
+                    }
 
                 regattaLinkRuntimeMessageText(
                     userMessage = state.userMessage,
@@ -582,83 +850,6 @@ fun RegattaLinkScreen(
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(top = 8.dp)
                     )
-                }
-
-                if (telemetryState.supported) {
-                    val motionIsStale = rememberTelemetryStale(
-                        telemetryState.motionOneHzReceivedAtElapsedMs,
-                        REGATTALINK_MOTION_ONE_HZ_STALE_MS
-                    )
-
-                    Text(
-                        text = stringResource(R.string.regattalink_motion_title),
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(top = 12.dp)
-                    )
-
-                    if (telemetryState.pausedForOta) {
-                        Text(
-                            text = stringResource(
-                                R.string.regattalink_telemetry_paused_ota
-                            ),
-                            modifier = Modifier.padding(top = 6.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    } else if (
-                        telemetryState.motionOneHz != null &&
-                        motionIsStale
-                    ) {
-                        Text(
-                            text = stringResource(
-                                R.string.regattalink_telemetry_stale
-                            ),
-                            modifier = Modifier.padding(top = 6.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    } else if (telemetryState.motionOneHz == null) {
-                        Text(
-                            text = stringResource(
-                                R.string.regattalink_telemetry_waiting
-                            ),
-                            modifier = Modifier.padding(top = 6.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    telemetryState.motionOneHz?.let { motion ->
-                        telemetryValue(
-                            label = stringResource(R.string.regattalink_heel),
-                            value = motion.heelDeg?.let {
-                                formatRegattaLinkWholeDegreeAngle(it)
-                            } ?: "--"
-                        )
-                        telemetryValue(
-                            label = stringResource(R.string.regattalink_pitch),
-                            value = motion.pitchDeg?.let {
-                                formatRegattaLinkWholeDegreeAngle(it)
-                            } ?: "--"
-                        )
-                        telemetryValue(
-                            label = stringResource(
-                                R.string.regattalink_yaw_rate
-                            ),
-                            value = motion.yawRateDps?.let {
-                                formatTelemetry(it, "°/s")
-                            } ?: "--"
-                        )
-                    }
-
-                    regattaLinkRuntimeMessageText(
-                        userMessage = telemetryState.userMessage,
-                        hasTechnicalError = telemetryState.error.isNotBlank(),
-                        fallback = RegattaLinkUiMessage.TELEMETRY_FAILED
-                    )?.let { message ->
-                        Text(
-                            text = message,
-                            modifier = Modifier.padding(top = 8.dp),
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
                 }
 
                 regattaLinkRuntimeMessageText(
@@ -722,6 +913,7 @@ fun RegattaLinkScreen(
                 }
             }
         }
+        }
 
         if (state.status == RegattaLinkConnectionStatus.BLUETOOTH_OFF) {
             Button(
@@ -732,36 +924,6 @@ fun RegattaLinkScreen(
                     .padding(top = 18.dp)
             ) {
                 Text(stringResource(R.string.regattalink_enable_bluetooth))
-            }
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 18.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Button(
-                onClick = onSearch,
-                enabled = !busy &&
-                    !otaState.isActive &&
-                    state.status != RegattaLinkConnectionStatus.CONNECTED &&
-                    state.status != RegattaLinkConnectionStatus.BLUETOOTH_OFF,
-                modifier = Modifier.weight(1f)
-            ) {
-                Text(stringResource(R.string.regattalink_search_connect))
-            }
-
-            Button(
-                onClick = onDisconnect,
-                enabled = !otaState.isActive &&
-                    !configurationState.deviceControlBusy &&
-                    !configurationState.factoryResetAwaitingDisconnect &&
-                    state.status != RegattaLinkConnectionStatus.IDLE &&
-                    state.status != RegattaLinkConnectionStatus.BLUETOOTH_OFF,
-                modifier = Modifier.weight(1f)
-            ) {
-                Text(stringResource(R.string.regattalink_disconnect))
             }
         }
 
@@ -778,6 +940,520 @@ fun RegattaLinkScreen(
     }
 }
 
+
+
+@Composable
+internal fun KnownRegattaLinkPickerRow(
+    device: RegattaLinkConfiguredDevice,
+    isSelected: Boolean,
+    isConnected: Boolean,
+    canSelect: Boolean,
+    onSelect: () -> Unit,
+    onDisconnect: (() -> Unit)? = null,
+    canDisconnect: Boolean = false
+) {
+    // Keep the row opaque above the swipe-to-forget background.
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceContainerLow),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        TextButton(
+            onClick = onSelect,
+            enabled = canSelect && !isConnected,
+            modifier = Modifier.weight(1f)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = device.deviceName.ifBlank {
+                        stringResource(R.string.regattalink_title)
+                    },
+                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                )
+                Text(
+                    text = stringResource(
+                        when {
+                            isConnected -> R.string.regattalink_status_connected
+                            isSelected -> R.string.regattalink_selected
+                            else -> R.string.regattalink_known
+                        }
+                    ) + " · ID …" + device.stableId.takeLast(8),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp
+                )
+            }
+        }
+        if (isConnected && onDisconnect != null) {
+            TextButton(onClick = onDisconnect, enabled = canDisconnect) {
+                Text(stringResource(R.string.regattalink_disconnect))
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun DismissibleKnownRegattaLinkRow(
+    device: RegattaLinkConfiguredDevice,
+    isSelected: Boolean,
+    isConnected: Boolean,
+    canSelect: Boolean,
+    onSelect: () -> Unit,
+    onForget: () -> Boolean
+) {
+    val forgetLabel = stringResource(R.string.regattalink_forget)
+    val dismissState = rememberSwipeToDismissBoxState()
+    LaunchedEffect(dismissState.currentValue) {
+        if (dismissState.currentValue == SwipeToDismissBoxValue.EndToStart &&
+            !onForget()
+        ) {
+            // Failed persistence/changed connection: keep the row usable.
+            dismissState.reset()
+        }
+    }
+    val accessible = Modifier.semantics {
+        customActions = listOf(
+            CustomAccessibilityAction(label = forgetLabel) {
+                onForget()
+                true
+            }
+        )
+    }
+    SwipeToDismissBox(
+        state = dismissState,
+        modifier = accessible
+            .fillMaxWidth()
+            .testTag("known-rlink-${device.stableId}"),
+        backgroundContent = {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.errorContainer)
+                    .padding(horizontal = 20.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Text(
+                    text = forgetLabel,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        },
+        enableDismissFromStartToEnd = false,
+        enableDismissFromEndToStart = true
+    ) {
+        KnownRegattaLinkPickerRow(
+            device = device,
+            isSelected = isSelected,
+            isConnected = isConnected,
+            canSelect = canSelect,
+            onSelect = onSelect
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RegattaLinkDevicePickerSheet(
+    deviceSelectionState: RegattaLinkDeviceSelectionState,
+    connectionState: RegattaLinkClientState,
+    connectedStableId: String?,
+    canSearch: Boolean,
+    canSelect: Boolean,
+    onSearch: () -> Unit,
+    onSelectKnownDevice: (String) -> Unit,
+    onConnectDiscoveredDevice: (String) -> Unit,
+    onForgetKnownDevice: (String) -> Boolean,
+    canDisconnect: Boolean,
+    onDisconnect: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 24.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
+            Text(
+                text = stringResource(R.string.regattalink_devices),
+                fontSize = 22.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            deviceSelectionState.knownDevices
+                .sortedBy { it.stableId != deviceSelectionState.selectedStableId }
+                .forEach { device ->
+                    key(device.stableId) {
+                        val isConnected = isConnectedRegattaLinkPickerDevice(
+                            device, connectionState, connectedStableId
+                        )
+                        val isSelected =
+                            deviceSelectionState.selectedStableId == device.stableId
+                        val canForget = canSelect &&
+                            canForgetKnownRegattaLink(device, connectionState)
+                        if (canForget) {
+                            DismissibleKnownRegattaLinkRow(
+                                device = device,
+                                isSelected = isSelected,
+                                isConnected = isConnected,
+                                canSelect = canSelect,
+                                onSelect = { onSelectKnownDevice(device.stableId) },
+                                onForget = { onForgetKnownDevice(device.stableId) }
+                            )
+                        } else {
+                            KnownRegattaLinkPickerRow(
+                                device = device,
+                                isSelected = isSelected,
+                                isConnected = isConnected,
+                                canSelect = canSelect,
+                                onSelect = { onSelectKnownDevice(device.stableId) },
+                                onDisconnect = onDisconnect.takeIf { isConnected },
+                                canDisconnect = canDisconnect
+                            )
+                        }
+                    }
+                }
+
+            Button(
+                onClick = onSearch,
+                enabled = canSearch,
+                modifier = Modifier.padding(top = 8.dp)
+            ) {
+                Text(stringResource(R.string.regattalink_pair_another))
+            }
+            if (deviceSelectionState.discovery.scanning) {
+                Text(
+                    text = stringResource(R.string.regattalink_status_scanning),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+            if (deviceSelectionState.discovery.devices.isNotEmpty()) {
+                Text(
+                    text = stringResource(R.string.regattalink_nearby),
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 12.dp)
+                )
+                deviceSelectionState.discovery.devices.forEach { device ->
+                    val known = deviceSelectionState.knownDevices.firstOrNull {
+                        it.deviceAddress.equals(device.deviceAddress, ignoreCase = true)
+                    }
+                    TextButton(
+                        onClick = {
+                            if (known != null) {
+                                onSelectKnownDevice(known.stableId)
+                            } else {
+                                onConnectDiscoveredDevice(device.deviceAddress)
+                            }
+                        },
+                        enabled = canSelect,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = device.deviceName.ifBlank {
+                                    stringResource(R.string.regattalink_title)
+                                }
+                            )
+                            Text(
+                                text = if (known != null) {
+                                    stringResource(R.string.regattalink_known)
+                                } else {
+                                    device.deviceAddress
+                                },
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                }
+            }
+            deviceSelectionState.discovery.userMessage?.let { message ->
+                Text(
+                    text = stringResource(regattaLinkUiMessageResource(message)),
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.align(Alignment.End)
+            ) {
+                Text(stringResource(R.string.close))
+            }
+        }
+    }
+}
+
+internal fun regattaLinkBoatValidNumber(
+    state: RegattaLinkBoatState,
+    bit: Int,
+    value: Double?
+): Double? = value?.takeIf {
+    state.validityBitmap and (1L shl bit) != 0L && it.isFinite()
+}
+
+internal fun regattaLinkBoatKnots(metersPerSecond: Double): Double =
+    metersPerSecond * 1.9438444924
+
+internal data class RegattaLinkNmeaSetupVisibility(
+    val forward0183: Boolean,
+    val forwardAttitude: Boolean,
+    val forwardCompass: Boolean,
+    val forwardPhoneGps: Boolean,
+    val forwardCalypsoWind: Boolean,
+    val baudRate: Boolean,
+    val loadSensors: Boolean
+)
+
+internal fun regattaLinkNmeaSetupVisibility(
+    config: RegattaLinkConfigurationState,
+    nmea: RegattaLinkNmeaState,
+    connected: Boolean,
+    calypsoSupported: Boolean
+): RegattaLinkNmeaSetupVisibility {
+    val canTx = connected && config.canSessionAvailable == true &&
+        config.nmeaTxSupported
+    return RegattaLinkNmeaSetupVisibility(
+        forward0183 = canTx && config.nmea0183SessionAvailable == true,
+        forwardAttitude = canTx && config.imuSessionAvailable == true &&
+            config.nmeaAttitudeTxSupported,
+        forwardCompass = canTx && config.magSessionAvailable == true,
+        forwardPhoneGps = canTx,
+        forwardCalypsoWind = canTx && calypsoSupported &&
+            config.calypsoEnabled == true,
+        baudRate = connected && config.nmea0183SessionAvailable == true &&
+            config.configWordSupported,
+        loadSensors = connected && config.canSessionAvailable == true &&
+            nmea.loadSupported && nmea.loadSensors.isNotEmpty()
+    )
+}
+
+internal enum class RegattaLinkWindLabelKind {
+    APPARENT,
+    TRUE,
+    DIRECTION_TRUE,
+    DIRECTION_MAGNETIC,
+    UNKNOWN
+}
+
+internal fun regattaLinkWindLabelKind(reference: Int?): RegattaLinkWindLabelKind =
+    when (reference) {
+        2 -> RegattaLinkWindLabelKind.APPARENT
+        3, 4 -> RegattaLinkWindLabelKind.TRUE
+        0 -> RegattaLinkWindLabelKind.DIRECTION_TRUE
+        1 -> RegattaLinkWindLabelKind.DIRECTION_MAGNETIC
+        else -> RegattaLinkWindLabelKind.UNKNOWN
+    }
+
+private data class RegattaLinkBoatDisplayValue(
+    val label: String,
+    val value: String
+)
+
+@Composable
+private fun RegattaLinkBoatDataOverview(state: RegattaLinkBoatState) {
+    fun valid(bit: Int, value: Double?): Double? =
+        regattaLinkBoatValidNumber(state, bit, value)
+    fun angle(value: Double): String = formatTelemetry(value, "°", 0)
+    fun speed(value: Double): String =
+        formatTelemetry(regattaLinkBoatKnots(value), " kn", 1)
+
+    val headingLabel = stringResource(R.string.regattalink_nmea_heading) +
+        when (state.headingReference) {
+            0 -> " (T)"
+            1 -> " (M)"
+            else -> ""
+        }
+    val cogLabel = stringResource(R.string.regattalink_nmea_cog) +
+        when (state.cogReference) {
+            0 -> " (T)"
+            1 -> " (M)"
+            else -> ""
+        }
+    val gps = listOfNotNull(
+        valid(13, state.cogDeg)?.let {
+            RegattaLinkBoatDisplayValue(cogLabel, angle(it))
+        },
+        valid(14, state.sogMps)?.let {
+            RegattaLinkBoatDisplayValue(
+                stringResource(R.string.regattalink_nmea_sog), speed(it)
+            )
+        }
+    )
+    val course = listOfNotNull(
+        valid(0, state.headingDeg)?.let {
+            RegattaLinkBoatDisplayValue(headingLabel, angle(it))
+        },
+        valid(7, state.speedThroughWaterMps)?.let {
+            RegattaLinkBoatDisplayValue("STW", speed(it))
+        }
+    )
+
+    val windKind = regattaLinkWindLabelKind(state.windReference)
+    val windSpeedLabel = when (windKind) {
+        RegattaLinkWindLabelKind.APPARENT -> "AWS"
+        RegattaLinkWindLabelKind.TRUE -> "TWS"
+        else -> stringResource(R.string.regattalink_nmea_wind_speed)
+    }
+    val windAngleLabel = when (windKind) {
+        RegattaLinkWindLabelKind.APPARENT -> "AWA"
+        RegattaLinkWindLabelKind.TRUE -> "TWA"
+        RegattaLinkWindLabelKind.DIRECTION_TRUE ->
+            stringResource(R.string.regattalink_boat_wind_direction) + " (T)"
+        RegattaLinkWindLabelKind.DIRECTION_MAGNETIC ->
+            stringResource(R.string.regattalink_boat_wind_direction) + " (M)"
+        RegattaLinkWindLabelKind.UNKNOWN ->
+            stringResource(R.string.regattalink_nmea_wind_angle)
+    }
+    val wind = listOfNotNull(
+        valid(17, state.windSpeedMps)?.let {
+            RegattaLinkBoatDisplayValue(windSpeedLabel, speed(it))
+        },
+        valid(18, state.windAngleDeg)?.let {
+            RegattaLinkBoatDisplayValue(windAngleLabel, angle(it))
+        }
+    )
+
+    val depth = listOfNotNull(
+        valid(8, state.depthM)?.let {
+            RegattaLinkBoatDisplayValue(
+                stringResource(R.string.regattalink_nmea_depth),
+                formatTelemetry(it, " m", 1)
+            )
+        },
+        valid(11, state.waterTemperatureC)?.let {
+            RegattaLinkBoatDisplayValue(
+                stringResource(R.string.regattalink_nmea_water_temp),
+                formatTelemetry(it, " °C", 1)
+            )
+        }
+    )
+
+    val motion = listOfNotNull(
+        valid(6, state.rollDeg)?.let {
+            RegattaLinkBoatDisplayValue(
+                stringResource(R.string.regattalink_heel), angle(it)
+            )
+        },
+        valid(5, state.pitchDeg)?.let {
+            RegattaLinkBoatDisplayValue(
+                stringResource(R.string.regattalink_pitch), angle(it)
+            )
+        },
+        valid(3, state.rateOfTurnDps)?.let {
+            RegattaLinkBoatDisplayValue(
+                stringResource(R.string.regattalink_nmea_rot),
+                formatTelemetry(it, "°/s", 1)
+            )
+        }
+    )
+    val latitude = valid(12, state.latitudeDeg)
+    val longitude = valid(12, state.longitudeDeg)
+    val position = if (latitude != null && longitude != null) {
+        String.format(Locale.US, "%.5f, %.5f", latitude, longitude)
+    } else null
+
+    if (gps.isEmpty() && course.isEmpty() && wind.isEmpty() && depth.isEmpty() &&
+        motion.isEmpty() && position == null
+    ) {
+        Text(
+            text = stringResource(R.string.regattalink_boat_state_no_data),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.sp
+        )
+        return
+    }
+
+    RegattaLinkBoatDataGroup(
+        title = stringResource(R.string.gps),
+        values = gps,
+        footer = position?.let {
+            stringResource(R.string.regattalink_nmea_position) + ": " + it
+        }
+    )
+    RegattaLinkBoatDataGroup(
+        stringResource(R.string.regattalink_boat_group_course), course
+    )
+    RegattaLinkBoatDataGroup(
+        stringResource(R.string.regattalink_boat_group_wind), wind
+    )
+    RegattaLinkBoatDataGroup(
+        stringResource(R.string.regattalink_boat_group_depth), depth
+    )
+    RegattaLinkBoatDataGroup(
+        stringResource(R.string.regattalink_boat_group_motion), motion
+    )
+}
+
+@Composable
+private fun RegattaLinkLoadDataOverview(sensors: List<RegattaLinkLoadSensor>) {
+    RegattaLinkBoatDataGroup(
+        stringResource(R.string.regattalink_load_sensors),
+        sensors.filter { it.loadKg.isFinite() }.map {
+            RegattaLinkBoatDisplayValue(
+                label = it.label,
+                value = formatTelemetry(it.loadKg, " kg", 1)
+            )
+        }
+    )
+}
+
+@Composable
+private fun RegattaLinkBoatDataGroup(
+    title: String,
+    values: List<RegattaLinkBoatDisplayValue>,
+    footer: String? = null
+) {
+    if (values.isEmpty() && footer == null) return
+    Text(
+        text = title,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        fontSize = 12.sp,
+        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
+    )
+    val columns = when (values.size) {
+        1 -> 1
+        2, 4 -> 2
+        else -> 3
+    }
+    values.chunked(columns).forEach { rowValues ->
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            rowValues.forEach { field ->
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = field.label,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp,
+                        maxLines = 2
+                    )
+                    Text(
+                        text = field.value,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+            repeat(columns - rowValues.size) {
+                Spacer(modifier = Modifier.weight(1f))
+            }
+        }
+    }
+    if (footer != null) {
+        Text(
+            text = footer,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.sp,
+            maxLines = 1,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+    }
+}
 
 @Composable
 private fun rememberTelemetryStale(
@@ -921,14 +1597,368 @@ private fun RegattaLinkBoatDataSelectorRow(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+private fun RegattaLinkBluetoothDevicesSheet(
+    configurationState: RegattaLinkConfigurationState,
+    deviceKey: String,
+    connected: Boolean,
+    configEnabled: Boolean,
+    deviceControlEnabled: Boolean,
+    calypsoSupported: Boolean,
+    onScanCalypso: () -> Unit,
+    onDeleteCalypso: () -> Unit,
+    onRefreshCalypsoSensorInfo: () -> Unit,
+    onApplyBluetoothConfigAndRestart: (UInt) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val selectionFromDevice =
+        configurationState.configWord
+            ?.and(REGATTALINK_CONFIG_BLUETOOTH_DEVICE_MASK)
+    var baseline by remember(deviceKey, connected) {
+        mutableStateOf(selectionFromDevice)
+    }
+    var draft by remember(deviceKey, connected) {
+        mutableStateOf(selectionFromDevice)
+    }
+    LaunchedEffect(deviceKey, connected, selectionFromDevice) {
+        if (baseline == null && selectionFromDevice != null) {
+            baseline = selectionFromDevice
+            draft = selectionFromDevice
+        }
+    }
+
+    val dirty =
+        baseline != null &&
+            draft != null &&
+            baseline != draft
+    val calypsoEnabledDraft =
+        regattaLinkConfigDraftBit(
+            draft,
+            REGATTALINK_CONFIG_CALYPSO_ENABLE
+        )
+    val calypso = configurationState.calypso
+    var infosExpanded by remember(deviceKey, calypso.boundId, calypso.connected) {
+        mutableStateOf(false)
+    }
+    LaunchedEffect(deviceKey, connected, calypso.statusKnown, calypso.boundId, calypso.connected) {
+        if (connected && calypso.statusKnown && calypso.connected) {
+            onRefreshCalypsoSensorInfo()
+        }
+    }
+    var confirmCalypsoDelete by remember(deviceKey) { mutableStateOf(false) }
+    val deleteActive = configurationState.deviceControlBusy &&
+        configurationState.deviceControlAcceptedOpcode ==
+            RegattaLinkDeviceControlOpcode.CALYPSO_DELETE
+    val scanActive =
+        calypso.scanning ||
+            (
+                configurationState.deviceControlBusy &&
+                    configurationState.deviceControlAcceptedOpcode ==
+                    RegattaLinkDeviceControlOpcode.CALYPSO_SCAN
+                )
+    var scanSecondsRemaining by remember(deviceKey) { mutableStateOf<Int?>(null) }
+    LaunchedEffect(scanActive, deviceKey) {
+        if (!scanActive) {
+            scanSecondsRemaining = null
+        } else {
+            val deadline = SystemClock.elapsedRealtime() + 60_000L
+            while (true) {
+                val remaining = ((deadline - SystemClock.elapsedRealtime() + 999L) / 1000L)
+                    .coerceAtLeast(0L).toInt()
+                scanSecondsRemaining = remaining
+                if (remaining == 0) break
+                delay(250L)
+            }
+        }
+    }
+
+    if (confirmCalypsoDelete && calypso.boundId != null) {
+        AlertDialog(
+            onDismissRequest = { confirmCalypsoDelete = false },
+            title = { Text(stringResource(R.string.regattalink_calypso_delete)) },
+            text = { Text(stringResource(R.string.regattalink_calypso_delete_confirm, calypso.boundId!!)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmCalypsoDelete = false
+                    onDeleteCalypso()
+                }, enabled = connected && deviceControlEnabled && !configurationState.deviceControlBusy) {
+                    Text(stringResource(R.string.regattalink_calypso_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmCalypsoDelete = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 24.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
+            Text(
+                text = stringResource(R.string.regattalink_bluetooth_devices),
+                fontSize = 22.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = stringResource(
+                    R.string.regattalink_calypso_wind_sensor
+                ),
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 18.dp)
+            )
+
+            telemetryValue(
+                label = stringResource(
+                    R.string.regattalink_calypso_bound_sensor
+                ),
+                value = when {
+                    !calypso.statusKnown -> "—"
+                    calypso.boundId != null -> calypso.boundId
+                    else -> stringResource(
+                        R.string.regattalink_calypso_not_bound
+                    )
+                }
+            )
+            if (calypso.statusKnown && calypso.boundId != null && calypsoSupported) {
+                TextButton(
+                    onClick = { confirmCalypsoDelete = true },
+                    enabled = connected && deviceControlEnabled && !configurationState.deviceControlBusy,
+                    modifier = Modifier.padding(top = 2.dp)
+                ) {
+                    Text(stringResource(R.string.regattalink_calypso_delete))
+                }
+            }
+            if (deleteActive) {
+                Text(stringResource(R.string.regattalink_calypso_deleting))
+            }
+            if (calypso.lastDeleteResult != null &&
+                calypso.lastDeleteResult != RegattaLinkDeviceControlResult.OK) {
+                Text(
+                    text = stringResource(R.string.regattalink_calypso_delete_failed),
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+            RegattaLinkTechnicalDetail(
+                detail = if (calypso.lastDeleteResult != null) calypso.error else ""
+            )
+            telemetryValue(
+                label = stringResource(
+                    R.string.regattalink_calypso_runtime
+                ),
+                value = when {
+                    !calypso.statusKnown -> "—"
+                    calypso.connected ->
+                        stringResource(R.string.regattalink_status_connected)
+                    else ->
+                        stringResource(
+                            R.string.regattalink_calypso_disconnected
+                        )
+                }
+            )
+
+            if (calypso.statusKnown && calypso.connected) {
+                TextButton(
+                    onClick = { infosExpanded = !infosExpanded },
+                    modifier = Modifier.padding(top = 8.dp)
+                ) {
+                    Text(
+                        stringResource(R.string.regattalink_sensor_infos) +
+                            if (infosExpanded) " ▴" else " ▾"
+                    )
+                }
+                if (infosExpanded) {
+                    val infos = configurationState.calypsoSensorInfo
+                    when {
+                        infos.loading -> Text(
+                            stringResource(R.string.regattalink_sensor_info_loading),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        infos.error.isNotBlank() -> {
+                            Text(
+                                stringResource(R.string.regattalink_sensor_info_read_failed),
+                                color = MaterialTheme.colorScheme.error
+                            )
+                            RegattaLinkTechnicalDetail(infos.error)
+                        }
+                        infos.entries.isEmpty() -> Text(
+                            stringResource(R.string.regattalink_sensor_info_empty),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        else -> infos.entries.forEach { entry ->
+                            telemetryValue(label = entry.key, value = entry.value)
+                        }
+                    }
+                    TextButton(
+                        onClick = onRefreshCalypsoSensorInfo,
+                        enabled = connected && configEnabled && !infos.loading
+                    ) {
+                        Text(stringResource(R.string.refresh))
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(
+                            R.string.regattalink_calypso_enable
+                        ),
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.regattalink_applies_after_restart
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = calypsoEnabledDraft == true,
+                    onCheckedChange = { enabled ->
+                        draft = regattaLinkConfigDraftWithBit(
+                            draft,
+                            REGATTALINK_CONFIG_CALYPSO_ENABLE,
+                            enabled
+                        )
+                    },
+                    enabled = configEnabled && calypsoSupported && calypsoEnabledDraft != null
+                )
+            }
+
+            if (dirty && draft != null) {
+                Button(
+                    onClick = {
+                        onApplyBluetoothConfigAndRestart(draft!!)
+                    },
+                    enabled =
+                        configEnabled &&
+                            configurationState.deviceControlSupported &&
+                            calypsoSupported,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp)
+                ) {
+                    Text(stringResource(R.string.regattalink_apply_restart))
+                }
+            }
+
+            Button(
+                onClick = onScanCalypso,
+                enabled = connected && deviceControlEnabled && calypsoSupported,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 18.dp)
+            ) {
+                Text(
+                    stringResource(
+                        if (scanActive) {
+                            R.string.regattalink_calypso_scanning
+                        } else {
+                            R.string.regattalink_calypso_scan
+                        }
+                    )
+                )
+            }
+
+            if (scanActive && scanSecondsRemaining != null) {
+                Text(
+                    text = "${scanSecondsRemaining} s",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
+
+            when (calypso.lastScanResult) {
+                RegattaLinkDeviceControlResult.NOT_FOUND ->
+                    Text(
+                        text = stringResource(
+                            R.string.regattalink_calypso_not_found
+                        ),
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                RegattaLinkDeviceControlResult.AMBIGUOUS ->
+                    Text(
+                        text = stringResource(
+                            R.string.regattalink_calypso_ambiguous
+                        ),
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                RegattaLinkDeviceControlResult.VERIFY_FAILED ->
+                    Text(
+                        text = stringResource(
+                            R.string.regattalink_calypso_verify_failed
+                        ),
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                RegattaLinkDeviceControlResult.NONE,
+                RegattaLinkDeviceControlResult.OK,
+                null -> Unit
+                else ->
+                    Text(
+                        text = stringResource(
+                            R.string.regattalink_error_configuration_failed
+                        ),
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+            }
+
+            RegattaLinkTechnicalDetail(
+                detail = calypso.error,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            regattaLinkRuntimeMessageText(
+                userMessage = configurationState.userMessage,
+                hasTechnicalError = configurationState.error.isNotBlank(),
+                fallback = RegattaLinkUiMessage.CONFIGURATION_FAILED
+            )?.let { message ->
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+            RegattaLinkTechnicalDetail(
+                detail = configurationState.error,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .align(Alignment.End)
+                    .padding(top = 12.dp)
+            ) {
+                Text(stringResource(R.string.close))
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 private fun RegattaLinkNmeaSetupSheet(
     nmeaState: RegattaLinkNmeaState,
     configurationState: RegattaLinkConfigurationState,
     deviceKey: String,
     connected: Boolean,
     configEnabled: Boolean,
-    otaActive: Boolean,
-    rawCaptureActive: Boolean,
+    calypsoSupported: Boolean,
     onSetLoadPrecisionX10: (Boolean) -> Unit,
     onApplyTxConfigAndRestart: (UInt) -> Unit,
     phoneGpsRelayEnabled: Boolean,
@@ -936,14 +1966,14 @@ private fun RegattaLinkNmeaSetupSheet(
     onSetNmea0183Baud: (Int) -> Unit,
     onRestart: () -> Unit,
     onSetLoadSensorAlias: (String, String) -> Unit,
-    onRefreshPgnInventory: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val canAvailable = configurationState.canSessionAvailable != false
+    val visibility = regattaLinkNmeaSetupVisibility(
+        configurationState, nmeaState, connected, calypsoSupported
+    )
+    val canAvailable = configurationState.canSessionAvailable == true
     val nmea0183Available =
-        configurationState.nmea0183SessionAvailable != false
-    val imuAvailable = configurationState.imuSessionAvailable != false
-    val magAvailable = configurationState.magSessionAvailable != false
+        configurationState.nmea0183SessionAvailable == true
     val nmeaAvailable =
         connected && (canAvailable || nmea0183Available)
     val txSelectionFromDevice =
@@ -964,8 +1994,6 @@ private fun RegattaLinkNmeaSetupSheet(
         txBaseline != null &&
             txDraft != null &&
             txBaseline != txDraft
-    val txMasterDraft =
-        regattaLinkConfigDraftBit(txDraft, REGATTALINK_CONFIG_TX_MASTER)
     val txAttitudeDraft =
         regattaLinkConfigDraftBit(txDraft, REGATTALINK_CONFIG_TX_IMU)
     val tx0183Draft =
@@ -974,6 +2002,11 @@ private fun RegattaLinkNmeaSetupSheet(
         regattaLinkConfigDraftBit(txDraft, REGATTALINK_CONFIG_TX_PHONE_GPS)
     val txCompassDraft =
         regattaLinkConfigDraftBit(txDraft, REGATTALINK_CONFIG_TX_COMPASS)
+    val txCalypsoWindDraft =
+        regattaLinkConfigDraftBit(
+            txDraft,
+            REGATTALINK_CONFIG_TX_CALYPSO_WIND
+        )
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -1009,7 +2042,7 @@ private fun RegattaLinkNmeaSetupSheet(
 
             val nmeaRuntimeKnown =
                 configurationState.nmeaTxRuntimeStatusSupported &&
-                    configurationState.nmeaTxBootSelected != null &&
+                    configurationState.nmeaCanBootEnabled != null &&
                     configurationState.nmeaTxActive != null
             val nmeaAttitudeBootSelected =
                 configurationState.nmeaBootOutputMask?.let {
@@ -1021,95 +2054,7 @@ private fun RegattaLinkNmeaSetupSheet(
                 }
 
             if (
-                connected &&
-                canAvailable &&
-                configurationState.nmeaTxSupported
-            ) {
-                val masterDraftChanged =
-                    regattaLinkConfigDraftBitChanged(
-                        txBaseline,
-                        txDraft,
-                        REGATTALINK_CONFIG_TX_MASTER
-                    )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 18.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(
-                                R.string.regattalink_nmea_tx_title
-                            ),
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = when {
-                                txMasterDraft == null ->
-                                    stringResource(
-                                        R.string.regattalink_nmea_tx_state_unavailable
-                                    )
-                                masterDraftChanged ->
-                                    stringResource(
-                                        if (txMasterDraft) {
-                                            R.string.regattalink_config_draft_enable
-                                        } else {
-                                            R.string.regattalink_config_draft_disable
-                                        }
-                                    )
-                                !nmeaRuntimeKnown ->
-                                    stringResource(
-                                        if (configurationState.nmeaTxEnabled == true) {
-                                            R.string.regattalink_nmea_tx_selected_on_runtime_unknown
-                                        } else {
-                                            R.string.regattalink_nmea_tx_selected_off_runtime_unknown
-                                        }
-                                    )
-                                configurationState.nmeaTxRestartRequired ->
-                                    stringResource(
-                                        if (configurationState.nmeaTxEnabled == true) {
-                                            R.string.regattalink_nmea_tx_enable_pending
-                                        } else {
-                                            R.string.regattalink_nmea_tx_disable_pending
-                                        }
-                                    )
-                                configurationState.nmeaTxActive == true ->
-                                    stringResource(
-                                        R.string.regattalink_nmea_tx_enabled
-                                    )
-                                configurationState.nmeaTxBootSelected == true ->
-                                    stringResource(
-                                        R.string.regattalink_nmea_tx_selected_but_inactive
-                                    )
-                                else ->
-                                    stringResource(
-                                        R.string.regattalink_nmea_tx_receive_only
-                                    )
-                            },
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = txMasterDraft == true,
-                        onCheckedChange = { enabled ->
-                            txDraft = regattaLinkConfigDraftWithBit(
-                                txDraft,
-                                REGATTALINK_CONFIG_TX_MASTER,
-                                enabled
-                            )
-                        },
-                        enabled = configEnabled && txMasterDraft != null
-                    )
-                }
-            }
-
-            if (
-                connected &&
-                canAvailable &&
-                nmea0183Available &&
-                configurationState.configWordSupported
+                visibility.forward0183
             ) {
                 RegattaLinkBoatDataSelectorRow(
                     title = stringResource(
@@ -1137,10 +2082,7 @@ private fun RegattaLinkNmeaSetupSheet(
             }
 
             if (
-                connected &&
-                canAvailable &&
-                imuAvailable &&
-                configurationState.nmeaAttitudeTxSupported
+                visibility.forwardAttitude
             ) {
                 val attitudeDraftChanged =
                     regattaLinkConfigDraftBitChanged(
@@ -1224,10 +2166,7 @@ private fun RegattaLinkNmeaSetupSheet(
             }
 
             if (
-                connected &&
-                canAvailable &&
-                magAvailable &&
-                configurationState.configWordSupported
+                visibility.forwardCompass
             ) {
                 RegattaLinkBoatDataSelectorRow(
                     title = stringResource(
@@ -1255,9 +2194,7 @@ private fun RegattaLinkNmeaSetupSheet(
             }
 
             if (
-                connected &&
-                canAvailable &&
-                configurationState.configWordSupported
+                visibility.forwardPhoneGps
             ) {
                 RegattaLinkBoatDataSelectorRow(
                     title = stringResource(
@@ -1282,41 +2219,59 @@ private fun RegattaLinkNmeaSetupSheet(
                         )
                     }
                 )
-            }
-
-            if (canAvailable) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 16.dp, top = 14.dp),
+                        .padding(start = 24.dp, top = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(
-                                R.string.regattalink_phone_gps_relay
-                            ),
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = stringResource(
-                                R.string.regattalink_phone_gps_relay_hint
-                            ),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Text(
+                        text = stringResource(R.string.regattalink_phone_gps_relay_short),
+                        modifier = Modifier.weight(1f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 14.sp
+                    )
                     Switch(
                         checked = phoneGpsRelayEnabled,
-                        onCheckedChange = onSetPhoneGpsRelayEnabled
+                        onCheckedChange = onSetPhoneGpsRelayEnabled,
+                        // Relay requires an available CAN session, not a
+                        // separate global TX-master selection.
+                        enabled = configurationState.canSessionAvailable == true
                     )
                 }
             }
 
             if (
-                connected &&
-                nmea0183Available &&
-                configurationState.configWordSupported
+                visibility.forwardCalypsoWind
+            ) {
+                RegattaLinkBoatDataSelectorRow(
+                    title = stringResource(
+                        R.string.regattalink_calypso_wind_tx
+                    ),
+                    desired = configurationState.calypsoWindTxEnabled,
+                    draft = txCalypsoWindDraft,
+                    draftChanged = regattaLinkConfigDraftBitChanged(
+                        txBaseline,
+                        txDraft,
+                        REGATTALINK_CONFIG_TX_CALYPSO_WIND
+                    ),
+                    bootMask = configurationState.nmeaBootOutputMask,
+                    activeMask = configurationState.nmeaActiveOutputMask,
+                    runtimeBit = REGATTALINK_TX_OUTPUT_CALYPSO_WIND,
+                    enabled = configEnabled && calypsoSupported,
+                    onCheckedChange = { enabled ->
+                        txDraft = regattaLinkConfigDraftWithBit(
+                            txDraft,
+                            REGATTALINK_CONFIG_TX_CALYPSO_WIND,
+                            enabled
+                        )
+                    }
+                )
+            }
+
+            if (
+                visibility.baudRate
             ) {
                 var baudMenuExpanded by remember {
                     mutableStateOf(false)
@@ -1470,46 +2425,23 @@ private fun RegattaLinkNmeaSetupSheet(
                 )
             }
 
-            if (
-                connected &&
-                canAvailable &&
-                configurationState.loadPrecisionSupported
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 18.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(
-                                R.string.regattalink_load_precision
-                            ),
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = stringResource(
-                                if (configurationState.loadPrecisionX10 == true) {
-                                    R.string.regattalink_load_precision_x10
-                                } else {
-                                    R.string.regattalink_load_precision_x1
-                                }
-                            ),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked =
-                            configurationState.loadPrecisionX10 == true,
-                        onCheckedChange = onSetLoadPrecisionX10,
-                        enabled = configEnabled
-                    )
-                }
+            regattaLinkRuntimeMessageText(
+                userMessage = configurationState.userMessage,
+                hasTechnicalError = configurationState.error.isNotBlank(),
+                fallback = RegattaLinkUiMessage.CONFIGURATION_FAILED
+            )?.let { message ->
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
             }
+            RegattaLinkTechnicalDetail(
+                detail = configurationState.error,
+                modifier = Modifier.padding(top = 4.dp)
+            )
 
-            if (connected && canAvailable && nmeaState.loadSupported) {
+            if (visibility.loadSensors) {
                 Text(
                     text = stringResource(
                         R.string.regattalink_load_sensors
@@ -1518,6 +2450,41 @@ private fun RegattaLinkNmeaSetupSheet(
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(top = 18.dp)
                 )
+
+                if (configurationState.loadPrecisionSupported) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 18.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(
+                                    R.string.regattalink_load_precision
+                                ),
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = stringResource(
+                                    if (configurationState.loadPrecisionX10 == true) {
+                                        R.string.regattalink_load_precision_x10
+                                    } else {
+                                        R.string.regattalink_load_precision_x1
+                                    }
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked =
+                                configurationState.loadPrecisionX10 == true,
+                            onCheckedChange = onSetLoadPrecisionX10,
+                            enabled = configEnabled
+                        )
+                    }
+                }
 
                 if (
                     nmeaRuntimeKnown &&
@@ -1529,23 +2496,6 @@ private fun RegattaLinkNmeaSetupSheet(
                         ),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 12.sp,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                }
-
-                if (!nmeaState.loadSubscribed) {
-                    Text(
-                        text = stringResource(
-                            R.string.regattalink_load_not_subscribed
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                } else if (nmeaState.loadSensors.isEmpty()) {
-                    Text(
-                        text = stringResource(
-                            R.string.regattalink_load_waiting
-                        ),
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
@@ -1621,90 +2571,6 @@ private fun RegattaLinkNmeaSetupSheet(
                 }
             }
 
-            if (connected && nmeaState.boatStateSupported) {
-                Text(
-                    text = stringResource(R.string.regattalink_boat_state_title),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(top = 18.dp)
-                )
-                if (
-                    nmeaState.boatStateSubscribed &&
-                    !nmeaState.boatStateLiveNotifications
-                ) {
-                    Text(
-                        text = stringResource(
-                            R.string.regattalink_boat_state_snapshot_only
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                }
-                val boatState = nmeaState.boatState
-                if (boatState == null) {
-                    Text(
-                        text = stringResource(
-                            R.string.regattalink_boat_state_waiting
-                        ),
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                } else if (!boatState.hasAnyValidData) {
-                    Text(
-                        text = stringResource(
-                            R.string.regattalink_boat_state_no_data
-                        ),
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                } else {
-                    BoatStateValues(boatState)
-                }
-            }
-
-            if (
-                connected &&
-                canAvailable &&
-                nmeaState.pgnInventorySupported
-            ) {
-                Text(
-                    text = stringResource(R.string.regattalink_pgns_seen),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(top = 18.dp)
-                )
-                telemetryValue(
-                    label = stringResource(R.string.regattalink_pgns_seen),
-                    value = nmeaState.pgnInventory.size.toString()
-                )
-                Button(
-                    onClick = onRefreshPgnInventory,
-                    enabled = !otaActive &&
-                        !rawCaptureActive &&
-                        !nmeaState.pgnInventoryLoading,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 10.dp)
-                ) {
-                    Text(
-                        if (nmeaState.pgnInventoryLoading) {
-                            stringResource(R.string.regattalink_refreshing)
-                        } else {
-                            stringResource(R.string.regattalink_refresh_pgns)
-                        }
-                    )
-                }
-                nmeaState.pgnInventory
-                    .sortedBy { it.pgn }
-                    .forEach { entry ->
-                        telemetryValue(
-                            label = "PGN " + entry.pgn,
-                            value = stringResource(
-                                R.string.regattalink_last_seen_ms,
-                                entry.lastSeenMs
-                            )
-                        )
-                    }
-            }
-
             regattaLinkRuntimeMessageText(
                 userMessage = nmeaState.userMessage,
                 hasTechnicalError = nmeaState.error.isNotBlank(),
@@ -1744,6 +2610,9 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
     onSetLedBrightness: (Int) -> Unit,
     onApplySubsystemConfigAndRestart: (UInt) -> Unit,
     onDrainDiagnosticLog: () -> Unit,
+    onStopDiagnosticLog: () -> Unit,
+    onCanErrorTrace: () -> Unit,
+    onRefreshPgnInventory: () -> Unit,
     onReadRawFrames: () -> Unit,
     onStartRawCapture: () -> Unit,
     onStopRawCapture: () -> Unit,
@@ -1786,6 +2655,42 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
             !configurationState.deviceControlBusy &&
             !configurationState.diagnosticLogLoading &&
             !nmeaState.rawCanReading
+    val traceInProgress by rememberUpdatedState(
+        configurationState.diagnosticTraceEndElapsedMs > 0L
+    )
+    val stopReaderOnDismiss by rememberUpdatedState(onStopDiagnosticLog)
+    DisposableEffect(Unit) {
+        onDispose {
+            if (!traceInProgress) stopReaderOnDismiss()
+        }
+    }
+    val diagnosticListState = rememberLazyListState()
+    var previousLogCount by remember { mutableStateOf(0) }
+    val logEntries = configurationState.diagnosticLogEntries
+    LaunchedEffect(logEntries.size, logEntries.lastOrNull()) {
+        val wasAtEnd = previousLogCount == 0 ||
+            diagnosticListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
+                ?.let { it >= previousLogCount - 1 } != false
+        if (logEntries.isNotEmpty() && wasAtEnd) {
+            diagnosticListState.scrollToItem(logEntries.lastIndex)
+        }
+        previousLogCount = logEntries.size
+    }
+    val traceDeadline = configurationState.diagnosticTraceEndElapsedMs
+    var traceRemainingSeconds by remember { mutableStateOf(0) }
+    LaunchedEffect(traceDeadline) {
+        if (traceDeadline == 0L) {
+            traceRemainingSeconds = 0
+        } else {
+            while (true) {
+                traceRemainingSeconds = (
+                    (traceDeadline - SystemClock.elapsedRealtime() + 999L) / 1000L
+                ).coerceAtLeast(0L).toInt()
+                if (traceRemainingSeconds == 0) break
+                delay(250L)
+            }
+        }
+    }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -2043,20 +2948,54 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
 
             if (configurationState.diagnosticLogSupported) {
                 Button(
-                    onClick = onDrainDiagnosticLog,
-                    enabled =
-                        configEnabled &&
-                            !configurationState.diagnosticLogLoading &&
-                            !configurationState.deviceControlBusy &&
-                            !nmeaState.rawCanReading,
+                    onClick = {
+                        if (configurationState.diagnosticLogStreaming) {
+                            onStopDiagnosticLog()
+                        } else {
+                            onDrainDiagnosticLog()
+                        }
+                    },
+                    enabled = configurationState.diagnosticLogStreaming ||
+                        (
+                            configEnabled &&
+                                !configurationState.deviceControlBusy &&
+                                !nmeaState.rawCanReading
+                        ),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp)
                 ) {
                     Text(
-                        stringResource(
-                            R.string.regattalink_read_diagnostic_log
+                        if (configurationState.diagnosticLogStreaming) {
+                            stringResource(R.string.regattalink_stop_reading)
+                        } else {
+                            stringResource(R.string.regattalink_read_diagnostic_log)
+                        }
+                    )
+                }
+                if (configurationState.deviceControlSupported) {
+                    Button(
+                        onClick = onCanErrorTrace,
+                        enabled = deviceControlEnabled &&
+                            !configurationState.diagnosticLogStreaming,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                    ) {
+                        Text(
+                            stringResource(
+                                R.string.regattalink_can_error_trace_60s
+                            )
                         )
+                    }
+                }
+                if (traceRemainingSeconds > 0) {
+                    Text(
+                        text = stringResource(
+                            R.string.regattalink_raw_capture_remaining,
+                            traceRemainingSeconds
+                        ),
+                        modifier = Modifier.padding(top = 6.dp)
                     )
                 }
                 if (configurationState.diagnosticLogLoading) {
@@ -2067,16 +3006,70 @@ private fun RegattaLinkAdvancedDiagnosticsSheet(
                         modifier = Modifier.padding(top = 6.dp)
                     )
                 }
-                configurationState.diagnosticLogEntries.forEach { entry ->
-                    Text(
-                        "${entry.timestamp10ms * 10} ms  ${entry.message}",
-                        modifier = Modifier.padding(top = 3.dp)
-                    )
+                if (logEntries.isNotEmpty()) {
+                    LazyColumn(
+                        state = diagnosticListState,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(240.dp)
+                    ) {
+                        items(logEntries) { entry ->
+                            Text(
+                                "${entry.timestamp10ms * 10} ms  ${entry.message}",
+                                modifier = Modifier.padding(top = 3.dp)
+                            )
+                        }
+                    }
                 }
                 RegattaLinkTechnicalDetail(
                     detail = configurationState.diagnosticLogError,
                     modifier = Modifier.padding(top = 6.dp)
                 )
+            }
+
+            if (
+                connected &&
+                configurationState.canSessionAvailable == true &&
+                nmeaState.pgnInventorySupported
+            ) {
+                Text(
+                    text = stringResource(R.string.regattalink_pgns_seen),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 18.dp)
+                )
+                telemetryValue(
+                    label = stringResource(R.string.regattalink_pgns_seen),
+                    value = nmeaState.pgnInventory.size.toString()
+                )
+                Button(
+                    onClick = onRefreshPgnInventory,
+                    enabled = !otaActive &&
+                        !rawCaptureState.isActive &&
+                        !nmeaState.pgnInventoryLoading,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp)
+                ) {
+                    Text(
+                        if (nmeaState.pgnInventoryLoading) {
+                            stringResource(R.string.regattalink_refreshing)
+                        } else {
+                            stringResource(R.string.regattalink_refresh_pgns)
+                        }
+                    )
+                }
+                nmeaState.pgnInventory
+                    .sortedBy { it.pgn }
+                    .forEach { entry ->
+                        telemetryValue(
+                            label = "PGN " + entry.pgn,
+                            value = stringResource(
+                                R.string.regattalink_last_seen_ms,
+                                entry.lastSeenMs
+                            )
+                        )
+                    }
             }
 
             if (
@@ -2913,6 +3906,17 @@ private fun RegattaLinkImuSetupSheet(
                     modifier = Modifier.padding(top = 6.dp)
                 )
             }
+            regattaLinkRuntimeMessageText(
+                userMessage = telemetryState.userMessage,
+                hasTechnicalError = telemetryState.error.isNotBlank(),
+                fallback = RegattaLinkUiMessage.TELEMETRY_FAILED
+            )?.let { message ->
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
 
             if (
                 imuAvailable &&
@@ -3172,7 +4176,7 @@ private fun RegattaLinkImuSetupSheet(
                     onSetImuRawPreviewEnabled(true)
                     onSetImuRawModeEnabled(true)
                 },
-                enabled = setUprightEnabled,
+                enabled = setUprightEnabled && !uprightDialogOpen,
                 modifier = Modifier.padding(top = 10.dp)
             ) {
                 Text(stringResource(R.string.regattalink_set_upright))
@@ -3210,7 +4214,7 @@ private fun RegattaLinkImuSetupSheet(
                     status = controlStatus,
                     liveHeelValue = liveHeelValue,
                     livePitchValue = livePitchValue,
-                    enabled = controlsEnabled,
+                    enabled = controlsEnabled && !uprightDialogOpen,
                     onAdjust = onAdjust,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -3280,7 +4284,7 @@ private fun RegattaLinkImuSetupSheet(
                 )
             }
 
-            if (deviceControlBusy) {
+            if (deviceControlBusy && !uprightDialogOpen) {
                 Text(
                     text = controlStatus
                         ?.takeIf { !it.phase.isTerminal }
@@ -3632,111 +4636,6 @@ private fun RegattaLinkBoatTopView(
             topLeft = arcTopLeft,
             size = arcSize,
             style = Stroke(width = stroke)
-        )
-    }
-}
-
-@Composable
-private fun BoatStateValues(state: RegattaLinkBoatState) {
-    state.headingDeg?.let {
-        telemetryValue(
-            stringResource(R.string.regattalink_nmea_heading),
-            formatTelemetry(it, "°")
-        )
-    }
-    state.rateOfTurnDps?.let {
-        telemetryValue(
-            stringResource(R.string.regattalink_nmea_rot),
-            formatTelemetry(it, "°/s")
-        )
-    }
-    state.rollDeg?.let {
-        telemetryValue(
-            stringResource(R.string.regattalink_roll),
-            formatTelemetry(it, "°")
-        )
-    }
-    state.pitchDeg?.let {
-        telemetryValue(
-            stringResource(R.string.regattalink_pitch),
-            formatTelemetry(it, "°")
-        )
-    }
-    state.yawDeg?.let {
-        telemetryValue(
-            stringResource(R.string.regattalink_nmea_yaw),
-            formatTelemetry(it, "°")
-        )
-    }
-    state.speedThroughWaterMps?.let {
-        telemetryValue(
-            stringResource(R.string.regattalink_nmea_stw),
-            formatTelemetry(it, " m/s")
-        )
-    }
-    state.depthM?.let {
-        telemetryValue(
-            stringResource(R.string.regattalink_nmea_depth),
-            formatTelemetry(it, " m")
-        )
-    }
-    state.waterTemperatureC?.let {
-        telemetryValue(
-            stringResource(R.string.regattalink_nmea_water_temp),
-            formatTelemetry(it, " °C")
-        )
-    }
-    if (state.latitudeDeg != null && state.longitudeDeg != null) {
-        telemetryValue(
-            stringResource(R.string.regattalink_nmea_position),
-            String.format(
-                Locale.US,
-                "%.6f, %.6f",
-                state.latitudeDeg,
-                state.longitudeDeg
-            )
-        )
-    }
-    state.cogDeg?.let {
-        telemetryValue(
-            stringResource(R.string.regattalink_nmea_cog),
-            formatTelemetry(it, "°")
-        )
-    }
-    state.sogMps?.let {
-        telemetryValue(
-            stringResource(R.string.regattalink_nmea_sog),
-            formatTelemetry(it, " m/s")
-        )
-    }
-    state.satellites?.let {
-        telemetryValue(
-            stringResource(R.string.regattalink_nmea_satellites),
-            it.toString()
-        )
-    }
-    state.hdop?.let {
-        telemetryValue(
-            stringResource(R.string.regattalink_nmea_hdop),
-            formatTelemetry(it, "")
-        )
-    }
-    state.altitudeM?.let {
-        telemetryValue(
-            stringResource(R.string.regattalink_nmea_altitude),
-            formatTelemetry(it, " m")
-        )
-    }
-    state.windSpeedMps?.let {
-        telemetryValue(
-            stringResource(R.string.regattalink_nmea_wind_speed),
-            formatTelemetry(it, " m/s")
-        )
-    }
-    state.windAngleDeg?.let {
-        telemetryValue(
-            stringResource(R.string.regattalink_nmea_wind_angle),
-            formatTelemetry(it, "°")
         )
     }
 }

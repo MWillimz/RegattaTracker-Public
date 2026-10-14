@@ -123,27 +123,27 @@ class RegattaLinkConfigurationNmeaTest {
         val original = 0xA5A54000u or REGATTALINK_CONFIG_TX_NMEA0183
         val enabled = regattaLinkConfigWordWithBit(
             original,
-            REGATTALINK_CONFIG_TX_MASTER,
+            REGATTALINK_CONFIG_TX_COMPASS,
             true
         )
         val disabled = regattaLinkConfigWordWithBit(
             enabled,
-            REGATTALINK_CONFIG_TX_MASTER,
+            REGATTALINK_CONFIG_TX_COMPASS,
             false
         )
 
-        assertTrue(enabled and REGATTALINK_CONFIG_TX_MASTER != 0u)
+        assertTrue(enabled and REGATTALINK_CONFIG_TX_COMPASS != 0u)
         assertEquals(original, disabled)
         assertEquals(
-            original and REGATTALINK_CONFIG_TX_MASTER.inv(),
-            enabled and REGATTALINK_CONFIG_TX_MASTER.inv()
+            original and REGATTALINK_CONFIG_TX_COMPASS.inv(),
+            enabled and REGATTALINK_CONFIG_TX_COMPASS.inv()
         )
     }
 
     @Test
     fun configWordDrivesExistingParityControlsFromOneAuthoritativeValue() {
         val word =
-            REGATTALINK_CONFIG_TX_MASTER or
+            REGATTALINK_CONFIG_SESSION_CAN or
                 REGATTALINK_CONFIG_TX_IMU or
                 REGATTALINK_CONFIG_LOAD_PRECISION_X10 or
                 0x80000000u
@@ -154,7 +154,6 @@ class RegattaLinkConfigurationNmeaTest {
 
         assertTrue(state.configWordSupported)
         assertEquals(word, state.configWord)
-        assertEquals(true, state.nmeaTxEnabled)
         assertEquals(true, state.nmeaAttitudeTxEnabled)
         assertEquals(true, state.loadPrecisionX10)
     }
@@ -162,7 +161,7 @@ class RegattaLinkConfigurationNmeaTest {
     @Test
     fun configWordDecodesAllAssignedV2ControlsAndBaud() {
         val word =
-            REGATTALINK_CONFIG_TX_MASTER or
+            REGATTALINK_CONFIG_SESSION_CAN or
                 REGATTALINK_CONFIG_TX_IMU or
                 REGATTALINK_CONFIG_TX_NMEA0183 or
                 REGATTALINK_CONFIG_TX_PHONE_GPS or
@@ -175,7 +174,6 @@ class RegattaLinkConfigurationNmeaTest {
             word
         )
 
-        assertEquals(true, state.nmeaTxEnabled)
         assertEquals(true, state.nmeaAttitudeTxEnabled)
         assertEquals(true, state.nmea0183TxEnabled)
         assertEquals(true, state.phoneGpsTxEnabled)
@@ -187,6 +185,37 @@ class RegattaLinkConfigurationNmeaTest {
             state.nmea0183Baud
         )
         assertTrue(state.phoneGnssForwardingDesired)
+    }
+
+    @Test
+    fun configWordDecodesCalypsoEnableAndTxBits() {
+        val state = regattaLinkApplyConfigWord(
+            RegattaLinkConfigurationState(),
+            REGATTALINK_CONFIG_CALYPSO_ENABLE or
+                REGATTALINK_CONFIG_TX_CALYPSO_WIND
+        )
+
+        assertEquals(true, state.calypsoEnabled)
+        assertEquals(true, state.calypsoWindTxEnabled)
+    }
+
+    @Test
+    fun bluetoothDeviceDraftOwnsOnlyCalypsoEnableBit() {
+        val original =
+            0xa5a00000u or
+                REGATTALINK_CONFIG_TX_CALYPSO_WIND or
+                REGATTALINK_CONFIG_TX_LOAD
+        val changed = regattaLinkConfigWordWithMask(
+            current = original,
+            mask = REGATTALINK_CONFIG_BLUETOOTH_DEVICE_MASK,
+            encodedBits = REGATTALINK_CONFIG_CALYPSO_ENABLE
+        )
+
+        assertTrue(changed and REGATTALINK_CONFIG_CALYPSO_ENABLE != 0u)
+        assertEquals(
+            original and REGATTALINK_CONFIG_BLUETOOTH_DEVICE_MASK.inv(),
+            changed and REGATTALINK_CONFIG_BLUETOOTH_DEVICE_MASK.inv()
+        )
     }
 
     @Test
@@ -207,7 +236,7 @@ class RegattaLinkConfigurationNmeaTest {
     fun allZeroSessionNibbleMeansNoSubsystemsAvailable() {
         val state = regattaLinkApplyConfigWord(
             RegattaLinkConfigurationState(),
-            REGATTALINK_CONFIG_TX_MASTER
+            REGATTALINK_CONFIG_CAN_STATUS_MIRROR
         )
 
         assertEquals(false, state.imuSessionAvailable)
@@ -238,7 +267,7 @@ class RegattaLinkConfigurationNmeaTest {
 
         val changed = regattaLinkConfigWordWithBit(
             original,
-            REGATTALINK_CONFIG_TX_MASTER,
+            REGATTALINK_CONFIG_TX_COMPASS,
             true
         )
 
@@ -285,7 +314,7 @@ class RegattaLinkConfigurationNmeaTest {
             0xa5a00000u or
                 REGATTALINK_CONFIG_SESSION_IMU or
                 REGATTALINK_CONFIG_SESSION_CAN or
-                REGATTALINK_CONFIG_TX_MASTER
+                REGATTALINK_CONFIG_CAN_STATUS_MIRROR
 
         RegattaLinkSubsystem.entries.forEach { subsystem ->
             val enabled = regattaLinkConfigWordWithBit(
@@ -312,31 +341,42 @@ class RegattaLinkConfigurationNmeaTest {
     @Test
     fun txSelectionMaskContainsOnlyUserFacingTxSelectors() {
         assertEquals(
-            REGATTALINK_CONFIG_TX_MASTER or
-                REGATTALINK_CONFIG_TX_IMU or
+            REGATTALINK_CONFIG_TX_IMU or
                 REGATTALINK_CONFIG_TX_NMEA0183 or
                 REGATTALINK_CONFIG_TX_PHONE_GPS or
-                REGATTALINK_CONFIG_TX_COMPASS,
+                REGATTALINK_CONFIG_TX_COMPASS or
+                REGATTALINK_CONFIG_TX_CALYPSO_WIND,
             REGATTALINK_CONFIG_TX_SELECTION_MASK
+        )
+        assertEquals(
+            0u,
+            REGATTALINK_CONFIG_TX_SELECTION_MASK and
+                REGATTALINK_CONFIG_CAN_STATUS_MIRROR
         )
         assertEquals(
             0u,
             REGATTALINK_CONFIG_TX_SELECTION_MASK and
                 REGATTALINK_CONFIG_TX_LOAD
         )
+        assertEquals(
+            0u,
+            REGATTALINK_CONFIG_TX_SELECTION_MASK and
+                REGATTALINK_CONFIG_CALYPSO_ENABLE
+        )
     }
 
     @Test
     fun groupedTxSelectionPreservesUnownedConfigBits() {
         val original =
-            0xa5a00000u or
+            REGATTALINK_CONFIG_CAN_STATUS_MIRROR or
+                0xa5a00000u or
                 REGATTALINK_CONFIG_TX_LOAD or
+                REGATTALINK_CONFIG_CALYPSO_ENABLE or
                 REGATTALINK_CONFIG_LOAD_PRECISION_X10 or
                 REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING or
                 RegattaLinkNmea0183Baud.BAUD_38400.encodedBits
         val draft =
-            REGATTALINK_CONFIG_TX_MASTER or
-                REGATTALINK_CONFIG_TX_IMU or
+            REGATTALINK_CONFIG_TX_IMU or
                 REGATTALINK_CONFIG_TX_COMPASS
 
         val changed = regattaLinkConfigWordWithMask(
@@ -350,6 +390,10 @@ class RegattaLinkConfigurationNmeaTest {
             changed and REGATTALINK_CONFIG_TX_SELECTION_MASK.inv()
         )
         assertEquals(draft, changed and REGATTALINK_CONFIG_TX_SELECTION_MASK)
+        assertEquals(
+            original and REGATTALINK_CONFIG_CAN_STATUS_MIRROR,
+            changed and REGATTALINK_CONFIG_CAN_STATUS_MIRROR
+        )
     }
 
     @Test
@@ -358,7 +402,7 @@ class RegattaLinkConfigurationNmeaTest {
             0xa5a00000u or
                 REGATTALINK_CONFIG_SESSION_IMU or
                 REGATTALINK_CONFIG_SESSION_CAN or
-                REGATTALINK_CONFIG_TX_MASTER or
+                REGATTALINK_CONFIG_CAN_STATUS_MIRROR or
                 REGATTALINK_CONFIG_TX_LOAD or
                 REGATTALINK_CONFIG_LOAD_PRECISION_X10
         val draft =
@@ -384,7 +428,7 @@ class RegattaLinkConfigurationNmeaTest {
     @Test
     fun configDraftHelpersKeepPendingSelectionSeparateFromBaseline() {
         val baseline =
-            REGATTALINK_CONFIG_TX_MASTER or
+            REGATTALINK_CONFIG_CAN_STATUS_MIRROR or
                 REGATTALINK_CONFIG_TX_PHONE_GPS
         val draft = regattaLinkConfigDraftWithBit(
             baseline,
@@ -405,7 +449,7 @@ class RegattaLinkConfigurationNmeaTest {
             regattaLinkConfigDraftBitChanged(
                 baseline,
                 draft,
-                REGATTALINK_CONFIG_TX_MASTER
+                REGATTALINK_CONFIG_CAN_STATUS_MIRROR
             )
         )
     }
@@ -431,7 +475,7 @@ class RegattaLinkConfigurationNmeaTest {
     fun configMaskRejectsBitsOutsideRequestedField() {
         regattaLinkConfigWordWithMask(
             current = 0u,
-            mask = REGATTALINK_CONFIG_TX_MASTER,
+            mask = REGATTALINK_CONFIG_TX_IMU,
             encodedBits = REGATTALINK_CONFIG_TX_PHONE_GPS
         )
     }
@@ -470,15 +514,32 @@ class RegattaLinkConfigurationNmeaTest {
     }
 
     @Test
+    fun globalTxStatusMirrorDoesNotTriggerRestart() {
+        val state = RegattaLinkConfigurationState(
+            configWordSupported = true,
+            configWord = REGATTALINK_CONFIG_CAN_STATUS_MIRROR or
+                REGATTALINK_CONFIG_SESSION_CAN,
+            nmeaTxRuntimeStatusSupported = true,
+            nmeaCanBootEnabled = false,
+            nmeaBootOutputMask = 0
+        )
+        assertFalse(regattaLinkNmeaRestartRequired(state))
+        assertEquals(
+            0u,
+            state.configWord!! and REGATTALINK_CONFIG_TX_SELECTION_MASK
+        )
+    }
+
+    @Test
     fun reconnectStillRequiresRestartWhenPhoneGpsDesiredDiffersFromBootMask() {
         val state = RegattaLinkConfigurationState(
             configWordSupported = true,
             configWord =
-                REGATTALINK_CONFIG_TX_MASTER or
+                REGATTALINK_CONFIG_SESSION_CAN or
                     REGATTALINK_CONFIG_TX_PHONE_GPS,
             configRestartRequired = false,
             nmeaTxRuntimeStatusSupported = true,
-            nmeaTxBootSelected = true,
+            nmeaCanBootEnabled = true,
             nmeaBootOutputMask = 0,
             nmeaActiveOutputMask = 0
         )
@@ -492,7 +553,9 @@ class RegattaLinkConfigurationNmeaTest {
             REGATTALINK_CONFIG_TX_IMU to REGATTALINK_TX_OUTPUT_IMU,
             REGATTALINK_CONFIG_TX_NMEA0183 to REGATTALINK_TX_OUTPUT_NMEA0183,
             REGATTALINK_CONFIG_TX_PHONE_GPS to REGATTALINK_TX_OUTPUT_PHONE_GPS,
-            REGATTALINK_CONFIG_TX_COMPASS to REGATTALINK_TX_OUTPUT_COMPASS
+            REGATTALINK_CONFIG_TX_COMPASS to REGATTALINK_TX_OUTPUT_COMPASS,
+            REGATTALINK_CONFIG_TX_CALYPSO_WIND to
+                REGATTALINK_TX_OUTPUT_CALYPSO_WIND
         )
 
         cases.forEach { (configBit, runtimeBit) ->
@@ -500,7 +563,7 @@ class RegattaLinkConfigurationNmeaTest {
                 configWordSupported = true,
                 configWord = configBit,
                 nmeaTxRuntimeStatusSupported = true,
-                nmeaTxBootSelected = false,
+                nmeaCanBootEnabled = false,
                 nmeaBootOutputMask = 0
             )
             assertTrue(regattaLinkNmeaRestartRequired(pending))
@@ -510,6 +573,95 @@ class RegattaLinkConfigurationNmeaTest {
             )
             assertFalse(regattaLinkNmeaRestartRequired(applied))
         }
+    }
+
+    @Test
+    fun calypsoControlStatusUpdatesDedicatedStateWithoutReplacingCalibrationStatus() {
+        val calibrationStatus = RegattaLinkDeviceControlStatus(
+            opcode = RegattaLinkDeviceControlOpcode.ADJUST_HEEL,
+            phase = RegattaLinkDeviceControlPhase.SUCCESS,
+            result = RegattaLinkDeviceControlResult.OK,
+            requestId = 1u,
+            forwardTrimDeg = 1,
+            heelTrimDeg = 2,
+            pitchTrimDeg = 3,
+            boatFrameValid = true,
+            gyroBiasValid = true,
+            mountingEpoch = 4u
+        )
+        val calypsoStatus = RegattaLinkDeviceControlStatus(
+            opcode = RegattaLinkDeviceControlOpcode.CALYPSO_STATUS,
+            phase = RegattaLinkDeviceControlPhase.SUCCESS,
+            result = RegattaLinkDeviceControlResult.OK,
+            requestId = 2u,
+            forwardTrimDeg = 0,
+            heelTrimDeg = 0,
+            pitchTrimDeg = 0,
+            boatFrameValid = false,
+            gyroBiasValid = false,
+            mountingEpoch = 0u,
+            calypso = RegattaLinkCalypsoControlStatus(
+                boundId = "AA:BB:CC:DD:EE:FF",
+                bound = true,
+                connected = true,
+                scanning = false,
+                detail = 0
+            )
+        )
+
+        val state = regattaLinkApplyObservedDeviceControlStatus(
+            RegattaLinkConfigurationState(
+                deviceControlStatus = calibrationStatus
+            ),
+            calypsoStatus
+        )
+
+        assertEquals(calibrationStatus, state.deviceControlStatus)
+        assertTrue(state.calypso.statusKnown)
+        assertEquals("AA:BB:CC:DD:EE:FF", state.calypso.boundId)
+        assertTrue(state.calypso.connected)
+    }
+
+    @Test
+    fun failedCalypsoScanKeepsReportedOldBindingAndSurvivesStatusRefresh() {
+        val failed = RegattaLinkDeviceControlStatus(
+            opcode = RegattaLinkDeviceControlOpcode.CALYPSO_SCAN,
+            phase = RegattaLinkDeviceControlPhase.ERROR,
+            result = RegattaLinkDeviceControlResult.AMBIGUOUS,
+            requestId = 3u,
+            forwardTrimDeg = 0,
+            heelTrimDeg = 0,
+            pitchTrimDeg = 0,
+            boatFrameValid = false,
+            gyroBiasValid = false,
+            mountingEpoch = 0u,
+            calypso = RegattaLinkCalypsoControlStatus(
+                boundId = "11:22:33:44:55:66",
+                bound = true,
+                connected = false,
+                scanning = false,
+                detail = 0
+            )
+        )
+        val afterFailure = regattaLinkApplyCalypsoControlStatus(
+            RegattaLinkConfigurationState(),
+            failed
+        )
+        val refreshed = regattaLinkApplyCalypsoControlStatus(
+            afterFailure,
+            failed.copy(
+                opcode = RegattaLinkDeviceControlOpcode.CALYPSO_STATUS,
+                phase = RegattaLinkDeviceControlPhase.SUCCESS,
+                result = RegattaLinkDeviceControlResult.OK,
+                requestId = 4u
+            )
+        )
+
+        assertEquals(
+            RegattaLinkDeviceControlResult.AMBIGUOUS,
+            refreshed.calypso.lastScanResult
+        )
+        assertEquals("11:22:33:44:55:66", refreshed.calypso.boundId)
     }
 
     @Test
@@ -527,8 +679,8 @@ class RegattaLinkConfigurationNmeaTest {
             )
         )
 
-        assertTrue(parsed.bootMasterSelected)
-        assertTrue(parsed.masterActive)
+        assertTrue(parsed.canInterfaceBootEnabled)
+        assertTrue(parsed.activeNode)
         assertTrue(parsed.bootAttitudeSelected)
         assertTrue(parsed.attitudeActive)
         assertTrue(
@@ -541,15 +693,30 @@ class RegattaLinkConfigurationNmeaTest {
     }
 
     @Test
-    fun desiredAndBootAppliedTxStateRemainSeparateAcrossRestartLifecycle() {
+    fun runtimeFlagsDistinguishCanBootEnableFromActiveNode() {
+        val canBootOnly = parseRegattaLinkNmeaTxRuntimeStatus(
+            byteArrayOf(2, 0x01, 0, 0)
+        )
+        assertTrue(canBootOnly.canInterfaceBootEnabled)
+        assertFalse(canBootOnly.activeNode)
+
+        val activeNodeOnly = parseRegattaLinkNmeaTxRuntimeStatus(
+            byteArrayOf(2, 0x02, 0, 0)
+        )
+        assertFalse(activeNodeOnly.canInterfaceBootEnabled)
+        assertTrue(activeNodeOnly.activeNode)
+    }
+
+    @Test
+    fun individualTxSelectionAndBootAppliedStateRemainSeparateAcrossRestartLifecycle() {
         val bootOff = regattaLinkApplyNmeaTxRuntimeStatus(
             regattaLinkApplyConfigWord(
                 RegattaLinkConfigurationState(),
                 0u
             ),
             RegattaLinkNmeaTxRuntimeStatus(
-                bootMasterSelected = false,
-                masterActive = false,
+                canInterfaceBootEnabled = false,
+                activeNode = false,
                 bootOutputMask = 0,
                 activeOutputMask = 0
             )
@@ -558,16 +725,15 @@ class RegattaLinkConfigurationNmeaTest {
 
         val selectedOn = regattaLinkApplyConfigWord(
             bootOff,
-            REGATTALINK_CONFIG_TX_MASTER or REGATTALINK_CONFIG_TX_IMU
+            REGATTALINK_CONFIG_SESSION_CAN or REGATTALINK_CONFIG_TX_IMU
         )
-        assertTrue(selectedOn.nmeaTxRestartRequired)
         assertTrue(selectedOn.nmeaAttitudeTxRestartRequired)
 
         val afterRestart = regattaLinkApplyNmeaTxRuntimeStatus(
             selectedOn.copy(configRestartRequired = false),
             RegattaLinkNmeaTxRuntimeStatus(
-                bootMasterSelected = true,
-                masterActive = true,
+                canInterfaceBootEnabled = true,
+                activeNode = true,
                 bootOutputMask = REGATTALINK_TX_OUTPUT_IMU,
                 activeOutputMask = REGATTALINK_TX_OUTPUT_IMU
             )
@@ -580,11 +746,11 @@ class RegattaLinkConfigurationNmeaTest {
     fun missingRuntimeStatusDoesNotInventAppliedState() {
         val pending = regattaLinkApplyConfigWord(
             RegattaLinkConfigurationState(),
-            REGATTALINK_CONFIG_TX_MASTER
+            REGATTALINK_CONFIG_CAN_STATUS_MIRROR
         )
 
         assertTrue(regattaLinkNmeaAppliedStateUnknown(pending))
-        assertNull(pending.nmeaTxBootSelected)
+        assertNull(pending.nmeaCanBootEnabled)
         assertNull(pending.nmeaTxActive)
     }
 
@@ -845,6 +1011,26 @@ class RegattaLinkConfigurationNmeaTest {
         assertEquals(0.85, parsed.hdop!!, 0.001)
         assertEquals(6.5, parsed.windSpeedMps!!, 0.001)
         assertEquals(225.0, parsed.windAngleDeg!!, 0.001)
+    }
+
+    @Test
+    fun diagnosticLogKeepsNewestTwoThousandAndAllowsRepeatedMessages() {
+        val entries = mutableListOf<RegattaLinkDiagnosticLogEntry>()
+        for (i in 0 until 2_010) {
+            regattaLinkAppendDiagnosticEntry(
+                entries,
+                RegattaLinkDiagnosticLogEntry(timestamp10ms = i, message = "CAN")
+            )
+        }
+        assertEquals(2_000, entries.size)
+        assertEquals(10, entries.first().timestamp10ms)
+        assertEquals(2_009, entries.last().timestamp10ms)
+
+        val repeated = entries.last()
+        regattaLinkAppendDiagnosticEntry(entries, repeated)
+        assertEquals(2_000, entries.size)
+        assertEquals(repeated, entries.last())
+        assertEquals(repeated, entries[entries.lastIndex - 1])
     }
 
     @Test(expected = IllegalArgumentException::class)

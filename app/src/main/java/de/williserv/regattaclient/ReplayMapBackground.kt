@@ -10,7 +10,8 @@ internal data class ReplayMapContextKey(
 
 internal data class ReplayMapCandidate(
     val key: ReplayMapContextKey,
-    val viewport: CourseMapViewport
+    val viewport: CourseMapViewport,
+    val courseJson: String?
 )
 
 internal data class ReplayMapBackground(
@@ -44,7 +45,8 @@ internal fun replayMapCandidates(
             key,
             ReplayMapCandidate(
                 key = key,
-                viewport = viewport
+                viewport = viewport,
+                courseJson = sample.courseJson?.takeIf { it.isNotBlank() }
             )
         )
     }
@@ -62,7 +64,8 @@ internal fun replayMapCandidates(
             )
             candidates[key] = ReplayMapCandidate(
                 key = key,
-                viewport = viewport
+                viewport = viewport,
+                courseJson = session.courseJson?.takeIf { it.isNotBlank() }
             )
         }
     }
@@ -101,3 +104,14 @@ internal fun replayMapBackgroundForSample(
         null
     }
 }
+
+
+internal fun replayCourseJsonForSample(
+    sample: SessionTrackingSample,
+    background: ReplayMapBackground?
+): String? =
+    if (background != null) {
+        background.candidate.courseJson?.takeIf { it.isNotBlank() }
+    } else {
+        sample.courseJson?.takeIf { it.isNotBlank() }
+    }

@@ -152,6 +152,75 @@ class SessionReplayTest {
     }
 
     @Test
+    fun asyncMapArrivalDoesNotResetReplayViewport() {
+        val mapA = ReplayMapContextKey(
+            raceContextId = 10L,
+            resolvedEventName = "Run 1",
+            generationId = "g1"
+        )
+
+        assertEquals(
+            false,
+            shouldResetReplayViewportForMapChange(
+                previous = null,
+                next = mapA
+            )
+        )
+        assertEquals(
+            false,
+            shouldResetReplayViewportForMapChange(
+                previous = mapA,
+                next = mapA
+            )
+        )
+        assertEquals(
+            false,
+            shouldResetReplayViewportForMapChange(
+                previous = mapA,
+                next = null
+            )
+        )
+    }
+
+    @Test
+    fun switchingBetweenDifferentReplayMapsResetsViewport() {
+        val mapA = ReplayMapContextKey(
+            raceContextId = 10L,
+            resolvedEventName = "Run 1",
+            generationId = "g1"
+        )
+        val mapB = ReplayMapContextKey(
+            raceContextId = 20L,
+            resolvedEventName = "Run 2",
+            generationId = "g2"
+        )
+
+        assertTrue(
+            shouldResetReplayViewportForMapChange(
+                previous = mapA,
+                next = mapB
+            )
+        )
+    }
+
+    @Test
+    fun replayTransformAppliesZoomAndPanAroundCanvasCenter() {
+        val transformed = replayTransformPoint(
+            point = androidx.compose.ui.geometry.Offset(150f, 75f),
+            viewport = ReplayViewport(
+                zoom = 2f,
+                panX = 10f,
+                panY = -5f
+            ),
+            widthPx = 200f,
+            heightPx = 100f
+        )
+
+        assertEquals(210f, transformed.x, 0.0001f)
+        assertEquals(95f, transformed.y, 0.0001f)
+    }
+
+    @Test
     fun speedFraction_isRelativeToSessionMaximumAndClamped() {
         assertEquals(0f, replaySpeedFraction(0.0, 10.0), 0.0001f)
         assertEquals(0.5f, replaySpeedFraction(5.0, 10.0), 0.0001f)
