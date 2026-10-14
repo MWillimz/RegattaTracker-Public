@@ -1061,6 +1061,15 @@ class MainActivity : ComponentActivity() {
                             onRefreshCalypsoSensorInfo = {
                                 regattaLinkManager.refreshCalypsoSensorInfo()
                             },
+                            onRefreshCalypsoAwaOffset = {
+                                regattaLinkManager.refreshCalypsoAwaOffset()
+                            },
+                            onSetCalypsoAwaOffsetDeg = { degrees ->
+                                regattaLinkManager.setCalypsoAwaOffsetDeg(degrees)
+                            },
+                            onRefreshCalypsoRawWind = {
+                                regattaLinkManager.refreshCalypsoRawWind()
+                            },
                             onSetImuRawPreviewEnabled = { enabled ->
                                 regattaLinkManager.setImuRawPreviewEnabled(enabled)
                             },
