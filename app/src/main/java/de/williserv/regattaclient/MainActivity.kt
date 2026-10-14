@@ -1428,6 +1428,7 @@ class MainActivity : ComponentActivity() {
             manualTrackingActive = manualTracking.value,
             blockingFlowActive =
                 showTrackingConsentDialog.value ||
+                    showClearConfirmDialog.value ||
                     showBoatConfirmDialog.value ||
                     showRegistrationReminderDialog.value ||
                     showClearRaceSetupDialog.value ||
