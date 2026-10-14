@@ -513,7 +513,10 @@ internal fun regattaLinkApplyCalypsoControlStatus(
     ) status.result else state.calypso.lastDeleteResult
 
     return state.copy(
-        calypsoSensorInfo = if (payload.boundId != state.calypso.boundId) {
+        calypsoSensorInfo = if (
+            payload.boundId != state.calypso.boundId ||
+            payload.connected != state.calypso.connected
+        ) {
             RegattaLinkSensorInfoState()
         } else {
             state.calypsoSensorInfo
