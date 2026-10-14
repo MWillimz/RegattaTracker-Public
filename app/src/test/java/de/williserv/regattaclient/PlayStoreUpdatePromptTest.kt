@@ -11,14 +11,16 @@ class PlayStoreUpdatePromptTest {
         inRace: Boolean = false,
         manualTracking: Boolean = false,
         blockingFlow: Boolean = false,
-        focused: Boolean = true
+        focused: Boolean = true,
+        alreadyPresented: Boolean = false
     ) = shouldOfferPlayStoreUpdate(
         isPlayUpdateAvailable = updateAvailable,
         screen = screen,
         raceTrackingActive = inRace,
         manualTrackingActive = manualTracking,
         blockingFlowActive = blockingFlow,
-        hasWindowFocus = focused
+        hasWindowFocus = focused,
+        offerAlreadyPresented = alreadyPresented
     )
 
     @Test
@@ -42,6 +44,24 @@ class PlayStoreUpdatePromptTest {
         // Permission dialog closes; the pending process result is still usable.
         assertTrue(eligible(updateAvailable = processGate.hasPendingOffer, focused = true))
         assertFalse(processGate.tryStart())
+    }
+
+    @Test
+    fun ownUpdateDialogLosingWindowFocusDoesNotDismissIt() {
+        val gate = PlayStoreUpdateCheckGate()
+        gate.recordAvailable()
+        assertTrue(eligible(updateAvailable = gate.hasPendingOffer, focused = true))
+        // Opening a Compose Dialog can remove focus from the Activity window.
+        assertTrue(eligible(
+            updateAvailable = gate.hasPendingOffer,
+            focused = false,
+            alreadyPresented = true
+        ))
+        assertFalse(eligible(
+            updateAvailable = gate.hasPendingOffer,
+            focused = false,
+            alreadyPresented = false
+        ))
     }
 
     @Test
