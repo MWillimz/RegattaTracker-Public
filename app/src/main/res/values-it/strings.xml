@@ -593,7 +593,7 @@
     <string name="regattalink_bluetooth_devices">Dispositivi Bluetooth</string>
     <string name="regattalink_calypso_wind_sensor">Sensore del vento Calypso</string>
     <string name="regattalink_calypso_wind_correction">Correzione angolo del vento</string>
-    <string name="regattalink_calypso_wind_offset">Correzione di montaggio</string>
+    <string name="regattalink_calypso_wind_offset">Offset</string>
     <string name="regattalink_calypso_offset_error">Impossibile leggere o salvare la correzione Calypso.</string>
     <string name="regattalink_calypso_wind_calm">Direzione del vento non disponibile (calma).</string>
     <string name="regattalink_calypso_raw_values">Valori vento grezzi</string>
