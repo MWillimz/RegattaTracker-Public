@@ -1617,9 +1617,11 @@ private fun RegattaLinkBluetoothDevicesSheet(
             REGATTALINK_CONFIG_CALYPSO_ENABLE
         )
     val calypso = configurationState.calypso
-    var infosExpanded by remember(deviceKey, calypso.boundId) { mutableStateOf(false) }
-    LaunchedEffect(deviceKey, connected, calypso.statusKnown, calypso.boundId) {
-        if (connected && calypso.statusKnown && calypso.boundId != null) {
+    var infosExpanded by remember(deviceKey, calypso.boundId, calypso.connected) {
+        mutableStateOf(false)
+    }
+    LaunchedEffect(deviceKey, connected, calypso.statusKnown, calypso.boundId, calypso.connected) {
+        if (connected && calypso.statusKnown && calypso.connected) {
             onRefreshCalypsoSensorInfo()
         }
     }
@@ -1741,7 +1743,7 @@ private fun RegattaLinkBluetoothDevicesSheet(
                 }
             )
 
-            if (calypso.statusKnown && calypso.boundId != null) {
+            if (calypso.statusKnown && calypso.connected) {
                 TextButton(
                     onClick = { infosExpanded = !infosExpanded },
                     modifier = Modifier.padding(top = 8.dp)
