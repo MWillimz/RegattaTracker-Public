@@ -248,6 +248,7 @@ internal fun RegattaLinkScreen(
     onExportRawCapture: () -> Unit,
     onDiscardRawCapture: () -> Unit,
     onDisconnect: () -> Unit,
+    onCancelConnectionAttempt: () -> Unit = {},
     onBack: () -> Unit
 ) {
     val busy = state.status in setOf(
@@ -617,6 +618,7 @@ internal fun RegattaLinkScreen(
             canDisconnect = !otaState.isActive &&
                 !configurationState.deviceControlBusy &&
                 !configurationState.factoryResetAwaitingDisconnect,
+            onCancelConnectionAttempt = onCancelConnectionAttempt,
             onDisconnect = {
                 devicePickerOpen = false
                 onDisconnect()
@@ -1082,6 +1084,7 @@ private fun RegattaLinkDevicePickerSheet(
     onForgetKnownDevice: (String) -> Boolean,
     canDisconnect: Boolean,
     onDisconnect: () -> Unit,
+    onCancelConnectionAttempt: () -> Unit,
     onDismiss: () -> Unit
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -1097,6 +1100,21 @@ private fun RegattaLinkDevicePickerSheet(
                 fontSize = 22.sp,
                 fontWeight = FontWeight.SemiBold
             )
+            // Global action for the single active connection attempt. Do not
+            // attach it to disconnected known-device rows or manual discovery.
+            if (canCancelRegattaLinkConnectionAttempt(
+                    connectionState.status,
+                    deviceSelectionState.discovery.scanning
+                )
+            ) {
+                TextButton(
+                    onClick = onCancelConnectionAttempt,
+                    enabled = canDisconnect,
+                    modifier = Modifier.padding(top = 4.dp)
+                ) {
+                    Text(stringResource(R.string.regattalink_cancel_connection_attempt))
+                }
+            }
             deviceSelectionState.knownDevices
                 .sortedBy { it.stableId != deviceSelectionState.selectedStableId }
                 .forEach { device ->
