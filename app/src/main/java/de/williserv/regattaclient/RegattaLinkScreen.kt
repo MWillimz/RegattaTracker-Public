@@ -457,7 +457,16 @@ internal fun RegattaLinkScreen(
                 configurationState = configurationState,
                 boatFramePresentation = boatFramePresentation,
                 controlsEnabled = orientationControlsEnabled,
-                setUprightEnabled = deviceControlBaseEnabled,
+                // Permit confirmation while IMU_RAW_MODE renewal owns Device
+                // Control; the queued upright request runs after that renewal.
+                setUprightEnabled =
+                    connected && configurationState.deviceControlSupported &&
+                    !otaState.isActive && !rawCaptureState.isActive &&
+                    !configurationState.busy &&
+                    !configurationState.diagnosticLogLoading &&
+                    !configurationState.factoryResetAwaitingDisconnect &&
+                    !configurationState.restartAwaitingDisconnect &&
+                    !nmeaState.rawCanReading,
                 configEnabled = configEnabled,
                 deviceControlBusy = configurationState.deviceControlBusy,
                 deviceControlError = configurationState.deviceControlError,
