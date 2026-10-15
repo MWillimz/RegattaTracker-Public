@@ -4,12 +4,14 @@ import android.os.SystemClock
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -23,6 +25,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -58,6 +61,7 @@ import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -1878,51 +1882,102 @@ private fun RegattaLinkBluetoothDevicesSheet(
             val offsetLabel = stringResource(R.string.regattalink_calypso_wind_offset) +
                 " " + (offset.valueDeg?.let { if (it > 0) "+${it}°" else "${it}°" } ?: "—")
             @Composable
-            fun AdjustmentButtons(modifier: Modifier = Modifier) {
-                Row(
-                    modifier = modifier,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+            fun AdjustmentButton(delta: Int, modifier: Modifier = Modifier) {
+                val target = offset.valueDeg?.plus(delta)
+                val label = if (delta < 0) "−${-delta}°" else "+${delta}°"
+                Button(
+                    onClick = { target?.let(onSetCalypsoAwaOffsetDeg) },
+                    enabled = canAdjustOffset && target != null && target in -180..180,
+                    modifier = modifier
+                        .heightIn(min = 48.dp)
+                        .semantics { contentDescription = "$offsetLabel $label" },
+                    contentPadding = PaddingValues(horizontal = 2.dp)
                 ) {
-                    RegattaLinkOrientationActionButton(
-                        text = "−1°",
-                        contentDescription = offsetLabel + " −1°",
-                        enabled = canAdjustOffset && offset.valueDeg!! > -180,
-                        onClick = { onSetCalypsoAwaOffsetDeg(offset.valueDeg!! - 1) },
-                        modifier = Modifier.weight(1f)
-                    )
-                    RegattaLinkOrientationActionButton(
-                        text = "+1°",
-                        contentDescription = offsetLabel + " +1°",
-                        enabled = canAdjustOffset && offset.valueDeg!! < 180,
-                        onClick = { onSetCalypsoAwaOffsetDeg(offset.valueDeg!! + 1) },
-                        modifier = Modifier.weight(1f)
-                    )
+                    Text(label, fontSize = 14.sp, maxLines = 1)
                 }
             }
-            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                if (maxWidth < 290.dp) {
-                    Column {
-                        Text(offsetLabel, fontSize = 14.sp)
-                        AdjustmentButtons(Modifier.fillMaxWidth())
+
+            @Composable
+            fun AdjustmentButtons(
+                modifier: Modifier = Modifier,
+                twoRows: Boolean = false
+            ) {
+                if (twoRows) {
+                    Column(
+                        modifier = modifier,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        listOf(listOf(-10, -1), listOf(1, 10)).forEach { deltas ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                deltas.forEach { delta ->
+                                    AdjustmentButton(delta, Modifier.weight(1f))
+                                }
+                            }
+                        }
                     }
                 } else {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = modifier,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Text(offsetLabel, fontSize = 14.sp, maxLines = 1,
-                            modifier = Modifier.weight(1f))
-                        AdjustmentButtons(Modifier.weight(1.4f))
+                        listOf(-10, -1, 1, 10).forEach { delta ->
+                            AdjustmentButton(delta, Modifier.weight(1f))
+                        }
                     }
                 }
             }
-            if (offset.loading) {
-                Text(
-                    stringResource(R.string.regattalink_sensor_info_loading),
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+
+            @Composable
+            fun OffsetBusyIndicator() {
+                // Always occupy the same space, including during SET/readback.
+                Box(modifier = Modifier.size(16.dp), contentAlignment = Alignment.Center) {
+                    if (offset.loading || offset.saving) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp
+                        )
+                    }
+                }
+            }
+
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val fontScale = LocalDensity.current.fontScale
+                val twoRows = maxWidth < 300.dp || fontScale > 1.3f
+                val inline = maxWidth >= 420.dp && fontScale <= 1.1f
+                if (inline) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            offsetLabel,
+                            fontSize = 14.sp,
+                            maxLines = 1,
+                            modifier = Modifier.weight(1f)
+                        )
+                        OffsetBusyIndicator()
+                        AdjustmentButtons(Modifier.weight(2.7f))
+                    }
+                } else {
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(offsetLabel, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            OffsetBusyIndicator()
+                        }
+                        AdjustmentButtons(
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                            twoRows = twoRows
+                        )
+                    }
+                }
             }
             if (offset.error.isNotBlank()) {
                 Text(
