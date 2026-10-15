@@ -28,7 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
 
-private const val RELEASE_NOTES_URL = "https://mwillimz.github.io/RegattaTracker-Public/changelog/"
+internal const val RELEASE_NOTES_URL = "https://mwillimz.github.io/RegattaTracker-Public/changelog/"
 
 @Composable
 fun LegalScreen(
