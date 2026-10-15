@@ -404,6 +404,16 @@ internal fun RegattaLinkScreen(
         }
     }
 
+    // Keep the displayed Calypso connection state current while this sheet is open.
+    LaunchedEffect(bluetoothDevicesOpen, deviceControlEnabled, calypsoSupported, deviceKey) {
+        if (bluetoothDevicesOpen && deviceControlEnabled && calypsoSupported) {
+            while (true) {
+                delay(10_000L)
+                onDeviceControl(RegattaLinkDeviceControlOpcode.CALYPSO_STATUS, 0)
+            }
+        }
+    }
+
     LaunchedEffect(
         firmwareSetupOpen,
         connected,
