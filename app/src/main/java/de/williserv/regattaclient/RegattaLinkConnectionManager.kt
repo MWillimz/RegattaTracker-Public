@@ -54,6 +54,22 @@ internal enum class RegattaLinkForgetResult {
     SUCCESS, NOT_FOUND, CONNECTED, BUSY, PERSISTENCE_FAILED
 }
 
+/**
+ * A connection attempt can be canceled from Switch. Do not confuse the
+ * explicit "Pair another" discovery scan with automatic RLink reconnection.
+ */
+internal fun canCancelRegattaLinkConnectionAttempt(
+    status: RegattaLinkConnectionStatus,
+    manualDiscoveryScanning: Boolean
+): Boolean = !manualDiscoveryScanning && status in setOf(
+    RegattaLinkConnectionStatus.WAITING,
+    RegattaLinkConnectionStatus.SCANNING,
+    RegattaLinkConnectionStatus.BONDING,
+    RegattaLinkConnectionStatus.CONNECTING,
+    RegattaLinkConnectionStatus.DISCOVERING,
+    RegattaLinkConnectionStatus.READING_DEVICE_INFO
+)
+
 /** Protect the actual connection, not merely the preferred device. */
 internal fun canForgetKnownRegattaLink(
     candidate: RegattaLinkConfiguredDevice,
@@ -349,8 +365,13 @@ internal interface RegattaLinkConnectionClient {
         opcode: RegattaLinkDeviceControlOpcode,
         value: Int
     ): Boolean = false
+    /** Queues upright after an in-flight raw-mode renewal on the BLE worker. */
+    fun requestSetUprightFromPreview(): Boolean = false
     fun setImuRawPreviewEnabled(enabled: Boolean): Boolean = false
     fun refreshCalypsoSensorInfo(): Boolean = false
+    fun refreshCalypsoAwaOffset(): Boolean = false
+    fun setCalypsoAwaOffsetDeg(value: Int): Boolean = false
+    fun refreshCalypsoRawWind(): Boolean = false
     fun refreshPgnInventory(): Boolean
     fun readRawCanFrames(): Boolean
 
@@ -769,6 +790,26 @@ internal class RegattaLinkConnectionManager(
         return RegattaLinkForgetResult.SUCCESS
     }
 
+    /**
+     * Recheck at click time: never disconnect an already-connected device
+     * merely because its UI briefly showed a pending connection attempt.
+     */
+    fun cancelConnectionAttempt(): Boolean {
+        if (otaState.isActive || factoryResetPending ||
+            configurationState.deviceControlBusy ||
+            configurationState.factoryResetAwaitingDisconnect ||
+            configurationState.restartAwaitingDisconnect ||
+            !canCancelRegattaLinkConnectionAttempt(
+                connectionState.status, deviceSelectionState.discovery.scanning
+            )
+        ) return false
+
+        // Reuse the established path: suppress reconnect first, then cancel
+        // scanning, bonding, GATT connection and pending switch ownership.
+        disconnect()
+        return true
+    }
+
     fun disconnect() {
         if (factoryResetPending) return
         autoReconnectSuppressedByUser = true
@@ -1088,6 +1129,14 @@ internal class RegattaLinkConnectionManager(
         return accepted
     }
 
+    fun requestSetUprightFromPreview(): Boolean {
+        if (!configurationState.deviceControlSupported ||
+            otaState.isActive || rawCaptureState.isActive ||
+            configurationState.diagnosticLogLoading
+        ) return false
+        return client.requestSetUprightFromPreview()
+    }
+
     fun setImuRawPreviewEnabled(enabled: Boolean): Boolean {
         if (
             otaState.isActive ||
@@ -1102,6 +1151,21 @@ internal class RegattaLinkConnectionManager(
     fun refreshCalypsoSensorInfo(): Boolean {
         if (otaState.isActive || rawCaptureState.isActive) return false
         return client.refreshCalypsoSensorInfo()
+    }
+
+    fun refreshCalypsoAwaOffset(): Boolean {
+        if (otaState.isActive || rawCaptureState.isActive) return false
+        return client.refreshCalypsoAwaOffset()
+    }
+
+    fun setCalypsoAwaOffsetDeg(value: Int): Boolean {
+        if (otaState.isActive || rawCaptureState.isActive) return false
+        return client.setCalypsoAwaOffsetDeg(value)
+    }
+
+    fun refreshCalypsoRawWind(): Boolean {
+        if (otaState.isActive || rawCaptureState.isActive) return false
+        return client.refreshCalypsoRawWind()
     }
 
     fun refreshPgnInventory(): Boolean {

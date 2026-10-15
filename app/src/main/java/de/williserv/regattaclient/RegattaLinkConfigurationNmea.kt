@@ -53,6 +53,8 @@ data class RegattaLinkConfigurationState(
     val deviceControlError: String = "",
     val calypso: RegattaLinkCalypsoState = RegattaLinkCalypsoState(),
     val calypsoSensorInfo: RegattaLinkSensorInfoState = RegattaLinkSensorInfoState(),
+    val calypsoAwaOffset: RegattaLinkCalypsoOffsetState = RegattaLinkCalypsoOffsetState(),
+    val calypsoRawWind: RegattaLinkCalypsoRawWindState = RegattaLinkCalypsoRawWindState(),
     val busy: Boolean = false,
     val error: String = "",
     val userMessage: RegattaLinkUiMessage? = null
@@ -521,6 +523,10 @@ internal fun regattaLinkApplyCalypsoControlStatus(
         } else {
             state.calypsoSensorInfo
         },
+        calypsoRawWind = if (
+            payload.boundId != state.calypso.boundId ||
+            payload.connected != state.calypso.connected
+        ) RegattaLinkCalypsoRawWindState() else state.calypsoRawWind,
         calypso = state.calypso.copy(
             statusKnown = true,
             boundId = payload.boundId,

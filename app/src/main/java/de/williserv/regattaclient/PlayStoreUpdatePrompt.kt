@@ -4,18 +4,38 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** Application-scoped: Activity recreation must not start a second Play check. */
+/**
+ * Process-scoped Play check and pending offer. A Play callback may arrive while
+ * a permission dialog owns the window or after the requesting Activity was
+ * recreated; neither case is allowed to consume the offer.
+ */
 internal class PlayStoreUpdateCheckGate {
+    private enum class Offer { NONE, AVAILABLE, HANDLED }
+
     private val started = AtomicBoolean(false)
+    private val offer = mutableStateOf(Offer.NONE)
+
+    val hasPendingOffer: Boolean get() = offer.value == Offer.AVAILABLE
 
     fun tryStart(): Boolean = started.compareAndSet(false, true)
+
+    fun recordAvailable() {
+        if (offer.value != Offer.HANDLED) offer.value = Offer.AVAILABLE
+    }
+
+    fun markHandled() {
+        offer.value = Offer.HANDLED
+    }
 }
 
 /** A Play update notice must never preempt race operation or a higher-priority flow. */
@@ -24,9 +44,12 @@ internal fun shouldOfferPlayStoreUpdate(
     screen: Screen,
     raceTrackingActive: Boolean,
     manualTrackingActive: Boolean,
-    blockingFlowActive: Boolean
+    blockingFlowActive: Boolean,
+    hasWindowFocus: Boolean = true,
+    offerAlreadyPresented: Boolean = false
 ): Boolean =
     isPlayUpdateAvailable &&
+        (hasWindowFocus || offerAlreadyPresented) &&
         screen == Screen.HOME &&
         !raceTrackingActive &&
         !manualTrackingActive &&
@@ -61,10 +84,18 @@ internal fun PlayStoreUpdateDialog(
     onUpdate: () -> Unit,
     onLater: () -> Unit
 ) {
+    val uriHandler = LocalUriHandler.current
     AlertDialog(
         onDismissRequest = onLater,
         title = { Text(stringResource(R.string.play_store_update_title)) },
-        text = { Text(stringResource(R.string.play_store_update_message)) },
+        text = {
+            Column {
+                Text(stringResource(R.string.play_store_update_message))
+                TextButton(onClick = { uriHandler.openUri(RELEASE_NOTES_URL) }) {
+                    Text(stringResource(R.string.release_notes))
+                }
+            }
+        },
         confirmButton = {
             TextButton(onClick = onUpdate) {
                 Text(stringResource(R.string.play_store_update_action))

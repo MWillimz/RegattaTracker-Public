@@ -377,6 +377,55 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun cancelConnectionAttemptSuppressesReconnectWithoutForgettingDevice() {
+        fakeClient.emitConnection(RegattaLinkClientState(
+            status = RegattaLinkConnectionStatus.WAITING,
+            deviceAddress = configured.deviceAddress
+        ))
+        assertTrue(manager.cancelConnectionAttempt())
+        assertEquals(1, fakeClient.disconnectCalls)
+        assertEquals(configured.stableId, manager.configuredDevice()?.stableId)
+
+        // The normal unexpected-disconnect callback may arrive after cancellation.
+        fakeClient.emitUnexpectedDisconnect()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(0, fakeClient.autoConnectCalls)
+
+        fakeClient.emitConnection(RegattaLinkClientState())
+        assertFalse(manager.cancelConnectionAttempt())
+        assertEquals(1, fakeClient.disconnectCalls)
+
+        // Only a later explicit user action enables reconnect again.
+        assertTrue(manager.reconnectConfigured())
+        assertEquals(1, fakeClient.reconnectCalls)
+    }
+
+    @Test
+    fun cancelConnectionAttemptNeverDisconnectsConnectedOrManualDiscovery() {
+        fakeClient.emitConnection(RegattaLinkClientState(
+            status = RegattaLinkConnectionStatus.CONNECTED,
+            deviceAddress = configured.deviceAddress,
+            deviceInfo = testDeviceInfo(configured.stableId)
+        ))
+        assertFalse(manager.cancelConnectionAttempt())
+        assertEquals(0, fakeClient.disconnectCalls)
+
+        fakeClient.emitConnection(RegattaLinkClientState(
+            status = RegattaLinkConnectionStatus.IDLE
+        ))
+        assertFalse(manager.cancelConnectionAttempt())
+        assertEquals(0, fakeClient.disconnectCalls)
+
+        assertTrue(manager.startDiscovery())
+        fakeClient.emitDiscovery(RegattaLinkDiscoveryState(scanning = true))
+        fakeClient.emitConnection(RegattaLinkClientState(
+            status = RegattaLinkConnectionStatus.SCANNING
+        ))
+        assertFalse(manager.cancelConnectionAttempt())
+        assertEquals(0, fakeClient.disconnectCalls)
+    }
+
+    @Test
     fun explicitDisconnectSuppressesBackgroundAutoConnectUntilUserReconnects() {
         manager.disconnect()
         fakeClient.emitUnexpectedDisconnect()

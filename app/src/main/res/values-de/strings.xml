@@ -431,6 +431,7 @@
     <string name="regattalink_error_pairing_required">RegattaLink muss erneut gekoppelt werden.</string>
     <string name="regattalink_enable_bluetooth">Bluetooth einschalten</string>
     <string name="regattalink_search_connect">Suchen / verbinden</string>
+    <string name="regattalink_cancel_connection_attempt">Verbindungsversuch abbrechen</string>
     <string name="regattalink_disconnect">Trennen</string>
     <string name="regattalink_permission_denied">Bluetooth-Berechtigung verweigert.</string>
     <string name="regattalink_error_bluetooth_unavailable">Bluetooth LE ist nicht verfügbar.</string>
@@ -592,6 +593,11 @@
     <string name="regattalink_setup_imu">Internal Sensor</string>
     <string name="regattalink_bluetooth_devices">Bluetooth-Geräte</string>
     <string name="regattalink_calypso_wind_sensor">Calypso-Windsensor</string>
+    <string name="regattalink_calypso_wind_correction">Windwinkel-Korrektur</string>
+    <string name="regattalink_calypso_wind_offset">Offset</string>
+    <string name="regattalink_calypso_offset_error">Calypso-Winkelkorrektur konnte nicht gelesen oder gespeichert werden.</string>
+    <string name="regattalink_calypso_wind_calm">Keine verwertbare Windrichtung (Windstille).</string>
+    <string name="regattalink_calypso_raw_values">Wind-Rohwerte</string>
     <string name="regattalink_sensor_infos">Infos</string>
     <string name="regattalink_sensor_info_loading">Lädt…</string>
     <string name="regattalink_sensor_info_empty">Keine Informationen verfügbar.</string>
@@ -691,6 +697,7 @@
     <string name="regattalink_raw_capture_export">CSV exportieren</string>
     <string name="regattalink_raw_capture_discard">Verwerfen</string>
     <string name="regattalink_device_control">Kalibrierung</string>
+    <string name="regattalink_upright_submission_failed">Aufrecht-Kalibrierung konnte nicht gestartet werden. Bitte erneut versuchen.</string>
     <string name="regattalink_set_upright">Aufrechte Lage setzen</string>
     <string name="regattalink_set_upright_instruction">Boot und RegattaLink während der Kalibrierung ruhig in der gewünschten neutralen Lage halten.</string>
     <string name="regattalink_set_upright_arrow_forward">Ist der RegattaLink mit dem Pfeil nach vorne eingebaut?</string>
