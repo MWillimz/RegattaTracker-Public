@@ -4,11 +4,13 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -82,10 +84,18 @@ internal fun PlayStoreUpdateDialog(
     onUpdate: () -> Unit,
     onLater: () -> Unit
 ) {
+    val uriHandler = LocalUriHandler.current
     AlertDialog(
         onDismissRequest = onLater,
         title = { Text(stringResource(R.string.play_store_update_title)) },
-        text = { Text(stringResource(R.string.play_store_update_message)) },
+        text = {
+            Column {
+                Text(stringResource(R.string.play_store_update_message))
+                TextButton(onClick = { uriHandler.openUri(RELEASE_NOTES_URL) }) {
+                    Text(stringResource(R.string.release_notes))
+                }
+            }
+        },
         confirmButton = {
             TextButton(onClick = onUpdate) {
                 Text(stringResource(R.string.play_store_update_action))
