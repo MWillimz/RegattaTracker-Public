@@ -347,7 +347,6 @@ internal interface RegattaLinkConnectionClient {
     fun setPhoneGpsTxEnabled(enabled: Boolean): Boolean = false
     fun setCompassTxEnabled(enabled: Boolean): Boolean = false
     fun setNmea0183Baud(baudRate: Int): Boolean = false
-    fun setMagBackgroundLearningEnabled(enabled: Boolean): Boolean = false
     fun setSubsystemEnabled(
         subsystem: RegattaLinkSubsystem,
         enabled: Boolean
@@ -943,11 +942,6 @@ internal class RegattaLinkConnectionManager(
         }
     }
 
-    fun setMagBackgroundLearningEnabled(enabled: Boolean): Boolean =
-        withConfigMutationAllowed {
-            client.setMagBackgroundLearningEnabled(enabled)
-        }
-
     fun setSubsystemEnabled(
         subsystem: RegattaLinkSubsystem,
         enabled: Boolean
@@ -955,6 +949,12 @@ internal class RegattaLinkConnectionManager(
         withConfigMutationAllowed {
             client.setSubsystemEnabled(subsystem, enabled)
         }
+
+    fun applyMagLearnerModeAndRestart(mode: RegattaLinkMagLearnerMode): Boolean =
+        applyConfigBitsAndRestart(
+            mask = REGATTALINK_CONFIG_MAG_LEARNER_MASK,
+            encodedBits = mode.encodedBits
+        )
 
     fun applyTxSelectionAndRestart(encodedBits: UInt): Boolean =
         applyConfigBitsAndRestart(

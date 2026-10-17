@@ -1038,9 +1038,9 @@ class MainActivity : ComponentActivity() {
                             onSetNmea0183Baud = { baudRate ->
                                 regattaLinkManager.setNmea0183Baud(baudRate)
                             },
-                            onSetMagBackgroundLearningEnabled = { enabled ->
+                            onApplyMagLearnerModeAndRestart = { mode ->
                                 regattaLinkManager
-                                    .setMagBackgroundLearningEnabled(enabled)
+                                    .applyMagLearnerModeAndRestart(mode)
                             },
                             onApplySubsystemConfigAndRestart = { encodedBits ->
                                 regattaLinkManager

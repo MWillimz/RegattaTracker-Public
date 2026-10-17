@@ -4054,15 +4054,6 @@ internal class RegattaLinkBleClient(
             failureText = "Could not change RegattaLink load precision"
         )
 
-    override fun setMagBackgroundLearningEnabled(enabled: Boolean): Boolean =
-        mutateConfigWord(
-            mask = REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING,
-            encodedBits =
-                REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING
-                    .takeIf { enabled } ?: 0u,
-            failureText = "Could not change RegattaLink MAG background learning"
-        )
-
     override fun setNmea0183Baud(baudRate: Int): Boolean {
         val baud = RegattaLinkNmea0183Baud.fromBaudRate(baudRate)
             ?: return false
