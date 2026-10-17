@@ -4044,6 +4044,13 @@ private fun RegattaLinkImuSetupSheet(
         if (magLearnerBaseline == null && magLearnerFromDevice != null) {
             magLearnerBaseline = magLearnerFromDevice
             magLearnerDraft = magLearnerFromDevice
+        } else if (
+            magLearnerDraft != null &&
+            magLearnerBaseline != magLearnerDraft &&
+            magLearnerFromDevice == magLearnerDraft
+        ) {
+            // Readback confirms the staged choice; only restart remains pending.
+            magLearnerBaseline = magLearnerDraft
         }
     }
     val magLearnerDirty =
@@ -4328,25 +4335,25 @@ private fun RegattaLinkImuSetupSheet(
                                     )
                                 }
                             }
-                    }
+                        }
                     }
                     Text(
                         text = stringResource(R.string.regattalink_mag_learner_help),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                if (magLearnerDraft == REGATTALINK_CONFIG_MAG_LEARNER_MASK) {
+                    if (magLearnerDraft == REGATTALINK_CONFIG_MAG_LEARNER_MASK) {
                     Text(
                         text = stringResource(R.string.regattalink_mag_learner_invalid_help),
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(top = 4.dp)
                     )
-                } else if (!magAvailable || !imuAvailable) {
-                    Text(
-                        text = stringResource(R.string.regattalink_mag_learner_unavailable),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                }
+                    } else if (!magAvailable || !imuAvailable) {
+                        Text(
+                            text = stringResource(R.string.regattalink_mag_learner_unavailable),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
                 }
             }
 
