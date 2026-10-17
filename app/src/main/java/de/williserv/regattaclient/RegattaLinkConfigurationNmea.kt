@@ -103,7 +103,7 @@ data class RegattaLinkConfigurationState(
             it and REGATTALINK_CONFIG_TX_CALYPSO_WIND != 0u
         }
 
-    val magLearnerMode: RegattaLinkMagLearnerMode?
+    internal val magLearnerMode: RegattaLinkMagLearnerMode?
         get() = configWord?.let(RegattaLinkMagLearnerMode::fromConfigWord)
 
     val nmea0183Baud: RegattaLinkNmea0183Baud?
