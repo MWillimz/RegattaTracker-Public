@@ -826,7 +826,7 @@
     <string name="regattalink_mag_learner_3d">3D Learner</string>
     <string name="regattalink_mag_learner_invalid">Invalid</string>
     <string name="regattalink_mag_learner_invalid_help">Invalid 2D/3D learner selection. Choose one mode to correct it.</string>
-    <string name="regattalink_mag_learner_unavailable">MAG sensor unavailable. No learner is running.</string>
+    <string name="regattalink_mag_learner_unavailable">MAG or IMU unavailable. No learner is running.</string>
     <string name="regattalink_heading_trim">Compass heading trim</string>
     <string name="regattalink_heading_trim_value">%1$d°</string>
     <string name="regattalink_heading_trim_immediate">Applies immediately to the local onboard compass only.</string>

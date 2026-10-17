@@ -783,7 +783,7 @@
     <string name="regattalink_mag_learner_3d">Apprentissage 3D</string>
     <string name="regattalink_mag_learner_invalid">Invalide</string>
     <string name="regattalink_mag_learner_invalid_help">Sélection 2D/3D invalide. Choisissez un mode pour la corriger.</string>
-    <string name="regattalink_mag_learner_unavailable">Capteur MAG indisponible. Aucun apprentissage n’est actif.</string>
+    <string name="regattalink_mag_learner_unavailable">MAG ou IMU indisponible. Aucun apprentissage n’est actif.</string>
     <string name="regattalink_heading_trim">Correction du cap compas</string>
     <string name="regattalink_heading_trim_value">%1$d°</string>
     <string name="regattalink_heading_trim_immediate">S’applique immédiatement et uniquement au compas local embarqué.</string>

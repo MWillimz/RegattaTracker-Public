@@ -783,7 +783,7 @@
     <string name="regattalink_mag_learner_3d">3D-Learner</string>
     <string name="regattalink_mag_learner_invalid">Ungültig</string>
     <string name="regattalink_mag_learner_invalid_help">Ungültige 2D-/3D-Auswahl. Zum Korrigieren einen Modus wählen.</string>
-    <string name="regattalink_mag_learner_unavailable">MAG-Sensor nicht verfügbar. Es wird nicht gelernt.</string>
+    <string name="regattalink_mag_learner_unavailable">MAG oder IMU nicht verfügbar. Es wird nicht gelernt.</string>
     <string name="regattalink_heading_trim">Kompasskurs-Trim</string>
     <string name="regattalink_heading_trim_value">%1$d°</string>
     <string name="regattalink_heading_trim_immediate">Wird sofort und nur auf den lokalen Bordkompass angewendet.</string>

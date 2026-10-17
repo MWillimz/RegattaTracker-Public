@@ -783,7 +783,7 @@
     <string name="regattalink_mag_learner_3d">Aprendizaje 3D</string>
     <string name="regattalink_mag_learner_invalid">No válido</string>
     <string name="regattalink_mag_learner_invalid_help">Selección 2D/3D no válida. Selecciona un modo para corregirla.</string>
-    <string name="regattalink_mag_learner_unavailable">Sensor MAG no disponible. No hay aprendizaje activo.</string>
+    <string name="regattalink_mag_learner_unavailable">MAG o IMU no disponible. No hay aprendizaje activo.</string>
     <string name="regattalink_heading_trim">Ajuste del rumbo de compás</string>
     <string name="regattalink_heading_trim_value">%1$d°</string>
     <string name="regattalink_heading_trim_immediate">Se aplica inmediatamente y solo al compás local de a bordo.</string>
