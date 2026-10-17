@@ -783,7 +783,7 @@
     <string name="regattalink_mag_learner_3d">Apprendimento 3D</string>
     <string name="regattalink_mag_learner_invalid">Non valido</string>
     <string name="regattalink_mag_learner_invalid_help">Selezione 2D/3D non valida. Scegliere una modalità per correggerla.</string>
-    <string name="regattalink_mag_learner_unavailable">Sensore MAG non disponibile. La scelta resta salvata, ma l’apprendimento non è attivo.</string>
+    <string name="regattalink_mag_learner_unavailable">Sensore MAG non disponibile. Nessun apprendimento è attivo.</string>
     <string name="regattalink_heading_trim">Correzione rotta bussola</string>
     <string name="regattalink_heading_trim_value">%1$d°</string>
     <string name="regattalink_heading_trim_immediate">Si applica immediatamente e solo alla bussola locale di bordo.</string>

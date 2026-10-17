@@ -356,6 +356,7 @@ internal enum class RegattaLinkMagLearnerMode(val encodedBits: UInt) {
             fromConfigBits(word and REGATTALINK_CONFIG_MAG_LEARNER_MASK)
     }
 }
+
 internal const val REGATTALINK_CONFIG_NMEA0183_BAUD_MASK: UInt = 0x0000c000u
 internal const val REGATTALINK_CONFIG_SESSION_IMU: UInt = 0x00010000u
 internal const val REGATTALINK_CONFIG_SESSION_MAG: UInt = 0x00020000u
