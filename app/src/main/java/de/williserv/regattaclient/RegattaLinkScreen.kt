@@ -4267,24 +4267,22 @@ private fun RegattaLinkImuSetupSheet(
                 configurationState.configWordSupported &&
                 magLearnerDraft != null
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 22.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(top = 22.dp)
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
                             text = stringResource(R.string.regattalink_mag_learner_mode),
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(1f)
                         )
-                        Text(
-                            text = stringResource(R.string.regattalink_mag_learner_help),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Box {
+                        Box {
                         val selectedMode = magLearnerDraft?.let(
                             RegattaLinkMagLearnerMode::fromConfigBits
                         )
@@ -4331,6 +4329,10 @@ private fun RegattaLinkImuSetupSheet(
                             }
                         }
                     }
+                    Text(
+                        text = stringResource(R.string.regattalink_mag_learner_help),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
                 if (magLearnerDraft == REGATTALINK_CONFIG_MAG_LEARNER_MASK) {
                     Text(
@@ -4338,7 +4340,7 @@ private fun RegattaLinkImuSetupSheet(
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(top = 4.dp)
                     )
-                } else if (!magAvailable) {
+                } else if (!magAvailable || !imuAvailable) {
                     Text(
                         text = stringResource(R.string.regattalink_mag_learner_unavailable),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -4401,6 +4403,21 @@ private fun RegattaLinkImuSetupSheet(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            regattaLinkRuntimeMessageText(
+                userMessage = configurationState.userMessage,
+                hasTechnicalError = configurationState.error.isNotBlank(),
+                fallback = RegattaLinkUiMessage.CONFIGURATION_FAILED
+            )?.let { message ->
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+            RegattaLinkTechnicalDetail(
+                detail = configurationState.error,
+                modifier = Modifier.padding(top = 4.dp)
+            )
 
             if (imuAvailable) {
             Text(
