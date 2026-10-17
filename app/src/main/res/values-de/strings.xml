@@ -776,7 +776,14 @@
     <string name="regattalink_boat_data_output_active">Aktiv</string>
     <string name="regattalink_boat_data_output_selected_inactive">Für diesen Boot ausgewählt, aber nicht runtime-aktiv.</string>
     <string name="regattalink_boat_data_output_off">Aus</string>
-    <string name="regattalink_mag_background_learning">MAG-Hintergrundkalibrierung lernen</string>
+    <string name="regattalink_mag_learner_mode">MAG-Lernmodus</string>
+    <string name="regattalink_mag_learner_help">Werkskalibrierung bleibt aktiv. 2D lernt bei Kurswechseln; 3D benötigt Bewegungen in allen Achsen.</string>
+    <string name="regattalink_mag_learner_factory_only">Nur Werkskalibrierung</string>
+    <string name="regattalink_mag_learner_2d">2D-Learner</string>
+    <string name="regattalink_mag_learner_3d">3D-Learner</string>
+    <string name="regattalink_mag_learner_invalid">Ungültig</string>
+    <string name="regattalink_mag_learner_invalid_help">Ungültige 2D-/3D-Auswahl. Zum Korrigieren einen Modus wählen.</string>
+    <string name="regattalink_mag_learner_unavailable">MAG oder IMU nicht verfügbar. Es wird nicht gelernt.</string>
     <string name="regattalink_heading_trim">Kompasskurs-Trim</string>
     <string name="regattalink_heading_trim_value">%1$d°</string>
     <string name="regattalink_heading_trim_immediate">Wird sofort und nur auf den lokalen Bordkompass angewendet.</string>
