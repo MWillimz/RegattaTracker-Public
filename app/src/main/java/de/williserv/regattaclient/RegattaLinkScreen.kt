@@ -4342,11 +4342,11 @@ private fun RegattaLinkImuSetupSheet(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     if (magLearnerDraft == REGATTALINK_CONFIG_MAG_LEARNER_MASK) {
-                    Text(
-                        text = stringResource(R.string.regattalink_mag_learner_invalid_help),
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
+                        Text(
+                            text = stringResource(R.string.regattalink_mag_learner_invalid_help),
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
                     } else if (!magAvailable || !imuAvailable) {
                         Text(
                             text = stringResource(R.string.regattalink_mag_learner_unavailable),
