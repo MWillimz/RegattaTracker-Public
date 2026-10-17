@@ -4283,57 +4283,57 @@ private fun RegattaLinkImuSetupSheet(
                             modifier = Modifier.weight(1f)
                         )
                         Box {
-                        val selectedMode = magLearnerDraft?.let(
-                            RegattaLinkMagLearnerMode::fromConfigBits
-                        )
-                        TextButton(
-                            onClick = { magLearnerMenuExpanded = true },
-                            enabled = configEnabled
-                        ) {
-                            Text(
-                                when (selectedMode) {
-                                    RegattaLinkMagLearnerMode.FACTORY_ONLY ->
-                                        stringResource(R.string.regattalink_mag_learner_factory_only)
-                                    RegattaLinkMagLearnerMode.TWO_D ->
-                                        stringResource(R.string.regattalink_mag_learner_2d)
-                                    RegattaLinkMagLearnerMode.THREE_D ->
-                                        stringResource(R.string.regattalink_mag_learner_3d)
-                                    null ->
-                                        stringResource(R.string.regattalink_mag_learner_invalid)
-                                }
+                            val selectedMode = magLearnerDraft?.let(
+                                RegattaLinkMagLearnerMode::fromConfigBits
                             )
-                        }
-                        DropdownMenu(
-                            expanded = magLearnerMenuExpanded,
-                            onDismissRequest = { magLearnerMenuExpanded = false }
-                        ) {
-                            RegattaLinkMagLearnerMode.entries.forEach { mode ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            when (mode) {
-                                                RegattaLinkMagLearnerMode.FACTORY_ONLY ->
-                                                    stringResource(R.string.regattalink_mag_learner_factory_only)
-                                                RegattaLinkMagLearnerMode.TWO_D ->
-                                                    stringResource(R.string.regattalink_mag_learner_2d)
-                                                RegattaLinkMagLearnerMode.THREE_D ->
-                                                    stringResource(R.string.regattalink_mag_learner_3d)
-                                            }
-                                        )
-                                    },
-                                    onClick = {
-                                        magLearnerDraft = mode.encodedBits
-                                        magLearnerMenuExpanded = false
+                            TextButton(
+                                onClick = { magLearnerMenuExpanded = true },
+                                enabled = configEnabled
+                            ) {
+                                Text(
+                                    when (selectedMode) {
+                                        RegattaLinkMagLearnerMode.FACTORY_ONLY ->
+                                            stringResource(R.string.regattalink_mag_learner_factory_only)
+                                        RegattaLinkMagLearnerMode.TWO_D ->
+                                            stringResource(R.string.regattalink_mag_learner_2d)
+                                        RegattaLinkMagLearnerMode.THREE_D ->
+                                            stringResource(R.string.regattalink_mag_learner_3d)
+                                        null ->
+                                            stringResource(R.string.regattalink_mag_learner_invalid)
                                     }
                                 )
                             }
-                        }
+                            DropdownMenu(
+                                expanded = magLearnerMenuExpanded,
+                                onDismissRequest = { magLearnerMenuExpanded = false }
+                            ) {
+                                RegattaLinkMagLearnerMode.entries.forEach { mode ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                when (mode) {
+                                                    RegattaLinkMagLearnerMode.FACTORY_ONLY ->
+                                                        stringResource(R.string.regattalink_mag_learner_factory_only)
+                                                    RegattaLinkMagLearnerMode.TWO_D ->
+                                                        stringResource(R.string.regattalink_mag_learner_2d)
+                                                    RegattaLinkMagLearnerMode.THREE_D ->
+                                                        stringResource(R.string.regattalink_mag_learner_3d)
+                                                }
+                                            )
+                                        },
+                                        onClick = {
+                                            magLearnerDraft = mode.encodedBits
+                                            magLearnerMenuExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                    }
                     }
                     Text(
                         text = stringResource(R.string.regattalink_mag_learner_help),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                }
                 if (magLearnerDraft == REGATTALINK_CONFIG_MAG_LEARNER_MASK) {
                     Text(
                         text = stringResource(R.string.regattalink_mag_learner_invalid_help),
@@ -4346,6 +4346,7 @@ private fun RegattaLinkImuSetupSheet(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 4.dp)
                     )
+                }
                 }
             }
 
