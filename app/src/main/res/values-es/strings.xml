@@ -776,7 +776,14 @@
     <string name="regattalink_boat_data_output_active">Activo</string>
     <string name="regattalink_boat_data_output_selected_inactive">Seleccionado para este arranque, pero no activo en ejecución.</string>
     <string name="regattalink_boat_data_output_off">Desactivado</string>
-    <string name="regattalink_mag_background_learning">Aprendizaje de calibración MAG en segundo plano</string>
+    <string name="regattalink_mag_learner_mode">Modo de aprendizaje MAG</string>
+    <string name="regattalink_mag_learner_help">Se conserva la calibración de fábrica. 2D aprende al virar; 3D requiere movimiento en los tres ejes.</string>
+    <string name="regattalink_mag_learner_factory_only">Solo fábrica</string>
+    <string name="regattalink_mag_learner_2d">Aprendizaje 2D</string>
+    <string name="regattalink_mag_learner_3d">Aprendizaje 3D</string>
+    <string name="regattalink_mag_learner_invalid">No válido</string>
+    <string name="regattalink_mag_learner_invalid_help">Selección 2D/3D no válida. Selecciona un modo para corregirla.</string>
+    <string name="regattalink_mag_learner_unavailable">Sensor MAG no disponible. La selección se guarda, pero no hay aprendizaje.</string>
     <string name="regattalink_heading_trim">Ajuste del rumbo de compás</string>
     <string name="regattalink_heading_trim_value">%1$d°</string>
     <string name="regattalink_heading_trim_immediate">Se aplica inmediatamente y solo al compás local de a bordo.</string>

@@ -776,7 +776,14 @@
     <string name="regattalink_boat_data_output_active">Attivo</string>
     <string name="regattalink_boat_data_output_selected_inactive">Selezionato per questo avvio, ma non attivo a runtime.</string>
     <string name="regattalink_boat_data_output_off">Disattivato</string>
-    <string name="regattalink_mag_background_learning">Apprendimento calibrazione MAG in background</string>
+    <string name="regattalink_mag_learner_mode">Modalità di apprendimento MAG</string>
+    <string name="regattalink_mag_learner_help">La calibrazione di fabbrica resta attiva. Il 2D apprende durante le virate; il 3D richiede movimenti su tutti gli assi.</string>
+    <string name="regattalink_mag_learner_factory_only">Solo fabbrica</string>
+    <string name="regattalink_mag_learner_2d">Apprendimento 2D</string>
+    <string name="regattalink_mag_learner_3d">Apprendimento 3D</string>
+    <string name="regattalink_mag_learner_invalid">Non valido</string>
+    <string name="regattalink_mag_learner_invalid_help">Selezione 2D/3D non valida. Scegliere una modalità per correggerla.</string>
+    <string name="regattalink_mag_learner_unavailable">Sensore MAG non disponibile. La scelta resta salvata, ma l’apprendimento non è attivo.</string>
     <string name="regattalink_heading_trim">Correzione rotta bussola</string>
     <string name="regattalink_heading_trim_value">%1$d°</string>
     <string name="regattalink_heading_trim_immediate">Si applica immediatamente e solo alla bussola locale di bordo.</string>

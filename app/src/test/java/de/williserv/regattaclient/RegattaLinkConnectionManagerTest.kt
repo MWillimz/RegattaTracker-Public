@@ -1405,6 +1405,31 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun magLearnerModeApplyUsesBothBitsAndExistingRestartMutation() {
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(
+                configWordSupported = true,
+                configWord = REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING,
+                deviceControlSupported = true
+            )
+        )
+
+        assertTrue(manager.applyMagLearnerModeAndRestart(RegattaLinkMagLearnerMode.TWO_D))
+        assertEquals(1, fakeClient.applyConfigBitsAndRestartCalls)
+        assertEquals(REGATTALINK_CONFIG_MAG_LEARNER_MASK, fakeClient.lastAppliedConfigMask)
+        assertEquals(
+            REGATTALINK_CONFIG_MAG_2D_LEARNER,
+            fakeClient.lastAppliedConfigBits
+        )
+
+        fakeClient.emitConfiguration(
+            RegattaLinkConfigurationState(deviceControlBusy = true)
+        )
+        assertFalse(manager.applyMagLearnerModeAndRestart(RegattaLinkMagLearnerMode.FACTORY_ONLY))
+        assertEquals(1, fakeClient.applyConfigBitsAndRestartCalls)
+    }
+
+    @Test
     fun stagedConfigApplyRejectsBitsOutsideOwnedMask() {
         fakeClient.emitConfiguration(
             RegattaLinkConfigurationState(

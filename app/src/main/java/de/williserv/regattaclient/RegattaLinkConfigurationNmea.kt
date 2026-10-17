@@ -103,10 +103,8 @@ data class RegattaLinkConfigurationState(
             it and REGATTALINK_CONFIG_TX_CALYPSO_WIND != 0u
         }
 
-    val magBackgroundLearningEnabled: Boolean?
-        get() = configWord?.let {
-            it and REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING != 0u
-        }
+    val magLearnerMode: RegattaLinkMagLearnerMode?
+        get() = configWord?.let(RegattaLinkMagLearnerMode::fromConfigWord)
 
     val nmea0183Baud: RegattaLinkNmea0183Baud?
         get() = configWord?.let(RegattaLinkNmea0183Baud::fromConfigWord)
@@ -341,6 +339,23 @@ internal const val REGATTALINK_CONFIG_BLUETOOTH_DEVICE_MASK: UInt =
     REGATTALINK_CONFIG_CALYPSO_ENABLE
 internal const val REGATTALINK_CONFIG_LOAD_PRECISION_X10: UInt = 0x00000100u
 internal const val REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING: UInt = 0x00000200u
+internal const val REGATTALINK_CONFIG_MAG_2D_LEARNER: UInt = 0x00000800u
+internal const val REGATTALINK_CONFIG_MAG_LEARNER_MASK: UInt =
+    REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING or REGATTALINK_CONFIG_MAG_2D_LEARNER
+
+internal enum class RegattaLinkMagLearnerMode(val encodedBits: UInt) {
+    FACTORY_ONLY(0u),
+    TWO_D(REGATTALINK_CONFIG_MAG_2D_LEARNER),
+    THREE_D(REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING);
+
+    companion object {
+        fun fromConfigBits(bits: UInt): RegattaLinkMagLearnerMode? =
+            entries.firstOrNull { it.encodedBits == bits }
+
+        fun fromConfigWord(word: UInt): RegattaLinkMagLearnerMode? =
+            fromConfigBits(word and REGATTALINK_CONFIG_MAG_LEARNER_MASK)
+    }
+}
 internal const val REGATTALINK_CONFIG_NMEA0183_BAUD_MASK: UInt = 0x0000c000u
 internal const val REGATTALINK_CONFIG_SESSION_IMU: UInt = 0x00010000u
 internal const val REGATTALINK_CONFIG_SESSION_MAG: UInt = 0x00020000u
