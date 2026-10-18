@@ -11,6 +11,49 @@ import java.nio.ByteOrder
 class RegattaLinkDeviceControlTest {
 
     @Test
+    fun setUprightMayBeConfirmedDuringUnacceptedRawModeRenewalOnly() {
+        val waitingForRawAcceptance = RegattaLinkConfigurationState(
+            deviceControlBusy = true,
+            deviceControlExecutingOpcode = RegattaLinkDeviceControlOpcode.IMU_RAW_MODE,
+            deviceControlAcceptedOpcode = null
+        )
+        assertTrue(regattaLinkCanConfirmSetUpright(waitingForRawAcceptance))
+        assertTrue(regattaLinkCanConfirmSetUpright(
+            waitingForRawAcceptance.copy(
+                deviceControlAcceptedOpcode = RegattaLinkDeviceControlOpcode.IMU_RAW_MODE
+            )
+        ))
+        assertTrue(regattaLinkCanConfirmSetUpright(
+            waitingForRawAcceptance.copy(
+                deviceControlBusy = false,
+                deviceControlExecutingOpcode = null
+            )
+        ))
+        assertFalse(regattaLinkCanConfirmSetUpright(
+            waitingForRawAcceptance.copy(deviceControlExecutingOpcode = null)
+        ))
+        assertFalse(regattaLinkCanConfirmSetUpright(
+            waitingForRawAcceptance.copy(
+                deviceControlExecutingOpcode = RegattaLinkDeviceControlOpcode.ADJUST_FORWARD,
+                deviceControlAcceptedOpcode = RegattaLinkDeviceControlOpcode.IMU_RAW_MODE
+            )
+        ))
+    }
+
+    @Test
+    fun rejectedDeviceControlClearsExecutingOpcode() {
+        val pending = RegattaLinkConfigurationState(
+            deviceControlBusy = true,
+            deviceControlExecutingOpcode = RegattaLinkDeviceControlOpcode.IMU_RAW_MODE
+        )
+        val rejected = regattaLinkDeviceControlRejectedBeforeStartState(
+            pending, "connection no longer ready"
+        )
+        assertFalse(rejected.deviceControlBusy)
+        assertNull(rejected.deviceControlExecutingOpcode)
+    }
+
+    @Test
     fun diagnosticLogEmptyResponseEndsDrain() {
         assertNull(parseRegattaLinkDiagnosticLogEntry(byteArrayOf()))
     }
