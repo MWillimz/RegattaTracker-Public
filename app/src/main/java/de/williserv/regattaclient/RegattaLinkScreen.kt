@@ -489,9 +489,7 @@ internal fun RegattaLinkScreen(
                     !configurationState.factoryResetAwaitingDisconnect &&
                     !configurationState.restartAwaitingDisconnect &&
                     !nmeaState.rawCanReading &&
-                    (!configurationState.deviceControlBusy ||
-                        configurationState.deviceControlAcceptedOpcode ==
-                            RegattaLinkDeviceControlOpcode.IMU_RAW_MODE),
+                    regattaLinkCanConfirmSetUpright(configurationState),
                 configEnabled = configEnabled,
                 deviceControlBusy = configurationState.deviceControlBusy,
                 deviceControlError = configurationState.deviceControlError,
@@ -4206,6 +4204,14 @@ private fun RegattaLinkImuSetupSheet(
     } else {
         livePitchValue
     }
+    // Freeze only the dimmed sheet's enabled styling while periodic
+    // raw-mode commands toggle the real Device Control busy state.
+    // AlertDialog intercepts input; actual admission remains unchanged.
+    val backdropConfigEnabled = if (uprightDialogOpen) {
+        remember { configEnabled }
+    } else {
+        configEnabled
+    }
 
     ModalBottomSheet(
         onDismissRequest = {
@@ -4303,7 +4309,7 @@ private fun RegattaLinkImuSetupSheet(
                     },
                     valueRange = 1f..10f,
                     steps = 8,
-                    enabled = configEnabled
+                    enabled = backdropConfigEnabled
                 )
             }
 
@@ -4332,7 +4338,7 @@ private fun RegattaLinkImuSetupSheet(
                             )
                             TextButton(
                                 onClick = { magLearnerMenuExpanded = true },
-                                enabled = configEnabled
+                                enabled = backdropConfigEnabled
                             ) {
                                 Text(
                                     when (selectedMode) {
@@ -4423,7 +4429,7 @@ private fun RegattaLinkImuSetupSheet(
                         }
                     },
                     enabled =
-                        configEnabled &&
+                        backdropConfigEnabled &&
                             configurationState.deviceControlSupported &&
                             (magLearnerDirty || configurationState.configRestartRequired) &&
                             !configurationState.restartAwaitingDisconnect,
@@ -4695,7 +4701,7 @@ private fun RegattaLinkImuSetupSheet(
                         contentDescription =
                             stringResource(R.string.regattalink_heading_trim) +
                                 " −1°",
-                        enabled = configEnabled && headingTrim > -180,
+                        enabled = backdropConfigEnabled && headingTrim > -180,
                         onClick = {
                             onSetHeadingTrimDeg(headingTrim - 1)
                         },
@@ -4706,7 +4712,7 @@ private fun RegattaLinkImuSetupSheet(
                         contentDescription =
                             stringResource(R.string.regattalink_heading_trim) +
                                 " +1°",
-                        enabled = configEnabled && headingTrim < 180,
+                        enabled = backdropConfigEnabled && headingTrim < 180,
                         onClick = {
                             onSetHeadingTrimDeg(headingTrim + 1)
                         },

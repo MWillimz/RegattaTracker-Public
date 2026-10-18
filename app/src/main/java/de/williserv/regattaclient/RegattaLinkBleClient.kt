@@ -4700,6 +4700,7 @@ internal class RegattaLinkBleClient(
                 ) {
                     current.copy(
                         deviceControlBusy = true,
+                        deviceControlExecutingOpcode = opcode,
                         deviceControlAcceptedOpcode = null,
                         deviceControlAcceptedRequestId = null,
                         factoryResetWriteAcceptedRequestId = null,
@@ -4714,6 +4715,7 @@ internal class RegattaLinkBleClient(
                 } else {
                     current.copy(
                         deviceControlBusy = true,
+                        deviceControlExecutingOpcode = opcode,
                         deviceControlAcceptedOpcode = null,
                         deviceControlAcceptedRequestId = null,
                         factoryResetWriteAcceptedRequestId = null,
@@ -5042,6 +5044,7 @@ internal class RegattaLinkBleClient(
                         current.copy(
                         deviceControlSupported = true,
                         deviceControlBusy = false,
+                        deviceControlExecutingOpcode = null,
                         deviceControlAcceptedOpcode = null,
                         deviceControlAcceptedRequestId = null,
                         factoryResetWriteAcceptedRequestId =
