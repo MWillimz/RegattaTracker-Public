@@ -294,6 +294,9 @@ internal fun RegattaLinkScreen(
         if (!connected) settingsMenuExpanded = false
     }
     val deviceKey = state.deviceInfo?.stableId ?: state.deviceAddress
+    var uprightDialogOpen by remember(deviceKey, activeSetupDestination) {
+        mutableStateOf(false)
+    }
     var calypsoStatusRequestedForOpen by remember(
         deviceKey,
         activeSetupDestination,
@@ -474,6 +477,8 @@ internal fun RegattaLinkScreen(
                 deviceKey = deviceKey,
                 connected = connected,
                 controlsEnabled = orientationControlsEnabled,
+                uprightDialogOpen = uprightDialogOpen,
+                onUprightDialogOpenChange = { uprightDialogOpen = it },
                 // Permit confirmation while IMU_RAW_MODE renewal owns Device
                 // Control; the queued upright request runs after that renewal.
                 setUprightEnabled =
@@ -506,7 +511,10 @@ internal fun RegattaLinkScreen(
                     )
                 },
                 onAdjust = onDeviceControl,
-                onDismiss = { activeSetupDestination = null }
+                onDismiss = {
+                    uprightDialogOpen = false
+                    activeSetupDestination = null
+                }
             )
         }
         RegattaLinkSetupDestination.NMEA -> {
@@ -897,7 +905,7 @@ internal fun RegattaLinkScreen(
                     )
                 }
 
-                if (configurationState.deviceControlBusy) {
+                if (configurationState.deviceControlBusy && !uprightDialogOpen) {
                     Text(
                         text = configurationState.deviceControlStatus
                             ?.takeIf { !it.phase.isTerminal }
@@ -4016,6 +4024,8 @@ private fun RegattaLinkImuSetupSheet(
     deviceKey: String,
     connected: Boolean,
     controlsEnabled: Boolean,
+    uprightDialogOpen: Boolean,
+    onUprightDialogOpenChange: (Boolean) -> Unit,
     setUprightEnabled: Boolean,
     configEnabled: Boolean,
     deviceControlBusy: Boolean,
@@ -4062,7 +4072,6 @@ private fun RegattaLinkImuSetupSheet(
     var dampingDraft by remember(configurationState.motionDampingSeconds) {
         mutableStateOf((configurationState.motionDampingSeconds ?: 3).toFloat())
     }
-    var uprightDialogOpen by rememberSaveable { mutableStateOf(false) }
     var uprightSubmitRejected by remember { mutableStateOf(false) }
     var uprightPreviewStartedAtElapsedMs by remember {
         mutableStateOf<Long?>(null)
@@ -4139,7 +4148,7 @@ private fun RegattaLinkImuSetupSheet(
         // IMU_RAW_MODE(0) would compete for the same exclusive Device
         // Control lease. Stopping 400-ms renewals lets firmware expire it.
         onSetImuRawPreviewEnabled(false)
-        uprightDialogOpen = false
+        onUprightDialogOpenChange(false)
         uprightPreviewStartedAtElapsedMs = null
         uprightRawTiltSamples = emptyList()
         uprightLastRawSampleAtElapsedMs = null
@@ -4169,6 +4178,34 @@ private fun RegattaLinkImuSetupSheet(
         positiveDirectionLabel = bowUp,
         negativeDirectionLabel = bowDown
     )
+
+    // Keep the dimmed sheet stable while raw-mode renewals update Device
+    // Control. The dialog itself continues to use live raw IMU telemetry.
+    val backdropBoatFrame = if (uprightDialogOpen) {
+        remember { boatFramePresentation }
+    } else {
+        boatFramePresentation
+    }
+    val backdropControlStatus = if (uprightDialogOpen) {
+        remember { controlStatus }
+    } else {
+        controlStatus
+    }
+    val backdropControlError = if (uprightDialogOpen) {
+        remember { deviceControlError }
+    } else {
+        deviceControlError
+    }
+    val backdropHeel = if (uprightDialogOpen) {
+        remember { liveHeelValue }
+    } else {
+        liveHeelValue
+    }
+    val backdropPitch = if (uprightDialogOpen) {
+        remember { livePitchValue }
+    } else {
+        livePitchValue
+    }
 
     ModalBottomSheet(
         onDismissRequest = {
@@ -4572,7 +4609,7 @@ private fun RegattaLinkImuSetupSheet(
                     uprightLastRawSampleAtElapsedMs = null
                     uprightPreviewStartedAtElapsedMs =
                         SystemClock.elapsedRealtime()
-                    uprightDialogOpen = true
+                    onUprightDialogOpenChange(true)
                     uprightSubmitRejected = false
                     onSetImuRawPreviewEnabled(true)
                     onSetImuRawModeEnabled(true)
@@ -4585,7 +4622,7 @@ private fun RegattaLinkImuSetupSheet(
 
             if (
                 !regattaLinkShouldShowManualOrientationControls(
-                    boatFramePresentation
+                    backdropBoatFrame
                 )
             ) {
                 Text(
@@ -4612,9 +4649,9 @@ private fun RegattaLinkImuSetupSheet(
                     modifier = Modifier.padding(top = 6.dp)
                 )
                 RegattaLinkOrientationControl(
-                    status = controlStatus,
-                    liveHeelValue = liveHeelValue,
-                    livePitchValue = livePitchValue,
+                    status = backdropControlStatus,
+                    liveHeelValue = backdropHeel,
+                    livePitchValue = backdropPitch,
                     enabled = controlsEnabled && !uprightDialogOpen,
                     onAdjust = onAdjust,
                     modifier = Modifier
@@ -4695,8 +4732,8 @@ private fun RegattaLinkImuSetupSheet(
                 )
             }
             regattaLinkDeviceControlUiMessage(
-                status = controlStatus,
-                hasError = deviceControlError.isNotBlank()
+                status = backdropControlStatus,
+                hasError = backdropControlError.isNotBlank()
             )?.let { message ->
                 Text(
                     text = stringResource(
@@ -4706,7 +4743,7 @@ private fun RegattaLinkImuSetupSheet(
                     modifier = Modifier.padding(top = 8.dp)
                 )
             }
-            RegattaLinkTechnicalDetail(deviceControlError)
+            RegattaLinkTechnicalDetail(backdropControlError)
 
             TextButton(
                 onClick = onDismiss,
