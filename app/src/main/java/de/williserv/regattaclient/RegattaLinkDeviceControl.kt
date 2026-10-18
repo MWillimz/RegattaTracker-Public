@@ -140,12 +140,19 @@ internal fun regattaLinkOrientationControlsEnabled(
         boatFrameValid &&
         !deviceControlBusy
 
+internal fun regattaLinkCanConfirmSetUpright(
+    state: RegattaLinkConfigurationState
+): Boolean =
+    !state.deviceControlBusy ||
+        state.deviceControlExecutingOpcode == RegattaLinkDeviceControlOpcode.IMU_RAW_MODE
+
 internal fun regattaLinkDeviceControlRejectedBeforeStartState(
     state: RegattaLinkConfigurationState,
     errorMessage: String
 ): RegattaLinkConfigurationState =
     state.copy(
         deviceControlBusy = false,
+        deviceControlExecutingOpcode = null,
         deviceControlAcceptedOpcode = null,
         deviceControlAcceptedRequestId = null,
         factoryResetWriteAcceptedRequestId = null,
