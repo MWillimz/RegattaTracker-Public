@@ -45,6 +45,8 @@ data class RegattaLinkConfigurationState(
     val diagnosticLogError: String = "",
     val deviceControlSupported: Boolean = false,
     val deviceControlBusy: Boolean = false,
+    // Locally executing opcode before firmware acceptance is reported.
+    val deviceControlExecutingOpcode: RegattaLinkDeviceControlOpcode? = null,
     val deviceControlAcceptedOpcode: RegattaLinkDeviceControlOpcode? = null,
     val deviceControlAcceptedRequestId: UInt? = null,
     val factoryResetWriteAcceptedRequestId: UInt? = null,
