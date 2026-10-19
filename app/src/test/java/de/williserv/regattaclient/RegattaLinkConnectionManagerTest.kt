@@ -1409,16 +1409,16 @@ class RegattaLinkConnectionManagerTest {
         fakeClient.emitConfiguration(
             RegattaLinkConfigurationState(
                 configWordSupported = true,
-                configWord = REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING,
+                configWord = REGATTALINK_CONFIG_MAG_MANUAL_3D,
                 deviceControlSupported = true
             )
         )
 
-        assertTrue(manager.applyMagLearnerModeAndRestart(RegattaLinkMagLearnerMode.TWO_D))
+        assertTrue(manager.applyMagLearnerModeAndRestart(RegattaLinkMagLearnerMode.AUTO_2D))
         assertEquals(1, fakeClient.applyConfigBitsAndRestartCalls)
         assertEquals(REGATTALINK_CONFIG_MAG_LEARNER_MASK, fakeClient.lastAppliedConfigMask)
         assertEquals(
-            REGATTALINK_CONFIG_MAG_2D_LEARNER,
+            REGATTALINK_CONFIG_MAG_AUTO_2D,
             fakeClient.lastAppliedConfigBits
         )
 

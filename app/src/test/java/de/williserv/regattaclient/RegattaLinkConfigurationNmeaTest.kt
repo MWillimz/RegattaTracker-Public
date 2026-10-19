@@ -121,17 +121,17 @@ class RegattaLinkConfigurationNmeaTest {
             regattaLinkApplyConfigWord(RegattaLinkConfigurationState(), unrelated).magLearnerMode
         )
         assertEquals(
-            RegattaLinkMagLearnerMode.TWO_D,
+            RegattaLinkMagLearnerMode.AUTO_2D,
             regattaLinkApplyConfigWord(
                 RegattaLinkConfigurationState(),
-                unrelated or REGATTALINK_CONFIG_MAG_2D_LEARNER
+                unrelated or REGATTALINK_CONFIG_MAG_AUTO_2D
             ).magLearnerMode
         )
         assertEquals(
-            RegattaLinkMagLearnerMode.THREE_D,
+            RegattaLinkMagLearnerMode.MANUAL_3D,
             regattaLinkApplyConfigWord(
                 RegattaLinkConfigurationState(),
-                unrelated or REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING
+                unrelated or REGATTALINK_CONFIG_MAG_MANUAL_3D
             ).magLearnerMode
         )
         assertNull(
@@ -145,7 +145,7 @@ class RegattaLinkConfigurationNmeaTest {
     @Test
     fun magLearnerModeSwitchChangesBothBitsInOneMaskAndPreservesOtherBits() {
         val unrelated = 0xA5A54000u or REGATTALINK_CONFIG_TX_PHONE_GPS
-        val original = unrelated or REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING
+        val original = unrelated or REGATTALINK_CONFIG_MAG_MANUAL_3D
         for (mode in RegattaLinkMagLearnerMode.entries) {
             val result = regattaLinkConfigWordWithMask(
                 current = original,
@@ -161,12 +161,12 @@ class RegattaLinkConfigurationNmeaTest {
         val from3dTo2d = regattaLinkConfigWordWithMask(
             current = original,
             mask = REGATTALINK_CONFIG_MAG_LEARNER_MASK,
-            encodedBits = RegattaLinkMagLearnerMode.TWO_D.encodedBits
+            encodedBits = RegattaLinkMagLearnerMode.AUTO_2D.encodedBits
         )
-        assertEquals(0u, from3dTo2d and REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING)
+        assertEquals(0u, from3dTo2d and REGATTALINK_CONFIG_MAG_MANUAL_3D)
         assertEquals(
-            REGATTALINK_CONFIG_MAG_2D_LEARNER,
-            from3dTo2d and REGATTALINK_CONFIG_MAG_2D_LEARNER
+            REGATTALINK_CONFIG_MAG_AUTO_2D,
+            from3dTo2d and REGATTALINK_CONFIG_MAG_AUTO_2D
         )
     }
 
@@ -224,7 +224,7 @@ class RegattaLinkConfigurationNmeaTest {
                 REGATTALINK_CONFIG_TX_PHONE_GPS or
                 REGATTALINK_CONFIG_TX_COMPASS or
                 REGATTALINK_CONFIG_LOAD_PRECISION_X10 or
-                REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING or
+                REGATTALINK_CONFIG_MAG_MANUAL_3D or
                 RegattaLinkNmea0183Baud.BAUD_38400.encodedBits
         val state = regattaLinkApplyConfigWord(
             RegattaLinkConfigurationState(),
@@ -236,7 +236,7 @@ class RegattaLinkConfigurationNmeaTest {
         assertEquals(true, state.phoneGpsTxEnabled)
         assertEquals(true, state.compassTxEnabled)
         assertEquals(true, state.loadPrecisionX10)
-        assertEquals(RegattaLinkMagLearnerMode.THREE_D, state.magLearnerMode)
+        assertEquals(RegattaLinkMagLearnerMode.MANUAL_3D, state.magLearnerMode)
         assertEquals(
             RegattaLinkNmea0183Baud.BAUD_38400,
             state.nmea0183Baud
@@ -430,7 +430,7 @@ class RegattaLinkConfigurationNmeaTest {
                 REGATTALINK_CONFIG_TX_LOAD or
                 REGATTALINK_CONFIG_CALYPSO_ENABLE or
                 REGATTALINK_CONFIG_LOAD_PRECISION_X10 or
-                REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING or
+                REGATTALINK_CONFIG_MAG_MANUAL_3D or
                 RegattaLinkNmea0183Baud.BAUD_38400.encodedBits
         val draft =
             REGATTALINK_CONFIG_TX_IMU or
