@@ -972,7 +972,8 @@ internal class RegattaLinkConnectionManager(
         else client.exportMagArchive()
     fun calculateMagFit(): Boolean = client.calculateMagFit()
     fun installMagFit(): Boolean = if (otaState.isActive || rawCaptureState.isActive ||
-        configurationState.deviceControlBusy) false else client.installMagFit()
+        configurationState.deviceControlBusy || configurationState.mag.phase ==
+            RegattaLinkMagPhase.UNKNOWN) false else client.installMagFit()
 
     fun applyTxSelectionAndRestart(encodedBits: UInt): Boolean =
         applyConfigBitsAndRestart(

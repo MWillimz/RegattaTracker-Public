@@ -72,8 +72,10 @@ internal fun RegattaLinkMagSetupSheet(
                     else -> R.string.regattalink_mag_collecting
                 }
                 Text(stringResource(active))
-                Text(stringResource(R.string.regattalink_mag_turns,
-                    status?.completedTurns ?: 0))
+                if (status?.activeKind == 0) {
+                    Text(stringResource(R.string.regattalink_mag_turns,
+                        status.completedTurns))
+                }
                 Text(stringResource(
                     if (status?.installed3d == true) R.string.regattalink_mag_installed
                     else R.string.regattalink_mag_not_installed
@@ -82,7 +84,8 @@ internal fun RegattaLinkMagSetupSheet(
                     TextButton(onClick = onRefresh, enabled = enabled) {
                         Text(stringResource(R.string.regattalink_mag_refresh))
                     }
-                    Button(onClick = onExport, enabled = enabled) {
+                    Button(onClick = onExport,
+                        enabled = enabled && mag.phase != RegattaLinkMagPhase.UNKNOWN) {
                         Text(stringResource(R.string.regattalink_mag_export))
                     }
                 }
@@ -136,7 +139,8 @@ internal fun RegattaLinkMagSetupSheet(
                 }
                 Button(
                     onClick = { onSelectMode(requested) },
-                    enabled = enabled && requested != nextMode &&
+                    enabled = enabled && mag.phase != RegattaLinkMagPhase.UNKNOWN &&
+                        requested != nextMode &&
                         (requested != RegattaLinkMagLearnerMode.MANUAL_3D ||
                             status?.installed3d == true)
                 ) {
