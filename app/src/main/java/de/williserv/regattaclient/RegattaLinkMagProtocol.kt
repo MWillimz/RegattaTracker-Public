@@ -19,7 +19,7 @@ private fun ByteBuffer.u16(): Int = short.toInt() and 65535
 private fun ByteBuffer.u32(): UInt = int.toUInt()
 private fun le(bytes: ByteArray) = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
 
-internal data class RegattaLinkMagStatus(
+data class RegattaLinkMagStatus(
     val phase: Int,
     val errorCode: Int,
     val activeKind: Int,
@@ -53,7 +53,7 @@ internal fun parseRegattaLinkMagStatus(bytes: ByteArray): RegattaLinkMagStatus {
     )
 }
 
-internal data class RegattaLinkMagManifest(
+data class RegattaLinkMagManifest(
     val factoryCrc: UInt,
     val archiveCrc: UInt,
     val revision: UInt
@@ -71,12 +71,12 @@ internal fun parseRegattaLinkMagManifest(bytes: ByteArray): RegattaLinkMagManife
     return RegattaLinkMagManifest(b.u32(), b.u32(), b.u32())
 }
 
-internal data class RegattaLinkMagSample(
+data class RegattaLinkMagSample(
     val x: Double, val y: Double, val z: Double,
     val downX: Int, val downY: Int, val downZ: Int
 )
 
-internal data class RegattaLinkMagSector(val samples: List<RegattaLinkMagSample>) {
+data class RegattaLinkMagSector(val samples: List<RegattaLinkMagSample>) {
     val median: DoubleArray? get() {
         if (samples.isEmpty()) return null
         fun median(values: List<Double>): Double {
@@ -91,7 +91,7 @@ internal data class RegattaLinkMagSector(val samples: List<RegattaLinkMagSample>
     }
 }
 
-internal data class RegattaLinkMagArchive(
+data class RegattaLinkMagArchive(
     val manifest: RegattaLinkMagManifest,
     val sectors: List<RegattaLinkMagSector>
 ) {
@@ -161,7 +161,7 @@ internal fun magExportSelect(index: Int): ByteArray =
 internal val MAG_EXPORT_OPEN = byteArrayOf(0xff.toByte(), 0xff.toByte())
 internal val MAG_EXPORT_CLOSE = byteArrayOf(0xfe.toByte(), 0xff.toByte())
 
-internal data class RegattaLinkMagFit(
+data class RegattaLinkMagFit(
     val offset: DoubleArray,
     val matrix: DoubleArray, // row-major 3x3
     val radiusUt: Double,

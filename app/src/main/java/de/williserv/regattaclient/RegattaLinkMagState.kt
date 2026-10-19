@@ -1,11 +1,11 @@
 package de.williserv.regattaclient
 
-internal enum class RegattaLinkMagPhase {
+enum class RegattaLinkMagPhase {
     IDLE, READING, EXPORTING, ARCHIVE_READY, FITTING, FIT_READY,
     TRANSFERRING, VALIDATING, PERSISTING, STORED, UNKNOWN, ERROR
 }
 
-internal data class RegattaLinkMagState(
+data class RegattaLinkMagState(
     val supported: Boolean = false,
     val phase: RegattaLinkMagPhase = RegattaLinkMagPhase.IDLE,
     val status: RegattaLinkMagStatus? = null,
