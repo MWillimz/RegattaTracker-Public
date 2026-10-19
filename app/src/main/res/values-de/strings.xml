@@ -873,4 +873,7 @@
     <string name="regattalink_mag_confirm_install_title">3D-Kalibrierung installieren?</string>
     <string name="regattalink_mag_confirm_install_body">Das Modell wird im RegattaLink gespeichert. Ist MANUAL_3D bereits aktiv, kann das neue Modell sofort wirksam werden.</string>
     <string name="regattalink_mag_confirm_reset_body">Beide gelernten Modelle und das Messarchiv löschen? Die Werkskalibrierung bleibt erhalten.</string>
+    <string name="regattalink_mag_off">Nur Werkskalibrierung – kein eigener Kompasskurs</string>
+    <string name="regattalink_mag_offset">Offset XYZ (µT): %1$s</string>
+    <string name="regattalink_mag_matrix">Soft-Iron-Matrix 3×3: %1$s</string>
 </resources>

@@ -873,4 +873,7 @@
     <string name="regattalink_mag_confirm_install_title">Installer le calibrage 3D ?</string>
     <string name="regattalink_mag_confirm_install_body">Le modèle sera enregistré dans RegattaLink. Si MANUAL_3D est déjà actif, le nouveau modèle peut prendre effet immédiatement.</string>
     <string name="regattalink_mag_confirm_reset_body">Supprimer les deux modèles appris et les mesures ? Le calibrage d\'usine sera conservé.</string>
+    <string name="regattalink_mag_off">Calibrage d\'usine uniquement — aucun cap magnétique local</string>
+    <string name="regattalink_mag_offset">Décalage XYZ (µT) : %1$s</string>
+    <string name="regattalink_mag_matrix">Matrice soft-iron 3×3 : %1$s</string>
 </resources>

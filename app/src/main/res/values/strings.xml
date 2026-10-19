@@ -916,4 +916,7 @@
     <string name="regattalink_mag_confirm_install_title">Install 3D calibration?</string>
     <string name="regattalink_mag_confirm_install_body">The model will be saved on RegattaLink. If MANUAL_3D is currently active, the new fit may take effect immediately.</string>
     <string name="regattalink_mag_confirm_reset_body">Delete both learned models and the measurement archive? The factory calibration remains.</string>
+    <string name="regattalink_mag_off">Factory only — no local heading</string>
+    <string name="regattalink_mag_offset">Offset XYZ (µT): %1$s</string>
+    <string name="regattalink_mag_matrix">Soft-iron 3×3 matrix: %1$s</string>
 </resources>

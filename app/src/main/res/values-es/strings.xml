@@ -873,4 +873,7 @@
     <string name="regattalink_mag_confirm_install_title">¿Instalar calibración 3D?</string>
     <string name="regattalink_mag_confirm_install_body">El modelo se guardará en RegattaLink. Si MANUAL_3D ya está activo, puede aplicarse inmediatamente.</string>
     <string name="regattalink_mag_confirm_reset_body">¿Eliminar ambos modelos aprendidos y el archivo de mediciones? Se conserva la calibración de fábrica.</string>
+    <string name="regattalink_mag_off">Solo fábrica — sin rumbo magnético propio</string>
+    <string name="regattalink_mag_offset">Desplazamiento XYZ (µT): %1$s</string>
+    <string name="regattalink_mag_matrix">Matriz soft-iron 3×3: %1$s</string>
 </resources>

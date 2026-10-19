@@ -69,10 +69,13 @@ internal fun RegattaLinkMagSetupSheet(
                 val active = when (status?.activeKind) {
                     1 -> R.string.regattalink_mag_active_auto
                     3 -> R.string.regattalink_mag_active_manual
-                    else -> R.string.regattalink_mag_collecting
+                    else -> if (nextMode == RegattaLinkMagLearnerMode.FACTORY_ONLY)
+                        R.string.regattalink_mag_off
+                    else R.string.regattalink_mag_collecting
                 }
                 Text(stringResource(active))
-                if (status?.activeKind == 0) {
+                if (status?.activeKind == 0 &&
+                    nextMode != RegattaLinkMagLearnerMode.FACTORY_ONLY) {
                     Text(stringResource(R.string.regattalink_mag_turns,
                         status.completedTurns))
                 }
@@ -110,6 +113,14 @@ internal fun RegattaLinkMagSetupSheet(
                     Text(stringResource(R.string.regattalink_mag_quality,
                         fit.usedSectors, fit.octants,
                         String.format(Locale.US, "%.2f", fit.rmsUt)))
+                    Text(stringResource(R.string.regattalink_mag_offset,
+                        fit.offset.joinToString(", ") {
+                            String.format(Locale.US, "%.1f", it)
+                        }))
+                    Text(stringResource(R.string.regattalink_mag_matrix,
+                        fit.matrix.toList().chunked(3).joinToString(" / ") { row ->
+                            row.joinToString(", ") { String.format(Locale.US, "%.3f", it) }
+                        }))
                     Button(onClick = { confirmInstall = true },
                         enabled = enabled && mag.phase == RegattaLinkMagPhase.FIT_READY) {
                         Text(stringResource(R.string.regattalink_mag_install))
