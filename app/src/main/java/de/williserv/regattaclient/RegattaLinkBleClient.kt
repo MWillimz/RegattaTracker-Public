@@ -79,6 +79,11 @@ internal class RegattaLinkBleClient(
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720010")
         val EXTENSION_SERVICE_UUID: UUID =
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720030")
+        val MAG_EXPORT_CONTROL_UUID = UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720032")
+        val MAG_EXPORT_PAGE_UUID = UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720033")
+        val MAG_IMPORT_CONTROL_UUID = UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720034")
+        val MAG_IMPORT_DATA_UUID = UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720035")
+        val MAG_IMPORT_STATUS_UUID = UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720036")
         val BLE_SENSOR_INFO_UUID: UUID =
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720031")
         val DEVICE_NAME_UUID: UUID =
@@ -251,6 +256,10 @@ internal class RegattaLinkBleClient(
     private val rawCaptureRunning = AtomicBoolean(false)
     private val diagnosticLogRunning = AtomicBoolean(false)
     private val configurationMutationRunning = AtomicBoolean(false)
+    private val magOperationRunning = AtomicBoolean(false)
+    private val magStatusReadRunning = AtomicBoolean(false)
+    private val magMathExecutor = Executors.newSingleThreadExecutor()
+    private val magImportPrefs = appContext.getSharedPreferences("regattalink_mag_import", Context.MODE_PRIVATE)
     private val sensorInfoReadGatt = AtomicReference<BluetoothGatt?>(null)
     private val sensorInfoGeneration = AtomicLong(0L)
     private val calypsoOffsetOperationRunning = AtomicBoolean(false)
@@ -1199,6 +1208,7 @@ internal class RegattaLinkBleClient(
         if (
             diagnosticLogRunning.get() ||
             configurationMutationRunning.get() ||
+            magOperationRunning.get() ||
             deviceControlExecutionGuard.isActive()
         ) {
             emitOta(
@@ -1423,6 +1433,7 @@ internal class RegattaLinkBleClient(
         discoveryDeadlineMs = 0L
         attemptedDiscoveryAddresses.clear()
         otaExecutor.shutdownNow()
+        magMathExecutor.shutdownNow()
     }
 
     override fun startKnownDeviceReconnect(
@@ -3126,7 +3137,8 @@ internal class RegattaLinkBleClient(
 
         setupConfiguration(activeGatt)
         if (!optionalFeatureWorkAllowed(activeGatt)) return
-
+        setupMagOnConnect(activeGatt, info)
+        if (!optionalFeatureWorkAllowed(activeGatt)) return
         setupNmea(activeGatt)
     }
 
@@ -3784,7 +3796,7 @@ internal class RegattaLinkBleClient(
                 factoryResetDisconnectTracker.ownsLifecycle(activeGatt),
             deviceControlRunning = deviceControlExecutionGuard.isActive(),
             diagnosticLogRunning = diagnosticLogRunning.get()
-        )
+        ) || magOperationRunning.get()
 
     override fun setDeviceName(name: String): Boolean {
         if (validateRegattaLinkDeviceName(name) != null) {
@@ -4655,6 +4667,7 @@ internal class RegattaLinkBleClient(
             rawCaptureRunning.get() ||
             diagnosticLogRunning.get() ||
             configurationMutationRunning.get() ||
+            magOperationRunning.get() ||
             !isConnected()
         ) {
             return false
