@@ -722,6 +722,7 @@ internal class RegattaLinkConnectionManager(
             factoryResetPending ||
             configurationState.busy ||
             configurationState.deviceControlBusy ||
+            configurationState.mag.busy ||
             configurationState.factoryResetAwaitingDisconnect ||
             configurationState.restartAwaitingDisconnect ||
             !hasRequiredPermissions()
@@ -1117,7 +1118,8 @@ internal class RegattaLinkConnectionManager(
             !configurationState.deviceControlSupported ||
             otaState.isActive ||
             rawCaptureState.isActive ||
-            configurationState.diagnosticLogLoading
+            configurationState.diagnosticLogLoading ||
+            configurationState.mag.busy
         ) {
             return false
         }

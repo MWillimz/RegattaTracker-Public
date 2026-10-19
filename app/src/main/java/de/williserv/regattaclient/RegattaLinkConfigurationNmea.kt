@@ -169,6 +169,7 @@ internal fun regattaLinkConfigurationMutationBlocked(
         deviceControlRunning ||
         diagnosticLogRunning ||
         state.deviceControlBusy ||
+        state.mag.busy ||
         state.diagnosticLogLoading ||
         state.factoryResetAwaitingDisconnect ||
         state.restartAwaitingDisconnect ||
@@ -179,6 +180,7 @@ internal fun regattaLinkFirmwareInstallBlocked(
 ): Boolean =
     state.busy ||
         state.deviceControlBusy ||
+        state.mag.busy ||
         state.diagnosticLogLoading ||
         state.factoryResetAwaitingDisconnect ||
         state.restartAwaitingDisconnect ||

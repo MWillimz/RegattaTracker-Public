@@ -5126,6 +5126,12 @@ internal class RegattaLinkBleClient(
 
                         RegattaLinkDeviceControlPollDecision.SUCCESS -> {
                             finalStatus = status
+                            if (opcode == RegattaLinkDeviceControlOpcode.MAG_RESET ||
+                                opcode == RegattaLinkDeviceControlOpcode.SET_UPRIGHT ||
+                                opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET) {
+                                emitMag(RegattaLinkMagState(
+                                    supported = lastConfigurationState.mag.supported))
+                            }
                             if (opcode == RegattaLinkDeviceControlOpcode.RESTART) {
                                 restartDisconnectTracker.markExpected(activeGatt)
                                 scheduleRestartDisconnectTimeout(activeGatt)

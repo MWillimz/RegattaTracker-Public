@@ -857,6 +857,7 @@ class RegattaLinkDeviceControlTest {
         assertEquals(
             listOf(
                 RegattaLinkSetupDestination.IMU,
+                RegattaLinkSetupDestination.MAG,
                 RegattaLinkSetupDestination.NMEA,
                 RegattaLinkSetupDestination.BLUETOOTH_DEVICES,
                 RegattaLinkSetupDestination.ADVANCED_DIAGNOSTICS,
@@ -867,6 +868,7 @@ class RegattaLinkDeviceControlTest {
         assertEquals(
             listOf(
                 R.string.regattalink_setup_imu,
+                R.string.regattalink_mag_setup_title,
                 R.string.regattalink_setup_nmea,
                 R.string.regattalink_bluetooth_devices,
                 R.string.regattalink_advanced_diagnostics,

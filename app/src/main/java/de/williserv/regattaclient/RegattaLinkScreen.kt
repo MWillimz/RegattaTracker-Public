@@ -528,8 +528,6 @@ internal fun RegattaLinkScreen(
                 deviceControlBusy = configurationState.deviceControlBusy,
                 deviceControlError = configurationState.deviceControlError,
                 onSetMotionDamping = onSetMotionDamping,
-                onApplyMagLearnerModeAndRestart =
-                    onApplyMagLearnerModeAndRestart,
                 onSetHeadingTrimDeg = onSetHeadingTrimDeg,
                 onRestart = {
                     onDeviceControl(RegattaLinkDeviceControlOpcode.RESTART, 0)
@@ -4064,7 +4062,6 @@ private fun RegattaLinkImuSetupSheet(
     deviceControlBusy: Boolean,
     deviceControlError: String,
     onSetMotionDamping: (Int) -> Unit,
-    onApplyMagLearnerModeAndRestart: (RegattaLinkMagLearnerMode) -> Unit,
     onSetHeadingTrimDeg: (Int) -> Unit,
     onRestart: () -> Unit,
     onSetUpright: () -> Boolean,
@@ -4075,33 +4072,6 @@ private fun RegattaLinkImuSetupSheet(
 ) {
     val imuAvailable = configurationState.imuSessionAvailable != false
     val magAvailable = configurationState.magSessionAvailable != false
-    val magLearnerFromDevice = configurationState.configWord
-        ?.and(REGATTALINK_CONFIG_MAG_LEARNER_MASK)
-    var magLearnerBaseline by remember(deviceKey, connected) {
-        mutableStateOf(magLearnerFromDevice)
-    }
-    var magLearnerDraft by remember(deviceKey, connected) {
-        mutableStateOf(magLearnerFromDevice)
-    }
-    LaunchedEffect(deviceKey, connected, magLearnerFromDevice) {
-        if (magLearnerBaseline == null && magLearnerFromDevice != null) {
-            magLearnerBaseline = magLearnerFromDevice
-            magLearnerDraft = magLearnerFromDevice
-        } else if (
-            magLearnerDraft != null &&
-            magLearnerBaseline != magLearnerDraft &&
-            magLearnerFromDevice == magLearnerDraft
-        ) {
-            // Readback confirms the staged choice; only restart remains pending.
-            magLearnerBaseline = magLearnerDraft
-        }
-    }
-    val magLearnerDirty =
-        magLearnerBaseline != null && magLearnerDraft != null &&
-            magLearnerBaseline != magLearnerDraft
-    var magLearnerMenuExpanded by remember(deviceKey, connected) {
-        mutableStateOf(false)
-    }
     var dampingDraft by remember(configurationState.motionDampingSeconds) {
         mutableStateOf((configurationState.motionDampingSeconds ?: 3).toFloat())
     }
@@ -4348,51 +4318,26 @@ private fun RegattaLinkImuSetupSheet(
                 )
             }
 
-            if (
-                magLearnerDirty ||
-                configurationState.configRestartRequired ||
+            if (configurationState.configRestartRequired ||
                 configurationState.restartAwaitingDisconnect
             ) {
                 Text(
-                    text = when {
-                        configurationState.restartAwaitingDisconnect ->
-                            stringResource(R.string.regattalink_restarting)
-                        magLearnerDirty ->
-                            stringResource(R.string.regattalink_config_draft_restart)
-                        else ->
-                            stringResource(R.string.regattalink_config_restart_required)
-                    },
+                    text = stringResource(
+                        if (configurationState.restartAwaitingDisconnect)
+                            R.string.regattalink_restarting
+                        else R.string.regattalink_config_restart_required
+                    ),
                     modifier = Modifier.padding(top = 14.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Button(
-                    onClick = {
-                        val mode = magLearnerDraft?.let(
-                            RegattaLinkMagLearnerMode::fromConfigBits
-                        )
-                        if (magLearnerDirty && mode != null) {
-                            onApplyMagLearnerModeAndRestart(mode)
-                        } else if (!magLearnerDirty) {
-                            onRestart()
-                        }
-                    },
-                    enabled =
-                        backdropConfigEnabled &&
-                            configurationState.deviceControlSupported &&
-                            (magLearnerDirty || configurationState.configRestartRequired) &&
-                            !configurationState.restartAwaitingDisconnect,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp)
-                ) {
-                    Text(
-                        if (magLearnerDirty) {
-                            stringResource(R.string.regattalink_apply_restart)
-                        } else {
-                            stringResource(R.string.regattalink_restart)
-                        }
-                    )
-                }
+                    onClick = onRestart,
+                    enabled = backdropConfigEnabled &&
+                        configurationState.deviceControlSupported &&
+                        configurationState.configRestartRequired &&
+                        !configurationState.restartAwaitingDisconnect,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                ) { Text(stringResource(R.string.regattalink_restart)) }
             }
 
             if (configurationState.busy) {

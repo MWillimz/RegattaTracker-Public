@@ -71,9 +71,9 @@ internal object RegattaLinkMagFitter {
         }
         val det = org.apache.commons.math3.linear.LUDecomposition(a).determinant
         require(det > 0.0 && det.isFinite()) { "Invalid MAG matrix determinant" }
-        val normal = a.scalarMultiply(1.0 / det.pow(1.0/3.0))
-        return Solution(DoubleArray(3) { origin[it] + scale * center[it] },
-            normal as Array2DRowRealMatrix)
+        val normal = Array2DRowRealMatrix(a.scalarMultiply(
+            1.0 / det.pow(1.0/3.0)).data)
+        return Solution(DoubleArray(3) { origin[it] + scale * center[it] }, normal)
     }
 
     private fun corrected(p: DoubleArray, s: Solution): DoubleArray {
@@ -85,7 +85,7 @@ internal object RegattaLinkMagFitter {
         val points = archive.sectors.mapNotNull { it.median }
         require(points.size >= 36) { "Collect >=36 occupied sectors for 3D" }
         var mask = BooleanArray(points.size) { true }
-        repeat(4) {
+        for (iteration in 0 until 4) {
             val inliers = points.indices.filter { mask[it] }
             require(inliers.size >= 36) { "Fewer than 36 sectors after filtering" }
             val solution = solve(inliers.map { points[it] })
@@ -99,7 +99,7 @@ internal object RegattaLinkMagFitter {
             require(newMask.count { it } >= max(36, (0.8 * points.size).toInt())) {
                 "Mixed magnetic field / too many outlier sectors"
             }
-            if (newMask.contentEquals(mask)) return@repeat
+            if (newMask.contentEquals(mask)) break
             mask = newMask
         }
         val inliers = points.indices.filter { mask[it] }
@@ -129,7 +129,10 @@ internal object RegattaLinkMagFitter {
         require(norm(solution.offset) <= 80.0) { "MAG installation offset >80 uT" }
         val residues = radii.map { abs(it - radius) }.sorted()
         val rms = sqrt(radii.map { (it-radius)*(it-radius) }.average())
-        val p95 = residues[((residues.size - 1) * 0.95).toInt()]
+        val index95 = (residues.size - 1) * 0.95
+        val lower95 = index95.toInt()
+        val p95 = residues[lower95] + (residues[minOf(lower95 + 1,
+            residues.lastIndex)] - residues[lower95]) * (index95 - lower95)
         require(rms <= 2.5 && rms/radius <= 0.05 && p95/radius <= 0.10) {
             "3D fit residuals too high / mixed field"
         }
