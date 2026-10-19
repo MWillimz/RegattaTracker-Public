@@ -851,4 +851,26 @@
     <string name="play_store_update_message">Eine neuere Version von RegattaTracker ist bei Google Play verfügbar.</string>
     <string name="play_store_update_action">Aktualisieren</string>
     <string name="play_store_update_later">Später</string>
+    <string name="regattalink_mag_setup_title">MAG / Kompass</string>
+    <string name="regattalink_mag_firmware_required">Firmware-Update auf Schema 20 erforderlich</string>
+    <string name="regattalink_mag_collecting">Kalibrierdaten werden gesammelt</string>
+    <string name="regattalink_mag_active_auto">AUTO_2D aktiv</string>
+    <string name="regattalink_mag_active_manual">MANUAL_3D aktiv</string>
+    <string name="regattalink_mag_installed">3D-Modell installiert</string>
+    <string name="regattalink_mag_not_installed">Kein 3D-Modell installiert</string>
+    <string name="regattalink_mag_turns">Abgeschlossene Drehungen: %1$d / 2</string>
+    <string name="regattalink_mag_refresh">Status aktualisieren</string>
+    <string name="regattalink_mag_export">Messdaten auslesen</string>
+    <string name="regattalink_mag_phase">Phase: %1$s</string>
+    <string name="regattalink_mag_coverage">Belegte Sektoren: %1$d / 144</string>
+    <string name="regattalink_mag_calculate">3D-Fit berechnen</string>
+    <string name="regattalink_mag_quality">3D-Qualität: %1$d Sektoren, %2$d Oktanten, RMS %3$s µT</string>
+    <string name="regattalink_mag_install">3D-Fit installieren</string>
+    <string name="regattalink_mag_next_mode">Modell für nächsten Start</string>
+    <string name="regattalink_mag_apply_restart">Übernehmen und neu starten</string>
+    <string name="regattalink_mag_reset">MAG-Kalibrierung zurücksetzen</string>
+    <string name="regattalink_mag_close">Schließen</string>
+    <string name="regattalink_mag_confirm_install_title">3D-Kalibrierung installieren?</string>
+    <string name="regattalink_mag_confirm_install_body">Das Modell wird im RegattaLink gespeichert. Ist MANUAL_3D bereits aktiv, kann das neue Modell sofort wirksam werden.</string>
+    <string name="regattalink_mag_confirm_reset_body">Beide gelernten Modelle und das Messarchiv löschen? Die Werkskalibrierung bleibt erhalten.</string>
 </resources>

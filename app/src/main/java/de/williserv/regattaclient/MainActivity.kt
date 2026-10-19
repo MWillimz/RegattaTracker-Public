@@ -1042,6 +1042,10 @@ class MainActivity : ComponentActivity() {
                                 regattaLinkManager
                                     .applyMagLearnerModeAndRestart(mode)
                             },
+                            onRefreshMagStatus = { regattaLinkManager.refreshMagStatus() },
+                            onExportMagArchive = { regattaLinkManager.exportMagArchive() },
+                            onCalculateMagFit = { regattaLinkManager.calculateMagFit() },
+                            onInstallMagFit = { regattaLinkManager.installMagFit() },
                             onApplySubsystemConfigAndRestart = { encodedBits ->
                                 regattaLinkManager
                                     .applySubsystemSelectionAndRestart(encodedBits)

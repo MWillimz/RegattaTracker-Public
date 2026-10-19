@@ -894,4 +894,26 @@
     <string name="play_store_update_message">A newer version of RegattaTracker is available on Google Play.</string>
     <string name="play_store_update_action">Update</string>
     <string name="play_store_update_later">Later</string>
+    <string name="regattalink_mag_setup_title">MAG / Compass</string>
+    <string name="regattalink_mag_firmware_required">Firmware update to schema 20 required</string>
+    <string name="regattalink_mag_collecting">Collecting calibration data</string>
+    <string name="regattalink_mag_active_auto">AUTO_2D active</string>
+    <string name="regattalink_mag_active_manual">MANUAL_3D active</string>
+    <string name="regattalink_mag_installed">3D model installed</string>
+    <string name="regattalink_mag_not_installed">No 3D model installed</string>
+    <string name="regattalink_mag_turns">Completed turns: %1$d / 2</string>
+    <string name="regattalink_mag_refresh">Refresh status</string>
+    <string name="regattalink_mag_export">Export measurements</string>
+    <string name="regattalink_mag_phase">Phase: %1$s</string>
+    <string name="regattalink_mag_coverage">Occupied sectors: %1$d / 144</string>
+    <string name="regattalink_mag_calculate">Calculate 3D fit</string>
+    <string name="regattalink_mag_quality">3D quality: %1$d sectors, %2$d octants, RMS %3$s µT</string>
+    <string name="regattalink_mag_install">Install 3D fit</string>
+    <string name="regattalink_mag_next_mode">Next boot model</string>
+    <string name="regattalink_mag_apply_restart">Apply and restart</string>
+    <string name="regattalink_mag_reset">Reset MAG calibration</string>
+    <string name="regattalink_mag_close">Close</string>
+    <string name="regattalink_mag_confirm_install_title">Install 3D calibration?</string>
+    <string name="regattalink_mag_confirm_install_body">The model will be saved on RegattaLink. If MANUAL_3D is currently active, the new fit may take effect immediately.</string>
+    <string name="regattalink_mag_confirm_reset_body">Delete both learned models and the measurement archive? The factory calibration remains.</string>
 </resources>

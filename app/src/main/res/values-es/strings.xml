@@ -851,4 +851,26 @@
     <string name="play_store_update_message">Hay una versión más reciente de RegattaTracker disponible en Google Play.</string>
     <string name="play_store_update_action">Actualizar</string>
     <string name="play_store_update_later">Más tarde</string>
+    <string name="regattalink_mag_setup_title">MAG / Brújula</string>
+    <string name="regattalink_mag_firmware_required">Se requiere firmware con esquema 20</string>
+    <string name="regattalink_mag_collecting">Recopilando datos de calibración</string>
+    <string name="regattalink_mag_active_auto">AUTO_2D activo</string>
+    <string name="regattalink_mag_active_manual">MANUAL_3D activo</string>
+    <string name="regattalink_mag_installed">Modelo 3D instalado</string>
+    <string name="regattalink_mag_not_installed">Sin modelo 3D instalado</string>
+    <string name="regattalink_mag_turns">Giros completados: %1$d / 2</string>
+    <string name="regattalink_mag_refresh">Actualizar estado</string>
+    <string name="regattalink_mag_export">Exportar mediciones</string>
+    <string name="regattalink_mag_phase">Fase: %1$s</string>
+    <string name="regattalink_mag_coverage">Sectores ocupados: %1$d / 144</string>
+    <string name="regattalink_mag_calculate">Calcular ajuste 3D</string>
+    <string name="regattalink_mag_quality">Calidad 3D: %1$d sectores, %2$d octantes, RMS %3$s µT</string>
+    <string name="regattalink_mag_install">Instalar ajuste 3D</string>
+    <string name="regattalink_mag_next_mode">Modelo para el próximo inicio</string>
+    <string name="regattalink_mag_apply_restart">Aplicar y reiniciar</string>
+    <string name="regattalink_mag_reset">Restablecer calibración MAG</string>
+    <string name="regattalink_mag_close">Cerrar</string>
+    <string name="regattalink_mag_confirm_install_title">¿Instalar calibración 3D?</string>
+    <string name="regattalink_mag_confirm_install_body">El modelo se guardará en RegattaLink. Si MANUAL_3D ya está activo, puede aplicarse inmediatamente.</string>
+    <string name="regattalink_mag_confirm_reset_body">¿Eliminar ambos modelos aprendidos y el archivo de mediciones? Se conserva la calibración de fábrica.</string>
 </resources>

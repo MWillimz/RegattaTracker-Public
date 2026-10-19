@@ -851,4 +851,26 @@
     <string name="play_store_update_message">Une nouvelle version de RegattaTracker est disponible sur Google Play.</string>
     <string name="play_store_update_action">Mettre à jour</string>
     <string name="play_store_update_later">Plus tard</string>
+    <string name="regattalink_mag_setup_title">MAG / Compas</string>
+    <string name="regattalink_mag_firmware_required">Mise à jour du firmware vers le schéma 20 requise</string>
+    <string name="regattalink_mag_collecting">Collecte des données de calibrage</string>
+    <string name="regattalink_mag_active_auto">AUTO_2D actif</string>
+    <string name="regattalink_mag_active_manual">MANUAL_3D actif</string>
+    <string name="regattalink_mag_installed">Modèle 3D installé</string>
+    <string name="regattalink_mag_not_installed">Aucun modèle 3D installé</string>
+    <string name="regattalink_mag_turns">Tours effectués : %1$d / 2</string>
+    <string name="regattalink_mag_refresh">Actualiser l\'état</string>
+    <string name="regattalink_mag_export">Exporter les mesures</string>
+    <string name="regattalink_mag_phase">Phase : %1$s</string>
+    <string name="regattalink_mag_coverage">Secteurs occupés : %1$d / 144</string>
+    <string name="regattalink_mag_calculate">Calculer l\'ajustement 3D</string>
+    <string name="regattalink_mag_quality">Qualité 3D : %1$d secteurs, %2$d octants, RMS %3$s µT</string>
+    <string name="regattalink_mag_install">Installer le modèle 3D</string>
+    <string name="regattalink_mag_next_mode">Modèle au prochain démarrage</string>
+    <string name="regattalink_mag_apply_restart">Appliquer et redémarrer</string>
+    <string name="regattalink_mag_reset">Réinitialiser le calibrage MAG</string>
+    <string name="regattalink_mag_close">Fermer</string>
+    <string name="regattalink_mag_confirm_install_title">Installer le calibrage 3D ?</string>
+    <string name="regattalink_mag_confirm_install_body">Le modèle sera enregistré dans RegattaLink. Si MANUAL_3D est déjà actif, le nouveau modèle peut prendre effet immédiatement.</string>
+    <string name="regattalink_mag_confirm_reset_body">Supprimer les deux modèles appris et les mesures ? Le calibrage d\'usine sera conservé.</string>
 </resources>
