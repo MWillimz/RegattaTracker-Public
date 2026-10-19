@@ -167,6 +167,7 @@ internal fun prepareRegattaLinkConfigSliderSubmission(
 
 internal enum class RegattaLinkSetupDestination {
     IMU,
+    MAG,
     NMEA,
     BLUETOOTH_DEVICES,
     ADVANCED_DIAGNOSTICS,
@@ -182,6 +183,10 @@ internal val regattaLinkSetupMenuItems = listOf(
     RegattaLinkSetupMenuItem(
         RegattaLinkSetupDestination.IMU,
         R.string.regattalink_setup_imu
+    ),
+    RegattaLinkSetupMenuItem(
+        RegattaLinkSetupDestination.MAG,
+        R.string.regattalink_mag_setup_title
     ),
     RegattaLinkSetupMenuItem(
         RegattaLinkSetupDestination.NMEA,
@@ -233,6 +238,10 @@ internal fun RegattaLinkScreen(
     onSetPhoneGpsRelayEnabled: (Boolean) -> Unit = {},
     onSetNmea0183Baud: (Int) -> Unit = {},
     onApplyMagLearnerModeAndRestart: (RegattaLinkMagLearnerMode) -> Unit = {},
+    onRefreshMagStatus: () -> Unit = {},
+    onExportMagArchive: () -> Unit = {},
+    onCalculateMagFit: () -> Unit = {},
+    onInstallMagFit: () -> Unit = {},
     onApplySubsystemConfigAndRestart: (UInt) -> Unit = {},
     onSetHeadingTrimDeg: (Int) -> Unit = {},
     onSetLoadSensorAlias: (String, String) -> Unit = { _, _ -> },
@@ -334,7 +343,8 @@ internal fun RegattaLinkScreen(
             !otaState.isActive &&
             !rawCaptureState.isActive &&
             !configurationState.busy &&
-            !regattaLinkConfigurationMutationBlocked(configurationState)
+            !regattaLinkConfigurationMutationBlocked(configurationState) &&
+            !configurationState.mag.busy
     val deviceControlBaseEnabled =
         configEnabled &&
             !configurationState.diagnosticLogLoading &&
@@ -467,7 +477,31 @@ internal fun RegattaLinkScreen(
         }
     }
 
+    LaunchedEffect(activeSetupDestination, deviceKey, connected) {
+        if (activeSetupDestination == RegattaLinkSetupDestination.MAG && connected) {
+            onRefreshMagStatus()
+            while (true) {
+                delay(1_000L)
+                onRefreshMagStatus()
+            }
+        }
+    }
+
     when (activeSetupDestination) {
+        RegattaLinkSetupDestination.MAG -> {
+            RegattaLinkMagSetupSheet(
+                configurationState = configurationState,
+                schemaVersion = state.deviceInfo?.gattSchemaVersion ?: 0,
+                enabled = configEnabled && !configurationState.mag.busy,
+                onRefresh = onRefreshMagStatus,
+                onExport = onExportMagArchive,
+                onFit = onCalculateMagFit,
+                onInstall = onInstallMagFit,
+                onSelectMode = onApplyMagLearnerModeAndRestart,
+                onReset = { onDeviceControl(RegattaLinkDeviceControlOpcode.MAG_RESET, 0) },
+                onDismiss = { activeSetupDestination = null }
+            )
+        }
         RegattaLinkSetupDestination.IMU -> {
             RegattaLinkImuSetupSheet(
                 controlStatus = controlStatus,
@@ -678,6 +712,7 @@ internal fun RegattaLinkScreen(
                         regattaLinkSetupMenuItems
                             .filter { menuItem ->
                                 when (menuItem.destination) {
+                                    RegattaLinkSetupDestination.MAG -> true
                                     RegattaLinkSetupDestination.IMU ->
                                         configurationState.imuSessionAvailable != false ||
                                             configurationState.magSessionAvailable != false
@@ -4311,93 +4346,6 @@ private fun RegattaLinkImuSetupSheet(
                     steps = 8,
                     enabled = backdropConfigEnabled
                 )
-            }
-
-            if (
-                configurationState.configWordSupported &&
-                magLearnerDraft != null
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 22.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = stringResource(R.string.regattalink_mag_learner_mode),
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Box {
-                            val selectedMode = magLearnerDraft?.let(
-                                RegattaLinkMagLearnerMode::fromConfigBits
-                            )
-                            TextButton(
-                                onClick = { magLearnerMenuExpanded = true },
-                                enabled = backdropConfigEnabled
-                            ) {
-                                Text(
-                                    when (selectedMode) {
-                                        RegattaLinkMagLearnerMode.FACTORY_ONLY ->
-                                            stringResource(R.string.regattalink_mag_learner_factory_only)
-                                        RegattaLinkMagLearnerMode.TWO_D ->
-                                            stringResource(R.string.regattalink_mag_learner_2d)
-                                        RegattaLinkMagLearnerMode.THREE_D ->
-                                            stringResource(R.string.regattalink_mag_learner_3d)
-                                        null ->
-                                            stringResource(R.string.regattalink_mag_learner_invalid)
-                                    }
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = magLearnerMenuExpanded,
-                                onDismissRequest = { magLearnerMenuExpanded = false }
-                            ) {
-                                RegattaLinkMagLearnerMode.entries.forEach { mode ->
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                when (mode) {
-                                                    RegattaLinkMagLearnerMode.FACTORY_ONLY ->
-                                                        stringResource(R.string.regattalink_mag_learner_factory_only)
-                                                    RegattaLinkMagLearnerMode.TWO_D ->
-                                                        stringResource(R.string.regattalink_mag_learner_2d)
-                                                    RegattaLinkMagLearnerMode.THREE_D ->
-                                                        stringResource(R.string.regattalink_mag_learner_3d)
-                                                }
-                                            )
-                                        },
-                                        onClick = {
-                                            magLearnerDraft = mode.encodedBits
-                                            magLearnerMenuExpanded = false
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    Text(
-                        text = stringResource(R.string.regattalink_mag_learner_help),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (magLearnerDraft == REGATTALINK_CONFIG_MAG_LEARNER_MASK) {
-                        Text(
-                            text = stringResource(R.string.regattalink_mag_learner_invalid_help),
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    } else if (!magAvailable || !imuAvailable) {
-                        Text(
-                            text = stringResource(R.string.regattalink_mag_learner_unavailable),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                }
             }
 
             if (
