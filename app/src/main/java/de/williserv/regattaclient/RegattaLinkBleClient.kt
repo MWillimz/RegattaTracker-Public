@@ -4250,6 +4250,232 @@ internal class RegattaLinkBleClient(
         return true
     }
 
+
+    private fun emitMag(state: RegattaLinkMagState) {
+        updateConfiguration { it.copy(mag = state) }
+    }
+
+    private fun magCharacteristic(g: BluetoothGatt, uuid: UUID): BluetoothGattCharacteristic {
+        require(g.device.bondState == BluetoothDevice.BOND_BONDED) { "MAG requires bonded BLE" }
+        return g.getService(EXTENSION_SERVICE_UUID)?.getCharacteristic(uuid)
+            ?: throw IllegalStateException("Missing MAG characteristic " + uuid)
+    }
+
+    private fun magAvailable(g: BluetoothGatt, info: RegattaLinkDeviceInfo?): Boolean {
+        if (info == null || info.gattSchemaVersion < MAG_SCHEMA_MIN) return false
+        val service = g.getService(EXTENSION_SERVICE_UUID) ?: return false
+        val rw = BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_WRITE
+        return listOf(
+            MAG_EXPORT_CONTROL_UUID to rw,
+            MAG_EXPORT_PAGE_UUID to BluetoothGattCharacteristic.PROPERTY_READ,
+            MAG_IMPORT_CONTROL_UUID to BluetoothGattCharacteristic.PROPERTY_WRITE,
+            MAG_IMPORT_DATA_UUID to BluetoothGattCharacteristic.PROPERTY_WRITE,
+            MAG_IMPORT_STATUS_UUID to BluetoothGattCharacteristic.PROPERTY_READ
+        ).all { (id, flags) ->
+            val c = service.getCharacteristic(id)
+            c != null && (c.properties and flags) == flags
+        }
+    }
+
+    private fun readMagStatus(g: BluetoothGatt): RegattaLinkMagStatus =
+        parseRegattaLinkMagStatus(readCharacteristicBlocking(
+            g, magCharacteristic(g, MAG_IMPORT_STATUS_UUID)))
+
+    private fun magReconcile(status: RegattaLinkMagStatus, stableId: String): RegattaLinkMagState {
+        val id = magImportPrefs.getLong("id", 0L).toUInt()
+        val crc = magImportPrefs.getLong("crc", 0L).toUInt()
+        val pending = magImportPrefs.getString("device", null) == stableId && id != 0u
+        val previous = lastConfigurationState.mag
+        if (pending && magImportConfirmed(status, id, crc)) {
+            magImportPrefs.edit().clear().apply()
+            return previous.copy(phase = RegattaLinkMagPhase.STORED, status = status,
+                requestId = id, error = "", errorStage = "")
+        }
+        if (pending && status.requestId == id && status.phase == 5) {
+            magImportPrefs.edit().clear().apply()
+            return previous.copy(phase = RegattaLinkMagPhase.ERROR, status = status,
+                errorStage = "COMMIT", error = "Device rejected model (" + status.errorCode + ")")
+        }
+        if (pending) return previous.copy(phase = RegattaLinkMagPhase.UNKNOWN,
+            status = status, errorStage = "COMMIT",
+            error = "Import outcome cannot be established from device status")
+        val keep = previous.phase in setOf(RegattaLinkMagPhase.FIT_READY,
+            RegattaLinkMagPhase.ARCHIVE_READY, RegattaLinkMagPhase.STORED)
+        return previous.copy(status = status,
+            phase = if (keep) previous.phase else RegattaLinkMagPhase.IDLE,
+            error = "", errorStage = "")
+    }
+
+    private fun setupMagOnConnect(g: BluetoothGatt, info: RegattaLinkDeviceInfo) {
+        val supported = magAvailable(g, info)
+        emitMag(RegattaLinkMagState(supported = supported,
+            phase = if (magImportPrefs.getString("device", null) == info.stableId &&
+                magImportPrefs.getLong("id", 0L) != 0L) RegattaLinkMagPhase.UNKNOWN
+                else RegattaLinkMagPhase.IDLE))
+        if (!supported || !optionalFeatureWorkAllowed(g)) return
+        runCatching { readMagStatus(g) }.onSuccess { status ->
+            if (gatt === g) emitMag(magReconcile(status, info.stableId).copy(supported = true))
+        }.onFailure { e ->
+            if (gatt === g) emitMag(lastConfigurationState.mag.copy(
+                phase = RegattaLinkMagPhase.ERROR, errorStage = "STATUS",
+                error = e.message ?: "Could not read MAG status"))
+        }
+    }
+
+    override fun refreshMagStatus(): Boolean {
+        val g = gatt ?: return false
+        val info = lastState.deviceInfo ?: return false
+        if (!magAvailable(g, info) || magOperationRunning.get() ||
+            !magStatusReadRunning.compareAndSet(false, true)) return false
+        otaExecutor.execute {
+            try {
+                if (!optionalFeatureWorkAllowed(g) || magOperationRunning.get()) return@execute
+                val status = readMagStatus(g)
+                if (gatt === g) emitMag(magReconcile(status, info.stableId))
+            } catch (e: Exception) {
+                if (gatt === g) emitMag(lastConfigurationState.mag.copy(
+                    error = e.message ?: "MAG status failed", errorStage = "STATUS"))
+            } finally { magStatusReadRunning.set(false) }
+        }
+        return true
+    }
+
+    override fun exportMagArchive(): Boolean {
+        val g = gatt ?: return false
+        val info = lastState.deviceInfo ?: return false
+        if (!magAvailable(g, info) || otaRunning.get() || configurationMutationBlocked(g) ||
+            !magOperationRunning.compareAndSet(false, true)) return false
+        emitMag(RegattaLinkMagState(supported = true, phase = RegattaLinkMagPhase.EXPORTING))
+        otaExecutor.execute {
+            var opened = false
+            try {
+                require(optionalFeatureWorkAllowed(g))
+                val control = magCharacteristic(g, MAG_EXPORT_CONTROL_UUID)
+                val page = magCharacteristic(g, MAG_EXPORT_PAGE_UUID)
+                writeCharacteristicBlockingDirect(g, control, MAG_EXPORT_OPEN)
+                opened = true
+                val manifest = parseRegattaLinkMagManifest(readCharacteristicBlocking(g, control))
+                val output = java.io.ByteArrayOutputStream(MAG_ARCHIVE_BYTES)
+                repeat(MAG_PAGE_COUNT) { i ->
+                    require(gatt === g && connected) { "MAG disconnected" }
+                    writeCharacteristicBlockingDirect(g, control, magExportSelect(i))
+                    output.write(parseRegattaLinkMagPage(readCharacteristicBlocking(g, page), i))
+                    if (gatt === g) emitMag(lastConfigurationState.mag.copy(
+                        progress = (i + 1) * 100 / MAG_PAGE_COUNT))
+                }
+                val archive = parseRegattaLinkMagArchive(manifest, output.toByteArray())
+                require(gatt === g && lastState.deviceInfo?.stableId == info.stableId)
+                emitMag(lastConfigurationState.mag.copy(phase = RegattaLinkMagPhase.ARCHIVE_READY,
+                    archive = archive, fit = null, progress = 100, status = readMagStatus(g)))
+            } catch (e: Exception) {
+                if (gatt === g) emitMag(lastConfigurationState.mag.copy(
+                    phase = RegattaLinkMagPhase.ERROR, archive = null, fit = null,
+                    errorStage = "EXPORT", error = e.message ?: "MAG export failed"))
+            } finally {
+                if (opened && gatt === g && connected) runCatching {
+                    writeCharacteristicBlockingDirect(g,
+                        magCharacteristic(g, MAG_EXPORT_CONTROL_UUID), MAG_EXPORT_CLOSE)
+                }
+                magOperationRunning.set(false)
+            }
+        }
+        return true
+    }
+
+    override fun calculateMagFit(): Boolean {
+        val current = lastConfigurationState.mag
+        val archive = current.archive ?: return false
+        if (current.phase != RegattaLinkMagPhase.ARCHIVE_READY ||
+            !magOperationRunning.compareAndSet(false, true)) return false
+        val stableId = lastState.deviceInfo?.stableId
+        emitMag(current.copy(phase = RegattaLinkMagPhase.FITTING, error = "", errorStage = ""))
+        magMathExecutor.execute {
+            try {
+                val fit = RegattaLinkMagFitter.fit(archive)
+                require(lastState.deviceInfo?.stableId == stableId && gatt != null) {
+                    "MAG device changed during fit"
+                }
+                emitMag(lastConfigurationState.mag.copy(phase = RegattaLinkMagPhase.FIT_READY,
+                    fit = fit, error = ""))
+            } catch (e: Exception) {
+                emitMag(lastConfigurationState.mag.copy(phase = RegattaLinkMagPhase.ERROR,
+                    fit = null, errorStage = "FIT", error = e.message ?: "3D fit rejected"))
+            } finally { magOperationRunning.set(false) }
+        }
+        return true
+    }
+
+    override fun installMagFit(): Boolean {
+        val g = gatt ?: return false
+        val info = lastState.deviceInfo ?: return false
+        val state = lastConfigurationState.mag
+        val archive = state.archive ?: return false
+        val fit = state.fit ?: return false
+        if (state.phase != RegattaLinkMagPhase.FIT_READY ||
+            !magAvailable(g, info) || otaRunning.get() || configurationMutationBlocked(g) ||
+            !magOperationRunning.compareAndSet(false, true)) return false
+        val model = encodeRegattaLinkMagModel(archive.manifest, fit)
+        val crc = magCrc32(model)
+        var id = java.security.SecureRandom().nextInt().toUInt()
+        if (id == 0u) id = 1u
+        val requestId = id
+        emitMag(state.copy(phase = RegattaLinkMagPhase.TRANSFERRING,
+            requestId = id, progress = 0, error = "", errorStage = ""))
+        otaExecutor.execute {
+            var stage = "BEGIN"
+            var submittedCommit = false
+            try {
+                require(optionalFeatureWorkAllowed(g))
+                val control = magCharacteristic(g, MAG_IMPORT_CONTROL_UUID)
+                val data = magCharacteristic(g, MAG_IMPORT_DATA_UUID)
+                writeCharacteristicBlockingDirect(g, control, magUploadCommand(1, requestId, crc))
+                for (offset in 0 until 80 step 18) {
+                    stage = "DATA"
+                    require(gatt === g && connected) { "MAG disconnected" }
+                    val part = model.copyOfRange(offset, minOf(offset + 18, 80))
+                    writeCharacteristicBlockingDirect(g, data, magUploadFragment(offset, part))
+                    emitMag(lastConfigurationState.mag.copy(progress = (offset + part.size) * 100 / 80))
+                }
+                stage = "VALIDATE"
+                emitMag(lastConfigurationState.mag.copy(phase = RegattaLinkMagPhase.VALIDATING))
+                writeCharacteristicBlockingDirect(g, control, magUploadCommand(2, requestId))
+                stage = "COMMIT"
+                emitMag(lastConfigurationState.mag.copy(phase = RegattaLinkMagPhase.PERSISTING))
+                writeCharacteristicBlockingDirect(g, control, magUploadCommand(3, requestId),
+                    onSubmitted = {
+                        submittedCommit = true
+                        magImportPrefs.edit().putString("device", info.stableId)
+                            .putLong("id", requestId.toLong()).putLong("crc", crc.toLong()).commit()
+                    })
+                val deadline = SystemClock.elapsedRealtime() + 30_000L
+                while (SystemClock.elapsedRealtime() < deadline) {
+                    require(gatt === g && connected) { "MAG disconnected after COMMIT" }
+                    val status = readMagStatus(g)
+                    if (status.requestId == requestId && status.phase == 5)
+                        throw IllegalStateException("Device rejected fit (" + status.errorCode + ")")
+                    if (magImportConfirmed(status, requestId, crc)) {
+                        magImportPrefs.edit().clear().apply()
+                        emitMag(lastConfigurationState.mag.copy(phase = RegattaLinkMagPhase.STORED,
+                            status = status, progress = 100, error = ""))
+                        return@execute
+                    }
+                    Thread.sleep(200)
+                }
+                throw IllegalStateException("MAG commit confirmation timed out")
+            } catch (e: Exception) {
+                if (!submittedCommit && gatt === g && connected) runCatching {
+                    writeCharacteristicBlockingDirect(g,
+                        magCharacteristic(g, MAG_IMPORT_CONTROL_UUID), magUploadCommand(4, requestId))
+                }
+                if (gatt === g) emitMag(lastConfigurationState.mag.copy(
+                    phase = if (submittedCommit) RegattaLinkMagPhase.UNKNOWN
+                        else RegattaLinkMagPhase.ERROR,
+                    errorStage = stage, error = e.message ?: "MAG import failed"))
+            } finally { magOperationRunning.set(false) }
+        }
+        return true
+    }
+
     override fun setHeadingTrimDeg(value: Int): Boolean {
         if (value !in -180..180) return false
         if (otaRunning.get() || !isConnected()) return false
