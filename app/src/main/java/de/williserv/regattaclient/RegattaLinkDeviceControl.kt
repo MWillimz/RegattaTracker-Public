@@ -34,7 +34,8 @@ enum class RegattaLinkDeviceControlOpcode(val wireValue: Int) {
     CAN_ERROR_TRACE_60S(8),
     CALYPSO_SCAN(9),
     CALYPSO_STATUS(10),
-    CALYPSO_DELETE(11);
+    CALYPSO_DELETE(11),
+    MAG_RESET(12);
 
     companion object {
         fun fromWire(value: Int): RegattaLinkDeviceControlOpcode? =
@@ -502,7 +503,8 @@ internal fun buildRegattaLinkDeviceControlRequest(
         opcode == RegattaLinkDeviceControlOpcode.CAN_ERROR_TRACE_60S ||
         opcode == RegattaLinkDeviceControlOpcode.CALYPSO_SCAN ||
         opcode == RegattaLinkDeviceControlOpcode.CALYPSO_STATUS ||
-        opcode == RegattaLinkDeviceControlOpcode.CALYPSO_DELETE
+        opcode == RegattaLinkDeviceControlOpcode.CALYPSO_DELETE ||
+        opcode == RegattaLinkDeviceControlOpcode.MAG_RESET
     ) {
         require(value == 0) { "$opcode requires value 0" }
     }
