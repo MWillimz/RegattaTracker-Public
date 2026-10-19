@@ -4281,18 +4281,26 @@ internal class RegattaLinkBleClient(
         parseRegattaLinkMagStatus(readCharacteristicBlocking(
             g, magCharacteristic(g, MAG_IMPORT_STATUS_UUID)))
 
+    private fun magPendingId(stableId: String): UInt =
+        magImportPrefs.getLong(stableId + ".id", 0L).toUInt()
+
+    private fun clearMagPending(stableId: String) {
+        magImportPrefs.edit().remove(stableId + ".id")
+            .remove(stableId + ".crc").apply()
+    }
+
     private fun magReconcile(status: RegattaLinkMagStatus, stableId: String): RegattaLinkMagState {
-        val id = magImportPrefs.getLong("id", 0L).toUInt()
-        val crc = magImportPrefs.getLong("crc", 0L).toUInt()
-        val pending = magImportPrefs.getString("device", null) == stableId && id != 0u
+        val id = magPendingId(stableId)
+        val crc = magImportPrefs.getLong(stableId + ".crc", 0L).toUInt()
+        val pending = id != 0u
         val previous = lastConfigurationState.mag
         if (pending && magImportConfirmed(status, id, crc)) {
-            magImportPrefs.edit().clear().apply()
+            clearMagPending(stableId)
             return previous.copy(phase = RegattaLinkMagPhase.STORED, status = status,
                 requestId = id, error = "", errorStage = "")
         }
         if (pending && status.requestId == id && status.phase == 5) {
-            magImportPrefs.edit().clear().apply()
+            clearMagPending(stableId)
             return previous.copy(phase = RegattaLinkMagPhase.ERROR, status = status,
                 errorStage = "COMMIT", error = "Device rejected model (" + status.errorCode + ")")
         }
@@ -4313,8 +4321,7 @@ internal class RegattaLinkBleClient(
     private fun setupMagOnConnect(g: BluetoothGatt, info: RegattaLinkDeviceInfo) {
         val supported = magAvailable(g, info)
         emitMag(RegattaLinkMagState(supported = supported,
-            phase = if (magImportPrefs.getString("device", null) == info.stableId &&
-                magImportPrefs.getLong("id", 0L) != 0L) RegattaLinkMagPhase.UNKNOWN
+            phase = if (magPendingId(info.stableId) != 0u) RegattaLinkMagPhase.UNKNOWN
                 else RegattaLinkMagPhase.IDLE))
         if (!supported || !optionalFeatureWorkAllowed(g)) return
         runCatching { readMagStatus(g) }.onSuccess { status ->
@@ -4416,7 +4423,7 @@ internal class RegattaLinkBleClient(
         val archive = state.archive ?: return false
         val fit = state.fit ?: return false
         if (state.phase != RegattaLinkMagPhase.FIT_READY ||
-            magImportPrefs.getLong("id", 0L) != 0L ||
+            magPendingId(info.stableId) != 0u ||
             !magAvailable(g, info) || otaRunning.get() || configurationMutationBlocked(g) ||
             !magOperationRunning.compareAndSet(false, true)) return false
         val model = encodeRegattaLinkMagModel(archive.manifest, fit)
@@ -4450,8 +4457,9 @@ internal class RegattaLinkBleClient(
                 writeCharacteristicBlockingDirect(g, control, magUploadCommand(3, requestId),
                     onSubmitted = {
                         submittedCommit = true
-                        magImportPrefs.edit().putString("device", info.stableId)
-                            .putLong("id", requestId.toLong()).putLong("crc", crc.toLong()).commit()
+                        magImportPrefs.edit()
+                            .putLong(info.stableId + ".id", requestId.toLong())
+                            .putLong(info.stableId + ".crc", crc.toLong()).commit()
                     })
                 val deadline = SystemClock.elapsedRealtime() + 30_000L
                 while (SystemClock.elapsedRealtime() < deadline) {
@@ -4459,11 +4467,11 @@ internal class RegattaLinkBleClient(
                     val status = readMagStatus(g)
                     if (status.requestId == requestId && status.phase == 5) {
                         confirmedFailure = true
-                        magImportPrefs.edit().clear().apply()
+                        clearMagPending(info.stableId)
                         throw IllegalStateException("Device rejected fit (" + status.errorCode + ")")
                     }
                     if (magImportConfirmed(status, requestId, crc)) {
-                        magImportPrefs.edit().clear().apply()
+                        clearMagPending(info.stableId)
                         emitMag(lastConfigurationState.mag.copy(phase = RegattaLinkMagPhase.STORED,
                             status = status, progress = 100, error = ""))
                         return@execute
@@ -5138,7 +5146,7 @@ internal class RegattaLinkBleClient(
                             if (opcode == RegattaLinkDeviceControlOpcode.MAG_RESET ||
                                 opcode == RegattaLinkDeviceControlOpcode.SET_UPRIGHT ||
                                 opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET) {
-                                magImportPrefs.edit().clear().apply()
+                                lastState.deviceInfo?.stableId?.let(::clearMagPending)
                                 emitMag(RegattaLinkMagState(
                                     supported = lastConfigurationState.mag.supported))
                             }
