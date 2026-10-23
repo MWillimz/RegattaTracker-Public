@@ -33,6 +33,9 @@ class RegattaLinkMagCoordinatorTest {
         var onSubscribe: (() -> Unit)? = null
         var onCommit: (() -> Unit)? = null
         var onReset: (() -> Unit)? = null
+        var failRead: MagChannel? = null
+        var archiveBytes: ByteArray? = null
+        var exportPage = 0
         var failCommitBefore = false
         var failCommitAfter = false
         var failTrim = false
@@ -43,17 +46,34 @@ class RegattaLinkMagCoordinatorTest {
         var resetRequest = 0u
         var importRequest = 0u
         var objectBytes = ByteArray(32)
-        override fun read(channel: MagChannel): ByteArray = when(channel) {
+        override fun read(channel: MagChannel): ByteArray {
+            check(channel != failRead) { "Transient MAG read failure" }
+            return when(channel) {
             MagChannel.AUTO -> {
                 val data = frozen.copyOfRange(page*16,minOf(page*16+16,88))
                 ByteBuffer.allocate(4+data.size).order(ByteOrder.LITTLE_ENDIAN).put(1).put(page.toByte()).putShort(10).put(data).array()
             }
             MagChannel.IMPORT_STATUS -> ByteBuffer.allocate(20).order(ByteOrder.LITTLE_ENDIAN)
                 .put(1).put(0).put(0).put(0x81.toByte()).putInt(0).putInt(m.factoryCrc.toInt()).putInt(5).putInt(0).array()
+            MagChannel.EXPORT_CONTROL -> ByteBuffer.allocate(28).order(ByteOrder.LITTLE_ENDIAN)
+                .put(2).put(0).putShort(144).putShort(5).putShort(180).putShort(66).putShort(0)
+                .putInt(MAG_ARCHIVE_BYTES).putInt(m.factoryCrc.toInt())
+                .putInt(magCrc32(requireNotNull(archiveBytes)).toInt()).putInt(5).array()
+            MagChannel.EXPORT_PAGE -> {
+                val bytes = requireNotNull(archiveBytes)
+                val data = bytes.copyOfRange(exportPage*180,minOf(exportPage*180+180,bytes.size))
+                ByteBuffer.allocate(4+data.size).order(ByteOrder.LITTLE_ENDIAN)
+                    .putShort(exportPage.toShort()).putShort(data.size.toShort()).put(data).array()
+            }
             else -> error("Unexpected read $channel")
+            }
         }
         override fun write(channel: MagChannel,bytes: ByteArray) {
             writes += channel to bytes.copyOf()
+            if (channel == MagChannel.EXPORT_CONTROL) {
+                val page = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).short.toInt() and 65535
+                if (page < MAG_PAGE_COUNT) exportPage = page
+            }
             if (channel != MagChannel.AUTO) return
             val b = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
             when (b.get().toInt()) {
@@ -109,6 +129,107 @@ class RegattaLinkMagCoordinatorTest {
         assertTrue(c.calculateAutoFit()); math.drain()
         assertEquals(RegattaLinkMagPhase.PROPOSAL_2D,state.phase)
     }
+    private fun archiveBytes(): ByteArray {
+        val points = javaClass.getResourceAsStream("/mag/manual3d-cli.csv")!!.bufferedReader().useLines { lines ->
+            lines.filterNot { it.startsWith('#') || it.isBlank() }
+                .map { it.split(',').map(String::toFloat) }.toList()
+        }
+        val bytes = ByteArray(MAG_ARCHIVE_BYTES)
+        repeat(12) { group ->
+            val start = group*MAG_GROUP_BYTES
+            val b = ByteBuffer.wrap(bytes,start,MAG_GROUP_BYTES).slice().order(ByteOrder.LITTLE_ENDIAN)
+            b.put(byteArrayOf(77,76,71,2)).putInt(MagTestData.binding.factoryCrc.toInt()).putInt(0)
+                .putInt(MagTestData.binding.uprightRef.toInt())
+            (MagTestData.basis.forward+MagTestData.basis.side+MagTestData.basis.down).forEach { b.putFloat(it.toFloat()) }
+            repeat(12) { cell ->
+                val first = (group*12+cell)*5
+                val count = (points.size-first).coerceIn(0,5)
+                b.put(count.toByte()).put(0)
+                repeat(5) { slot ->
+                    val point = points.getOrNull(first+slot)
+                    repeat(3) { axis -> b.putFloat(point?.get(axis) ?: 0f) }
+                    b.put(0).put(0).put(0)
+                }
+            }
+            b.putInt(8,magCrc32(bytes.copyOfRange(start,start+MAG_GROUP_BYTES)).toInt())
+        }
+        return bytes
+    }
+
+    @Test fun transientMetadataFailurePreservesCompleted2dProposalAndClearsOnRefresh() {
+        val c = coordinator(); val io = Io(); ready(c,io); proposal(c)
+        val fit = state.autoFit
+        io.failRead = MagChannel.AUTO
+        assertTrue(c.refresh()); wire.drain()
+        assertEquals(RegattaLinkMagPhase.PROPOSAL_2D,state.phase)
+        assertSame(fit,state.autoFit)
+        assertEquals("STATUS",state.errorStage)
+        io.failRead = null
+        assertTrue(c.refresh()); wire.drain()
+        assertEquals("",state.error)
+        assertEquals("",state.errorStage)
+        assertSame(fit,state.autoFit)
+        assertTrue(c.installAuto()); wire.drain()
+        assertEquals(RegattaLinkMagPhase.STORED,state.phase)
+    }
+
+    @Test fun transientStatusFailurePreservesCompleted3dFit() {
+        val c = coordinator(); val io = Io(); ready(c,io)
+        io.archiveBytes = archiveBytes()
+        assertTrue(c.exportArchive()); wire.drain()
+        assertTrue(c.calculateFit()); math.drain()
+        val fit = requireNotNull(state.fit)
+        io.failRead = MagChannel.IMPORT_STATUS
+        assertTrue(c.refresh()); wire.drain()
+        assertEquals(RegattaLinkMagPhase.FIT_READY,state.phase)
+        assertSame(fit,state.fit)
+        assertEquals("STATUS",state.errorStage)
+        io.failRead = null
+        assertTrue(c.refresh()); wire.drain()
+        assertEquals("",state.error)
+        assertTrue(c.installManual())
+    }
+
+    @Test fun successfulRefreshStillInvalidatesProposalWithChangedReference() {
+        val c = coordinator(); val io = Io(); ready(c,io); proposal(c)
+        io.failRead = MagChannel.AUTO
+        assertTrue(c.refresh()); wire.drain()
+        io.failRead = null; io.m = io.m.copy(uprightRef=123u)
+        assertTrue(c.refresh()); wire.drain()
+        assertNull(state.autoFit)
+        assertFalse(c.installAuto())
+    }
+
+    @Test fun statusFailureWithPendingCommitKeepsRecoveryInsteadOfProposal() {
+        val c = coordinator(); val io = Io(); ready(c,io); proposal(c)
+        store.records["boat"] = MagJournal(pending = MagPending(MagObjectKind.AUTO_2D,MagTestData.binding,123u,
+            encodeRegattaLinkMagAutoModel(MagTestData.binding,MagTestData.basis,doubleArrayOf(6.0,-4.0,0.0)),io.m.bootId))
+        io.failRead = MagChannel.AUTO
+        assertTrue(c.refresh()); wire.drain()
+        assertEquals(RegattaLinkMagPhase.UNKNOWN,state.phase)
+        assertTrue(state.recoveryAvailable)
+        assertFalse(c.installAuto())
+    }
+
+    @Test fun failedRestoreCleanupKeepsBarrierUntilDurableCleanupSucceeds() {
+        val c = coordinator(); val io = Io(); ready(c,io)
+        store.fail = { it.pending == null && it.backup == null }
+        assertTrue(c.resetAndRestore()); wire.drain()
+        assertEquals(RegattaLinkMagPhase.UNKNOWN,state.phase)
+        assertTrue(state.recoveryAvailable)
+        assertEquals(MagRestoreStage.RESTORE_TRIM,store.load("boat").backup?.stage)
+        assertFalse(c.startCapture())
+        assertFalse(c.resetAndRestore())
+        val imports = io.writes.count { it.second[0].toInt() == 3 }
+        store.fail = { false }
+        assertTrue(c.resumeRecovery()); wire.drain()
+        assertEquals(RegattaLinkMagPhase.STORED,state.phase)
+        assertFalse(c.busy())
+        assertEquals(1,io.resets)
+        assertEquals(imports,io.writes.count { it.second[0].toInt() == 3 })
+        assertNull(store.load("boat").backup)
+    }
+
     @Test fun cccdAckThenMetadataNoReadsPerSampleAndUnsubscribeDoesNotInvalidateProposal() {
         val c = coordinator(); val io = Io(); ready(c,io)
         io.onSubscribe = { c.live(ByteArray(2)) } // Ignored until initial metadata is frozen.

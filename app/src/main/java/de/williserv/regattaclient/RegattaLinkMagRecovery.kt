@@ -66,7 +66,7 @@ internal class PreferencesMagJournalStore(private val prefs: SharedPreferences):
         value.getLong("factory").toUInt(), value.getLong("upright").toUInt())
     private fun json(binding: RegattaLinkMagBinding) = JSONObject().put("device",binding.stableId)
         .put("factory",binding.factoryCrc.toLong()).put("upright",binding.uprightRef.toLong())
-    override fun load(stableId: String): MagJournal {
+    override fun load(stableId: String): MagJournal = synchronized(prefs) {
         val raw = prefs.getString("v21.$stableId",null)
         if (raw == null) {
             // Old schema-20 pending imports cannot be proved after a reboot. Keep a visible conflict.
@@ -90,15 +90,40 @@ internal class PreferencesMagJournalStore(private val prefs: SharedPreferences):
         require((pending?.binding?.stableId ?: stableId) == stableId && (backup?.binding?.stableId ?: stableId) == stableId)
         return MagJournal(pending,backup)
     }
-    override fun save(stableId: String, journal: MagJournal) {
+    override fun save(stableId: String, journal: MagJournal): Unit = synchronized(prefs) {
         val root = JSONObject().put("version",1)
         journal.pending?.let { p -> root.put("pending",json(p.binding).put("kind",p.kind.name)
             .put("phase","COMMIT_MAY_HAVE_BEEN_SENT").put("request",p.requestId.toLong()).put("object",p.objectBytes.hex()).put("boot",p.bootId.toLong())) }
         journal.backup?.let { b -> root.put("backup",json(b.binding).put("object",b.objectBytes.hex())
             .put("trim",b.trimDeg).put("reset",b.resetRequest.toLong()).put("stage",b.stage.name)) }
+        val keys = listOf("v21.$stableId", "$stableId.id", "$stableId.crc")
+        val before = prefs.all.filterKeys { it in keys }
         val edit = prefs.edit().remove("$stableId.id").remove("$stableId.crc")
         if (journal.pending == null && journal.backup == null) edit.remove("v21.$stableId")
         else edit.putString("v21.$stableId",root.toString())
-        check(edit.commit()) { "Could not durably save MAG recovery; no further write is safe" }
+        try {
+            check(edit.commit()) { "Could not durably save MAG recovery; no further write is safe" }
+        } catch (error: Exception) {
+            // Android updates its cache before the disk result is known. Restore the
+            // previous record so another store/client in this process still sees recovery.
+            // A second disk failure is allowed here: the original save still fails, and
+            // the restored cache keeps the barrier until a later save is confirmed.
+            runCatching {
+                val rollback = prefs.edit()
+                for (key in keys) {
+                    when (val value = before[key]) {
+                        null -> rollback.remove(key)
+                        is String -> rollback.putString(key,value)
+                        is Long -> rollback.putLong(key,value)
+                        is Int -> rollback.putInt(key,value)
+                        is Boolean -> rollback.putBoolean(key,value)
+                        is Float -> rollback.putFloat(key,value)
+                        is Set<*> -> rollback.putStringSet(key,value.map { it as String }.toSet())
+                    }
+                }
+                rollback.commit()
+            }
+            throw error
+        }
     }
 }
