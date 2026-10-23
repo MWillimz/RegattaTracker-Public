@@ -194,7 +194,7 @@ internal object RegattaLinkMagAutoFitter {
         require(radius > 1e-6 && radius.isFinite())
         val angles = mask.map { atan2(xy[it][1]-c[1], xy[it][0]-c[0]) }.sorted()
         val gap = max(angles.zipWithNext { a,b -> b-a }.max(), angles.first()+2*PI-angles.last())*180/PI
-        require(gap <= 30.0 + 1e-8) { "Incomplete MAG circle; angular gap >30 degrees" }
+        require(gap <= 30.0001) { "Incomplete MAG circle; angular gap >30 degrees" }
         val rms = sqrt(radii.map { (it-radius).pow(2) }.average())
         val down = mask.map { magDot(points[it], basis.down) }
         val mean = down.average()

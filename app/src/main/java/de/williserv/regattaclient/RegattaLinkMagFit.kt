@@ -5,9 +5,6 @@ import org.apache.commons.math3.linear.ArrayRealVector
 import org.apache.commons.math3.linear.EigenDecomposition
 import org.apache.commons.math3.linear.SingularValueDecomposition
 import kotlin.math.*
-import kotlin.math.max
-import kotlin.math.pow
-import kotlin.math.sqrt
 
 // Port of RegattaLink CLI _solve_ellipsoid + fit_archive. Work in double precision.
 internal object RegattaLinkMagFitter {

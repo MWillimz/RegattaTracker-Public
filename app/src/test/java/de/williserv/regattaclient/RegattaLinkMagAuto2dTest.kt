@@ -46,6 +46,15 @@ class RegattaLinkMagAuto2dTest {
         assertEquals(6,magAutoCommand(3,3u).size)
         assertEquals(6,magAutoCommand(4,3u).size)
     }
+    @Test fun metadataMatchesIndependentPythonStructGolden() {
+        val raw = "0100004f00000000785634122143658701000000000000000000c040000080c00000000000000000000000000000803f0000803f00000000000000000b000000140000000000000000000000000000000100000000000000".chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        val m = parseRegattaLinkMagAutoMetadata(raw)
+        assertEquals(0x12345678u,m.factoryCrc); assertEquals(0x87654321u,m.uprightRef)
+        assertEquals(11u,m.bootId); assertEquals(20u,m.streamContext)
+        assertTrue(m.autoStored); assertTrue(m.autoSelected); assertFalse(m.offSelected)
+        assertArrayEquals(doubleArrayOf(6.0,-4.0,0.0),m.offset,0.0)
+        m.requireReady()
+    }
     @Test fun metadataFreezesSixPagesWithShortLastPageAndRejectsMixedSnapshots() {
         val raw = MagTestData.bytes(MagTestData.metadata())
         val writes = mutableListOf<Int>(); var page = 0
@@ -104,6 +113,26 @@ class RegattaLinkMagAuto2dTest {
         }
         assertThrows(IllegalArgumentException::class.java) { RegattaLinkMagAutoFitter.fit(MagTestData.circle(arc=PI),MagTestData.binding,MagTestData.basis) }
         assertThrows(IllegalArgumentException::class.java) { RegattaLinkMagAutoFitter.fit(MagTestData.circle(tilt=10.0),MagTestData.binding,MagTestData.basis) }
+    }
+    @Test fun thirtyDegreeCoverageBoundaryAllowsWireFloatRoundingLikeTheCli() {
+        val points = (0 until 24).map { i ->
+            val a = (i % 12)*PI/6
+            doubleArrayOf((6+3*cos(a)).toFloat().toDouble(),(-4+3*sin(a)).toFloat().toDouble(),20.0)
+        }
+        val fit = RegattaLinkMagAutoFitter.fit(points,MagTestData.binding,MagTestData.basis)
+        assertTrue(fit.maxGapDeg <= 30.0001)
+    }
+    @Test fun fixedTiltedNativeBasisIsUsedWithoutRotatingMeasurementsIntoBoatFrame() {
+        val angle = 0.7
+        val basis = RegattaLinkMagBasis(doubleArrayOf(sin(angle),0.0,cos(angle)),doubleArrayOf(cos(angle),0.0,-sin(angle)))
+        val points = (0 until 120).map { i ->
+            val a = i*2*PI/120
+            DoubleArray(3) { k -> (6+3*cos(a))*basis.forward[k]+(-4+3*sin(a))*basis.side[k]+20*basis.down[k] }
+        }
+        val fit = RegattaLinkMagAutoFitter.fit(points,MagTestData.binding,basis)
+        assertArrayEquals(DoubleArray(3) { 6*basis.forward[it]-4*basis.side[it] },fit.offset,1e-8)
+        assertEquals(0.0,magDot(fit.offset,basis.down),1e-8)
+        assertEquals(3.0,fit.radiusUt,1e-8)
     }
     @Test fun robustFitKeepsAtLeastEightyPercentAndRejectsInvalidPlaneOrF32Overflow() {
         val points = MagTestData.circle().toMutableList()

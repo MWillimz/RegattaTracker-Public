@@ -1430,6 +1430,32 @@ class RegattaLinkConnectionManagerTest {
     }
 
     @Test
+    fun magRecoveryBlocksMutationsButAllowsExplicitRecoveryAndCaptureStop() {
+        fakeClient.emitConfiguration(RegattaLinkConfigurationState(
+            configWordSupported = true, configWord = 0u, deviceControlSupported = true,
+            mag = RegattaLinkMagState(supported = true, phase = RegattaLinkMagPhase.UNKNOWN, recoveryAvailable = true)))
+        assertFalse(manager.startMagAuto2dCapture())
+        assertFalse(manager.installMagAuto2dOffset())
+        assertFalse(manager.resetMagArchiveAndRestore())
+        assertFalse(manager.executeDeviceControl(RegattaLinkDeviceControlOpcode.SET_UPRIGHT,0))
+        assertFalse(manager.applyMagLearnerModeAndRestart(RegattaLinkMagLearnerMode.AUTO_2D))
+        assertEquals(0,fakeClient.magMutationCalls)
+        assertTrue(manager.resumeMagRecovery())
+        assertTrue(manager.stopMagAuto2dCapture())
+        assertEquals(1,fakeClient.magRecoveryCalls)
+    }
+
+    @Test
+    fun magActionsRejectOtaAndDeviceControlConflictBelowTheUi() {
+        fakeClient.emitConfiguration(RegattaLinkConfigurationState(deviceControlBusy = true))
+        assertFalse(manager.startMagAuto2dCapture())
+        assertFalse(manager.installMagAuto2dOffset())
+        assertFalse(manager.resumeMagRecovery())
+        assertEquals(0,fakeClient.magMutationCalls)
+        assertEquals(0,fakeClient.magRecoveryCalls)
+    }
+
+    @Test
     fun stagedConfigApplyRejectsBitsOutsideOwnedMask() {
         fakeClient.emitConfiguration(
             RegattaLinkConfigurationState(
@@ -2114,6 +2140,13 @@ class RegattaLinkConnectionManagerTest {
         private val onFactoryResetRecoveryStateChanged: (Boolean) -> Unit,
         private val onUnexpectedDisconnect: () -> Unit
     ) : RegattaLinkConnectionClient {
+        var magMutationCalls = 0
+        var magRecoveryCalls = 0
+        override fun startMagAuto2dCapture(): Boolean { magMutationCalls++; return true }
+        override fun stopMagAuto2dCapture(): Boolean = true
+        override fun installMagAuto2dOffset(): Boolean { magMutationCalls++; return true }
+        override fun resetMagArchiveAndRestore(): Boolean { magMutationCalls++; return true }
+        override fun resumeMagRecovery(): Boolean { magRecoveryCalls++; return true }
         var discoveryAccepted = true
         var reconnectAccepted = true
         var autoConnectAccepted = true

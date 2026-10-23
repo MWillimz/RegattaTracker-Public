@@ -24,6 +24,7 @@ internal fun RegattaLinkMagSetupSheet(
     schemaVersion: Int,
     enabled: Boolean,
     recoveryEnabled: Boolean,
+    onOpenFirmware: () -> Unit,
     onStartCapture: () -> Unit,
     onStopCapture: () -> Unit,
     onFitAuto: () -> Unit,
@@ -79,6 +80,7 @@ internal fun RegattaLinkMagSetupSheet(
             Text(stringResource(R.string.regattalink_mag_setup_title),style = MaterialTheme.typography.titleLarge)
             if (schemaVersion < MAG_SCHEMA_MIN || !mag.supported) {
                 Text(stringResource(R.string.regattalink_mag_firmware_required))
+                Button(onClick = onOpenFirmware) { Text(stringResource(R.string.regattalink_firmware_title)) }
             } else {
                 Text(stringResource(when {
                     metadata?.offSelected == true -> R.string.regattalink_mag_off
@@ -123,7 +125,7 @@ internal fun RegattaLinkMagSetupSheet(
                 }
                 HorizontalDivider()
                 Text(stringResource(R.string.regattalink_mag_3d_help))
-                Button(onClick = onExport,enabled = enabled) { Text(stringResource(R.string.regattalink_mag_export)) }
+                Button(onClick = onExport,enabled = enabled && metadata?.factoryValid == true && metadata.referenceValid && metadata.flags and 64 != 0) { Text(stringResource(R.string.regattalink_mag_export)) }
                 mag.archive?.let { archive ->
                     Text(stringResource(R.string.regattalink_mag_coverage,archive.occupiedSectors))
                     Button(onClick = onFit,enabled = enabled && metadata?.autoStored == true && mag.phase == RegattaLinkMagPhase.ARCHIVE_READY) {

@@ -11,6 +11,13 @@ internal data class MagPending(
     val crc get() = magCrc32(objectBytes)
     init {
         require(requestId != 0u && objectBytes.size == if (kind == MagObjectKind.AUTO_2D) 32 else 80)
+        val b = java.nio.ByteBuffer.wrap(objectBytes).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        require(objectBytes.copyOfRange(0,4).contentEquals(if (kind == MagObjectKind.AUTO_2D)
+            byteArrayOf(77,65,71,50) else byteArrayOf(77,65,71,51)))
+        require(b.getShort(4).toInt() == 1 && b.getShort(6).toInt() == objectBytes.size)
+        require(b.getInt(8).toUInt() == binding.factoryCrc)
+        if (kind == MagObjectKind.AUTO_2D) require(b.getInt(12).toUInt() == binding.uprightRef)
+        require((0..2).all { b.getFloat(16+it*4).isFinite() })
         require(magCrc32(objectBytes.copyOfRange(0, objectBytes.size-4)) ==
             java.nio.ByteBuffer.wrap(objectBytes,objectBytes.size-4,4).order(java.nio.ByteOrder.LITTLE_ENDIAN).int.toUInt())
     }
@@ -69,6 +76,7 @@ internal class PreferencesMagJournalStore(private val prefs: SharedPreferences):
         val root = JSONObject(raw)
         require(root.getInt("version") == 1)
         val pending = root.optJSONObject("pending")?.let {
+            require(it.optString("phase","COMMIT_MAY_HAVE_BEEN_SENT") == "COMMIT_MAY_HAVE_BEEN_SENT")
             MagPending(MagObjectKind.valueOf(it.getString("kind")),binding(it),it.getLong("request").toUInt(),
                 bytes(it.getString("object")),it.getLong("boot").toUInt())
         }
@@ -76,7 +84,7 @@ internal class PreferencesMagJournalStore(private val prefs: SharedPreferences):
             val objectBytes = bytes(it.getString("object"))
             val bind = binding(it)
             MagPending(MagObjectKind.AUTO_2D,bind,1u,objectBytes,0u) // validate object integrity
-            val trim = it.getInt("trim"); require(trim in -180..180)
+            val trim = it.getInt("trim"); require(trim in -180..180 && it.getLong("reset").toUInt() != 0u)
             MagBackup(bind,objectBytes,trim,it.getLong("reset").toUInt(),MagRestoreStage.valueOf(it.getString("stage")))
         }
         require((pending?.binding?.stableId ?: stableId) == stableId && (backup?.binding?.stableId ?: stableId) == stableId)
@@ -85,7 +93,7 @@ internal class PreferencesMagJournalStore(private val prefs: SharedPreferences):
     override fun save(stableId: String, journal: MagJournal) {
         val root = JSONObject().put("version",1)
         journal.pending?.let { p -> root.put("pending",json(p.binding).put("kind",p.kind.name)
-            .put("request",p.requestId.toLong()).put("object",p.objectBytes.hex()).put("boot",p.bootId.toLong())) }
+            .put("phase","COMMIT_MAY_HAVE_BEEN_SENT").put("request",p.requestId.toLong()).put("object",p.objectBytes.hex()).put("boot",p.bootId.toLong())) }
         journal.backup?.let { b -> root.put("backup",json(b.binding).put("object",b.objectBytes.hex())
             .put("trim",b.trimDeg).put("reset",b.resetRequest.toLong()).put("stage",b.stage.name)) }
         val edit = prefs.edit().remove("$stableId.id").remove("$stableId.crc")

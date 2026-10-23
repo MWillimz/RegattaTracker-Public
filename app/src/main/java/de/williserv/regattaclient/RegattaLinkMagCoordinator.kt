@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream
 import java.security.SecureRandom
 import java.util.concurrent.Executor
 import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 
 internal enum class MagChannel { EXPORT_CONTROL, EXPORT_PAGE, IMPORT_CONTROL, IMPORT_DATA, IMPORT_STATUS, AUTO, DEVICE_CONTROL, TRIM }
@@ -44,6 +45,7 @@ internal class RegattaLinkMagCoordinator(
     private var captureMetadata: RegattaLinkMagAutoMetadata? = null
     private var stoppingCapture = false
     private var captureError: String? = null
+    private var captureTimeout: ScheduledFuture<*>? = null
 
     @Synchronized fun busy() = owner != null || state.busy
     @Synchronized private fun current(t: Lease) = session === t.session && owner === t
@@ -66,6 +68,7 @@ internal class RegattaLinkMagCoordinator(
     private fun request(): UInt = SecureRandom().nextInt().toUInt().let { if (it == 0u) 1u else it }
 
     @Synchronized fun bind(io: RegattaLinkMagIo?, supported: Boolean) {
+        captureTimeout?.cancel(false); captureTimeout = null
         generation++
         session = if (io != null && supported) Session(generation,io) else null
         owner = null; capture = null; captureLease = null; capturePoints = null; captureMetadata = null
@@ -75,8 +78,10 @@ internal class RegattaLinkMagCoordinator(
         if (session != null) refresh()
     }
     @Synchronized fun disconnect() {
+        captureTimeout?.cancel(false); captureTimeout = null
         generation++; session = null; owner = null; capture = null; captureLease = null
         capturePoints = null; captureMetadata = null; stoppingCapture = false
+        state = RegattaLinkMagState(); emit(state)
         // Pending commits and reset backups stay on disk. Late worker results cannot update another session.
     }
 
@@ -148,24 +153,40 @@ internal class RegattaLinkMagCoordinator(
     fun startCapture(): Boolean {
         synchronized(this) { if (state.metadata?.let { it.factoryValid && it.referenceValid } != true) return false }
         val t = acquire() ?: return false
+        synchronized(this) {
+            captureLease = t; capture = null; stoppingCapture = false; captureError = null
+        }
         publish(t) { it.copy(phase = RegattaLinkMagPhase.CAPTURING, autoFit = null, fit = null,
             captureSamples = 0, progress = 0, error = "", errorStage = "") }
         wire.execute {
+            var subscribed = false
+            var recording = false
             try {
                 checkCurrent(t)
-                t.session.io.subscribe(true) // Wait for CCCD Write Response before freezing metadata.
+                if (synchronized(this) { stoppingCapture }) return@execute
+                subscribed = true // Even a lost CCCD ACK needs a best-effort disable.
+                t.session.io.subscribe(true)
                 val m = metadata(t); m.requireReady()
                 synchronized(this) {
                     checkCurrent(t)
-                    capture = RegattaLinkMagCapture(m); captureMetadata = m; captureLease = t
+                    if (stoppingCapture) return@execute
+                    capture = RegattaLinkMagCapture(m); captureMetadata = m
                     capturePoints = null; captureStarted = now(); capturePublished = 0
-                    stoppingCapture = false; captureError = null
+                    recording = true
+                    captureTimeout = timer.schedule({ synchronized(this) {
+                        if (captureLease === t) stopCapture()
+                    } },RegattaLinkMagCapture.MAX_MS,TimeUnit.MILLISECONDS)
                 }
                 publish(t) { it.copy(metadata = m) }
-                timer.schedule({ synchronized(this) { if (captureLease === t) stopCapture() } },RegattaLinkMagCapture.MAX_MS,TimeUnit.MILLISECONDS)
-            } catch (e: Exception) {
-                runCatching { if (current(t)) t.session.io.subscribe(false) }
-                failed(t,"CAPTURE",e); release(t)
+            } catch (e: Exception) { failed(t,"CAPTURE",e) }
+            finally {
+                if (!recording) {
+                    runCatching { if (subscribed && current(t)) t.session.io.subscribe(false) }
+                        .onFailure { if (it is Exception) failed(t,"CCCD",it) }
+                    publish(t) { if (it.phase == RegattaLinkMagPhase.CAPTURING) it.copy(phase = RegattaLinkMagPhase.IDLE) else it }
+                    synchronized(this) { if (captureLease === t) { captureLease = null; stoppingCapture = false } }
+                    release(t)
+                }
             }
         }
         return true
@@ -194,8 +215,9 @@ internal class RegattaLinkMagCoordinator(
         synchronized(this) {
             t = captureLease ?: return false
             if (!current(t) || stoppingCapture) return false
-            c = capture ?: return false
             stoppingCapture = true
+            captureTimeout?.cancel(false); captureTimeout = null
+            c = capture ?: return true // A queued start observes cancellation before publishing or recording.
         }
         wire.execute {
             try {
@@ -300,6 +322,7 @@ internal class RegattaLinkMagCoordinator(
         var mayCommit = false
         var journal = load(t)
         require(journal.pending == null) { "Resolve pending MAG import first" }
+        require(auto || journal.backup == null) { "A reset backup may only restore MAG2" }
         try {
             write(t,control,if (auto) magAutoCommand(1,pending.requestId,pending.crc) else magUploadCommand(1,pending.requestId,pending.crc))
             val size = if (auto) 12 else 18
@@ -343,6 +366,8 @@ internal class RegattaLinkMagCoordinator(
         synchronized(this) { if (state.metadata?.autoStored != true) return false }
         val t = acquire() ?: return false
         launch(t,RegattaLinkMagPhase.RESTORING,"RESET_RESTORE") {
+            val existing = load(t)
+            require(existing.pending == null && existing.backup == null) { "Resolve existing MAG recovery first" }
             val m = metadata(t); m.requireReady()
             require(m.autoStored) { "No stored 2D calibration to back up" }
             val binding = m.binding(t.session.io.stableId)
@@ -394,6 +419,7 @@ internal class RegattaLinkMagCoordinator(
         // Re-verify stored bytes before restoring trim, even after a process/MCU restart.
         m = metadata(t); requireBinding(t,backup.binding,m)
         val actual = encodeRegattaLinkMagAutoModel(backup.binding,m.basis,m.offset)
+        require(m.autoSelected && !m.offSelected) { "Running MAG mode changed during restore" }
         require(m.autoStored && actual.contentEquals(backup.objectBytes)) { "Stored 2D offset changed before trim restore" }
         save(t,MagJournal(backup = backup.copy(stage = MagRestoreStage.RESTORE_TRIM)))
         t.session.io.writeTrim(backup.trimDeg)

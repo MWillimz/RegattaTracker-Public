@@ -259,10 +259,11 @@ internal class RegattaLinkBleClient(
     private val diagnosticLogRunning = AtomicBoolean(false)
     private val configurationMutationRunning = AtomicBoolean(false)
     private val magMathExecutor = Executors.newSingleThreadExecutor()
+    private val magTimer = Executors.newSingleThreadScheduledExecutor()
     private val magImportPrefs = appContext.getSharedPreferences("regattalink_mag_import", Context.MODE_PRIVATE)
     private val magCoordinator by lazy {
         RegattaLinkMagCoordinator(otaExecutor, magMathExecutor,
-            Executors.newSingleThreadScheduledExecutor(), PreferencesMagJournalStore(magImportPrefs), ::emitMag)
+            magTimer, PreferencesMagJournalStore(magImportPrefs), ::emitMag)
     }
     private val sensorInfoReadGatt = AtomicReference<BluetoothGatt?>(null)
     private val sensorInfoGeneration = AtomicLong(0L)
@@ -772,6 +773,7 @@ internal class RegattaLinkBleClient(
         override fun onServiceChanged(callbackGatt: BluetoothGatt) {
             if (gatt !== callbackGatt) return
             magCoordinator.disconnect()
+            pauseMagNotificationsForRediscovery(callbackGatt)
 
             serviceChangedObservedThisConnection = true
             serviceChangedRediscoveryCompletedThisConnection = false
@@ -1439,6 +1441,7 @@ internal class RegattaLinkBleClient(
         attemptedDiscoveryAddresses.clear()
         otaExecutor.shutdownNow()
         magMathExecutor.shutdownNow()
+        magTimer.shutdownNow()
     }
 
     override fun startKnownDeviceReconnect(
@@ -4355,6 +4358,19 @@ internal class RegattaLinkBleClient(
             }
         }
         magCoordinator.bind(if (supported) io else null,supported)
+    }
+
+    private fun pauseMagNotificationsForRediscovery(g: BluetoothGatt) {
+        val c = g.getService(EXTENSION_SERVICE_UUID)?.getCharacteristic(MAG_LIVE_UUID) ?: return
+        runCatching { g.setCharacteristicNotification(c,false) }
+        val descriptor = c.getDescriptor(CCCD_UUID) ?: return
+        runCatching {
+            otaExecutor.execute {
+                if (gatt === g && connected && !otaRunning.get()) runCatching {
+                    writeDescriptorBlocking(g,descriptor,BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE)
+                }
+            }
+        }
     }
 
     private fun magActionAllowed(recovery: Boolean = false): Boolean {

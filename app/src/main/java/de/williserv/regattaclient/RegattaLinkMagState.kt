@@ -22,7 +22,7 @@ data class RegattaLinkMagState(
     val errorStage: String = "",
     val error: String = ""
 ) {
-    val busy: Boolean get() = recoveryAvailable || phase in setOf(
+    val busy: Boolean get() = operationRunning || recoveryAvailable || phase in setOf(
         RegattaLinkMagPhase.READING, RegattaLinkMagPhase.CAPTURING,
         RegattaLinkMagPhase.FITTING_2D, RegattaLinkMagPhase.EXPORTING,
         RegattaLinkMagPhase.FITTING, RegattaLinkMagPhase.TRANSFERRING,

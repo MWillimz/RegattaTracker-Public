@@ -488,15 +488,12 @@ internal fun RegattaLinkScreen(
         if (activeSetupDestination == RegattaLinkSetupDestination.MAG && connected) {
             onRefreshMagStatus()
             while (true) {
-                delay(1_000L)
+                delay(3_000L)
                 onRefreshMagStatus()
             }
         }
     }
 
-    DisposableEffect(activeSetupDestination, deviceKey) {
-        onDispose { if (activeSetupDestination == RegattaLinkSetupDestination.MAG) onStopMagAuto2dCapture() }
-    }
     when (activeSetupDestination) {
         RegattaLinkSetupDestination.MAG -> {
             RegattaLinkMagSetupSheet(
@@ -505,6 +502,7 @@ internal fun RegattaLinkScreen(
                 enabled = configEnabled && !configurationState.mag.busy,
                 recoveryEnabled = connected && !otaState.isActive && !rawCaptureState.isActive &&
                     !configurationState.busy && !configurationState.deviceControlBusy,
+                onOpenFirmware = { activeSetupDestination = RegattaLinkSetupDestination.FIRMWARE },
                 onStartCapture = onStartMagAuto2dCapture,
                 onStopCapture = onStopMagAuto2dCapture,
                 onFitAuto = onCalculateMagAuto2dFit,
@@ -745,7 +743,9 @@ internal fun RegattaLinkScreen(
                                 },
                                 onClick = {
                                     settingsMenuExpanded = false
-                                    activeSetupDestination = menuItem.destination
+                                    activeSetupDestination = if (menuItem.destination == RegattaLinkSetupDestination.MAG &&
+                                        (state.deviceInfo?.gattSchemaVersion ?: 0) < MAG_SCHEMA_MIN)
+                                        RegattaLinkSetupDestination.FIRMWARE else menuItem.destination
                                 }
                             )
                         }

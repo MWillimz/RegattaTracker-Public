@@ -67,6 +67,30 @@ class RegattaLinkMagProtocolTest {
         }
     }
 
+    @Test fun rejectsOldManifestAndMixedBasisEvenWithCorrectTransportCrcs() {
+        val data = emptyArchive()
+        val old = manifest(data); old[0] = 1
+        assertThrows(IllegalArgumentException::class.java) { parseRegattaLinkMagManifest(old) }
+        val b = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
+        // A valid frozen reference/basis in every group.
+        repeat(12) { group ->
+            val base = group*MAG_GROUP_BYTES
+            b.putInt(base+12,123)
+            b.putFloat(base+16,1f); b.putFloat(base+32,1f); b.putFloat(base+48,1f)
+        }
+        // Group 1 carries another valid but different frozen frame.
+        val base = MAG_GROUP_BYTES
+        b.putFloat(base+16,0f); b.putFloat(base+20,1f)
+        b.putFloat(base+28,-1f); b.putFloat(base+32,0f)
+        repeat(12) { group ->
+            val start = group*MAG_GROUP_BYTES
+            b.putInt(start+8,0)
+            b.putInt(start+8,magCrc32(data.copyOfRange(start,start+MAG_GROUP_BYTES)).toInt())
+        }
+        val m = parseRegattaLinkMagManifest(manifest(data))
+        assertThrows(IllegalArgumentException::class.java) { parseRegattaLinkMagArchive(m,data) }
+    }
+
     @Test fun mag3Uses80ByteLittleEndianAndBothCrcs() {
         val model = encodeRegattaLinkMagModel(
             RegattaLinkMagManifest(0x12345678u, 0u, 7u),

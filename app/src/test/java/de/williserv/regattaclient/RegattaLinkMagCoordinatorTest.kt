@@ -131,6 +131,23 @@ class RegattaLinkMagCoordinatorTest {
         assertEquals(listOf(true,false),io.subscriptions)
         assertFalse(c.busy())
     }
+    @Test fun screenClosingBeforeQueuedCaptureStartDoesNotLeaveAHiddenSubscription() {
+        val c = coordinator(); val io = Io(); ready(c,io)
+        assertTrue(c.startCapture())
+        assertTrue(c.stopCapture()) // Dismissal/background before the GATT worker has started.
+        wire.drain()
+        assertTrue(io.subscriptions.isEmpty())
+        assertEquals(RegattaLinkMagPhase.IDLE,state.phase)
+        assertFalse(c.busy())
+    }
+    @Test fun closingDuringCccdSetupStillDisablesNotifications() {
+        val c = coordinator(); val io = Io(); ready(c,io)
+        io.onSubscribe = { assertTrue(c.stopCapture()) }
+        assertTrue(c.startCapture()); wire.drain()
+        assertEquals(listOf(true,false),io.subscriptions)
+        assertEquals(RegattaLinkMagPhase.IDLE,state.phase)
+        assertFalse(c.busy())
+    }
     @Test fun localSaveFailureNeverSubmitsCommitAndAbortsOnlyUncommittedStaging() {
         val c = coordinator(); val io = Io(); ready(c,io); proposal(c)
         store.fail = { it.pending != null }
