@@ -1453,6 +1453,14 @@ class RegattaLinkConnectionManagerTest {
         assertFalse(manager.resumeMagRecovery())
         assertEquals(0,fakeClient.magMutationCalls)
         assertEquals(0,fakeClient.magRecoveryCalls)
+        fakeClient.emitConfiguration(RegattaLinkConfigurationState())
+        fakeClient.emitOta(RegattaLinkOtaUiState(phase = RegattaLinkOtaPhase.TRANSFERRING))
+        assertFalse(manager.startMagAuto2dCapture())
+        assertFalse(manager.installMagAuto2dOffset())
+        assertFalse(manager.resetMagArchiveAndRestore())
+        assertFalse(manager.resumeMagRecovery())
+        assertEquals(0,fakeClient.magMutationCalls)
+        assertEquals(0,fakeClient.magRecoveryCalls)
     }
 
     @Test
