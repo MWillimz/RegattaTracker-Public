@@ -56,6 +56,74 @@ class RegattaLinkMagPersistenceTest {
             assertThrows(IllegalStateException::class.java) { PreferencesMagJournalStore(failing).save("boat",record) }
         }
     }
+    // Model Android's commitToMemory-before-disk behavior, including a second
+    // failed disk result while restoring the previous cache contents.
+    private fun failingAfterCacheUpdate(): SharedPreferences = object: SharedPreferences by prefs {
+        override fun edit(): SharedPreferences.Editor {
+            val editor = prefs.edit()
+            return object: SharedPreferences.Editor by editor {
+                override fun remove(key: String?): SharedPreferences.Editor {
+                    editor.remove(key); return this
+                }
+                override fun putString(key: String?, value: String?): SharedPreferences.Editor {
+                    editor.putString(key,value); return this
+                }
+                override fun commit(): Boolean {
+                    editor.commit()
+                    return false
+                }
+            }
+        }
+    }
+
+    @Test fun failedCleanupPreservesPendingAndBackupForAnotherStoreInstance() {
+        val pending = MagPending(MagObjectKind.AUTO_2D,MagTestData.binding,123u,objectBytes(),11u)
+        val backup = MagBackup(MagTestData.binding,objectBytes(),-17,456u,MagRestoreStage.RESTORE_TRIM)
+        for (record in listOf(MagJournal(pending=pending),MagJournal(backup=backup))) {
+            PreferencesMagJournalStore(prefs).save("boat",record)
+            val before = prefs.getString("v21.boat",null)
+            assertThrows(IllegalStateException::class.java) {
+                PreferencesMagJournalStore(failingAfterCacheUpdate()).save("boat",MagJournal())
+            }
+            assertEquals(before,prefs.getString("v21.boat",null))
+            val recovered = PreferencesMagJournalStore(prefs).load("boat")
+            if (record.pending != null) {
+                assertEquals(pending.requestId,recovered.pending!!.requestId)
+                assertArrayEquals(pending.objectBytes,recovered.pending.objectBytes)
+            } else {
+                assertEquals(MagRestoreStage.RESTORE_TRIM,recovered.backup!!.stage)
+                assertEquals(-17,recovered.backup.trimDeg)
+                assertArrayEquals(backup.objectBytes,recovered.backup.objectBytes)
+            }
+            PreferencesMagJournalStore(prefs).save("boat",MagJournal())
+            assertEquals(MagJournal(),PreferencesMagJournalStore(prefs).load("boat"))
+        }
+    }
+
+    @Test fun failedReplacementPreservesPreviousRecordAndFailedFirstSaveLeavesNoPending() {
+        val pending = MagPending(MagObjectKind.AUTO_2D,MagTestData.binding,123u,objectBytes(),11u)
+        val failing = PreferencesMagJournalStore(failingAfterCacheUpdate())
+        assertThrows(IllegalStateException::class.java) { failing.save("boat",MagJournal(pending=pending)) }
+        assertEquals(MagJournal(),PreferencesMagJournalStore(prefs).load("boat"))
+        PreferencesMagJournalStore(prefs).save("boat",MagJournal(pending=pending))
+        assertThrows(IllegalStateException::class.java) {
+            failing.save("boat",MagJournal(pending=pending.copy(requestId=124u)))
+        }
+        assertEquals(123u,PreferencesMagJournalStore(prefs).load("boat").pending!!.requestId)
+    }
+
+    @Test fun failedLegacyDiscardRestoresOnlyTheAffectedDeviceKeys() {
+        prefs.edit().putLong("boat.id",123).putLong("boat.crc",456)
+            .putString("v21.another-boat","another journal").commit()
+        assertThrows(IllegalStateException::class.java) {
+            PreferencesMagJournalStore(failingAfterCacheUpdate()).save("boat",MagJournal())
+        }
+        assertEquals(123L,prefs.getLong("boat.id",0))
+        assertEquals(456L,prefs.getLong("boat.crc",0))
+        assertEquals("another journal",prefs.getString("v21.another-boat",null))
+        assertThrows(IllegalArgumentException::class.java) { PreferencesMagJournalStore(prefs).load("boat") }
+    }
+
     @Test fun corruptedOrOldPendingRecordCannotDisappearSilently() {
         prefs.edit().putString("v21.boat","{broken").commit()
         assertThrows(Exception::class.java) { PreferencesMagJournalStore(prefs).load("boat") }

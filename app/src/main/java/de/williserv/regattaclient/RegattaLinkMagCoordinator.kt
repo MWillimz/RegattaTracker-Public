@@ -85,10 +85,20 @@ internal class RegattaLinkMagCoordinator(
         // Pending commits and reset backups stay on disk. Late worker results cannot update another session.
     }
 
-    private fun failed(t: Lease, stage: String, e: Exception) {
+    private fun failed(t: Lease, stage: String, e: Exception, preserveResult: Boolean = false) {
         val recovery = runCatching { load(t).let { it.pending != null || it.backup != null } }.getOrDefault(true)
-        publish(t) { it.copy(phase = if (recovery) RegattaLinkMagPhase.UNKNOWN else RegattaLinkMagPhase.ERROR,
-            recoveryAvailable = recovery, errorStage = stage, error = e.message ?: "MAG operation failed") }
+        publish(t) { previous ->
+            val phase = when {
+                recovery -> RegattaLinkMagPhase.UNKNOWN
+                preserveResult && previous.phase in setOf(
+                    RegattaLinkMagPhase.CAPTURE_READY, RegattaLinkMagPhase.PROPOSAL_2D,
+                    RegattaLinkMagPhase.ARCHIVE_READY, RegattaLinkMagPhase.FIT_READY
+                ) -> previous.phase
+                else -> RegattaLinkMagPhase.ERROR
+            }
+            previous.copy(phase = phase, recoveryAvailable = recovery,
+                errorStage = stage, error = e.message ?: "MAG operation failed")
+        }
     }
     private fun launch(t: Lease, phase: RegattaLinkMagPhase, stage: String, executor: Executor = wire, block: () -> Unit) {
         publish(t) { it.copy(phase = phase, error = "", errorStage = "") }
@@ -144,7 +154,8 @@ internal class RegattaLinkMagCoordinator(
                 val m = metadata(t); val s = status(t)
                 showMetadata(t,m,s)
                 reconcile(t,m,s)
-            } catch (e: Exception) { failed(t,"STATUS",e) }
+                publish(t) { if (it.errorStage == "STATUS") it.copy(error = "", errorStage = "") else it }
+            } catch (e: Exception) { failed(t,"STATUS",e,preserveResult = true) }
             finally { release(t) }
         }
         return true
