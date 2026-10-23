@@ -37,10 +37,24 @@ class RegattaLinkMagPersistenceTest {
         val failing = object: SharedPreferences by prefs {
             override fun edit(): SharedPreferences.Editor {
                 val edit = prefs.edit()
-                return object: SharedPreferences.Editor by edit { override fun commit() = false }
+                return object: SharedPreferences.Editor by edit {
+                    override fun remove(key: String?): SharedPreferences.Editor {
+                        edit.remove(key)
+                        return this
+                    }
+                    override fun putString(key: String?, value: String?): SharedPreferences.Editor {
+                        edit.putString(key,value)
+                        return this
+                    }
+                    override fun commit() = false
+                }
             }
         }
-        assertThrows(IllegalStateException::class.java) { PreferencesMagJournalStore(failing).save("boat",MagJournal()) }
+        val journal = MagJournal(pending = MagPending(MagObjectKind.AUTO_2D,MagTestData.binding,123u,objectBytes(),11u))
+        // Exercise both remove-only and putString paths without escaping the failing editor.
+        for (record in listOf(MagJournal(),journal)) {
+            assertThrows(IllegalStateException::class.java) { PreferencesMagJournalStore(failing).save("boat",record) }
+        }
     }
     @Test fun corruptedOrOldPendingRecordCannotDisappearSilently() {
         prefs.edit().putString("v21.boat","{broken").commit()
