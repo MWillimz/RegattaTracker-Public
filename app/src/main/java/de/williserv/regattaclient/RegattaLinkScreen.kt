@@ -238,6 +238,13 @@ internal fun RegattaLinkScreen(
     onSetPhoneGpsRelayEnabled: (Boolean) -> Unit = {},
     onSetNmea0183Baud: (Int) -> Unit = {},
     onApplyMagLearnerModeAndRestart: (RegattaLinkMagLearnerMode) -> Unit = {},
+    onStartMagAuto2dCapture: () -> Unit = {},
+    onStopMagAuto2dCapture: () -> Unit = {},
+    onCalculateMagAuto2dFit: () -> Unit = {},
+    onInstallMagAuto2dOffset: () -> Unit = {},
+    onResetMagArchiveAndRestore: () -> Unit = {},
+    onResumeMagRecovery: () -> Unit = {},
+    onDiscardMagRecovery: () -> Unit = {},
     onRefreshMagStatus: () -> Unit = {},
     onExportMagArchive: () -> Unit = {},
     onCalculateMagFit: () -> Unit = {},
@@ -487,18 +494,29 @@ internal fun RegattaLinkScreen(
         }
     }
 
+    DisposableEffect(activeSetupDestination, deviceKey) {
+        onDispose { if (activeSetupDestination == RegattaLinkSetupDestination.MAG) onStopMagAuto2dCapture() }
+    }
     when (activeSetupDestination) {
         RegattaLinkSetupDestination.MAG -> {
             RegattaLinkMagSetupSheet(
                 configurationState = configurationState,
                 schemaVersion = state.deviceInfo?.gattSchemaVersion ?: 0,
                 enabled = configEnabled && !configurationState.mag.busy,
+                recoveryEnabled = connected && !otaState.isActive && !rawCaptureState.isActive &&
+                    !configurationState.busy && !configurationState.deviceControlBusy,
+                onStartCapture = onStartMagAuto2dCapture,
+                onStopCapture = onStopMagAuto2dCapture,
+                onFitAuto = onCalculateMagAuto2dFit,
+                onInstallAuto = onInstallMagAuto2dOffset,
+                onResumeRecovery = onResumeMagRecovery,
+                onDiscardRecovery = onDiscardMagRecovery,
                 onRefresh = onRefreshMagStatus,
                 onExport = onExportMagArchive,
                 onFit = onCalculateMagFit,
                 onInstall = onInstallMagFit,
                 onSelectMode = onApplyMagLearnerModeAndRestart,
-                onReset = { onDeviceControl(RegattaLinkDeviceControlOpcode.MAG_RESET, 0) },
+                onReset = onResetMagArchiveAndRestore,
                 onDismiss = { activeSetupDestination = null }
             )
         }

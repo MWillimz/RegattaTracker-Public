@@ -8,27 +8,28 @@ import java.nio.ByteOrder
 class RegattaLinkMagProtocolTest {
     private fun manifest(data: ByteArray, factory: UInt = 0x12345678u): ByteArray =
         ByteBuffer.allocate(28).order(ByteOrder.LITTLE_ENDIAN)
-            .put(1).put(0).putShort(144).putShort(5)
-            .putShort(180).putShort(63).putShort(0)
-            .putInt(11232).putInt(factory.toInt())
+            .put(2).put(0).putShort(144).putShort(5)
+            .putShort(180).putShort(66).putShort(0)
+            .putInt(11712).putInt(factory.toInt())
             .putInt(magCrc32(data).toInt()).putInt(7).array()
 
     private fun emptyArchive(factory: UInt = 0x12345678u): ByteArray {
         val groups = ByteArray(MAG_ARCHIVE_BYTES)
         for (g in 0 until 12) {
-            val b = ByteBuffer.wrap(groups, g * 936, 936).slice()
+            val b = ByteBuffer.wrap(groups, g * 976, 976).slice()
                 .order(ByteOrder.LITTLE_ENDIAN)
-            b.put(byteArrayOf(77, 76, 71, 1))
-            b.putInt(factory.toInt()).putInt(0)
+            b.put(byteArrayOf(77, 76, 71, 2))
+            b.putInt(factory.toInt()).putInt(0).putInt(0)
+            repeat(9) { b.putFloat(0f) }
             repeat(12) {
                 b.put(0).put(0)
                 repeat(5) { b.putFloat(0f).putFloat(0f).putFloat(0f)
                     b.put(0).put(0).put(0) }
             }
-            val grp = groups.copyOfRange(g * 936, (g + 1) * 936)
+            val grp = groups.copyOfRange(g * 976, (g + 1) * 976)
             val crc = magCrc32(grp)
             ByteBuffer.wrap(groups).order(ByteOrder.LITTLE_ENDIAN)
-                .putInt(g * 936 + 8, crc.toInt())
+                .putInt(g * 976 + 8, crc.toInt())
         }
         return groups
     }
@@ -44,11 +45,11 @@ class RegattaLinkMagProtocolTest {
         assertThrows(IllegalArgumentException::class.java) {
             parseRegattaLinkMagPage(raw, 1)
         }
-        val last = ByteBuffer.allocate(76).order(ByteOrder.LITTLE_ENDIAN)
-            .putShort(62).putShort(72).put(ByteArray(72)).array()
-        assertEquals(72, parseRegattaLinkMagPage(last, 62).size)
+        val last = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN)
+            .putShort(65).putShort(12).put(ByteArray(12)).array()
+        assertEquals(12, parseRegattaLinkMagPage(last, 65).size)
         assertThrows(IllegalArgumentException::class.java) {
-            parseRegattaLinkMagPage(last.copyOfRange(0, 20), 62)
+            parseRegattaLinkMagPage(last.copyOfRange(0, 10), 65)
         }
     }
 

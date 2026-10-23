@@ -356,6 +356,13 @@ internal interface RegattaLinkConnectionClient {
         encodedBits: UInt
     ): Boolean = false
     fun setHeadingTrimDeg(value: Int): Boolean = false
+    fun startMagAuto2dCapture(): Boolean = false
+    fun stopMagAuto2dCapture(): Boolean = false
+    fun calculateMagAuto2dFit(): Boolean = false
+    fun installMagAuto2dOffset(): Boolean = false
+    fun resetMagArchiveAndRestore(): Boolean = false
+    fun resumeMagRecovery(): Boolean = false
+    fun discardMagRecovery(): Boolean = false
     fun refreshMagStatus(): Boolean = false
     fun exportMagArchive(): Boolean = false
     fun calculateMagFit(): Boolean = false
@@ -966,6 +973,17 @@ internal class RegattaLinkConnectionManager(
         )
     }
 
+    private fun magActionAllowed(recovery: Boolean = false): Boolean =
+        !otaState.isActive && !rawCaptureState.isActive && !configurationState.busy &&
+            !configurationState.deviceControlBusy && !configurationState.diagnosticLogLoading &&
+            (recovery || !configurationState.mag.busy)
+    fun startMagAuto2dCapture(): Boolean = magActionAllowed() && client.startMagAuto2dCapture()
+    fun stopMagAuto2dCapture(): Boolean = client.stopMagAuto2dCapture()
+    fun calculateMagAuto2dFit(): Boolean = magActionAllowed() && client.calculateMagAuto2dFit()
+    fun installMagAuto2dOffset(): Boolean = magActionAllowed() && client.installMagAuto2dOffset()
+    fun resetMagArchiveAndRestore(): Boolean = magActionAllowed() && client.resetMagArchiveAndRestore()
+    fun resumeMagRecovery(): Boolean = magActionAllowed(true) && client.resumeMagRecovery()
+    fun discardMagRecovery(): Boolean = magActionAllowed(true) && client.discardMagRecovery()
     fun refreshMagStatus(): Boolean = client.refreshMagStatus()
     fun exportMagArchive(): Boolean = if (otaState.isActive || rawCaptureState.isActive ||
         configurationState.busy || configurationState.deviceControlBusy) false

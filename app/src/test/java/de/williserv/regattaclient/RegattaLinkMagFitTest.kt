@@ -36,4 +36,24 @@ class RegattaLinkMagFitTest {
             RegattaLinkMagFitter.fit(archive(flat = true))
         }
     }
+    @Test fun goodRawGeometryPackedInto29HistoricalCellsStillPasses() {
+        val original = archive()
+        val points = original.sectors.flatMap { it.samples }
+        val cells = points.chunked(5).map { RegattaLinkMagSector(it) }.toMutableList()
+        while (cells.size < 144) cells += RegattaLinkMagSector(emptyList())
+        val packed = original.copy(sectors = cells)
+        assertEquals(29,packed.occupiedSectors)
+        val fit = RegattaLinkMagFitter.fit(packed)
+        assertEquals(9.0,fit.offset[0],1e-6)
+        assertTrue(fit.usedSectors >= 36)
+        assertEquals(RegattaLinkMagFitter.fit(original).radiusUt,fit.radiusUt,1e-8)
+    }
+
+    @Test fun everyOriginalObservationParticipatesRatherThanPerCellMedian() {
+        val points = archive().sectors.flatMap { it.samples }
+        // 3 identical planar observations per cell would dominate a per-cell median.
+        val cells = points.map { p -> RegattaLinkMagSector(listOf(p,p.copy(z=4.0),p.copy(z=4.0),p.copy(z=4.0),p)) }
+        assertThrows(Exception::class.java) { RegattaLinkMagFitter.fit(archive().copy(sectors=cells)) }
+    }
+
 }
