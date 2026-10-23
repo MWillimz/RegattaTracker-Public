@@ -79,6 +79,13 @@ internal class RegattaLinkBleClient(
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720010")
         val EXTENSION_SERVICE_UUID: UUID =
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720030")
+        val MAG_EXPORT_CONTROL_UUID = UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720032")
+        val MAG_EXPORT_PAGE_UUID = UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720033")
+        val MAG_IMPORT_CONTROL_UUID = UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720034")
+        val MAG_IMPORT_DATA_UUID = UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720035")
+        val MAG_LIVE_UUID = UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720037")
+        val MAG_AUTO_UUID = UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720038")
+        val MAG_IMPORT_STATUS_UUID = UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720036")
         val BLE_SENSOR_INFO_UUID: UUID =
             UUID.fromString("7f2c4b10-6f63-4a8d-9a3e-2e5d6b720031")
         val DEVICE_NAME_UUID: UUID =
@@ -251,6 +258,13 @@ internal class RegattaLinkBleClient(
     private val rawCaptureRunning = AtomicBoolean(false)
     private val diagnosticLogRunning = AtomicBoolean(false)
     private val configurationMutationRunning = AtomicBoolean(false)
+    private val magMathExecutor = Executors.newSingleThreadExecutor()
+    private val magTimer = Executors.newSingleThreadScheduledExecutor()
+    private val magImportPrefs = appContext.getSharedPreferences("regattalink_mag_import", Context.MODE_PRIVATE)
+    private val magCoordinator by lazy {
+        RegattaLinkMagCoordinator(otaExecutor, magMathExecutor,
+            magTimer, PreferencesMagJournalStore(magImportPrefs), ::emitMag)
+    }
     private val sensorInfoReadGatt = AtomicReference<BluetoothGatt?>(null)
     private val sensorInfoGeneration = AtomicLong(0L)
     private val calypsoOffsetOperationRunning = AtomicBoolean(false)
@@ -758,6 +772,8 @@ internal class RegattaLinkBleClient(
 
         override fun onServiceChanged(callbackGatt: BluetoothGatt) {
             if (gatt !== callbackGatt) return
+            magCoordinator.disconnect()
+            pauseMagNotificationsForRediscovery(callbackGatt)
 
             serviceChangedObservedThisConnection = true
             serviceChangedRediscoveryCompletedThisConnection = false
@@ -1199,6 +1215,7 @@ internal class RegattaLinkBleClient(
         if (
             diagnosticLogRunning.get() ||
             configurationMutationRunning.get() ||
+            magCoordinator.busy() ||
             deviceControlExecutionGuard.isActive()
         ) {
             emitOta(
@@ -1423,6 +1440,8 @@ internal class RegattaLinkBleClient(
         discoveryDeadlineMs = 0L
         attemptedDiscoveryAddresses.clear()
         otaExecutor.shutdownNow()
+        magMathExecutor.shutdownNow()
+        magTimer.shutdownNow()
     }
 
     override fun startKnownDeviceReconnect(
@@ -3126,7 +3145,8 @@ internal class RegattaLinkBleClient(
 
         setupConfiguration(activeGatt)
         if (!optionalFeatureWorkAllowed(activeGatt)) return
-
+        setupMagOnConnect(activeGatt, info)
+        if (!optionalFeatureWorkAllowed(activeGatt)) return
         setupNmea(activeGatt)
     }
 
@@ -3570,6 +3590,10 @@ internal class RegattaLinkBleClient(
     ) {
         if (gatt !== callbackGatt) return
 
+        if (characteristicUuid == MAG_LIVE_UUID) {
+            if (!otaRunning.get()) magCoordinator.live(value.copyOf())
+            return
+        }
         if (characteristicUuid == REGATTALINK_OTA_STATUS_UUID) {
             runCatching {
                 parseRegattaLinkOtaProgress(value)
@@ -3784,7 +3808,7 @@ internal class RegattaLinkBleClient(
                 factoryResetDisconnectTracker.ownsLifecycle(activeGatt),
             deviceControlRunning = deviceControlExecutionGuard.isActive(),
             diagnosticLogRunning = diagnosticLogRunning.get()
-        )
+        ) || magCoordinator.busy()
 
     override fun setDeviceName(name: String): Boolean {
         if (validateRegattaLinkDeviceName(name) != null) {
@@ -4238,6 +4262,139 @@ internal class RegattaLinkBleClient(
         return true
     }
 
+
+    private fun emitMag(state: RegattaLinkMagState) {
+        updateConfiguration { it.copy(mag = state) }
+    }
+
+    private fun magCharacteristic(g: BluetoothGatt, uuid: UUID): BluetoothGattCharacteristic {
+        require(g.device.bondState == BluetoothDevice.BOND_BONDED) { "MAG requires bonded BLE" }
+        return g.getService(EXTENSION_SERVICE_UUID)?.getCharacteristic(uuid)
+            ?: throw IllegalStateException("Missing MAG characteristic " + uuid)
+    }
+
+    private fun magAvailable(g: BluetoothGatt, info: RegattaLinkDeviceInfo?): Boolean {
+        if (info == null || info.gattSchemaVersion < MAG_SCHEMA_MIN) return false
+        val service = g.getService(EXTENSION_SERVICE_UUID) ?: return false
+        val rw = BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_WRITE
+        return listOf(
+            MAG_EXPORT_CONTROL_UUID to rw,
+            MAG_EXPORT_PAGE_UUID to BluetoothGattCharacteristic.PROPERTY_READ,
+            MAG_IMPORT_CONTROL_UUID to BluetoothGattCharacteristic.PROPERTY_WRITE,
+            MAG_IMPORT_DATA_UUID to BluetoothGattCharacteristic.PROPERTY_WRITE,
+            MAG_IMPORT_STATUS_UUID to BluetoothGattCharacteristic.PROPERTY_READ,
+            MAG_AUTO_UUID to rw,
+            MAG_LIVE_UUID to BluetoothGattCharacteristic.PROPERTY_NOTIFY
+        ).all { (id, flags) ->
+            val c = service.getCharacteristic(id)
+            c != null && (c.properties and flags) == flags &&
+                (id != MAG_LIVE_UUID || c.getDescriptor(CCCD_UUID) != null)
+        }
+    }
+
+    private fun setupMagOnConnect(g: BluetoothGatt, info: RegattaLinkDeviceInfo) {
+        val supported = magAvailable(g, info)
+        val io = object : RegattaLinkMagIo {
+            override val stableId = info.stableId
+            private fun checkSession() {
+                check(optionalFeatureWorkAllowed(g) && lastState.deviceInfo?.stableId == stableId) { "MAG connection interrupted" }
+            }
+            private fun characteristic(channel: MagChannel): BluetoothGattCharacteristic = when (channel) {
+                MagChannel.DEVICE_CONTROL, MagChannel.TRIM -> g.getService(CONFIG_SERVICE_UUID)?.getCharacteristic(
+                    if (channel == MagChannel.TRIM) HEADING_TRIM_UUID else DEVICE_CONTROL_UUID)
+                    ?: error("MAG restore control unavailable")
+                else -> magCharacteristic(g, when(channel) {
+                    MagChannel.EXPORT_CONTROL -> MAG_EXPORT_CONTROL_UUID
+                    MagChannel.EXPORT_PAGE -> MAG_EXPORT_PAGE_UUID
+                    MagChannel.IMPORT_CONTROL -> MAG_IMPORT_CONTROL_UUID
+                    MagChannel.IMPORT_DATA -> MAG_IMPORT_DATA_UUID
+                    MagChannel.IMPORT_STATUS -> MAG_IMPORT_STATUS_UUID
+                    else -> MAG_AUTO_UUID
+                })
+            }
+            override fun read(channel: MagChannel): ByteArray {
+                checkSession()
+                return readCharacteristicBlocking(g,characteristic(channel)).also { checkSession() }
+            }
+            override fun write(channel: MagChannel, bytes: ByteArray) {
+                checkSession()
+                writeCharacteristicBlockingDirect(g,characteristic(channel),bytes)
+                checkSession()
+            }
+            override fun readTrim(): Int = parseRegattaLinkHeadingTrim(read(MagChannel.TRIM))
+            override fun writeTrim(value: Int) {
+                write(MagChannel.TRIM,encodeRegattaLinkHeadingTrim(value))
+                check(readTrim() == value) { "Restored heading trim readback differs" }
+                updateConfiguration { it.copy(headingTrimDeg = value) }
+            }
+            override fun reset(requestId: UInt) {
+                write(MagChannel.DEVICE_CONTROL,buildRegattaLinkDeviceControlRequest(
+                    RegattaLinkDeviceControlOpcode.MAG_RESET,requestId,0))
+            }
+            override fun resetConfirmed(requestId: UInt): Boolean {
+                val status = parseRegattaLinkDeviceControlStatus(read(MagChannel.DEVICE_CONTROL))
+                if (status.requestId != requestId || status.opcode != RegattaLinkDeviceControlOpcode.MAG_RESET) return false
+                require(status.phase != RegattaLinkDeviceControlPhase.ERROR) { "MAG reset rejected (${status.result})" }
+                val confirmed = status.phase == RegattaLinkDeviceControlPhase.SUCCESS && status.result == RegattaLinkDeviceControlResult.OK
+                if (confirmed) updateConfiguration { it.copy(headingTrimDeg = 0,deviceControlStatus = status,
+                    configWord = it.configWord?.let { word ->
+                        (word and REGATTALINK_CONFIG_MAG_LEARNER_MASK.inv()) or RegattaLinkMagLearnerMode.AUTO_2D.encodedBits
+                    }) }
+                return confirmed
+            }
+            override fun subscribe(enabled: Boolean) {
+                checkSession()
+                val c = magCharacteristic(g,MAG_LIVE_UUID)
+                val d = c.getDescriptor(CCCD_UUID) ?: error("MAG live CCCD missing")
+                check(g.setCharacteristicNotification(c,enabled)) { "Could not configure MAG notifications" }
+                try {
+                    writeDescriptorBlocking(g,d,if(enabled) BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE else BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE)
+                } catch (e: Exception) {
+                    g.setCharacteristicNotification(c,false)
+                    throw e
+                } finally {
+                    if (!enabled) g.setCharacteristicNotification(c,false)
+                }
+            }
+        }
+        magCoordinator.bind(if (supported) io else null,supported)
+    }
+
+    private fun pauseMagNotificationsForRediscovery(g: BluetoothGatt) {
+        val c = g.getService(EXTENSION_SERVICE_UUID)?.getCharacteristic(MAG_LIVE_UUID) ?: return
+        runCatching { g.setCharacteristicNotification(c,false) }
+        val descriptor = c.getDescriptor(CCCD_UUID) ?: return
+        runCatching {
+            otaExecutor.execute {
+                if (gatt === g && connected && !otaRunning.get()) runCatching {
+                    writeDescriptorBlocking(g,descriptor,BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE)
+                }
+            }
+        }
+    }
+
+    private fun magActionAllowed(recovery: Boolean = false): Boolean {
+        val g = gatt ?: return false
+        if (!magAvailable(g,lastState.deviceInfo) || !optionalFeatureWorkAllowed(g) ||
+            rawCaptureRunning.get() || diagnosticLogRunning.get() || configurationMutationRunning.get()) return false
+        return !regattaLinkConfigurationMutationBlocked(
+            state = if (recovery) lastConfigurationState.copy(mag = RegattaLinkMagState()) else lastConfigurationState,
+            factoryResetOwned = factoryResetDisconnectTracker.ownsLifecycle(g),
+            deviceControlRunning = deviceControlExecutionGuard.isActive(),
+            diagnosticLogRunning = diagnosticLogRunning.get())
+    }
+    override fun refreshMagStatus(): Boolean = magActionAllowed(true) && magCoordinator.refresh()
+    override fun startMagAuto2dCapture(): Boolean = magActionAllowed() && magCoordinator.startCapture()
+    override fun stopMagAuto2dCapture(): Boolean = magCoordinator.stopCapture()
+    override fun calculateMagAuto2dFit(): Boolean = magActionAllowed() && magCoordinator.calculateAutoFit()
+    override fun installMagAuto2dOffset(): Boolean = magActionAllowed() && magCoordinator.installAuto()
+    override fun exportMagArchive(): Boolean = magActionAllowed() && magCoordinator.exportArchive()
+    override fun calculateMagFit(): Boolean = magActionAllowed() && magCoordinator.calculateFit()
+    override fun installMagFit(): Boolean = magActionAllowed() && magCoordinator.installManual()
+    override fun resetMagArchiveAndRestore(): Boolean = magActionAllowed() && magCoordinator.resetAndRestore()
+    override fun resumeMagRecovery(): Boolean = magActionAllowed(true) && magCoordinator.resumeRecovery()
+    override fun discardMagRecovery(): Boolean = magActionAllowed(true) && magCoordinator.discardRecovery()
+
     override fun setHeadingTrimDeg(value: Int): Boolean {
         if (value !in -180..180) return false
         if (otaRunning.get() || !isConnected()) return false
@@ -4655,6 +4812,7 @@ internal class RegattaLinkBleClient(
             rawCaptureRunning.get() ||
             diagnosticLogRunning.get() ||
             configurationMutationRunning.get() ||
+            magCoordinator.busy() ||
             !isConnected()
         ) {
             return false
@@ -4683,7 +4841,7 @@ internal class RegattaLinkBleClient(
         }
 
         otaExecutor.execute {
-            if (!optionalFeatureWorkAllowed(activeGatt)) {
+            if (!optionalFeatureWorkAllowed(activeGatt) || magCoordinator.busy()) {
                 rejectDeviceControlBeforeStart(execution)
                 return@execute
             }
@@ -4887,6 +5045,11 @@ internal class RegattaLinkBleClient(
 
                         RegattaLinkDeviceControlPollDecision.SUCCESS -> {
                             finalStatus = status
+                            if (opcode == RegattaLinkDeviceControlOpcode.MAG_RESET ||
+                                opcode == RegattaLinkDeviceControlOpcode.SET_UPRIGHT ||
+                                opcode == RegattaLinkDeviceControlOpcode.FACTORY_RESET) {
+                                lastState.deviceInfo?.let { setupMagOnConnect(activeGatt,it) }
+                            }
                             if (opcode == RegattaLinkDeviceControlOpcode.RESTART) {
                                 restartDisconnectTracker.markExpected(activeGatt)
                                 scheduleRestartDisconnectTimeout(activeGatt)
@@ -6513,6 +6676,7 @@ internal class RegattaLinkBleClient(
     }
 
     private fun resetConnectionTransportState() {
+        magCoordinator.disconnect()
         // An old GATT read must neither block nor publish into a new session.
         calypsoOffsetSessionGeneration.incrementAndGet()
         sensorInfoGeneration.incrementAndGet()

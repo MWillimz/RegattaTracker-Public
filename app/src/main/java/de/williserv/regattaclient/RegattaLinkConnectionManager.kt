@@ -356,6 +356,17 @@ internal interface RegattaLinkConnectionClient {
         encodedBits: UInt
     ): Boolean = false
     fun setHeadingTrimDeg(value: Int): Boolean = false
+    fun startMagAuto2dCapture(): Boolean = false
+    fun stopMagAuto2dCapture(): Boolean = false
+    fun calculateMagAuto2dFit(): Boolean = false
+    fun installMagAuto2dOffset(): Boolean = false
+    fun resetMagArchiveAndRestore(): Boolean = false
+    fun resumeMagRecovery(): Boolean = false
+    fun discardMagRecovery(): Boolean = false
+    fun refreshMagStatus(): Boolean = false
+    fun exportMagArchive(): Boolean = false
+    fun calculateMagFit(): Boolean = false
+    fun installMagFit(): Boolean = false
     fun offerPhoneGnss(sample: RegattaLinkPhoneGnssSample): Boolean = false
     fun clearPhoneGnss() = Unit
     fun drainDiagnosticLog(): Boolean = false
@@ -691,6 +702,7 @@ internal class RegattaLinkConnectionManager(
             factoryResetPending ||
             configurationState.busy ||
             configurationState.deviceControlBusy ||
+            configurationState.mag.busy ||
             configurationState.restartAwaitingDisconnect ||
             !hasRequiredPermissions()
         ) {
@@ -717,6 +729,7 @@ internal class RegattaLinkConnectionManager(
             factoryResetPending ||
             configurationState.busy ||
             configurationState.deviceControlBusy ||
+            configurationState.mag.busy ||
             configurationState.factoryResetAwaitingDisconnect ||
             configurationState.restartAwaitingDisconnect ||
             !hasRequiredPermissions()
@@ -827,6 +840,7 @@ internal class RegattaLinkConnectionManager(
             configurationState.restartAwaitingDisconnect ||
             configurationState.deviceControlBusy ||
             configurationState.diagnosticLogLoading ||
+            configurationState.mag.busy ||
             configurationState.busy
         ) {
             return
@@ -950,11 +964,34 @@ internal class RegattaLinkConnectionManager(
             client.setSubsystemEnabled(subsystem, enabled)
         }
 
-    fun applyMagLearnerModeAndRestart(mode: RegattaLinkMagLearnerMode): Boolean =
-        applyConfigBitsAndRestart(
+    fun applyMagLearnerModeAndRestart(mode: RegattaLinkMagLearnerMode): Boolean {
+        if (mode == RegattaLinkMagLearnerMode.MANUAL_3D &&
+            configurationState.mag.status?.installed3d != true) return false
+        return applyConfigBitsAndRestart(
             mask = REGATTALINK_CONFIG_MAG_LEARNER_MASK,
             encodedBits = mode.encodedBits
         )
+    }
+
+    private fun magActionAllowed(recovery: Boolean = false): Boolean =
+        !otaState.isActive && !rawCaptureState.isActive && !configurationState.busy &&
+            !configurationState.deviceControlBusy && !configurationState.diagnosticLogLoading &&
+            (recovery || !configurationState.mag.busy)
+    fun startMagAuto2dCapture(): Boolean = magActionAllowed() && client.startMagAuto2dCapture()
+    fun stopMagAuto2dCapture(): Boolean = client.stopMagAuto2dCapture()
+    fun calculateMagAuto2dFit(): Boolean = magActionAllowed() && client.calculateMagAuto2dFit()
+    fun installMagAuto2dOffset(): Boolean = magActionAllowed() && client.installMagAuto2dOffset()
+    fun resetMagArchiveAndRestore(): Boolean = magActionAllowed() && client.resetMagArchiveAndRestore()
+    fun resumeMagRecovery(): Boolean = magActionAllowed(true) && client.resumeMagRecovery()
+    fun discardMagRecovery(): Boolean = magActionAllowed(true) && client.discardMagRecovery()
+    fun refreshMagStatus(): Boolean = client.refreshMagStatus()
+    fun exportMagArchive(): Boolean = if (otaState.isActive || rawCaptureState.isActive ||
+        configurationState.busy || configurationState.deviceControlBusy) false
+        else client.exportMagArchive()
+    fun calculateMagFit(): Boolean = client.calculateMagFit()
+    fun installMagFit(): Boolean = if (otaState.isActive || rawCaptureState.isActive ||
+        configurationState.deviceControlBusy || configurationState.mag.phase ==
+            RegattaLinkMagPhase.UNKNOWN) false else client.installMagFit()
 
     fun applyTxSelectionAndRestart(encodedBits: UInt): Boolean =
         applyConfigBitsAndRestart(
@@ -1032,6 +1069,7 @@ internal class RegattaLinkConnectionManager(
         if (
             otaState.isActive ||
             rawCaptureState.isActive ||
+            configurationState.mag.busy ||
             regattaLinkConfigurationMutationBlocked(
                 state = configurationState,
                 factoryResetOwned = factoryResetPending
@@ -1099,7 +1137,8 @@ internal class RegattaLinkConnectionManager(
             !configurationState.deviceControlSupported ||
             otaState.isActive ||
             rawCaptureState.isActive ||
-            configurationState.diagnosticLogLoading
+            configurationState.diagnosticLogLoading ||
+            configurationState.mag.busy
         ) {
             return false
         }

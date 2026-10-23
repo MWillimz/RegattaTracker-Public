@@ -1,4 +1,4 @@
-# RegattaLink BLE client contract — GATT v2 / schema 16
+# RegattaLink BLE client contract — GATT v2 / core schema 16, MAG schema 21
 
 This document is the RegattaTracker-side contract for the production RegattaLink GATT v2 baseline defined by RegattaLink#274.
 
@@ -100,8 +100,10 @@ Wire format is exactly four-byte unsigned little-endian.
 | 5 | TX Load, reserved until output contract exists |
 | 6..7 | reserved |
 | 8 | Load precision: 0=x1, 1=x10 |
-| 9 | MAG background-calibration learning |
-| 10..13 | reserved |
+| 9 | MAG MANUAL_3D selector (schema 21) |
+| 10 | reserved |
+| 11 | MAG AUTO_2D selector (schema 21) |
+| 12..13 | reserved |
 | 14..15 | NMEA 0183 baud selector |
 | 16 | IMU current-session availability / next-boot enable request |
 | 17 | onboard MAG current-session availability / next-boot enable request |
@@ -187,11 +189,52 @@ The frozen wire contract is:
 
 Tracker exposes this control in the IMU setup surface. It applies immediately and does not require another GATT change.
 
-## Background MAG
+## MAG schema 21 (#567)
 
-Background MAG learning uses `0017` bit 9. No dedicated reset characteristic or Device Control opcode exists.
+The MAG setup screen requires schema >=21 and matching characteristic properties/CCCD. Older firmware retains the existing secured OTA-only update/recovery route. There is no schema-20 MAG fallback. Registered UUIDs alone do not establish valid factory calibration, an upright reference, a sensor or an installed model: fresh metadata flags do.
 
-Normal user Factory Reset clears learned background calibration while preserving factory MAG calibration. Factory MAG provisioning remains manufacturing/service functionality transported through OTA Control and is not exposed by normal Tracker UI.
+All XYZ below are factory-corrected **MMC5633 native XYZ in µT**, before installation correction or boat-frame rotation. The fixed plane comes from the frozen Set-Upright base: Down `n`, Forward `u`, Side `n × u`. Live orientation trim does not redefine this plane. Bind captures, proposals and backups to stable device ID, factory CRC and upright reference. Only an active capture additionally binds boot ID and stream context; normal unsubscribe or reboot must not invalidate an already completed object solely because these values changed.
+
+| Characteristic | Contract |
+| --- | --- |
+| `0032` / `0033` | MLG-v2 snapshot open/select/close, 28-byte manifest and long-read pages |
+| `0034` / `0035` / `0036` | Existing MAG3 BEGIN/VALIDATE/COMMIT/ABORT, 18-byte data fragments, 20-byte correlated status |
+| `0037` | Bonded encrypted notifications, 20 bytes `<BBHI3f>`, version 1, usable flags 7, u16 sequence and u32 sample-ms |
+| `0038` | Bonded encrypted read/write-with-response, paged frozen metadata and MAG2 transfer |
+
+Metadata: freeze `[5,1,255]`, then select `[5,1,page]` and read `[1,page,snapshot:u16,data]` for pages 0–5. Data is 88 bytes, 16 bytes/page except the final 8 bytes; responses are 20/12 bytes. A different snapshot ID invalidates the whole read. The freeze/select/read sequence runs on the existing GATT executor and cannot interleave with status polling. Normal polling is every three seconds and skips active operations.
+
+Metadata data offsets are: state/error/flags at 1/2/3, last request at 4, factory CRC at 8, upright reference at 12, generation at 16, last full-object CRC at 20, committed native offset at 24, fixed Down/Forward at 36/48, boot/context/dropped at 60/64/68, durable stored request/full-object CRC at 72/76, active kind at 80 and zero reserved bytes at 81–87. Flags are factory-valid 1, reference-valid 2, auto-stored 4, auto-selected 8, manual-stored 16, off-selected 32, archive-ready 64. `0017` is desired next-boot selection; metadata selection flags describe the running selection. Active kind 0 alone does not establish OFF. Obsolete turn-count bits in `0036` are zero.
+
+### App recording and 2D fit
+
+Subscribe to `0037` through the existing CCCD queue and wait for the write response, freeze metadata, then accept samples. Ignore callbacks until the initial metadata is ready. Keep at most **1800 samples / 180 seconds**, publish UI progress at most four times/second, and stop/unsubscribe on screen dismissal or app background. No executor waits for the duration of a capture. Stop checks fresh metadata before unsubscribe. Invalid frames abort; duplicate/out-of-order sequence numbers are ignored with wrap-aware ordering. Finish rejects more than **10% missing sequence samples** or a timestamp gap over **one second**. These are app quality choices, not new firmware gates. Mailbox drops remain separate firmware telemetry.
+
+Project every original point onto `(u, n × u)`. A centered/scaled double-precision SVD circle fit uses at least 24 observations, five robust-mask passes plus a final refit, >=80% inliers, rank 3 / condition <=1e4, largest observed angular gap <=30°, RMS <=min(2.5 µT, 7% radius), and Down standard deviation <=max(0.5 µT, 10% radius). Clean small circles are allowed. The native offset is `cx*u + cy*(n × u)`; float32 serialization is validated again against the <=80 µT norm and <=0.10 µT fixed-plane limits. Golden datasets in `app/src/test/resources/mag` were generated with RegattaLink `af40043` CLI implementations.
+
+MAG2 is exactly 32 LE bytes `<4sHHII3fI>`: `MAG2`, version 1, length 32, factory CRC, upright reference, native offset, CRC32(first 28). BEGIN is `[1,1,request:u32,32:u16,fullCRC:u32]`; DATA is `[2,1,request:u32,offset:u16,payload]` with **12/12/8** payload bytes; COMMIT/ABORT are `[3 or 4,1,request:u32]`. All values fit ATT MTU 23. A 2D import preserves 3D, mode and heading trim. It neither modifies historical XYZ nor reindexes old archive observations.
+
+### MLG-v2 and original-XYZ 3D
+
+Validate manifest version 2, flags/reserved zero, 144 cells ×5 physical packed slots, 180-byte pages, 66 pages and total **11712 bytes**. The final page contains 12 data bytes (16-byte characteristic value). Android performs ordinary GATT long reads for the manifest and pages; there are no MTU-sized application fragments. Twelve **976-byte** groups each have `MLG\x02`, factory CRC, group CRC (CRC field zeroed), upright reference and identical Forward/Side/Down basis before 12 cells. Each cell has count, zero retained next field and five 15-byte XYZ/down-Q7 slots. Read slots `0..count-1`; there is no age-ring ordering.
+
+The fitter flattens all original XYZ observations (<=720), never per-cell medians or historical label occupancy. It ports weighted nine-parameter SVD ellipsoid fitting and six robust/reweight passes from the CLI. Equal-area 12×12 **temporary analysis groups** balance observations after candidate correction. Acceptance requires >=36 observed groups, >=7 octants, covariance `det/(trace/3)^3 >=0.25`, >=80% original inliers, 10–100 µT radius, RMS <=2.5 µT and <=5%, and <=5% weighted tail beyond 10% radial error. Offset norm, symmetry, eigenvalue, determinant and firmware Gershgorin bounds are checked before and after float32 encoding. A good dataset packed into only 29 historical cells passes; planar data spread across 144 labels fails. Wire `used_sectors` counts analysis groups.
+
+MAG3 remains 80 bytes with 18-byte DATA payloads. Save a durable 2D offset before calculating/installing 3D. Installing while AUTO is selected does not select MANUAL; replacing an already selected MANUAL model may activate it immediately and requires confirmation. Mode changes use fresh reserved-safe `0017` RMW with mask `0xA00`, restart and existing readback handling. There is no automatic 3D mode selection.
+
+### Persistence, recovery and reset
+
+`RegattaLinkMagCoordinator` owns a connection-generation/operation token across each operation, including the complete reset/restore. Wire work uses the existing BLE executor; numerical work uses the math executor. Disconnect/Service Changed invalidates the token, so late progress, exceptions and finally blocks cannot change or release another owner. Public config, Device Control, raw capture and OTA mutation gates also honor MAG ownership and unresolved recovery.
+
+**Before any possible COMMIT**, synchronously save the exact object bytes, type, device/factory/upright binding, request and boot context in one atomic preferences record; abort before COMMIT if local saving fails. ACK is not durability. After a possible COMMIT there is no blind retry/new BEGIN/ABORT. On reconnect, fresh metadata plus the exact durable request, full-object CRC, auto-stored flag and **exact float32 offset bits** prove a MAG2 result even after MCU reboot. A full-object CRC alone is insufficient (the included IEEE CRC yields a codeword residue). MAG3 additionally requires a retained correlated `0036` result in the same boot; an installed-slot bit or 2D receipt cannot prove this 3D transaction. Foreign/ambiguous receipts remain persistently UNKNOWN and block new mutations. Explicit recovery only reads/proceeds from proven state. Explicit discard requires confirmation explaining uncertain device outcome and deletion of the local backup; it sends no device mutation.
+
+Device Control opcode **12** is a full MAG reset, not archive-only deletion: archive, 2D, 3D and heading trim are cleared and the device selects AUTO. Factory calibration and the frozen upright reference remain. The app composite first reads valid stored 2D plus signed `0018` trim and durably saves the exact backup. It journals `RESET_MAY_HAVE_BEEN_SENT` before the existing 8-byte opcode12 request, requires correlated SUCCESS/OK from the 20-byte status, restores MAG2 with a fresh request and durable receipt, then restores trim and verifies readback. Only then may it delete the backup and report completion. Manual 3D is permanently lost and the confirmation states the return to 2D mode.
+
+Backup phases survive process termination and reconnect. Resume never repeats a possibly effective reset. If reset status was lost across MCU reboot, the result stays UNKNOWN with the backup retained; empty model state alone cannot prove the reset. A changed device/factory/upright binding prevents restore. Normal boot/stream context changes alone do not invalidate the backup. After a failed restore import, explicit resume can retry only following a correlated terminal rejection; ambiguous COMMIT remains blocked.
+
+Factory MAG provisioning remains manufacturing/service functionality and is not exposed by normal Tracker UI. Firmware downgrades are unsupported. The known motion-calibration firmware rollback limitation is outside this Android change.
+
+Automated protocol/numerical/recovery tests are necessary but do not replace real Android/HW2 verification of sensor load, BLE coexistence, MTU-23 long reads, live heading, reboot/reset/restore and the legacy OTA-only upgrade path.
 
 ## Phone GNSS 001C
 
@@ -327,7 +370,7 @@ The Android migration is complete when:
 - every `0017` edit performs a fresh reserved-safe four-byte read-modify-write and marks the current process restart-required when the confirmed word changes;
 - Boat Data TX master, Heel/Trim, NMEA0183, Phone GPS and local Compass selectors are exposed without auto-enabling each other;
 - NMEA0183 baud exposes exactly 4800 / 9600 / 19200 / 38400;
-- Load precision and MAG background-learning use their assigned `0017` bits;
+- Load precision and MAG selection use their assigned `0017` bits;
 - Heading Trim `0018` uses exact signed LE -180..+180° encoding and applies without restart;
 - runtime status parses `001B` version 2 and remains separate from desired Config state;
 - Phone GNSS `001C` uses the exact 28-byte v2 frame, send-time monotonic age, same-fix UTC epoch-ms, validity bits and one write-with-response transaction at negotiated ATT MTU >=31;

@@ -1042,6 +1042,17 @@ class MainActivity : ComponentActivity() {
                                 regattaLinkManager
                                     .applyMagLearnerModeAndRestart(mode)
                             },
+                            onStartMagAuto2dCapture = { regattaLinkManager.startMagAuto2dCapture() },
+                            onStopMagAuto2dCapture = { regattaLinkManager.stopMagAuto2dCapture() },
+                            onCalculateMagAuto2dFit = { regattaLinkManager.calculateMagAuto2dFit() },
+                            onInstallMagAuto2dOffset = { regattaLinkManager.installMagAuto2dOffset() },
+                            onResetMagArchiveAndRestore = { regattaLinkManager.resetMagArchiveAndRestore() },
+                            onResumeMagRecovery = { regattaLinkManager.resumeMagRecovery() },
+                            onDiscardMagRecovery = { regattaLinkManager.discardMagRecovery() },
+                            onRefreshMagStatus = { regattaLinkManager.refreshMagStatus() },
+                            onExportMagArchive = { regattaLinkManager.exportMagArchive() },
+                            onCalculateMagFit = { regattaLinkManager.calculateMagFit() },
+                            onInstallMagFit = { regattaLinkManager.installMagFit() },
                             onApplySubsystemConfigAndRestart = { encodedBits ->
                                 regattaLinkManager
                                     .applySubsystemSelectionAndRestart(encodedBits)

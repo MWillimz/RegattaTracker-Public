@@ -258,6 +258,7 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
+    implementation("org.apache.commons:commons-math3:3.6.1")
     implementation("com.google.zxing:core:3.5.4")
 
     implementation("androidx.camera:camera-core:1.5.1")
