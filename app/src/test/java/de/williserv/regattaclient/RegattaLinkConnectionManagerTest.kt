@@ -1409,16 +1409,16 @@ class RegattaLinkConnectionManagerTest {
         fakeClient.emitConfiguration(
             RegattaLinkConfigurationState(
                 configWordSupported = true,
-                configWord = REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING,
+                configWord = REGATTALINK_CONFIG_MAG_MANUAL_3D,
                 deviceControlSupported = true
             )
         )
 
-        assertTrue(manager.applyMagLearnerModeAndRestart(RegattaLinkMagLearnerMode.TWO_D))
+        assertTrue(manager.applyMagLearnerModeAndRestart(RegattaLinkMagLearnerMode.AUTO_2D))
         assertEquals(1, fakeClient.applyConfigBitsAndRestartCalls)
         assertEquals(REGATTALINK_CONFIG_MAG_LEARNER_MASK, fakeClient.lastAppliedConfigMask)
         assertEquals(
-            REGATTALINK_CONFIG_MAG_2D_LEARNER,
+            REGATTALINK_CONFIG_MAG_AUTO_2D,
             fakeClient.lastAppliedConfigBits
         )
 
@@ -1427,6 +1427,40 @@ class RegattaLinkConnectionManagerTest {
         )
         assertFalse(manager.applyMagLearnerModeAndRestart(RegattaLinkMagLearnerMode.FACTORY_ONLY))
         assertEquals(1, fakeClient.applyConfigBitsAndRestartCalls)
+    }
+
+    @Test
+    fun magRecoveryBlocksMutationsButAllowsExplicitRecoveryAndCaptureStop() {
+        fakeClient.emitConfiguration(RegattaLinkConfigurationState(
+            configWordSupported = true, configWord = 0u, deviceControlSupported = true,
+            mag = RegattaLinkMagState(supported = true, phase = RegattaLinkMagPhase.UNKNOWN, recoveryAvailable = true)))
+        assertFalse(manager.startMagAuto2dCapture())
+        assertFalse(manager.installMagAuto2dOffset())
+        assertFalse(manager.resetMagArchiveAndRestore())
+        assertFalse(manager.executeDeviceControl(RegattaLinkDeviceControlOpcode.SET_UPRIGHT,0))
+        assertFalse(manager.applyMagLearnerModeAndRestart(RegattaLinkMagLearnerMode.AUTO_2D))
+        assertEquals(0,fakeClient.magMutationCalls)
+        assertTrue(manager.resumeMagRecovery())
+        assertTrue(manager.stopMagAuto2dCapture())
+        assertEquals(1,fakeClient.magRecoveryCalls)
+    }
+
+    @Test
+    fun magActionsRejectOtaAndDeviceControlConflictBelowTheUi() {
+        fakeClient.emitConfiguration(RegattaLinkConfigurationState(deviceControlBusy = true))
+        assertFalse(manager.startMagAuto2dCapture())
+        assertFalse(manager.installMagAuto2dOffset())
+        assertFalse(manager.resumeMagRecovery())
+        assertEquals(0,fakeClient.magMutationCalls)
+        assertEquals(0,fakeClient.magRecoveryCalls)
+        fakeClient.emitConfiguration(RegattaLinkConfigurationState())
+        fakeClient.emitOta(RegattaLinkOtaUiState(phase = RegattaLinkOtaPhase.TRANSFERRING))
+        assertFalse(manager.startMagAuto2dCapture())
+        assertFalse(manager.installMagAuto2dOffset())
+        assertFalse(manager.resetMagArchiveAndRestore())
+        assertFalse(manager.resumeMagRecovery())
+        assertEquals(0,fakeClient.magMutationCalls)
+        assertEquals(0,fakeClient.magRecoveryCalls)
     }
 
     @Test
@@ -2114,6 +2148,13 @@ class RegattaLinkConnectionManagerTest {
         private val onFactoryResetRecoveryStateChanged: (Boolean) -> Unit,
         private val onUnexpectedDisconnect: () -> Unit
     ) : RegattaLinkConnectionClient {
+        var magMutationCalls = 0
+        var magRecoveryCalls = 0
+        override fun startMagAuto2dCapture(): Boolean { magMutationCalls++; return true }
+        override fun stopMagAuto2dCapture(): Boolean = true
+        override fun installMagAuto2dOffset(): Boolean { magMutationCalls++; return true }
+        override fun resetMagArchiveAndRestore(): Boolean { magMutationCalls++; return true }
+        override fun resumeMagRecovery(): Boolean { magRecoveryCalls++; return true }
         var discoveryAccepted = true
         var reconnectAccepted = true
         var autoConnectAccepted = true

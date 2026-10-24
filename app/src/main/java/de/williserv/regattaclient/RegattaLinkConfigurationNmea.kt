@@ -59,7 +59,8 @@ data class RegattaLinkConfigurationState(
     val calypsoRawWind: RegattaLinkCalypsoRawWindState = RegattaLinkCalypsoRawWindState(),
     val busy: Boolean = false,
     val error: String = "",
-    val userMessage: RegattaLinkUiMessage? = null
+    val userMessage: RegattaLinkUiMessage? = null,
+    val mag: RegattaLinkMagState = RegattaLinkMagState()
 ) {
     val loadPrecisionSupported: Boolean
         get() = configWordSupported
@@ -168,6 +169,7 @@ internal fun regattaLinkConfigurationMutationBlocked(
         deviceControlRunning ||
         diagnosticLogRunning ||
         state.deviceControlBusy ||
+        state.mag.busy ||
         state.diagnosticLogLoading ||
         state.factoryResetAwaitingDisconnect ||
         state.restartAwaitingDisconnect ||
@@ -178,6 +180,7 @@ internal fun regattaLinkFirmwareInstallBlocked(
 ): Boolean =
     state.busy ||
         state.deviceControlBusy ||
+        state.mag.busy ||
         state.diagnosticLogLoading ||
         state.factoryResetAwaitingDisconnect ||
         state.restartAwaitingDisconnect ||
@@ -340,14 +343,14 @@ internal const val REGATTALINK_CONFIG_TX_SELECTION_MASK: UInt = 0x0000009eu
 internal const val REGATTALINK_CONFIG_BLUETOOTH_DEVICE_MASK: UInt =
     REGATTALINK_CONFIG_CALYPSO_ENABLE
 internal const val REGATTALINK_CONFIG_LOAD_PRECISION_X10: UInt = 0x00000100u
-internal const val REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING: UInt = 0x00000200u
-internal const val REGATTALINK_CONFIG_MAG_2D_LEARNER: UInt = 0x00000800u
+internal const val REGATTALINK_CONFIG_MAG_MANUAL_3D: UInt = 0x00000200u
+internal const val REGATTALINK_CONFIG_MAG_AUTO_2D: UInt = 0x00000800u
 internal const val REGATTALINK_CONFIG_MAG_LEARNER_MASK: UInt = 0x00000A00u
 
 internal enum class RegattaLinkMagLearnerMode(val encodedBits: UInt) {
     FACTORY_ONLY(0u),
-    TWO_D(REGATTALINK_CONFIG_MAG_2D_LEARNER),
-    THREE_D(REGATTALINK_CONFIG_MAG_BACKGROUND_LEARNING);
+    AUTO_2D(REGATTALINK_CONFIG_MAG_AUTO_2D),
+    MANUAL_3D(REGATTALINK_CONFIG_MAG_MANUAL_3D);
 
     companion object {
         fun fromConfigBits(bits: UInt): RegattaLinkMagLearnerMode? =
