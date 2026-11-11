@@ -32,6 +32,9 @@
     <string name="boat_type">Tipo de barco</string>
     <string name="setup_confirmed">Configuración confirmada</string>
     <string name="confirm_setup">Confirmar configuración</string>
+    <string name="boat_data_field_required">Este campo es obligatorio.</string>
+    <string name="boat_data_single_line_limit">Introduce un máximo de %1$d caracteres en una sola línea.</string>
+    <string name="boat_data_invalid_yardstick">Introduce un número entre %1$d y %2$d.</string>
     <string name="scan_qr_code">Escanear código QR</string>
     <string name="scan_event_qr">Escanear QR del evento</string>
     <string name="scan_event_qr_code">Escanea el código QR del evento</string>

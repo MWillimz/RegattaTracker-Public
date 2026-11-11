@@ -1,5 +1,6 @@
 package de.williserv.regattaclient
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -7,6 +8,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -20,7 +22,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Arrangement
@@ -72,7 +80,7 @@ fun BoatDataScreen(
     ) {
         mutableStateOf(confirmedValues)
     }
-    val draftMatchesConfirmed = draft == confirmedValues
+    var showValidationErrors by remember(confirmedValues) { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -85,58 +93,53 @@ fun BoatDataScreen(
             fontWeight = FontWeight.SemiBold
         )
 
-        OutlinedTextField(
+        BoatDataTextField(
+            field = BoatSetupField.BOAT_NAME,
             value = draft.boatName,
-            onValueChange = { draft = draft.copy(boatName = it) },
-            label = { Text(stringResource(R.string.boat_name)) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 16.dp)
-        )
+            label = R.string.boat_name,
+            showErrors = showValidationErrors,
+            modifier = Modifier.padding(top = 16.dp)
+        ) { draft = draft.copy(boatName = it) }
 
-        OutlinedTextField(
+        BoatDataTextField(
+            field = BoatSetupField.SKIPPER,
             value = draft.skipperName,
-            onValueChange = { draft = draft.copy(skipperName = it) },
-            label = { Text(stringResource(R.string.skipper)) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp)
-        )
+            label = R.string.skipper,
+            showErrors = showValidationErrors,
+            modifier = Modifier.padding(top = 8.dp)
+        ) { draft = draft.copy(skipperName = it) }
 
-        OutlinedTextField(
+        BoatDataTextField(
+            field = BoatSetupField.HULL_COLOR,
             value = draft.hullColor,
-            onValueChange = { draft = draft.copy(hullColor = it) },
-            label = { Text(stringResource(R.string.hull_color)) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp)
-        )
+            label = R.string.hull_color,
+            showErrors = showValidationErrors,
+            modifier = Modifier.padding(top = 8.dp)
+        ) { draft = draft.copy(hullColor = it) }
 
-        OutlinedTextField(
+        BoatDataTextField(
+            field = BoatSetupField.SAIL_NUMBER,
             value = draft.sailNumber,
-            onValueChange = { draft = draft.copy(sailNumber = it) },
-            label = { Text(stringResource(R.string.sail_number)) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp)
-        )
+            label = R.string.sail_number,
+            showErrors = showValidationErrors,
+            modifier = Modifier.padding(top = 8.dp)
+        ) { draft = draft.copy(sailNumber = it) }
 
-        OutlinedTextField(
+        BoatDataTextField(
+            field = BoatSetupField.YARDSTICK,
             value = draft.yardstick,
-            onValueChange = { draft = draft.copy(yardstick = it) },
-            label = { Text(stringResource(R.string.yardstick)) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp)
-        )
-        OutlinedTextField(
+            label = R.string.yardstick,
+            showErrors = showValidationErrors,
+            modifier = Modifier.padding(top = 8.dp)
+        ) { draft = draft.copy(yardstick = it) }
+
+        BoatDataTextField(
+            field = BoatSetupField.BOAT_TYPE,
             value = draft.boatType,
-            onValueChange = { draft = draft.copy(boatType = it) },
-            label = { Text(stringResource(R.string.boat_type)) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp)
-        )
+            label = R.string.boat_type,
+            showErrors = showValidationErrors,
+            modifier = Modifier.padding(top = 8.dp)
+        ) { draft = draft.copy(boatType = it) }
 
         TrackingProfileSelector(
             modifier = Modifier.padding(top = 20.dp)
@@ -144,6 +147,7 @@ fun BoatDataScreen(
 
         Button(
             onClick = {
+                showValidationErrors = true
                 if (isBoatSetupValid(draft)) {
                     onConfirmSetup(draft)
                 }
@@ -153,7 +157,7 @@ fun BoatDataScreen(
                 .fillMaxWidth()
                 .padding(top = 24.dp)
         ) {
-            if (setupConfirmed && draftMatchesConfirmed) {
+            if (setupConfirmed && draft == confirmedValues && isBoatSetupValid(draft)) {
                 Text(stringResource(R.string.setup_confirmed))
             } else {
                 Text(stringResource(R.string.confirm_setup))
@@ -170,6 +174,47 @@ fun BoatDataScreen(
             Text(stringResource(R.string.back))
         }
     }
+}
+
+// Display all of a saved multiline value on one line while preserving edit offsets.
+private val boatDataSingleLineTransformation = VisualTransformation { value ->
+    val text = BOAT_SETUP_LINE_BREAKS.replace(value.text) { " ".repeat(it.value.length) }
+    TransformedText(AnnotatedString(text), OffsetMapping.Identity)
+}
+
+@Composable
+private fun BoatDataTextField(
+    field: BoatSetupField,
+    value: String,
+    @StringRes label: Int,
+    showErrors: Boolean,
+    modifier: Modifier = Modifier,
+    onValueChange: (String) -> Unit
+) {
+    val error = if (showErrors) field.validationError(value) else null
+    val message = when (error) {
+        BoatSetupFieldError.REQUIRED -> stringResource(R.string.boat_data_field_required)
+        BoatSetupFieldError.SINGLE_LINE_LIMIT ->
+            stringResource(R.string.boat_data_single_line_limit, field.maxLength)
+        BoatSetupFieldError.INVALID_YARDSTICK ->
+            stringResource(R.string.boat_data_invalid_yardstick, MIN_YARDSTICK, MAX_YARDSTICK)
+        null -> null
+    }
+
+    OutlinedTextField(
+        value = value,
+        onValueChange = { onValueChange(field.acceptInput(value, it)) },
+        label = { Text(stringResource(label)) },
+        singleLine = true,
+        visualTransformation = boatDataSingleLineTransformation,
+        keyboardOptions = KeyboardOptions(
+            keyboardType = if (field == BoatSetupField.YARDSTICK) KeyboardType.Decimal else KeyboardType.Text,
+            imeAction = if (field == BoatSetupField.BOAT_TYPE) ImeAction.Done else ImeAction.Next
+        ),
+        isError = message != null,
+        supportingText = message?.let { errorText -> @Composable { Text(errorText) } },
+        modifier = modifier.fillMaxWidth()
+    )
 }
 
 @Composable

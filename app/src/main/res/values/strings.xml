@@ -38,6 +38,9 @@
     <string name="boat_type">Boat type</string>
     <string name="setup_confirmed">Setup confirmed</string>
     <string name="confirm_setup">Confirm Setup</string>
+    <string name="boat_data_field_required">This field is required.</string>
+    <string name="boat_data_single_line_limit">Enter up to %1$d characters on one line.</string>
+    <string name="boat_data_invalid_yardstick">Enter a number from %1$d to %2$d.</string>
     <string name="scan_qr_code">Scan QR Code</string>
     <string name="scan_event_qr">Scan Event QR</string>
     <string name="scan_event_qr_code">Scan Event QR Code</string>

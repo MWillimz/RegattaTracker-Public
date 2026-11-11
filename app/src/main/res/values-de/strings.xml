@@ -32,6 +32,9 @@
     <string name="boat_type">Bootstyp</string>
     <string name="setup_confirmed">Einrichtung bestätigt</string>
     <string name="confirm_setup">Einrichtung bestätigen</string>
+    <string name="boat_data_field_required">Dieses Feld ist ein Pflichtfeld.</string>
+    <string name="boat_data_single_line_limit">Maximal %1$d Zeichen in einer Zeile eingeben.</string>
+    <string name="boat_data_invalid_yardstick">Eine Zahl zwischen %1$d und %2$d eingeben.</string>
     <string name="scan_qr_code">QR-Code scannen</string>
     <string name="scan_event_qr">Event-QR-Code scannen</string>
     <string name="scan_event_qr_code">Event-QR-Code scannen</string>
